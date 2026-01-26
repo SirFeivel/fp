@@ -134,7 +134,7 @@ const excl = createExclusionsController({
 });
 
 const dragController = createExclusionDragController({
-  getSvg: () => document.getElementById("planSvg"),
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getState: () => store.getState(),
   setStateDirect: (s) => store.setStateDirect(s),
   commit: (label, next) => commitViaStore(label, next),
@@ -169,7 +169,7 @@ function updateAllTranslations() {
   initTabs();
   initResize();
   initVerticalResize();
-  initFullscreen();
+  initFullscreen(dragController);
 
   bindUI({
     store,

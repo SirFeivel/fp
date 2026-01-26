@@ -1,4 +1,4 @@
-export function initFullscreen() {
+export function initFullscreen(dragController) {
   const btnFullscreen = document.getElementById('btnFullscreen');
 
   if (!btnFullscreen) return;
@@ -28,21 +28,30 @@ export function initFullscreen() {
     svgFullscreen.setAttribute('viewBox', svgOriginal.getAttribute('viewBox'));
     svgFullscreen.setAttribute('preserveAspectRatio', svgOriginal.getAttribute('preserveAspectRatio'));
 
+    if (dragController) {
+      const exclusionShapes = svgFullscreen.querySelectorAll('[data-excl-id]');
+      exclusionShapes.forEach(shape => {
+        shape.addEventListener('pointerdown', dragController.onExclPointerDown);
+      });
+    }
+
     const btnExit = document.getElementById('btnExitFullscreen');
-    btnExit.addEventListener('click', () => {
+    const closeFullscreen = () => {
       document.body.removeChild(overlay);
-    });
+    };
+
+    btnExit.addEventListener('click', closeFullscreen);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
-        document.body.removeChild(overlay);
+        closeFullscreen();
       }
     });
 
     document.addEventListener('keydown', function handleEscape(e) {
       if (e.key === 'Escape') {
         if (document.body.contains(overlay)) {
-          document.body.removeChild(overlay);
+          closeFullscreen();
         }
         document.removeEventListener('keydown', handleEscape);
       }

@@ -36,6 +36,7 @@
   --fs-xl:18px;
 
   --panel-width:420px;
+  --viewer-top-height:60%;
 }
 
 *{ box-sizing:border-box; }
@@ -106,6 +107,9 @@ body{
   flex:0 0 var(--viewer-top-height);
   overflow:auto;
   padding:var(--p-md);
+  display:flex;
+  flex-direction:column;
+  min-height:0;
 }
 
 .viewer-bottom{
@@ -345,12 +349,18 @@ hr{
   border-radius:var(--r-md);
   overflow:hidden;
   background:#081022;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
 }
 
 #planSvg{
   width:100%;
-  height:520px;
+  height:100%;
+  flex:1;
   display:block;
+  min-height:0;
 }
 
 .hintline{
