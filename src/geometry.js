@@ -469,8 +469,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const stepX = tw + grout;
-  const stepY = th + grout;
+  const stepX = th + grout;
+  const stepY = tw + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -478,8 +478,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
 
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 
-  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
-  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
+  const marginX = TILE_MARGIN_MULTIPLIER * Math.max(tw, th);
+  const marginY = TILE_MARGIN_MULTIPLIER * Math.max(tw, th);
 
   const minX = b.minX - marginX;
   const maxX = b.maxX + marginX;
@@ -489,8 +489,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    anchorX -= tw / 2;
-    anchorY -= th / 2;
+    anchorX -= th / 2;
+    anchorY -= tw / 2;
   }
 
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
@@ -507,11 +507,17 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const tiles = [];
   const fullArea = tw * th;
 
-  for (let r = 0; r < estRows; r++) {
-    for (let c = 0; c < estCols; c++) {
-      const isHorizontal = (r + c) % 2 === 0;
+  for (let c = 0; c < estCols; c++) {
+    const isHorizontal = c % 2 === 0;
+    const colOffset = isHorizontal ? 0 : tw / 2;
+    const tileStepY = isHorizontal ? (th + grout) : (tw + grout);
+
+    const colStartY = startY + colOffset;
+    const colRows = Math.ceil((maxY - colStartY) / tileStepY) + 2;
+
+    for (let r = 0; r < colRows; r++) {
       const baseX = startX + c * stepX;
-      const baseY = startY + r * stepY;
+      const baseY = colStartY + r * tileStepY;
 
       const tileW = isHorizontal ? tw : th;
       const tileH = isHorizontal ? th : tw;
