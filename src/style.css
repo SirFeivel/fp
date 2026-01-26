@@ -74,6 +74,64 @@ body{
   background:rgba(231,238,252,.03);
 }
 
+/* Undo Controls in Header */
+.undo-controls{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px;
+  border-radius:var(--r-sm);
+  background:rgba(0,0,0,.18);
+  border:1px solid var(--line);
+}
+
+.btn-icon{
+  width:32px;
+  height:32px;
+  padding:6px;
+  border-radius:var(--r-xs);
+  border:1px solid var(--line);
+  background:var(--btn);
+  color:var(--text);
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:all 0.2s ease;
+}
+
+.btn-icon:hover{
+  background:var(--btn2);
+  border-color:var(--line2);
+}
+
+.btn-icon:active{
+  transform:translateY(1px);
+}
+
+.btn-icon:disabled{
+  opacity:0.4;
+  cursor:not-allowed;
+}
+
+.btn-icon:disabled:hover{
+  background:var(--btn);
+  border-color:var(--line);
+  transform:none;
+}
+
+.btn-icon svg{
+  width:18px;
+  height:18px;
+}
+
+.undo-counter{
+  font-size:var(--fs-xs);
+  color:var(--muted);
+  padding:0 4px;
+  font-variant-numeric:tabular-nums;
+}
+
 /* ---------------- Layout ---------------- */
 .layout{
   display:grid;
@@ -153,7 +211,7 @@ body{
 .vertical-resize-handle{
   height:6px;
   cursor:row-resize;
-  background:transparent;
+  background:rgba(0,0,0,.2);
   position:relative;
   transition:background 0.2s ease;
   flex:0 0 6px;

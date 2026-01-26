@@ -66,8 +66,12 @@ export function renderMetrics(state) {
   areaEl.textContent = `${f2(d.area.netAreaM2)} m²`;
   tilesEl.textContent = `${d.tiles.totalTilesWithReserve} (${d.tiles.fullTiles} full, ${d.tiles.cutTiles} cut, ${d.tiles.reusedCuts} reused)`;
 
-  const packs = d.pricing.packM2 > 0 ? Math.ceil(d.material.totalTilesM2 / d.pricing.packM2) : 0;
-  packsEl.textContent = packs > 0 ? `${packs} (${f2(d.material.totalTilesM2)} m²)` : `${f2(d.material.totalTilesM2)} m²`;
+  const packs = d.pricing.packs;
+  if (packs !== null && packs > 0) {
+    packsEl.textContent = `${packs} (${f2(d.material.purchasedAreaM2)} m²)`;
+  } else {
+    packsEl.textContent = `${f2(d.material.purchasedAreaM2)} m²`;
+  }
 
   costEl.textContent = `${f2(d.pricing.priceTotal)} €`;
 }
@@ -82,9 +86,17 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
   const u = document.getElementById("undoCount");
   const r = document.getElementById("redoCount");
   const a = document.getElementById("lastAction");
+  const counter = document.getElementById("undoCounter");
+  const btnUndo = document.getElementById("btnUndo");
+  const btnRedo = document.getElementById("btnRedo");
+
   if (u) u.textContent = String(undoStack.length);
   if (r) r.textContent = String(redoStack.length);
   if (a) a.textContent = lastLabel || (undoStack.at(-1)?.label ?? "–");
+  if (counter) counter.textContent = `${undoStack.length} / ${redoStack.length}`;
+
+  if (btnUndo) btnUndo.disabled = undoStack.length === 0;
+  if (btnRedo) btnRedo.disabled = redoStack.length === 0;
 }
 
 export function renderRoomForm(state) {

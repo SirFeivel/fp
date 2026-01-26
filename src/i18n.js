@@ -117,6 +117,7 @@ const translations = {
     },
     undo: {
       title: "Undo / Redo",
+      history: "Verlauf",
       undo: "Undo",
       redo: "Redo",
       lastAction: "Letzte Aktion:",
@@ -167,6 +168,7 @@ const translations = {
       optimizeCuts: "Verschnitt optimieren:",
       waste: "Verschnitt (Einkauf):",
       netArea: "Fläche (Netto):",
+      tilePacks: "Packungen:",
       price: "Preis:",
       cutWork: "Beschnitt (Aufwand):",
       yes: "Ja",
@@ -319,6 +321,7 @@ const translations = {
     },
     undo: {
       title: "Undo / Redo",
+      history: "History",
       undo: "Undo",
       redo: "Redo",
       lastAction: "Last Action:",
@@ -369,6 +372,7 @@ const translations = {
       optimizeCuts: "Optimize waste:",
       waste: "Waste (purchase):",
       netArea: "Net area:",
+      tilePacks: "Tile Packs:",
       price: "Price:",
       cutWork: "Cut work:",
       yes: "Yes",

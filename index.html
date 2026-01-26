@@ -15,6 +15,21 @@
         </div>
       </div>
       <div style="display: flex; gap: 12px; align-items: center;">
+        <div class="undo-controls">
+          <button id="btnUndo" class="btn-icon" title="Undo (Ctrl+Z)" data-i18n-title="undo.undo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7v6h6"/>
+              <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+            </svg>
+          </button>
+          <button id="btnRedo" class="btn-icon" title="Redo (Ctrl+Y)" data-i18n-title="undo.redo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 7v6h-6"/>
+              <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/>
+            </svg>
+          </button>
+          <span class="undo-counter" id="undoCounter">0 / 0</span>
+        </div>
         <div class="field" style="margin: 0;">
           <label data-i18n="language.select" style="margin-right: 8px;">Sprache:</label>
           <select id="langSelect" style="padding: 4px 8px;">
@@ -278,12 +293,8 @@
             </div>
 
             <div class="section-card">
-              <h3 class="section-title" data-i18n="undo.title">Undo / Redo</h3>
-              <div class="btnrow">
-                <button id="btnUndo" class="btn" data-i18n="undo.undo">Undo</button>
-                <button id="btnRedo" class="btn" data-i18n="undo.redo">Redo</button>
-              </div>
-              <div class="meta" style="margin-top: 10px">
+              <h3 class="section-title" data-i18n="undo.history">History</h3>
+              <div class="meta">
                 <div><span class="k" data-i18n="undo.lastAction">Aktion:</span> <span id="lastAction">–</span></div>
                 <div>
                   <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
@@ -366,7 +377,7 @@
                 <div class="metric-value" id="metricTiles">–</div>
               </div>
               <div class="metric-item">
-                <div class="metric-label">Packungen:</div>
+                <div class="metric-label" data-i18n="metrics.tilePacks">Tile Packs:</div>
                 <div class="metric-value" id="metricPacks">–</div>
               </div>
               <div class="metric-item">
