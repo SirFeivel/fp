@@ -469,11 +469,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const patternWidth = tw + th + grout;
-  const patternHeight = tw + th + grout;
-
-  const stepX = patternWidth;
-  const stepY = patternHeight;
+  const stepX = tw + grout;
+  const stepY = th + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -502,7 +499,7 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const estCols = Math.ceil((maxX - startX) / stepX) + 2;
   const estRows = Math.ceil((maxY - startY) / stepY) + 2;
 
-  const estTiles = estCols * estRows * 4;
+  const estTiles = estCols * estRows;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -512,43 +509,38 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
 
   for (let r = 0; r < estRows; r++) {
     for (let c = 0; c < estCols; c++) {
+      const isHorizontal = (r + c) % 2 === 0;
       const baseX = startX + c * stepX;
       const baseY = startY + r * stepY;
 
-      const herringboneTiles = [
-        { x: baseX, y: baseY, w: tw, h: th, rot: 0 },
-        { x: baseX + tw + grout, y: baseY, w: th, h: tw, rot: Math.PI / 2 },
-        { x: baseX, y: baseY + tw + grout, w: th, h: tw, rot: Math.PI / 2 },
-        { x: baseX + tw + grout, y: baseY + tw + grout, w: tw, h: th, rot: 0 },
-      ];
+      const tileW = isHorizontal ? tw : th;
+      const tileH = isHorizontal ? th : tw;
 
-      for (const tile of herringboneTiles) {
-        const tileP = tileRectPolygon(
-          tile.x,
-          tile.y,
-          tile.w,
-          tile.h,
-          origin.x,
-          origin.y,
-          rotRad + tile.rot
-        );
+      const tileP = tileRectPolygon(
+        baseX,
+        baseY,
+        tileW,
+        tileH,
+        origin.x,
+        origin.y,
+        rotRad
+      );
 
-        let clipped;
-        try {
-          clipped = polygonClipping.intersection(availableMP, tileP);
-        } catch (e) {
-          return { tiles: [], error: String(e?.message || e) };
-        }
-        if (!clipped || !clipped.length) continue;
-
-        const d = multiPolygonToPathD(clipped);
-        if (!d) continue;
-
-        const gotArea = multiPolyArea(clipped);
-        const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-
-        tiles.push({ d, isFull });
+      let clipped;
+      try {
+        clipped = polygonClipping.intersection(availableMP, tileP);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
       }
+      if (!clipped || !clipped.length) continue;
+
+      const d = multiPolygonToPathD(clipped);
+      if (!d) continue;
+
+      const gotArea = multiPolyArea(clipped);
+      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+
+      tiles.push({ d, isFull });
     }
   }
 
@@ -566,13 +558,9 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const horizontalPairWidth = 2 * tw + grout;
-  const horizontalPairHeight = 2 * th + grout;
-  const verticalPairWidth = 2 * th + grout;
-  const verticalPairHeight = 2 * tw + grout;
-
-  const stepX = horizontalPairWidth + verticalPairWidth;
-  const stepY = Math.max(horizontalPairHeight, verticalPairHeight);
+  const pairSize = Math.max(tw, th);
+  const stepX = pairSize + grout;
+  const stepY = pairSize + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -591,9 +579,8 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    const avgPairSize = (Math.max(tw, th) + Math.min(tw, th)) / 2;
-    anchorX -= avgPairSize;
-    anchorY -= avgPairSize;
+    anchorX -= pairSize / 2;
+    anchorY -= pairSize / 2;
   }
 
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
@@ -602,7 +589,7 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   const estCols = Math.ceil((maxX - startX) / stepX) + 2;
   const estRows = Math.ceil((maxY - startY) / stepY) + 2;
 
-  const estTiles = estCols * estRows * 8;
+  const estTiles = estCols * estRows * 2;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -615,19 +602,17 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
       const baseX = startX + c * stepX;
       const baseY = startY + r * stepY;
 
-      const horizontalX = baseX;
-      const verticalX = baseX + horizontalPairWidth;
+      const isHorizontal = (r + c) % 2 === 0;
 
-      const basketweaveTiles = [
-        { x: horizontalX, y: baseY, w: tw, h: th },
-        { x: horizontalX, y: baseY + th + grout, w: tw, h: th },
-        { x: horizontalX + tw + grout, y: baseY, w: tw, h: th },
-        { x: horizontalX + tw + grout, y: baseY + th + grout, w: tw, h: th },
-        { x: verticalX, y: baseY, w: th, h: tw },
-        { x: verticalX + th + grout, y: baseY, w: th, h: tw },
-        { x: verticalX, y: baseY + tw + grout, w: th, h: tw },
-        { x: verticalX + th + grout, y: baseY + tw + grout, w: th, h: tw },
-      ];
+      const basketweaveTiles = isHorizontal
+        ? [
+            { x: baseX, y: baseY, w: tw, h: th },
+            { x: baseX, y: baseY + th + grout, w: tw, h: th },
+          ]
+        : [
+            { x: baseX, y: baseY, w: th, h: tw },
+            { x: baseX + th + grout, y: baseY, w: th, h: tw },
+          ];
 
       for (const tile of basketweaveTiles) {
         const tileP = tileRectPolygon(
