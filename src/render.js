@@ -421,4 +421,18 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     t2.textContent = `Tiles: ${lastTileError}`;
     svg.appendChild(t2);
   }
+
+  const svgFullscreen = document.getElementById("planSvgFullscreen");
+  if (svgFullscreen) {
+    svgFullscreen.innerHTML = svg.innerHTML;
+    svgFullscreen.setAttribute('viewBox', svg.getAttribute('viewBox'));
+    svgFullscreen.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio'));
+
+    if (onExclPointerDown) {
+      const exclusionShapes = svgFullscreen.querySelectorAll('[data-excl-id]');
+      exclusionShapes.forEach(shape => {
+        shape.addEventListener('pointerdown', onExclPointerDown);
+      });
+    }
+  }
 }
