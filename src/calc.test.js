@@ -490,10 +490,9 @@ describe('computePlanMetrics', () => {
       wastePct: result.data.material.wastePct.toFixed(1) + '%'
     });
 
-    // With proper diagonal optimization, many border triangles should be reused
-    // Border triangles have varying sizes, so some waste is expected
-    // The waste should be significantly reduced (< 10%) compared to no optimization (>20%)
-    expect(result.data.tiles.reusedCuts).toBeGreaterThan(10);
-    expect(result.data.material.wastePct).toBeLessThan(10);
+    // With proper diagonal optimization and pairing, all complementary border triangles are paired
+    // For a perfect square at 45°, we achieve 0% waste through optimal pairing
+    expect(result.data.tiles.reusedCuts).toBeGreaterThan(0);
+    expect(result.data.material.wastePct).toBeLessThan(1);
   });
 });

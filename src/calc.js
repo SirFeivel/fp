@@ -107,12 +107,12 @@ function analyzeCutTile(tile, tileAreaCm2) {
 function findComplementaryPairs(tiles, analyses, tw, th) {
   const pairs = new Map();
   const tileAreaCm2 = tw * th;
-  const dimensionTol = 0.1;
-  const areaTol = tileAreaCm2 * 0.02;
+  const dimensionTol = 1.0;
+  const minArea = tileAreaCm2 * 0.001;
 
   const unpairedIndices = [];
   for (let i = 0; i < tiles.length; i++) {
-    if (!tiles[i].isFull && analyses[i]) {
+    if (!tiles[i].isFull && analyses[i] && analyses[i].actualArea > minArea) {
       unpairedIndices.push(i);
     }
   }
@@ -138,7 +138,7 @@ function findComplementaryPairs(tiles, analyses, tw, th) {
       if (!dimMatch) continue;
 
       const combinedArea = a1.actualArea + a2.actualArea;
-      const fitsInOneTile = combinedArea >= tileAreaCm2 * 0.95 && combinedArea <= tileAreaCm2 * 1.05;
+      const fitsInOneTile = combinedArea >= tileAreaCm2 * 0.90 && combinedArea <= tileAreaCm2 * 1.10;
 
       if (fitsInOneTile) {
         pairs.set(idx1, idx2);
@@ -390,23 +390,25 @@ export function computePlanMetrics(state) {
       continue;
     }
 
-    cutTiles++;
-
     const analysis = analyses[i];
     const bb = analysis?.bb || bboxFromPathD(tile.d);
     const need = bb ? { x: bb.x, y: bb.y, w: bb.w, h: bb.h } : null;
     cutNeeds[i] = need;
 
-    if (bb && bb.w > 0 && bb.h > 0) cutNeedAreaCm2_est += bb.w * bb.h;
+    const actualArea = analysis?.actualArea || 0;
+    const minViableArea = tileAreaCm2 * 0.001;
 
-    if (!bb || !(bb.w > 0 && bb.h > 0)) {
-      tileUsage[i] = { isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts: [] };
+    if (!bb || !(bb.w > 0 && bb.h > 0) || actualArea < minViableArea) {
+      tileUsage[i] = { isFull: false, reused: false, source: "degenerate", need, usedOffcut: null, createdOffcuts: [] };
       continue;
     }
 
+    cutTiles++;
+
+    if (bb && bb.w > 0 && bb.h > 0) cutNeedAreaCm2_est += bb.w * bb.h;
+
     const polygon = analysis?.polygon || parsePathDToPolygon(tile.d);
     const bboxArea = analysis?.bboxArea || bb.w * bb.h;
-    const actualArea = analysis?.actualArea || (polygon ? multiPolyArea(polygon) : bboxArea);
     const areaRatio = analysis?.areaRatio || (bboxArea > 0 ? actualArea / bboxArea : 1);
     const isTriangularCut = analysis?.isTriangularCut || (areaRatio >= 0.45 && areaRatio <= 0.6);
 
@@ -425,17 +427,19 @@ export function computePlanMetrics(state) {
     if (pairAlreadyProcessed) {
       const pairUsage = tileUsage[pairedWith];
       if (!pairUsage.reused && pairUsage.createdOffcuts && pairUsage.createdOffcuts.length > 0) {
-        reusedCuts++;
         const offcut = pairUsage.createdOffcuts[0];
-        tileUsage[i] = {
-          isFull: false,
-          reused: true,
-          source: "paired_offcut",
-          need,
-          usedOffcut: { id: offcut.id, w: offcut.w, h: offcut.h },
-          createdOffcuts: [],
-        };
-        continue;
+        if (offcut && offcut.id && offcut.id.startsWith('pair-')) {
+          reusedCuts++;
+          tileUsage[i] = {
+            isFull: false,
+            reused: true,
+            source: "paired_offcut",
+            need,
+            usedOffcut: { id: offcut.id, w: offcut.w, h: offcut.h },
+            createdOffcuts: [],
+          };
+          continue;
+        }
       }
     }
 
@@ -464,7 +468,7 @@ export function computePlanMetrics(state) {
     if (pairedWith !== undefined && !pairAlreadyProcessed) {
       const offcutW = bb.w;
       const offcutH = bb.h;
-      createdOffcuts.push({ w: offcutW, h: offcutH });
+      createdOffcuts.push({ id: `pair-${i}-${pairedWith}`, w: offcutW, h: offcutH });
     } else if (isTriangularCut) {
       const offcutW = bb.w;
       const offcutH = bb.h;
