@@ -55,15 +55,13 @@ const translations = {
       sections: "Raum-Abschnitte (L/T/U-Formen)",
       sectionsHint: "Fügen Sie mehrere Abschnitte hinzu, um nicht-rechteckige Räume zu erstellen",
       addSection: "+ Abschnitt hinzufügen",
-      convert: "In Abschnitte umwandeln",
       sectionsList: "Abschnitte",
       deleteSection: "Abschnitt löschen",
       sectionProps: "Abschnitt-Eigenschaften",
       noSectionSelected: "– kein Abschnitt ausgewählt –",
       sectionAdded: "Abschnitt hinzugefügt",
       sectionDeleted: "Abschnitt gelöscht",
-      sectionChanged: "Abschnitt geändert",
-      convertedToSections: "In Abschnitte umgewandelt"
+      sectionChanged: "Abschnitt geändert"
     },
     secProps: {
       label: "Bezeichnung",
@@ -297,15 +295,13 @@ const translations = {
       sections: "Room Sections (L/T/U shapes)",
       sectionsHint: "Add multiple sections to create non-rectangular rooms",
       addSection: "+ Add Section",
-      convert: "Convert to Sections",
       sectionsList: "Sections",
       deleteSection: "Delete Section",
       sectionProps: "Section Properties",
       noSectionSelected: "– no section selected –",
       sectionAdded: "Section added",
       sectionDeleted: "Section deleted",
-      sectionChanged: "Section changed",
-      convertedToSections: "Converted to sections"
+      sectionChanged: "Section changed"
     },
     secProps: {
       label: "Label",

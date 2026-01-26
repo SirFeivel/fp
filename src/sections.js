@@ -50,37 +50,6 @@ export function createSectionsController({
     commit(t('room.sectionAdded') || 'Section added', next);
   }
 
-  function convertToSections() {
-    const state = getState();
-    const room = getCurrentRoom(state);
-    if (!room) return;
-
-    if (room.sections && room.sections.length > 0) {
-      return;
-    }
-
-    const next = deepClone(state);
-    const nextRoom = getCurrentRoom(next);
-    if (!nextRoom) return;
-
-    const w = Number(nextRoom.widthCm) || 400;
-    const h = Number(nextRoom.heightCm) || 300;
-
-    nextRoom.sections = [
-      {
-        id: "main",
-        label: "Main Area",
-        x: 0,
-        y: 0,
-        widthCm: w,
-        heightCm: h,
-      },
-    ];
-
-    setSelectedId("main");
-    commit(t('room.convertedToSections') || 'Converted to sections', next);
-  }
-
   function deleteSelectedSection() {
     const state = getState();
     const id = getSelectedId();
@@ -138,7 +107,6 @@ export function createSectionsController({
   return {
     getSelectedSection,
     addSection,
-    convertToSections,
     deleteSelectedSection,
     commitSectionProps,
   };

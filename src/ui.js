@@ -269,9 +269,6 @@ export function bindUI({
   document.getElementById("btnAddSection")?.addEventListener("click", () => {
     if (sections) sections.addSection("right");
   });
-  document.getElementById("btnConvertToSections")?.addEventListener("click", () => {
-    if (sections) sections.convertToSections();
-  });
   document.getElementById("btnDeleteSection")?.addEventListener("click", () => {
     if (sections) sections.deleteSelectedSection();
   });
