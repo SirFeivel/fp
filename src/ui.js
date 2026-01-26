@@ -72,6 +72,7 @@ export function bindUI({
 
     currentRoom.tile.widthCm = Number(document.getElementById("tileW")?.value);
     currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
+    currentRoom.tile.shape = document.getElementById("tileShape")?.value || "rect";
     currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value);
 
     currentRoom.pattern.type = document.getElementById("patternType")?.value;
@@ -224,7 +225,7 @@ export function bindUI({
     })
   );
 
-  ["patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
+  ["tileShape", "patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", () =>
       commitFromTilePatternInputs(t("tile.patternChanged"))
     );

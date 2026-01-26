@@ -12,6 +12,14 @@ function clampPos(n) {
   return Number.isFinite(x) ? Math.max(0, x) : 0;
 }
 
+function calculateTileArea(tw, th, shape) {
+  if (shape === "hex") {
+    const radius = tw / Math.sqrt(3);
+    return (3 * Math.sqrt(3) / 2) * radius * radius;
+  }
+  return tw * th;
+}
+
 function rectArea(r) {
   return Math.max(0, r.w) * Math.max(0, r.h);
 }
@@ -354,7 +362,8 @@ export function computePlanMetrics(state) {
   const t = tilesForPreview(state, avail.mp);
   if (t.error) return { ok: false, error: t.error, data: null };
 
-  const tileAreaCm2 = tw * th;
+  const tileShape = currentRoom.tile?.shape || "rect";
+  const tileAreaCm2 = calculateTileArea(tw, th, tileShape);
 
   let fullTiles = 0;
   let cutTiles = 0;

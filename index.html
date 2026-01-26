@@ -165,6 +165,13 @@
             <div class="section-card">
               <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
               <div class="grid2">
+                <div class="field span2">
+                  <label data-i18n="tile.shape">Tile Shape</label>
+                  <select id="tileShape">
+                    <option value="rect" data-i18n="tile.shapeRect">Rectangular</option>
+                    <option value="hex" data-i18n="tile.shapeHex">Hexagonal</option>
+                  </select>
+                </div>
                 <div class="field">
                   <label data-i18n="tile.width">Fliese Breite (cm)</label>
                   <input id="tileW" type="number" min="0" step="0.1" />
@@ -192,6 +199,8 @@
                   <select id="patternType">
                     <option value="grid" data-i18n="tile.patternGrid">Grid</option>
                     <option value="runningBond" data-i18n="tile.patternRunningBond">Running Bond</option>
+                    <option value="herringbone" data-i18n="tile.patternHerringbone">Herringbone</option>
+                    <option value="basketweave" data-i18n="tile.patternBasketweave">Basketweave</option>
                   </select>
                 </div>
                 <div class="field">

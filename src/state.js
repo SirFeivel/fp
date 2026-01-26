@@ -20,7 +20,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     if (s.tile || s.grout || s.pattern) {
-      const globalTile = s.tile || { widthCm: 60, heightCm: 60 };
+      const globalTile = s.tile || { widthCm: 60, heightCm: 60, shape: "rect" };
       const globalGrout = s.grout || { widthCm: 0.2 };
       const globalPattern = s.pattern || {
         type: "grid",
@@ -36,6 +36,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
           if (floor.rooms && Array.isArray(floor.rooms)) {
             for (const room of floor.rooms) {
               if (!room.tile) room.tile = deepClone(globalTile);
+              if (!room.tile.shape) room.tile.shape = "rect";
               if (!room.grout) room.grout = deepClone(globalGrout);
               if (!room.pattern) room.pattern = deepClone(globalPattern);
             }
@@ -72,7 +73,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               widthCm: oldState.room?.widthCm || 600,
               heightCm: oldState.room?.heightCm || 400,
               exclusions: oldState.exclusions || [],
-              tile: oldState.tile || { widthCm: 60, heightCm: 60 },
+              tile: oldState.tile || { widthCm: 60, heightCm: 60, shape: "rect" },
               grout: oldState.grout || { widthCm: 0.2 },
               pattern: oldState.pattern || {
                 type: "grid",

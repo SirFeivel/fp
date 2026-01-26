@@ -212,6 +212,7 @@ export function renderSectionProps({
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
 
+  document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
   document.getElementById("tileH").value = currentRoom?.tile?.heightCm ?? "";
   document.getElementById("groutW").value = currentRoom?.grout?.widthCm ?? "";
