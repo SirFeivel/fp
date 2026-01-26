@@ -1,0 +1,308 @@
+// src/ui.js
+import { downloadText, safeParseJSON } from "./core.js";
+
+function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
+  if (!el) return;
+  el.addEventListener("input", () => markDirty());
+  el.addEventListener("blur", () => commitFn(commitLabel));
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.blur();
+    }
+  });
+}
+
+async function handleImportFile(file, { validateState, commit }) {
+  const text = await file.text();
+  const parsed = safeParseJSON(text);
+  if (!parsed.ok) {
+    alert("Import fehlgeschlagen: JSON nicht lesbar.");
+    return;
+  }
+  const candidate = parsed.value;
+  const { errors } = validateState(candidate);
+  if (errors.length > 0) {
+    alert(
+      "Import abgelehnt (Errors):\n- " + errors.map((e) => e.title).join("\n- ")
+    );
+    return;
+  }
+  commit("Import JSON", candidate);
+}
+
+export function bindUI({
+  store,
+  excl,
+  renderAll,
+  refreshProjectSelect,
+  updateMeta,
+  validateState,
+  defaultStateFn,
+  setSelectedExcl,
+  resetErrors
+}) {
+  function commitFromRoomInputs(label) {
+    const state = store.getState();
+    const next = structuredClone(state);
+
+    next.room.name = document.getElementById("roomName")?.value ?? "";
+    next.room.widthCm = Number(document.getElementById("roomW")?.value);
+    next.room.heightCm = Number(document.getElementById("roomH")?.value);
+    next.view = next.view || {};
+    next.view.showGrid = Boolean(document.getElementById("showGrid")?.checked);
+
+    store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
+  }
+
+  function commitFromTilePatternInputs(label) {
+    const state = store.getState();
+    const next = structuredClone(state);
+
+    next.tile.widthCm = Number(document.getElementById("tileW")?.value);
+    next.tile.heightCm = Number(document.getElementById("tileH")?.value);
+    next.grout.widthCm = Number(document.getElementById("groutW")?.value);
+
+    next.pattern.type = document.getElementById("patternType")?.value;
+    next.pattern.bondFraction = Number(
+      document.getElementById("bondFraction")?.value
+    );
+    next.pattern.rotationDeg = Number(
+      document.getElementById("rotationDeg")?.value
+    );
+    next.pattern.offsetXcm = Number(document.getElementById("offsetX")?.value);
+    next.pattern.offsetYcm = Number(document.getElementById("offsetY")?.value);
+
+    next.pattern.origin.preset = document.getElementById("originPreset")?.value;
+    next.pattern.origin.xCm = Number(document.getElementById("originX")?.value);
+    next.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
+
+    // Pricing
+    next.pricing = next.pricing || {};
+    const pricePerM2 = document.getElementById("pricePerM2");
+    const packM2 = document.getElementById("packM2");
+    const reserveTiles = document.getElementById("reserveTiles");
+    if (pricePerM2) next.pricing.pricePerM2 = Number(pricePerM2.value);
+    if (packM2) next.pricing.packM2 = Number(packM2.value);
+    if (reserveTiles) next.pricing.reserveTiles = Number(reserveTiles.value);
+
+    // Waste options
+    next.waste = next.waste || {};
+    const allowRotate = document.getElementById("wasteAllowRotate");
+    if (allowRotate) next.waste.allowRotate = Boolean(allowRotate.checked);
+
+    // Waste: kerfCm (Schnittbreite)
+    const kerfEl = document.getElementById('wasteKerfCm');
+    if (kerfEl) next.waste.kerfCm = Number(kerfEl.value);
+
+    const optimizeCuts = document.getElementById("wasteOptimizeCuts");
+    if (optimizeCuts) next.waste.optimizeCuts = Boolean(optimizeCuts.checked);
+
+    // View debug
+    next.view = next.view || {};
+    const dbg = document.getElementById("debugShowNeeds");
+    if (dbg) next.view.showNeeds = Boolean(dbg.checked);
+
+    store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
+  }
+
+  function bindExclList() {
+    const sel = document.getElementById("exclList");
+    if (!sel) return;
+    sel.addEventListener("change", () => setSelectedExcl(sel.value || null));
+  }
+
+  // Buttons
+  document.getElementById("btnReset")?.addEventListener("click", () => {
+    setSelectedExcl(null);
+    resetErrors();
+    store.commit("Reset", defaultStateFn(), {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  });
+
+  document.getElementById("btnLoadSession")?.addEventListener("click", () => {
+    const ok = store.loadSessionIfAny();
+    if (!ok) {
+      alert("Keine gültige Session gefunden.");
+      return;
+    }
+    setSelectedExcl(null);
+    resetErrors();
+    store.autosaveSession(updateMeta);
+    renderAll("Letzten Stand wiederhergestellt");
+  });
+
+  document.getElementById("btnSaveProject")?.addEventListener("click", () => {
+    const state = store.getState();
+    const name =
+      document.getElementById("projectName")?.value.trim() ||
+      (state.room?.name ?? "Projekt");
+    store.saveCurrentAsProject(name);
+    store.autosaveSession(updateMeta);
+    renderAll("Projekt gespeichert");
+  });
+
+  document.getElementById("btnLoadProject")?.addEventListener("click", () => {
+    const id = document.getElementById("projectSelect")?.value;
+    if (!id) return;
+
+    const res = store.loadProjectById(id);
+    if (!res.ok) {
+      alert("Projekt nicht gefunden.");
+      return;
+    }
+    setSelectedExcl(null);
+    resetErrors();
+    renderAll(`Projekt geladen: ${res.name}`);
+  });
+
+  document.getElementById("btnDeleteProject")?.addEventListener("click", () => {
+    const id = document.getElementById("projectSelect")?.value;
+    if (!id) return;
+    store.deleteProjectById(id);
+    store.autosaveSession(updateMeta);
+    renderAll("Projekt gelöscht");
+  });
+
+  // Room inputs
+  wireInputCommit(document.getElementById("roomName"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: "Raum geändert",
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("roomW"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: "Raum geändert",
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("roomH"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: "Raum geändert",
+    commitFn: commitFromRoomInputs
+  });
+  document.getElementById("showGrid")?.addEventListener("change", () =>
+    commitFromRoomInputs("Ansicht geändert")
+  );
+
+  // Tile + Pattern + Pricing
+  [
+    "tileW",
+    "tileH",
+    "groutW",
+    "offsetX",
+    "offsetY",
+    "originX",
+    "originY",
+    "pricePerM2",
+    "packM2",
+    'reserveTiles',
+    'wasteKerfCm',
+  ].forEach((id) =>
+    wireInputCommit(document.getElementById(id), {
+      markDirty: () => store.markDirty(),
+      commitLabel: "Parameter geändert",
+      commitFn: commitFromTilePatternInputs
+    })
+  );
+
+  ["patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () =>
+      commitFromTilePatternInputs("Muster geändert")
+    );
+  });
+
+  // Waste toggles
+  document.getElementById("wasteAllowRotate")?.addEventListener("change", () =>
+    commitFromTilePatternInputs("Reuse geändert")
+  );
+  document.getElementById("wasteOptimizeCuts")?.addEventListener("change", () =>
+    commitFromTilePatternInputs("Verschnitt-Optimierung geändert")
+  );
+
+  // Debug toggle
+  document.getElementById("debugShowNeeds")?.addEventListener("change", () =>
+    commitFromTilePatternInputs("Debug geändert")
+  );
+
+  // Offset buttons
+  document.getElementById("btnOffLeft")?.addEventListener("click", () => {
+    const el = document.getElementById("offsetX");
+    if (el) el.value = String(Number(el.value || 0) - 1);
+    commitFromTilePatternInputs("Offset geändert");
+  });
+  document.getElementById("btnOffRight")?.addEventListener("click", () => {
+    const el = document.getElementById("offsetX");
+    if (el) el.value = String(Number(el.value || 0) + 1);
+    commitFromTilePatternInputs("Offset geändert");
+  });
+  document.getElementById("btnOffUp")?.addEventListener("click", () => {
+    const el = document.getElementById("offsetY");
+    if (el) el.value = String(Number(el.value || 0) - 1);
+    commitFromTilePatternInputs("Offset geändert");
+  });
+  document.getElementById("btnOffDown")?.addEventListener("click", () => {
+    const el = document.getElementById("offsetY");
+    if (el) el.value = String(Number(el.value || 0) + 1);
+    commitFromTilePatternInputs("Offset geändert");
+  });
+
+  // Exclusions
+  document.getElementById("btnAddRect")?.addEventListener("click", excl.addRect);
+  document.getElementById("btnAddCircle")?.addEventListener("click", excl.addCircle);
+  document.getElementById("btnAddTri")?.addEventListener("click", excl.addTri);
+  document.getElementById("btnDeleteExcl")?.addEventListener("click", excl.deleteSelectedExcl);
+  bindExclList();
+
+  // Undo/Redo
+  document.getElementById("btnUndo")?.addEventListener("click", () =>
+    store.undo({ onRender: renderAll, updateMetaCb: updateMeta })
+  );
+  document.getElementById("btnRedo")?.addEventListener("click", () =>
+    store.redo({ onRender: renderAll, updateMetaCb: updateMeta })
+  );
+
+  // Export
+  document.getElementById("btnExport")?.addEventListener("click", () => {
+    const state = store.getState();
+    const fname = `floorplanner_state_${(state.room?.name || "projekt").replace(
+      /\s+/g,
+      "_"
+    )}.json`;
+    downloadText(fname, JSON.stringify(state, null, 2));
+  });
+
+  // Import
+  document.getElementById("fileImport")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleImportFile(file, {
+      validateState,
+      commit: (label, next) =>
+        store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta })
+    });
+    e.target.value = "";
+  });
+
+  // Copy
+  document.getElementById("btnCopy")?.addEventListener("click", async () => {
+    const state = store.getState();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(state, null, 2));
+      alert("State kopiert.");
+    } catch {
+      alert("Copy fehlgeschlagen (Clipboard nicht verfügbar).");
+    }
+  });
+
+  // unload warning
+  window.addEventListener("beforeunload", (e) => {
+    if (!store.isDirty()) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+
+  refreshProjectSelect();
+  updateMeta();
+}

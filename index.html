@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FloorPlanner</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="title">FloorPlanner – Phase 3 (Tiles + Muster)</div>
+        <div class="subtitle">
+          SVG-Vorschau • Drag&Drop Ausschlüsse • Tiles: Grid + Running Bond
+        </div>
+      </div>
+      <div class="badge">Autosave: AN</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Session</h2>
+        <div class="btnrow">
+          <button id="btnReset" class="btn">Reset</button>
+          <button id="btnLoadSession" class="btn">
+            Letzten Stand wiederherstellen
+          </button>
+        </div>
+        <div class="meta">
+          <div><span class="k">Session:</span> <span id="sessionStatus">–</span></div>
+          <div><span class="k">Zuletzt gespeichert:</span> <span id="lastSaved">–</span></div>
+        </div>
+
+        <hr />
+
+        <h2>Projekt (lokal)</h2>
+        <div class="grid2">
+          <div class="field">
+            <label>Name (für Speichern)</label>
+            <input id="projectName" type="text" placeholder="z.B. Bad EG" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button id="btnSaveProject" class="btn primary">Projekt speichern</button>
+          </div>
+
+          <div class="field span2">
+            <label>Gespeicherte Projekte</label>
+            <select id="projectSelect"></select>
+          </div>
+          <div class="btnrow span2">
+            <button id="btnLoadProject" class="btn">Projekt laden (ersetzt State)</button>
+            <button id="btnDeleteProject" class="btn danger">Projekt löschen</button>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2>Raum</h2>
+        <div class="grid2">
+          <div class="field span2">
+            <label>Raumname</label>
+            <input id="roomName" type="text" />
+          </div>
+          <div class="field">
+            <label>Breite (cm)</label>
+            <input id="roomW" type="number" min="0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Länge (cm)</label>
+            <input id="roomH" type="number" min="0" step="0.1" />
+          </div>
+          <div class="field span2">
+            <label class="inline">
+              <input id="showGrid" type="checkbox" />
+              Hilfsraster anzeigen
+            </label>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2>Fliesen & Muster</h2>
+        <div class="grid2">
+          <div class="field">
+            <label>Fliese Breite (cm)</label>
+            <input id="tileW" type="number" min="0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Fliese Länge (cm)</label>
+            <input id="tileH" type="number" min="0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Fuge (cm)</label>
+            <input id="groutW" type="number" min="0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Muster</label>
+            <select id="patternType">
+              <option value="grid">Grid</option>
+              <option value="runningBond">Running Bond</option>
+            </select>
+          </div>
+
+          <!-- Pricing -->
+          <div class="panel">
+            <div class="hdrTitle">Preis</div>
+
+            <div class="field">
+              <label>Preis pro m² (€)</label>
+              <input id="pricePerM2" type="number" step="0.01" min="0" />
+            </div>
+
+            <div class="field">
+              <label>Packungsgröße (m²)</label>
+              <input id="packM2" type="number" step="0.01" min="0" />
+            </div>
+
+            <div class="field">
+              <label>Reserve (Fliesen)</label>
+              <input id="reserveTiles" type="number" step="1" min="0" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Running Bond Anteil</label>
+            <select id="bondFraction">
+              <option value="0.5">1/2</option>
+              <option value="0.3333333333">1/3</option>
+              <option value="0.25">1/4</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Rotation (°)</label>
+            <select id="rotationDeg">
+              <option value="0">0</option>
+              <option value="45">45</option>
+              <option value="90">90</option>
+              <option value="135">135</option>
+              <option value="180">180</option>
+              <option value="225">225</option>
+              <option value="270">270</option>
+              <option value="315">315</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Offset X (cm)</label>
+            <input id="offsetX" type="number" step="1" />
+          </div>
+          <div class="field">
+            <label>Offset Y (cm)</label>
+            <input id="offsetY" type="number" step="1" />
+          </div>
+
+          <!-- Waste / Optimization toggles -->
+          <label class="chk">
+            <input id="wasteAllowRotate" type="checkbox" checked />
+            Reststücke drehen (Reuse)
+          </label>
+
+          <label class="chk">
+            <input id="wasteOptimizeCuts" type="checkbox" />
+            Verschnitt optimieren (Zuschnitt erlaubt)
+          </label>
+
+          <label class="chk">
+            <input id="debugShowNeeds" type="checkbox" />
+            Debug: Reststück-Bedarf anzeigen
+          </label>
+
+          <div class="field">
+            <label>Schnittbreite / Kerf (cm)</label>
+            <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
+          </div>
+
+          <div class="field">
+            <label>Startpunkt Preset</label>
+            <select id="originPreset">
+              <option value="tl">oben links</option>
+              <option value="tr">oben rechts</option>
+              <option value="bl">unten links</option>
+              <option value="br">unten rechts</option>
+              <option value="center">Mitte</option>
+              <option value="free">frei</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Startpunkt X (cm) (nur frei)</label>
+            <input id="originX" type="number" step="1" />
+          </div>
+          <div class="field">
+            <label>Startpunkt Y (cm) (nur frei)</label>
+            <input id="originY" type="number" step="1" />
+          </div>
+
+          <div class="btnrow">
+            <button id="btnOffLeft" class="btn small">← 1cm</button>
+            <button id="btnOffRight" class="btn small">→ 1cm</button>
+            <button id="btnOffUp" class="btn small">↑ 1cm</button>
+            <button id="btnOffDown" class="btn small">↓ 1cm</button>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2>Ausschlussbereiche</h2>
+        <div class="btnrow">
+          <button id="btnAddRect" class="btn">+ Rechteck</button>
+          <button id="btnAddCircle" class="btn">+ Kreis</button>
+          <button id="btnAddTri" class="btn">+ Dreieck</button>
+          <button id="btnDeleteExcl" class="btn danger">Löschen</button>
+        </div>
+
+        <div class="grid2" style="margin-top: 10px">
+          <div class="field span2">
+            <label>Liste</label>
+            <select id="exclList" size="6"></select>
+          </div>
+        </div>
+
+        <div class="meta subtle">
+          Drag im Plan verschiebt die Auswahl. Commit erst bei Drag-Ende.
+        </div>
+
+        <h2>Eigenschaften (Auswahl)</h2>
+        <div id="exclProps" class="grid2">
+          <div class="meta subtle span2">– nichts ausgewählt –</div>
+        </div>
+
+        <hr />
+
+        <h2>Undo / Redo</h2>
+        <div class="btnrow">
+          <button id="btnUndo" class="btn">Undo</button>
+          <button id="btnRedo" class="btn">Redo</button>
+        </div>
+        <div class="meta">
+          <div><span class="k">Letzte Aktion:</span> <span id="lastAction">–</span></div>
+          <div>
+            <span class="k">Undo:</span> <span id="undoCount">0</span> •
+            <span class="k">Redo:</span> <span id="redoCount">0</span>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2>Import / Export</h2>
+        <div class="btnrow">
+          <button id="btnExport" class="btn">Export JSON</button>
+          <label class="filebtn btn">
+            Import JSON
+            <input id="fileImport" type="file" accept="application/json" hidden />
+          </label>
+        </div>
+        <div class="meta subtle">Import ist undo-bar. Projekt speichern/laden nicht.</div>
+      </section>
+
+      <section class="viewer">
+        <div class="viewerHead">
+          <h2>Warnungen</h2>
+          <div class="pill" id="warnPill">0</div>
+        </div>
+        <div id="warnings" class="warnings"></div>
+
+        <div class="viewerHead">
+          <h2>Plan (SVG)</h2>
+          <div class="btnrow">
+            <button id="btnCopy" class="btn small">Copy State</button>
+          </div>
+        </div>
+
+        <div class="svgWrap">
+          <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="hintline">
+            Tipp: Klick wählt aus • Drag verschiebt • Tiles kommen aus Fliesen & Muster
+          </div>
+        </div>
+
+        <div class="viewerHead" style="margin-top: 12px">
+          <h2>Live State (read-only)</h2>
+        </div>
+        <pre id="stateView" class="code">–</pre>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
