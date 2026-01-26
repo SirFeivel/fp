@@ -93,7 +93,12 @@ body{
 }
 
 .panel{ background:var(--panel); margin-right:12px; }
-.viewer{ background:var(--panel2); margin-left:12px; }
+.viewer{
+  background:var(--panel2);
+  margin-left:12px;
+  max-width:1200px;
+  justify-self:start;
+}
 
 /* Resize Handle */
 .resize-handle{
