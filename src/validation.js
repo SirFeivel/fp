@@ -1,4 +1,13 @@
-// src/validation.js
+/**
+ * @typedef {{title: string, text: string}} ValidationMessage
+ * @typedef {{errors: ValidationMessage[], warns: ValidationMessage[]}} ValidationResult
+ */
+
+/**
+ * Calculate bounding box for an exclusion shape
+ * @param {Object} ex - Exclusion object
+ * @returns {{minX: number, minY: number, maxX: number, maxY: number} | null}
+ */
 function exclusionBounds(ex) {
   if (!ex) return null;
   if (ex.type === "rect")
@@ -23,6 +32,11 @@ function exclusionBounds(ex) {
   return null;
 }
 
+/**
+ * Validate application state
+ * @param {Object} s - Application state
+ * @returns {ValidationResult} Validation errors and warnings
+ */
 export function validateState(s) {
   const errors = [];
   const warns = [];
@@ -31,19 +45,34 @@ export function validateState(s) {
   const roomW = s?.room?.widthCm,
     roomH = s?.room?.heightCm;
   if (!n(roomW) || roomW <= 0)
-    errors.push({ title: "Raumbreite ungültig", text: "Muss > 0 sein." });
+    errors.push({
+      title: "Raumbreite ungültig",
+      text: `Aktueller Wert: "${roomW}". Muss eine positive Zahl > 0 sein.`
+    });
   if (!n(roomH) || roomH <= 0)
-    errors.push({ title: "Raumlänge ungültig", text: "Muss > 0 sein." });
+    errors.push({
+      title: "Raumlänge ungültig",
+      text: `Aktueller Wert: "${roomH}". Muss eine positive Zahl > 0 sein.`
+    });
 
   const tileW = s?.tile?.widthCm,
     tileH = s?.tile?.heightCm;
   const grout = s?.grout?.widthCm;
   if (!n(tileW) || tileW <= 0)
-    errors.push({ title: "Fliesenbreite ungültig", text: "Muss > 0 sein." });
+    errors.push({
+      title: "Fliesenbreite ungültig",
+      text: `Aktueller Wert: "${tileW}". Muss eine positive Zahl > 0 sein.`
+    });
   if (!n(tileH) || tileH <= 0)
-    errors.push({ title: "Fliesenlänge ungültig", text: "Muss > 0 sein." });
+    errors.push({
+      title: "Fliesenlänge ungültig",
+      text: `Aktueller Wert: "${tileH}". Muss eine positive Zahl > 0 sein.`
+    });
   if (!n(grout) || grout < 0)
-    errors.push({ title: "Fuge ungültig", text: "Muss ≥ 0 sein." });
+    errors.push({
+      title: "Fuge ungültig",
+      text: `Aktueller Wert: "${grout}". Muss eine Zahl ≥ 0 sein.`
+    });
 
   const rot = s?.pattern?.rotationDeg;
   if (n(rot) && (rot % 45 !== 0 || rot < 0 || rot >= 360)) {

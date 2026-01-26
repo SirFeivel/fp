@@ -1,6 +1,14 @@
-// src/geometry.js
 import polygonClipping from "polygon-clipping";
 import { degToRad } from "./core.js";
+import {
+  CIRCLE_APPROXIMATION_STEPS,
+  TILE_MARGIN_MULTIPLIER,
+  MAX_PREVIEW_TILES,
+  TILE_AREA_TOLERANCE,
+  BOND_PERIOD_MIN,
+  BOND_PERIOD_MAX,
+  BOND_PERIOD_EPSILON
+} from "./constants.js";
 
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -107,7 +115,7 @@ export function exclusionToPolygon(ex) {
     ];
   }
   if (ex.type === "circle") {
-    const steps = 48;
+    const steps = CIRCLE_APPROXIMATION_STEPS;
     const ring = [];
     for (let i = 0; i <= steps; i++) {
       const a = (i / steps) * Math.PI * 2;
@@ -201,13 +209,14 @@ function inverseRotatedRoomBounds(w, h, origin, rotRad) {
 }
 
 function detectBondPeriod(frac) {
-  // supports your UI presets: 1/2, 1/3, 1/4
   const f = Number(frac);
   if (!Number.isFinite(f) || f <= 0) return 0;
   const inv = 1 / f;
   const rounded = Math.round(inv);
-  if (Math.abs(inv - rounded) < 1e-6 && rounded >= 2 && rounded <= 12) return rounded;
-  return 0; // fallback: treat as "no period"
+  if (Math.abs(inv - rounded) < BOND_PERIOD_EPSILON &&
+      rounded >= BOND_PERIOD_MIN &&
+      rounded <= BOND_PERIOD_MAX) return rounded;
+  return 0;
 }
 
 export function tilesForPreview(state, availableMP) {
@@ -238,11 +247,10 @@ export function tilesForPreview(state, availableMP) {
   const w = state.room.widthCm,
     h = state.room.heightCm;
 
-  // bounds in grid-space (inverse-rotated room bbox)
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 
-  const marginX = 3 * stepX;
-  const marginY = 3 * stepY;
+  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
+  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
   const minX = b.minX - marginX;
   const maxX = b.maxX + marginX;
@@ -265,7 +273,7 @@ export function tilesForPreview(state, availableMP) {
   const estRows = Math.ceil((maxY - startY) / stepY) + 1;
 
   const estTiles = estCols * estRows;
-  if (estTiles > 12000) {
+  if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
 
@@ -299,7 +307,7 @@ export function tilesForPreview(state, availableMP) {
 
       const fullArea = tw * th;
       const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * 0.999;
+      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
 
       tiles.push({ d, isFull });
     }

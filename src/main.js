@@ -68,42 +68,54 @@ function setSelectedId(id) {
 }
 
 function renderAll(lastLabel) {
-  const state = store.getState();
+  try {
+    const state = store.getState();
 
-  renderRoomForm(state);
-  renderTilePatternForm(state);
+    renderRoomForm(state);
+    renderTilePatternForm(state);
 
-  renderExclList(state, selectedExclId);
-  renderExclProps({
-    state,
-    selectedExclId,
-    getSelectedExcl: excl.getSelectedExcl,
-    commitExclProps: excl.commitExclProps
-  });
+    renderExclList(state, selectedExclId);
+    renderExclProps({
+      state,
+      selectedExclId,
+      getSelectedExcl: excl.getSelectedExcl,
+      commitExclProps: excl.commitExclProps
+    });
 
-  renderWarnings(state, validateState);
-  renderMetrics(state);
+    renderWarnings(state, validateState);
+    renderMetrics(state);
 
-  const metrics = computePlanMetrics(state);
-  console.log("metrics", metrics);
+    const metrics = computePlanMetrics(state);
+    console.log("metrics", metrics);
 
-  renderPlanSvg({
-    state,
-    selectedExclId,
-    setSelectedExcl,
-    onExclPointerDown: dragController.onExclPointerDown,
-    lastUnionError,
-    lastTileError,
-    setLastUnionError: (v) => (lastUnionError = v),
-    setLastTileError: (v) => (lastTileError = v),
-    metrics
-  });
+    renderPlanSvg({
+      state,
+      selectedExclId,
+      setSelectedExcl,
+      onExclPointerDown: dragController.onExclPointerDown,
+      lastUnionError,
+      lastTileError,
+      setLastUnionError: (v) => (lastUnionError = v),
+      setLastTileError: (v) => (lastTileError = v),
+      metrics
+    });
 
-  renderStateView(state);
-  renderCounts(store.getUndoStack(), store.getRedoStack(), lastLabel);
+    renderStateView(state);
+    renderCounts(store.getUndoStack(), store.getRedoStack(), lastLabel);
 
-  refreshProjectSelect();
-  updateMeta();
+    refreshProjectSelect();
+    updateMeta();
+  } catch (error) {
+    console.error("Render failed:", error);
+    const errorDiv = document.getElementById("warnings");
+    if (errorDiv) {
+      const div = document.createElement("div");
+      div.className = "warnItem";
+      div.style.border = "2px solid rgba(255,107,107,0.5)";
+      div.innerHTML = `<div class="wTitle">Fehler: Rendering fehlgeschlagen</div><div class="wText">Bitte Seite neu laden. ${error.message}</div>`;
+      errorDiv.prepend(div);
+    }
+  }
 }
 
 // commit helper
