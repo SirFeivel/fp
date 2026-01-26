@@ -566,9 +566,13 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const pairSize = Math.max(tw, th);
-  const stepX = pairSize * 2 + grout;
-  const stepY = pairSize * 2 + grout;
+  const horizontalPairWidth = 2 * tw + grout;
+  const horizontalPairHeight = 2 * th + grout;
+  const verticalPairWidth = 2 * th + grout;
+  const verticalPairHeight = 2 * tw + grout;
+
+  const stepX = horizontalPairWidth + verticalPairWidth;
+  const stepY = Math.max(horizontalPairHeight, verticalPairHeight);
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -587,8 +591,9 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    anchorX -= pairSize;
-    anchorY -= pairSize;
+    const avgPairSize = (Math.max(tw, th) + Math.min(tw, th)) / 2;
+    anchorX -= avgPairSize;
+    anchorY -= avgPairSize;
   }
 
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
@@ -610,21 +615,19 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
       const baseX = startX + c * stepX;
       const baseY = startY + r * stepY;
 
-      const isHorizontal = (r + c) % 2 === 0;
+      const horizontalX = baseX;
+      const verticalX = baseX + horizontalPairWidth;
 
-      const basketweaveTiles = isHorizontal
-        ? [
-            { x: baseX, y: baseY, w: tw, h: th },
-            { x: baseX, y: baseY + th + grout, w: tw, h: th },
-            { x: baseX + tw + grout, y: baseY, w: tw, h: th },
-            { x: baseX + tw + grout, y: baseY + th + grout, w: tw, h: th },
-          ]
-        : [
-            { x: baseX, y: baseY, w: th, h: tw },
-            { x: baseX + th + grout, y: baseY, w: th, h: tw },
-            { x: baseX, y: baseY + tw + grout, w: th, h: tw },
-            { x: baseX + th + grout, y: baseY + tw + grout, w: th, h: tw },
-          ];
+      const basketweaveTiles = [
+        { x: horizontalX, y: baseY, w: tw, h: th },
+        { x: horizontalX, y: baseY + th + grout, w: tw, h: th },
+        { x: horizontalX + tw + grout, y: baseY, w: tw, h: th },
+        { x: horizontalX + tw + grout, y: baseY + th + grout, w: tw, h: th },
+        { x: verticalX, y: baseY, w: th, h: tw },
+        { x: verticalX + th + grout, y: baseY, w: th, h: tw },
+        { x: verticalX, y: baseY + tw + grout, w: th, h: tw },
+        { x: verticalX + th + grout, y: baseY + tw + grout, w: th, h: tw },
+      ];
 
       for (const tile of basketweaveTiles) {
         const tileP = tileRectPolygon(
