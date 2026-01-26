@@ -353,4 +353,61 @@ describe('computePlanMetrics', () => {
     const expectedGrossM2 = (300 * 400) / 10000;
     expect(result.data.area.grossRoomAreaM2).toBeCloseTo(expectedGrossM2, 2);
   });
+
+  it('reuses diagonally cut tiles in 45° angled pattern', () => {
+    const state = createTestState({
+      room: { widthCm: 200, heightCm: 200 },
+      tile: { widthCm: 60, heightCm: 60 },
+      grout: { widthCm: 1 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 45, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+      pricing: { reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0.3 },
+    });
+
+    const result = computePlanMetrics(state);
+    expect(result.ok).toBe(true);
+
+    expect(result.data.tiles.cutTiles).toBeGreaterThan(0);
+    expect(result.data.tiles.reusedCuts).toBeGreaterThan(0);
+    expect(result.data.tiles.reusedCuts).toBeLessThanOrEqual(result.data.tiles.cutTiles);
+
+    const purchasedTiles = result.data.tiles.purchasedTiles;
+    const fullTiles = result.data.tiles.fullTiles;
+    const cutTiles = result.data.tiles.cutTiles;
+    const reusedCuts = result.data.tiles.reusedCuts;
+
+    expect(purchasedTiles).toBe(fullTiles + (cutTiles - reusedCuts));
+
+    expect(result.data.waste.allowRotate).toBe(true);
+    expect(result.data.waste.optimizeCuts).toBe(true);
+    expect(result.data.waste.kerfCm).toBe(0.3);
+  });
+
+  it('creates reusable offcuts from diagonal cuts', () => {
+    const state = createTestState({
+      room: { widthCm: 150, heightCm: 150 },
+      tile: { widthCm: 50, heightCm: 50 },
+      grout: { widthCm: 0.5 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 45 },
+      pricing: { reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0.2 },
+    });
+
+    const result = computePlanMetrics(state);
+    expect(result.ok).toBe(true);
+
+    expect(result.data.debug).toBeDefined();
+    expect(result.data.debug.tileUsage).toBeDefined();
+    expect(result.data.debug.offcutPoolFinal).toBeDefined();
+
+    const reusedTiles = result.data.debug.tileUsage.filter(t => t.reused === true);
+    expect(reusedTiles.length).toBeGreaterThan(0);
+
+    const tilesWithOffcuts = result.data.debug.tileUsage.filter(
+      t => t.createdOffcuts && t.createdOffcuts.length > 0
+    );
+    expect(tilesWithOffcuts.length).toBeGreaterThan(0);
+  });
 });
