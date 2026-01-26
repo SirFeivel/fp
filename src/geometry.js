@@ -469,19 +469,27 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  // For herringbone, we use the longer dimension as the tile length (L)
-  // and shorter as tile width (W) for the characteristic zigzag pattern
-  const L = Math.max(tw, th);  // Long edge of tile
-  const W = Math.min(tw, th);  // Short edge of tile
+  // L = long edge, W = short edge
+  const L = Math.max(tw, th);
+  const W = Math.min(tw, th);
 
-  // Herringbone pattern geometry:
-  // Classic herringbone consists of tiles arranged in a zigzag where:
-  // - Horizontal tiles (L × W) alternate with vertical tiles (W × L)
-  // - Each tile's short end meets the long side of the adjacent tile
-  // - The pattern uses a "sheared grid" where each row is offset horizontally
+  // 90° Herringbone pattern:
+  // Each tile's SHORT edge aligns with the LONG edge of the adjacent tile.
+  // The pattern consists of alternating H and V tiles arranged so that:
   //
-  // Step size is based on the short edge since tiles stack by their short side
-  const step = W + grout;
+  //   [====H====]        <- H tile (L×W)
+  //             [V]      <- V tile (W×L) - short edge meets H's long edge
+  //             [V]
+  //   [====H====][V]
+  //             [V]
+  //             [V]
+  //   [====H====][V]
+  //
+  // The repeating unit is (L+W) wide and (L+W) tall.
+  // Odd rows are offset by (L+grout) to create the stepped effect.
+
+  const unitW = L + W + 2 * grout;  // Width of repeating unit
+  const unitH = L + W + 2 * grout;  // Height of repeating unit
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -489,9 +497,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
 
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 
-  // Need more margin for herringbone since tiles extend beyond their grid position
-  const marginX = TILE_MARGIN_MULTIPLIER * L * 2;
-  const marginY = TILE_MARGIN_MULTIPLIER * L * 2;
+  const marginX = TILE_MARGIN_MULTIPLIER * unitW;
+  const marginY = TILE_MARGIN_MULTIPLIER * unitH;
 
   const minX = b.minX - marginX;
   const maxX = b.maxX + marginX;
@@ -501,18 +508,16 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    anchorX -= L / 2;
-    anchorY -= L / 2;
+    anchorX -= unitW / 2;
+    anchorY -= unitH / 2;
   }
 
-  const startX = anchorX + floorDiv(minX - anchorX, step) * step;
-  const startY = anchorY + floorDiv(minY - anchorY, step) * step;
+  const startCol = Math.floor((minX - anchorX) / unitW) - 1;
+  const endCol = Math.ceil((maxX - anchorX) / unitW) + 1;
+  const startRow = Math.floor((minY - anchorY) / unitH) - 1;
+  const endRow = Math.ceil((maxY - anchorY) / unitH) + 1;
 
-  // Need extra columns due to the diagonal shear
-  const estCols = Math.ceil((maxX - startX) / step) + 10;
-  const estRows = Math.ceil((maxY - startY) / step) + 4;
-
-  const estTiles = (estCols + estRows) * estRows;
+  const estTiles = (endCol - startCol) * (endRow - startRow) * 4;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -520,45 +525,58 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const tiles = [];
   const fullArea = W * L;
 
-  // Generate herringbone pattern using sheared grid
-  // Each row is shifted by 'step' to create the characteristic zigzag effect
-  for (let row = 0; row < estRows; row++) {
-    for (let col = -estRows; col < estCols; col++) {
-      const isHorizontal = (row + col) % 2 === 0;
+  // Generate herringbone pattern
+  for (let row = startRow; row <= endRow; row++) {
+    for (let col = startCol; col <= endCol; col++) {
+      // Odd rows are offset by (L + grout) to create the stepped pattern
+      const rowOffset = (row % 2 === 0) ? 0 : (L + grout);
 
-      // Sheared grid: x position shifts right as row increases
-      // This creates the characteristic herringbone diagonal pattern
-      const baseX = startX + col * step + row * step;
-      const baseY = startY + row * step;
+      const unitX = anchorX + col * unitW + rowOffset;
+      const unitY = anchorY + row * unitH;
 
-      let tileX, tileY, tilePoly;
+      // Each unit contains 4 tiles:
+      // Top-left: H tile
+      // Top-right: V tile (extending down)
+      // Bottom-left: V tile (extending down)
+      // Bottom-right: H tile
 
-      if (isHorizontal) {
-        // Horizontal tile: L × W
-        tileX = baseX;
-        tileY = baseY;
-        tilePoly = tileRectPolygon(tileX, tileY, L, W, origin.x, origin.y, rotRad);
-      } else {
-        // Vertical tile: W × L
-        // Offset so it connects to the horizontal tiles properly
-        // The vertical tile is positioned to interlock with adjacent H tiles
-        tileX = baseX + L - W;
-        tileY = baseY - L + W;
-        tilePoly = tileRectPolygon(tileX, tileY, W, L, origin.x, origin.y, rotRad);
-      }
+      // Tile 1: H at top-left of unit
+      const h1x = unitX;
+      const h1y = unitY;
+      const h1Poly = tileRectPolygon(h1x, h1y, L, W, origin.x, origin.y, rotRad);
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tilePoly);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (clipped && clipped.length) {
-        const d = multiPolygonToPathD(clipped);
-        if (d) {
-          const gotArea = multiPolyArea(clipped);
-          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-          tiles.push({ d, isFull });
+      // Tile 2: V at top-right, extending downward
+      const v1x = unitX + L + grout;
+      const v1y = unitY;
+      const v1Poly = tileRectPolygon(v1x, v1y, W, L, origin.x, origin.y, rotRad);
+
+      // Tile 3: V at bottom-left, extending downward
+      const v2x = unitX;
+      const v2y = unitY + W + grout;
+      const v2Poly = tileRectPolygon(v2x, v2y, W, L, origin.x, origin.y, rotRad);
+
+      // Tile 4: H at bottom-right
+      const h2x = unitX + W + grout;
+      const h2y = unitY + L + grout;
+      const h2Poly = tileRectPolygon(h2x, h2y, L, W, origin.x, origin.y, rotRad);
+
+      // Process all 4 tiles
+      const tilesToProcess = [h1Poly, v1Poly, v2Poly, h2Poly];
+
+      for (const tilePoly of tilesToProcess) {
+        let clipped;
+        try {
+          clipped = polygonClipping.intersection(availableMP, tilePoly);
+        } catch (e) {
+          return { tiles: [], error: String(e?.message || e) };
+        }
+        if (clipped && clipped.length) {
+          const d = multiPolygonToPathD(clipped);
+          if (d) {
+            const gotArea = multiPolyArea(clipped);
+            const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+            tiles.push({ d, isFull });
+          }
         }
       }
     }
