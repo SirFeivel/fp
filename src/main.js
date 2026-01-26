@@ -141,7 +141,8 @@ const dragController = createExclusionDragController({
   render: (label) => renderAll(label),
   getSelectedExcl: () => excl.getSelectedExcl(),
   setSelectedExcl,
-  getSelectedId: () => selectedExclId
+  getSelectedId: () => selectedExclId,
+  getMoveLabel: () => t("exclusions.moved")
 });
 
 function updateAllTranslations() {

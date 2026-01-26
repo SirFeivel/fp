@@ -25,9 +25,11 @@ export function createExclusionDragController({
   render, // (label?) => void
   getSelectedExcl, // () => excl or null
   setSelectedExcl, // (id|null) => void
-  getSelectedId // () => id|null
+  getSelectedId, // () => id|null
+  getMoveLabel // () => translated label for "moved" action
 }) {
   let drag = null;
+  let dragStartState = null;
 
   function onSvgPointerMove(e) {
     if (!drag) return;
@@ -68,12 +70,19 @@ export function createExclusionDragController({
     const svg = getSvg();
     svg.removeEventListener("pointermove", onSvgPointerMove);
 
-    if (!drag) return;
+    if (!drag || !dragStartState) return;
 
     const finalState = deepClone(getState());
-    drag = null;
+    const startState = dragStartState;
 
-    commit("Ausschluss verschoben", finalState);
+    drag = null;
+    dragStartState = null;
+
+    const hasMoved = JSON.stringify(startState) !== JSON.stringify(finalState);
+    if (hasMoved) {
+      setStateDirect(startState);
+      commit(getMoveLabel(), finalState);
+    }
   }
 
   function onExclPointerDown(e) {
@@ -92,6 +101,7 @@ export function createExclusionDragController({
     svg.setPointerCapture(e.pointerId);
 
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    dragStartState = deepClone(getState());
     drag = { id, startMouse, startShape: deepClone(ex) };
 
     svg.addEventListener("pointermove", onSvgPointerMove);
