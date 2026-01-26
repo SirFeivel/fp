@@ -28,241 +28,301 @@
 
     <main class="layout">
       <section class="panel">
-        <h2 data-i18n="session.title">Session</h2>
-        <div class="btnrow">
-          <button id="btnReset" class="btn" data-i18n="session.reset">Reset</button>
-          <button id="btnLoadSession" class="btn" data-i18n="session.restore">
-            Letzten Stand wiederherstellen
+        <nav class="tabs">
+          <button class="tab" data-tab="room">
+            <span class="tab-icon">📐</span>
+            <span data-i18n="room.title">Raum</span>
           </button>
-        </div>
-        <div class="meta">
-          <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
-          <div><span class="k" data-i18n="session.lastSaved">Zuletzt gespeichert:</span> <span id="lastSaved">–</span></div>
-        </div>
+          <button class="tab" data-tab="tiles">
+            <span class="tab-icon">🔲</span>
+            <span data-i18n="tile.title">Fliesen</span>
+          </button>
+          <button class="tab" data-tab="exclusions">
+            <span class="tab-icon">⛔</span>
+            <span data-i18n="exclusions.title">Ausschlüsse</span>
+          </button>
+          <button class="tab" data-tab="project">
+            <span class="tab-icon">💾</span>
+            <span data-i18n="project.title">Projekt</span>
+          </button>
+          <button class="tab" data-tab="advanced">
+            <span class="tab-icon">⚙️</span>
+            <span>Advanced</span>
+          </button>
+        </nav>
 
-        <hr />
-
-        <h2 data-i18n="project.title">Projekt (lokal)</h2>
-        <div class="grid2">
-          <div class="field">
-            <label data-i18n="project.nameLabel">Name (für Speichern)</label>
-            <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="z.B. Bad EG" />
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button id="btnSaveProject" class="btn primary" data-i18n="project.save">Projekt speichern</button>
-          </div>
-
-          <div class="field span2">
-            <label data-i18n="project.savedProjects">Gespeicherte Projekte</label>
-            <select id="projectSelect"></select>
-          </div>
-          <div class="btnrow span2">
-            <button id="btnLoadProject" class="btn" data-i18n="project.load">Projekt laden (ersetzt State)</button>
-            <button id="btnDeleteProject" class="btn danger" data-i18n="project.delete">Projekt löschen</button>
-          </div>
-        </div>
-
-        <hr />
-
-        <h2 data-i18n="room.title">Raum</h2>
-        <div class="grid2">
-          <div class="field span2">
-            <label data-i18n="room.name">Raumname</label>
-            <input id="roomName" type="text" />
-          </div>
-          <div class="field">
-            <label data-i18n="room.width">Breite (cm)</label>
-            <input id="roomW" type="number" min="0" step="0.1" />
-          </div>
-          <div class="field">
-            <label data-i18n="room.height">Länge (cm)</label>
-            <input id="roomH" type="number" min="0" step="0.1" />
-          </div>
-          <div class="field span2">
-            <label class="inline">
-              <input id="showGrid" type="checkbox" />
-              <span data-i18n="room.showGrid">Hilfsraster anzeigen</span>
-            </label>
-          </div>
-        </div>
-
-        <hr />
-
-        <h2 data-i18n="tile.title">Fliesen & Muster</h2>
-        <div class="grid2">
-          <div class="field">
-            <label data-i18n="tile.width">Fliese Breite (cm)</label>
-            <input id="tileW" type="number" min="0" step="0.1" />
-          </div>
-          <div class="field">
-            <label data-i18n="tile.height">Fliese Länge (cm)</label>
-            <input id="tileH" type="number" min="0" step="0.1" />
-          </div>
-          <div class="field">
-            <label data-i18n="tile.grout">Fuge (cm)</label>
-            <input id="groutW" type="number" min="0" step="0.1" />
-          </div>
-          <div class="field">
-            <label data-i18n="tile.pattern">Muster</label>
-            <select id="patternType">
-              <option value="grid" data-i18n="tile.patternGrid">Grid</option>
-              <option value="runningBond" data-i18n="tile.patternRunningBond">Running Bond</option>
-            </select>
-          </div>
-
-          <!-- Pricing -->
-          <div class="panel">
-            <div class="hdrTitle" data-i18n="pricing.title">Preis</div>
-
-            <div class="field">
-              <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
-              <input id="pricePerM2" type="number" step="0.01" min="0" />
+        <div class="tab-content">
+          <!-- Room Tab -->
+          <div class="tab-panel" data-tab-panel="room">
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="room.title">Raum</h3>
+              <div class="grid2">
+                <div class="field span2">
+                  <label data-i18n="room.name">Raumname</label>
+                  <input id="roomName" type="text" />
+                </div>
+                <div class="field">
+                  <label data-i18n="room.width">Breite (cm)</label>
+                  <input id="roomW" type="number" min="0" step="0.1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="room.height">Länge (cm)</label>
+                  <input id="roomH" type="number" min="0" step="0.1" />
+                </div>
+              </div>
             </div>
 
-            <div class="field">
-              <label data-i18n="pricing.packSize">Packungsgröße (m²)</label>
-              <input id="packM2" type="number" step="0.01" min="0" />
-            </div>
-
-            <div class="field">
-              <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
-              <input id="reserveTiles" type="number" step="1" min="0" />
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="room.showGrid">Anzeige</h3>
+              <label class="inline">
+                <input id="showGrid" type="checkbox" />
+                <span data-i18n="room.showGrid">Hilfsraster anzeigen</span>
+              </label>
             </div>
           </div>
 
-          <div class="field">
-            <label data-i18n="tile.bondFraction">Running Bond Anteil</label>
-            <select id="bondFraction">
-              <option value="0.5">1/2</option>
-              <option value="0.3333333333">1/3</option>
-              <option value="0.25">1/4</option>
-            </select>
-          </div>
-          <div class="field">
-            <label data-i18n="tile.rotation">Rotation (°)</label>
-            <select id="rotationDeg">
-              <option value="0">0</option>
-              <option value="45">45</option>
-              <option value="90">90</option>
-              <option value="135">135</option>
-              <option value="180">180</option>
-              <option value="225">225</option>
-              <option value="270">270</option>
-              <option value="315">315</option>
-            </select>
+          <!-- Tiles & Pattern Tab -->
+          <div class="tab-panel" data-tab-panel="tiles">
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="tile.title">Fliesen & Fuge</h3>
+              <div class="grid2">
+                <div class="field">
+                  <label data-i18n="tile.width">Fliese Breite (cm)</label>
+                  <input id="tileW" type="number" min="0" step="0.1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.height">Fliese Länge (cm)</label>
+                  <input id="tileH" type="number" min="0" step="0.1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.grout">Fuge (cm)</label>
+                  <input id="groutW" type="number" min="0" step="0.1" />
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title">Muster</h3>
+              <div class="grid2">
+                <div class="field">
+                  <label data-i18n="tile.pattern">Muster</label>
+                  <select id="patternType">
+                    <option value="grid" data-i18n="tile.patternGrid">Grid</option>
+                    <option value="runningBond" data-i18n="tile.patternRunningBond">Running Bond</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.bondFraction">Running Bond Anteil</label>
+                  <select id="bondFraction">
+                    <option value="0.5">1/2</option>
+                    <option value="0.3333333333">1/3</option>
+                    <option value="0.25">1/4</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.rotation">Rotation (°)</label>
+                  <select id="rotationDeg">
+                    <option value="0">0</option>
+                    <option value="45">45</option>
+                    <option value="90">90</option>
+                    <option value="135">135</option>
+                    <option value="180">180</option>
+                    <option value="225">225</option>
+                    <option value="270">270</option>
+                    <option value="315">315</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title">Position & Offset</h3>
+              <div class="grid2">
+                <div class="field">
+                  <label data-i18n="origin.preset">Startpunkt Preset</label>
+                  <select id="originPreset">
+                    <option value="tl" data-i18n="origin.presetTL">oben links</option>
+                    <option value="tr" data-i18n="origin.presetTR">oben rechts</option>
+                    <option value="bl" data-i18n="origin.presetBL">unten links</option>
+                    <option value="br" data-i18n="origin.presetBR">unten rechts</option>
+                    <option value="center" data-i18n="origin.presetCenter">Mitte</option>
+                    <option value="free" data-i18n="origin.presetFree">frei</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label data-i18n="origin.x">Startpunkt X (cm)</label>
+                  <input id="originX" type="number" step="1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="origin.y">Startpunkt Y (cm)</label>
+                  <input id="originY" type="number" step="1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.offsetX">Offset X (cm)</label>
+                  <input id="offsetX" type="number" step="1" />
+                </div>
+                <div class="field">
+                  <label data-i18n="tile.offsetY">Offset Y (cm)</label>
+                  <input id="offsetY" type="number" step="1" />
+                </div>
+                <div class="btnrow span2">
+                  <button id="btnOffLeft" class="btn small">← 1cm</button>
+                  <button id="btnOffRight" class="btn small">→ 1cm</button>
+                  <button id="btnOffUp" class="btn small">↑ 1cm</button>
+                  <button id="btnOffDown" class="btn small">↓ 1cm</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="pricing.title">Preis & Verschnitt</h3>
+              <div class="grid2">
+                <div class="field">
+                  <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
+                  <input id="pricePerM2" type="number" step="0.01" min="0" />
+                </div>
+                <div class="field">
+                  <label data-i18n="pricing.packSize">Packungsgröße (m²)</label>
+                  <input id="packM2" type="number" step="0.01" min="0" />
+                </div>
+                <div class="field">
+                  <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
+                  <input id="reserveTiles" type="number" step="1" min="0" />
+                </div>
+                <div class="field">
+                  <label data-i18n="waste.kerfWidth">Schnittbreite (cm)</label>
+                  <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
+                </div>
+                <label class="chk span2">
+                  <input id="wasteAllowRotate" type="checkbox" checked />
+                  <span data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
+                </label>
+                <label class="chk span2">
+                  <input id="wasteOptimizeCuts" type="checkbox" />
+                  <span data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
+                </label>
+              </div>
+            </div>
           </div>
 
-          <div class="field">
-            <label data-i18n="tile.offsetX">Offset X (cm)</label>
-            <input id="offsetX" type="number" step="1" />
-          </div>
-          <div class="field">
-            <label data-i18n="tile.offsetY">Offset Y (cm)</label>
-            <input id="offsetY" type="number" step="1" />
-          </div>
+          <!-- Exclusions Tab -->
+          <div class="tab-panel" data-tab-panel="exclusions">
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="exclusions.title">Ausschlussbereiche</h3>
+              <div class="btnrow">
+                <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
+                <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
+                <button id="btnAddTri" class="btn" data-i18n="exclusions.addTriangle">+ Dreieck</button>
+              </div>
+              <div class="grid2" style="margin-top: 10px">
+                <div class="field span2">
+                  <label data-i18n="exclusions.list">Liste</label>
+                  <select id="exclList" size="6"></select>
+                </div>
+              </div>
+              <div class="btnrow" style="margin-top: 10px">
+                <button id="btnDeleteExcl" class="btn danger" data-i18n="exclusions.delete">Löschen</button>
+              </div>
+              <div class="meta subtle" style="margin-top: 10px" data-i18n="exclusions.dragHint">
+                Drag im Plan verschiebt die Auswahl
+              </div>
+            </div>
 
-          <!-- Waste / Optimization toggles -->
-          <label class="chk">
-            <input id="wasteAllowRotate" type="checkbox" checked />
-            <span data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
-          </label>
-
-          <label class="chk">
-            <input id="wasteOptimizeCuts" type="checkbox" />
-            <span data-i18n="waste.optimizeCuts">Verschnitt optimieren (Zuschnitt erlaubt)</span>
-          </label>
-
-          <label class="chk">
-            <input id="debugShowNeeds" type="checkbox" />
-            <span data-i18n="debug.showNeeds">Debug: Reststück-Bedarf anzeigen</span>
-          </label>
-
-          <div class="field">
-            <label data-i18n="waste.kerfWidth">Schnittbreite / Kerf (cm)</label>
-            <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
-          </div>
-
-          <div class="field">
-            <label data-i18n="origin.preset">Startpunkt Preset</label>
-            <select id="originPreset">
-              <option value="tl" data-i18n="origin.presetTL">oben links</option>
-              <option value="tr" data-i18n="origin.presetTR">oben rechts</option>
-              <option value="bl" data-i18n="origin.presetBL">unten links</option>
-              <option value="br" data-i18n="origin.presetBR">unten rechts</option>
-              <option value="center" data-i18n="origin.presetCenter">Mitte</option>
-              <option value="free" data-i18n="origin.presetFree">frei</option>
-            </select>
-          </div>
-          <div class="field">
-            <label data-i18n="origin.x">Startpunkt X (cm) (nur frei)</label>
-            <input id="originX" type="number" step="1" />
-          </div>
-          <div class="field">
-            <label data-i18n="origin.y">Startpunkt Y (cm) (nur frei)</label>
-            <input id="originY" type="number" step="1" />
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="exclusions.properties">Eigenschaften</h3>
+              <div id="exclProps" class="grid2">
+                <div class="meta subtle span2" data-i18n="exclusions.noneSelected">– nichts ausgewählt –</div>
+              </div>
+            </div>
           </div>
 
-          <div class="btnrow">
-            <button id="btnOffLeft" class="btn small">← 1cm</button>
-            <button id="btnOffRight" class="btn small">→ 1cm</button>
-            <button id="btnOffUp" class="btn small">↑ 1cm</button>
-            <button id="btnOffDown" class="btn small">↓ 1cm</button>
+          <!-- Project Tab -->
+          <div class="tab-panel" data-tab-panel="project">
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="session.title">Session</h3>
+              <div class="btnrow">
+                <button id="btnReset" class="btn" data-i18n="session.reset">Reset</button>
+                <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
+              </div>
+              <div class="meta" style="margin-top: 10px">
+                <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
+                <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="project.title">Projekt speichern</h3>
+              <div class="grid2">
+                <div class="field span2">
+                  <label data-i18n="project.nameLabel">Projektname</label>
+                  <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="z.B. Bad EG" />
+                </div>
+                <div class="field span2">
+                  <button id="btnSaveProject" class="btn primary" data-i18n="project.save">Projekt speichern</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="project.savedProjects">Gespeicherte Projekte</h3>
+              <div class="grid2">
+                <div class="field span2">
+                  <label data-i18n="project.savedProjects">Projekte</label>
+                  <select id="projectSelect"></select>
+                </div>
+                <div class="btnrow span2">
+                  <button id="btnLoadProject" class="btn" data-i18n="project.load">Laden</button>
+                  <button id="btnDeleteProject" class="btn danger" data-i18n="project.delete">Löschen</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="undo.title">Undo / Redo</h3>
+              <div class="btnrow">
+                <button id="btnUndo" class="btn" data-i18n="undo.undo">Undo</button>
+                <button id="btnRedo" class="btn" data-i18n="undo.redo">Redo</button>
+              </div>
+              <div class="meta" style="margin-top: 10px">
+                <div><span class="k" data-i18n="undo.lastAction">Aktion:</span> <span id="lastAction">–</span></div>
+                <div>
+                  <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
+                  <span class="k" data-i18n="undo.redoCount">Redo:</span> <span id="redoCount">0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
+              <div class="btnrow">
+                <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
+                <label class="filebtn btn" data-i18n="importExport.import">
+                  Import JSON
+                  <input id="fileImport" type="file" accept="application/json" hidden />
+                </label>
+              </div>
+              <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
+                Import ist undo-bar
+              </div>
+            </div>
+          </div>
+
+          <!-- Advanced Tab -->
+          <div class="tab-panel" data-tab-panel="advanced">
+            <div class="section-card">
+              <h3 class="section-title">Debug Optionen</h3>
+              <label class="chk">
+                <input id="debugShowNeeds" type="checkbox" />
+                <span data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
+              </label>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="state.title">Live State</h3>
+              <pre id="stateView" class="code">–</pre>
+            </div>
           </div>
         </div>
-
-        <hr />
-
-        <h2 data-i18n="exclusions.title">Ausschlussbereiche</h2>
-        <div class="btnrow">
-          <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
-          <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
-          <button id="btnAddTri" class="btn" data-i18n="exclusions.addTriangle">+ Dreieck</button>
-          <button id="btnDeleteExcl" class="btn danger" data-i18n="exclusions.delete">Löschen</button>
-        </div>
-
-        <div class="grid2" style="margin-top: 10px">
-          <div class="field span2">
-            <label data-i18n="exclusions.list">Liste</label>
-            <select id="exclList" size="6"></select>
-          </div>
-        </div>
-
-        <div class="meta subtle" data-i18n="exclusions.dragHint">
-          Drag im Plan verschiebt die Auswahl. Commit erst bei Drag-Ende.
-        </div>
-
-        <h2 data-i18n="exclusions.properties">Eigenschaften (Auswahl)</h2>
-        <div id="exclProps" class="grid2">
-          <div class="meta subtle span2" data-i18n="exclusions.noneSelected">– nichts ausgewählt –</div>
-        </div>
-
-        <hr />
-
-        <h2 data-i18n="undo.title">Undo / Redo</h2>
-        <div class="btnrow">
-          <button id="btnUndo" class="btn" data-i18n="undo.undo">Undo</button>
-          <button id="btnRedo" class="btn" data-i18n="undo.redo">Redo</button>
-        </div>
-        <div class="meta">
-          <div><span class="k" data-i18n="undo.lastAction">Letzte Aktion:</span> <span id="lastAction">–</span></div>
-          <div>
-            <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
-            <span class="k" data-i18n="undo.redoCount">Redo:</span> <span id="redoCount">0</span>
-          </div>
-        </div>
-
-        <hr />
-
-        <h2 data-i18n="importExport.title">Import / Export</h2>
-        <div class="btnrow">
-          <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
-          <label class="filebtn btn" data-i18n="importExport.import">
-            Import JSON
-            <input id="fileImport" type="file" accept="application/json" hidden />
-          </label>
-        </div>
-        <div class="meta subtle" data-i18n="importExport.hint">Import ist undo-bar. Projekt speichern/laden nicht.</div>
       </section>
 
       <section class="viewer">
@@ -282,14 +342,23 @@
         <div class="svgWrap">
           <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
           <div class="hintline" data-i18n="plan.hint">
-            Tipp: Klick wählt aus • Drag verschiebt • Tiles kommen aus Fliesen & Muster
+            Tipp: Klick wählt aus • Drag verschiebt
           </div>
         </div>
 
-        <div class="viewerHead" style="margin-top: 12px">
-          <h2 data-i18n="state.title">Live State (read-only)</h2>
+        <div id="metrics" style="margin-top: 12px">
+          <div class="hdrTitle">Metriken</div>
+          <div class="kv">
+            <div class="k">Fläche:</div>
+            <div class="v" id="metricArea">–</div>
+            <div class="k">Fliesen:</div>
+            <div class="v" id="metricTiles">–</div>
+            <div class="k">Packungen:</div>
+            <div class="v" id="metricPacks">–</div>
+            <div class="k">Kosten:</div>
+            <div class="v" id="metricCost">–</div>
+          </div>
         </div>
-        <pre id="stateView" class="code">–</pre>
       </section>
     </main>
 

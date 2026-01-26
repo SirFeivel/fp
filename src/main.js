@@ -8,6 +8,7 @@ import { createExclusionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
+import { initTabs } from "./tabs.js";
 
 import {
   renderWarnings,
@@ -162,6 +163,8 @@ function updateAllTranslations() {
 (function main() {
   const hadSession = store.loadSessionIfAny();
   store.autosaveSession(updateMeta);
+
+  initTabs();
 
   bindUI({
     store,

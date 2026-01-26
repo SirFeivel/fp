@@ -30,7 +30,10 @@
   --fs-xs:11px;
   --fs-sm:12px;
   --fs-md:13px;
+  --fs-base:13px;
+  --fs-section:14px;
   --fs-lg:16px;
+  --fs-xl:18px;
 }
 
 *{ box-sizing:border-box; }
@@ -95,6 +98,13 @@ h2{
   font-size:var(--fs-md);
   letter-spacing:.02em;
   margin:10px 0 8px;
+}
+
+h3{
+  font-size:var(--fs-section);
+  font-weight:600;
+  letter-spacing:.01em;
+  margin:0 0 12px;
 }
 
 /* Dividers */
@@ -337,6 +347,105 @@ hr{
 .viewer::-webkit-scrollbar-thumb:hover,
 .code::-webkit-scrollbar-thumb:hover{
   background:rgba(231,238,252,.18);
+}
+
+/* ---------------- Tabs ---------------- */
+.tabs{
+  display:flex;
+  gap:4px;
+  border-bottom:1px solid var(--line);
+  margin-bottom:16px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+
+.tabs::-webkit-scrollbar{ display:none; }
+
+.tab{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:10px 14px;
+  border:none;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  font-size:var(--fs-md);
+  font-weight:500;
+  border-bottom:2px solid transparent;
+  transition:all 0.2s ease;
+  white-space:nowrap;
+  position:relative;
+  top:1px;
+}
+
+.tab:hover{
+  color:var(--text);
+  background:rgba(231,238,252,.04);
+}
+
+.tab.active{
+  color:var(--accent);
+  border-bottom-color:var(--accent);
+}
+
+.tab-icon{
+  font-size:16px;
+  opacity:0.85;
+}
+
+.tab-content{
+  padding:0;
+}
+
+.tab-panel{
+  display:none;
+}
+
+.tab-panel.active{
+  display:block;
+  animation:fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn{
+  from{ opacity:0; transform:translateY(-4px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+/* ---------------- Section Cards ---------------- */
+.section-card{
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  padding:16px;
+  background:rgba(0,0,0,.08);
+  margin-bottom:12px;
+}
+
+.section-card:last-child{
+  margin-bottom:0;
+}
+
+.section-title{
+  font-size:var(--fs-section);
+  font-weight:600;
+  letter-spacing:.01em;
+  margin:0 0 12px;
+  color:var(--text);
+}
+
+/* ---------------- Better input/label sizing ---------------- */
+.field label{
+  font-size:var(--fs-base);
+  font-weight:500;
+}
+
+.field input,
+.field select{
+  font-size:var(--fs-base);
+}
+
+.chk{
+  font-size:var(--fs-base);
 }
 
 /* Responsive */
