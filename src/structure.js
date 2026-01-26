@@ -175,12 +175,14 @@ export function createStructureController({
 
   return {
     renderFloorSelect,
+    renderFloorName,
     renderRoomSelect,
     addFloor,
     deleteFloor,
     addRoom,
     deleteRoom,
     selectFloor,
-    selectRoom
+    selectRoom,
+    commitFloorName
   };
 }
