@@ -429,7 +429,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     svgFullscreen.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio'));
 
     if (onExclPointerDown) {
-      const exclusionShapes = svgFullscreen.querySelectorAll('[data-excl-id]');
+      const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]');
       exclusionShapes.forEach(shape => {
         shape.addEventListener('pointerdown', onExclPointerDown);
       });

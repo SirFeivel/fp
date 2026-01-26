@@ -29,7 +29,7 @@ export function initFullscreen(dragController) {
     svgFullscreen.setAttribute('preserveAspectRatio', svgOriginal.getAttribute('preserveAspectRatio'));
 
     if (dragController) {
-      const exclusionShapes = svgFullscreen.querySelectorAll('[data-excl-id]');
+      const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]');
       exclusionShapes.forEach(shape => {
         shape.addEventListener('pointerdown', dragController.onExclPointerDown);
       });
