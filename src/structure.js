@@ -72,7 +72,17 @@ export function createStructureController({
         name: "Raum",
         widthCm: 600,
         heightCm: 400,
-        exclusions: []
+        exclusions: [],
+        tile: { widthCm: 60, heightCm: 60 },
+        grout: { widthCm: 0.2 },
+        pattern: {
+          type: "grid",
+          bondFraction: 0.5,
+          rotationDeg: 0,
+          offsetXcm: 0,
+          offsetYcm: 0,
+          origin: { preset: "tl", xCm: 0, yCm: 0 }
+        }
       }]
     };
 
@@ -117,7 +127,17 @@ export function createStructureController({
       name: `Raum ${currentFloor.rooms.length + 1}`,
       widthCm: 600,
       heightCm: 400,
-      exclusions: []
+      exclusions: [],
+      tile: { widthCm: 60, heightCm: 60 },
+      grout: { widthCm: 0.2 },
+      pattern: {
+        type: "grid",
+        bondFraction: 0.5,
+        rotationDeg: 0,
+        offsetXcm: 0,
+        offsetYcm: 0,
+        origin: { preset: "tl", xCm: 0, yCm: 0 }
+      }
     };
 
     currentFloor.rooms.push(newRoom);
@@ -171,6 +191,31 @@ export function createStructureController({
 
     resetSelectedExcl();
     store.commit(t("room.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  }
+
+  function renderFloorName() {
+    const state = store.getState();
+    const input = document.getElementById("floorName");
+    if (!input) return;
+
+    const currentFloor = getCurrentFloor(state);
+    input.value = currentFloor?.name || "";
+    input.disabled = !currentFloor;
+  }
+
+  function commitFloorName() {
+    const state = store.getState();
+    const next = deepClone(state);
+
+    const currentFloor = getCurrentFloor(next);
+    if (!currentFloor) return;
+
+    const input = document.getElementById("floorName");
+    if (!input) return;
+
+    currentFloor.name = input.value || currentFloor.name;
+
+    store.commit(t("structure.floorChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
   return {
