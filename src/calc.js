@@ -138,7 +138,7 @@ function fitsWithKerf(offW, offH, needW, needH, kerfCm) {
 // Global rectangular offcut pool (with optional guillotine split + kerf)
 class OffcutPool {
   constructor() {
-    /** @type {{id:string,w:number,h:number,from:"tile"|"offcut"}[]} */
+    /** @type {{id:string,w:number,h:number,from:"tile"|"offcut",isHalfTile?:boolean}[]} */
     this.rects = [];
     this._seq = 0;
   }
@@ -146,17 +146,17 @@ class OffcutPool {
     this._seq += 1;
     return `o${this._seq}`;
   }
-  add(r, from = "tile") {
+  add(r, from = "tile", isHalfTile = false) {
     if (!r) return null;
     const w = clampPos(r.w);
     const h = clampPos(r.h);
     if (w <= 0 || h <= 0) return null;
-    const entry = { id: this._id(), w, h, from };
+    const entry = { id: this._id(), w, h, from, isHalfTile };
     this.rects.push(entry);
     return entry.id;
   }
 
-  take(needW, needH, { allowRotate, optimizeCuts, kerfCm }) {
+  take(needW, needH, { allowRotate, optimizeCuts, kerfCm, preferHalfTile = false }) {
     const w = clampPos(needW);
     const h = clampPos(needH);
     const k = clampPos(kerfCm);
@@ -171,8 +171,11 @@ class OffcutPool {
       // A: no rotate
       if (fitsWithKerf(r.w, r.h, w, h, k)) {
         const leftover = rectArea(r) - w * h;
-        const cand = { idx: i, id: r.id, offW: r.w, offH: r.h, rotUsed: false, leftoverArea: leftover };
+        const isHalfTileMatch = preferHalfTile && r.isHalfTile;
+        const cand = { idx: i, id: r.id, offW: r.w, offH: r.h, rotUsed: false, leftoverArea: leftover, isHalfTileMatch };
+
         if (!best) best = cand;
+        else if (isHalfTileMatch && !best.isHalfTileMatch) best = cand; // Prefer half-tiles for triangular cuts
         else if (optimizeCuts && cand.leftoverArea < best.leftoverArea) best = cand;
         else if (!optimizeCuts) return this._consume(cand, w, h, optimizeCuts, k);
       }
@@ -181,8 +184,11 @@ class OffcutPool {
       if (allowRotate) {
         if (fitsWithKerf(r.w, r.h, h, w, k)) {
           const leftover = rectArea(r) - w * h;
-          const cand = { idx: i, id: r.id, offW: r.w, offH: r.h, rotUsed: true, leftoverArea: leftover };
+          const isHalfTileMatch = preferHalfTile && r.isHalfTile;
+          const cand = { idx: i, id: r.id, offW: r.w, offH: r.h, rotUsed: true, leftoverArea: leftover, isHalfTileMatch };
+
           if (!best) best = cand;
+          else if (isHalfTileMatch && !best.isHalfTileMatch) best = cand;
           else if (optimizeCuts && cand.leftoverArea < best.leftoverArea) best = cand;
           else if (!optimizeCuts) return this._consume(cand, w, h, optimizeCuts, k);
         }
@@ -289,14 +295,14 @@ export function computePlanMetrics(state) {
     const actualArea = polygon ? multiPolyArea(polygon) : bboxArea;
     const areaRatio = bboxArea > 0 ? actualArea / bboxArea : 1;
 
-    // For diagonal cuts (where actual area << bbox area), use a smaller effective size
-    // This helps match triangular/trapezoidal pieces better
+    // Detect triangular/diagonal cuts (areaRatio ~0.5 means roughly half the bounding box)
+    const isTriangularCut = areaRatio >= 0.45 && areaRatio <= 0.6;
+
     let effectiveW = bb.w;
     let effectiveH = bb.h;
 
-    if (areaRatio < 0.75) {
-      // Likely a diagonal/triangular cut - adjust effective dimensions
-      // Scale dimensions based on area ratio while maintaining aspect ratio
+    if (areaRatio < 0.75 && !isTriangularCut) {
+      // Non-rectangular, non-triangular cuts: scale based on area ratio
       const scale = Math.sqrt(areaRatio);
       effectiveW = bb.w * scale;
       effectiveH = bb.h * scale;
@@ -307,6 +313,7 @@ export function computePlanMetrics(state) {
       allowRotate,
       optimizeCuts,
       kerfCm: optimizeCuts ? kerfCm : 0,
+      preferHalfTile: false,
     });
 
     if (takeRes.ok) {
@@ -325,11 +332,19 @@ export function computePlanMetrics(state) {
     // Not reused => new tile => create offcuts
     const createdOffcuts = [];
 
-    if (optimizeCuts) {
-      // Use effective dimensions for creating offcuts
+    if (isTriangularCut) {
+      // For triangular cuts: the remainder is another triangle of similar size
+      // Store it as a rectangular offcut with the bounding box dimensions
+      // This works for both optimized and non-optimized modes
+      const offcutW = bb.w;
+      const offcutH = bb.h;
+      const id = pool.add({ w: offcutW, h: offcutH }, "tile", false);
+      if (id) createdOffcuts.push({ id, w: offcutW, h: offcutH });
+    } else if (optimizeCuts) {
+      // Use guillotine remainders for rectangular cuts
       const rem = guillotineRemainders(tw, th, effectiveW, effectiveH, kerfCm);
       for (const rr of rem) {
-        const id = pool.add(rr, "tile");
+        const id = pool.add(rr, "tile", false);
         if (id) createdOffcuts.push({ id, w: rr.w, h: rr.h });
       }
     } else {
@@ -339,7 +354,7 @@ export function computePlanMetrics(state) {
         const maxSide = Math.max(tw, th);
         const w = Math.min(maxSide, Math.max(0.1, leftoverArea / maxSide));
         const h = leftoverArea / w;
-        const id = pool.add({ w, h }, "tile");
+        const id = pool.add({ w, h }, "tile", false);
         if (id) createdOffcuts.push({ id, w, h });
       }
     }

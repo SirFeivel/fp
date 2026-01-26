@@ -467,4 +467,33 @@ describe('computePlanMetrics', () => {
     expect(resultWithout.data.material.wastePct).toBeLessThan(1);
     expect(resultWith.data.material.wastePct).toBeLessThan(1);
   });
+
+  it('handles larger diagonal room with minimal waste', () => {
+    const state = createTestState({
+      room: { widthCm: 282.84272, heightCm: 282.84272 },
+      tile: { widthCm: 50, heightCm: 50 },
+      grout: { widthCm: 0 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 45, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+      pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0 },
+    });
+
+    const result = computePlanMetrics(state);
+    expect(result.ok).toBe(true);
+
+    console.log('Larger diagonal room (4x original):', {
+      fullTiles: result.data.tiles.fullTiles,
+      cutTiles: result.data.tiles.cutTiles,
+      reusedCuts: result.data.tiles.reusedCuts,
+      purchasedTiles: result.data.tiles.purchasedTiles,
+      wastePct: result.data.material.wastePct.toFixed(1) + '%'
+    });
+
+    // With proper diagonal optimization, many border triangles should be reused
+    // Border triangles have varying sizes, so some waste is expected
+    // The waste should be significantly reduced (< 10%) compared to no optimization (>20%)
+    expect(result.data.tiles.reusedCuts).toBeGreaterThan(10);
+    expect(result.data.material.wastePct).toBeLessThan(10);
+  });
 });
