@@ -41,6 +41,40 @@ function bboxFromPathD(d) {
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
+/**
+ * Parse path d attribute to extract polygon points for area calculation
+ */
+function parsePathDToPolygon(d) {
+  const commands = d.trim().split(/(?=[MLZ])/);
+  const points = [];
+
+  for (const cmd of commands) {
+    if (!cmd.trim()) continue;
+    const type = cmd[0];
+    const nums = cmd
+      .slice(1)
+      .trim()
+      .split(/[\s,]+/)
+      .map((x) => Number(x))
+      .filter((x) => Number.isFinite(x));
+
+    if ((type === 'M' || type === 'L') && nums.length >= 2) {
+      points.push([nums[0], nums[1]]);
+    }
+  }
+
+  if (points.length < 3) return null;
+
+  // Close the ring if not already closed
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    points.push([first[0], first[1]]);
+  }
+
+  return [[points]];
+}
+
 function makeRect(w, h) {
   w = clampPos(w);
   h = clampPos(h);
@@ -249,8 +283,27 @@ export function computePlanMetrics(state) {
       continue;
     }
 
-    // Try reuse from pool
-    const takeRes = pool.take(bb.w, bb.h, {
+    // Calculate actual clipped area vs bounding box area for better offcut matching
+    const polygon = parsePathDToPolygon(tile.d);
+    const bboxArea = bb.w * bb.h;
+    const actualArea = polygon ? multiPolyArea(polygon) : bboxArea;
+    const areaRatio = bboxArea > 0 ? actualArea / bboxArea : 1;
+
+    // For diagonal cuts (where actual area << bbox area), use a smaller effective size
+    // This helps match triangular/trapezoidal pieces better
+    let effectiveW = bb.w;
+    let effectiveH = bb.h;
+
+    if (areaRatio < 0.75) {
+      // Likely a diagonal/triangular cut - adjust effective dimensions
+      // Scale dimensions based on area ratio while maintaining aspect ratio
+      const scale = Math.sqrt(areaRatio);
+      effectiveW = bb.w * scale;
+      effectiveH = bb.h * scale;
+    }
+
+    // Try reuse from pool using effective dimensions
+    const takeRes = pool.take(effectiveW, effectiveH, {
       allowRotate,
       optimizeCuts,
       kerfCm: optimizeCuts ? kerfCm : 0,
@@ -273,14 +326,15 @@ export function computePlanMetrics(state) {
     const createdOffcuts = [];
 
     if (optimizeCuts) {
-      const rem = guillotineRemainders(tw, th, bb.w, bb.h, kerfCm);
+      // Use effective dimensions for creating offcuts
+      const rem = guillotineRemainders(tw, th, effectiveW, effectiveH, kerfCm);
       for (const rr of rem) {
         const id = pool.add(rr, "tile");
         if (id) createdOffcuts.push({ id, w: rr.w, h: rr.h });
       }
     } else {
-      // conservative single-rect by leftover area
-      const leftoverArea = Math.max(0, tileAreaCm2 - bb.w * bb.h);
+      // conservative single-rect by leftover area using actual area
+      const leftoverArea = Math.max(0, tileAreaCm2 - actualArea);
       if (leftoverArea > 0) {
         const maxSide = Math.max(tw, th);
         const w = Math.min(maxSide, Math.max(0.1, leftoverArea / maxSide));

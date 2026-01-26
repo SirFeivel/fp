@@ -410,4 +410,61 @@ describe('computePlanMetrics', () => {
     );
     expect(tilesWithOffcuts.length).toBeGreaterThan(0);
   });
+
+  it('handles exact diagonal fit scenario from user bug report', () => {
+    const stateWithoutOptimize = createTestState({
+      room: { widthCm: 70.71, heightCm: 70.71 },
+      tile: { widthCm: 50, heightCm: 50 },
+      grout: { widthCm: 0 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 45, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+      pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+    });
+
+    const resultWithout = computePlanMetrics(stateWithoutOptimize);
+    expect(resultWithout.ok).toBe(true);
+
+    const stateWithOptimize = createTestState({
+      room: { widthCm: 70.71, heightCm: 70.71 },
+      tile: { widthCm: 50, heightCm: 50 },
+      grout: { widthCm: 0 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 45, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+      pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0 },
+    });
+
+    const resultWith = computePlanMetrics(stateWithOptimize);
+    expect(resultWith.ok).toBe(true);
+
+    console.log('User bug report test - WITHOUT optimization:', {
+      fullTiles: resultWithout.data.tiles.fullTiles,
+      cutTiles: resultWithout.data.tiles.cutTiles,
+      reusedCuts: resultWithout.data.tiles.reusedCuts,
+      purchasedTiles: resultWithout.data.tiles.purchasedTiles,
+      wastePct: resultWithout.data.material.wastePct.toFixed(1) + '%'
+    });
+
+    console.log('User bug report test - WITH optimization:', {
+      fullTiles: resultWith.data.tiles.fullTiles,
+      cutTiles: resultWith.data.tiles.cutTiles,
+      reusedCuts: resultWith.data.tiles.reusedCuts,
+      purchasedTiles: resultWith.data.tiles.purchasedTiles,
+      wastePct: resultWith.data.material.wastePct.toFixed(1) + '%'
+    });
+
+    // Both modes should now handle diagonal cuts efficiently
+    // The key fix: using actual polygon area instead of bounding box
+    expect(resultWithout.data.tiles.reusedCuts).toBeGreaterThan(0);
+    expect(resultWith.data.tiles.reusedCuts).toBeGreaterThan(0);
+
+    // For this exact diagonal fit case, should need only 2 tiles (4 cuts, 2 reused)
+    expect(resultWithout.data.tiles.purchasedTiles).toBe(2);
+    expect(resultWith.data.tiles.purchasedTiles).toBe(2);
+
+    // Should have 0% waste for this perfect fit
+    expect(resultWithout.data.material.wastePct).toBeLessThan(1);
+    expect(resultWith.data.material.wastePct).toBeLessThan(1);
+  });
 });
