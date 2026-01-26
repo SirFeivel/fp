@@ -48,6 +48,8 @@ export function renderMetrics(state) {
   const tilesEl = document.getElementById("metricTiles");
   const packsEl = document.getElementById("metricPacks");
   const costEl = document.getElementById("metricCost");
+  const cutTilesEl = document.getElementById("metricCutTiles");
+  const wasteEl = document.getElementById("metricWaste");
 
   if (!areaEl || !tilesEl || !packsEl || !costEl) return;
 
@@ -57,11 +59,14 @@ export function renderMetrics(state) {
     tilesEl.textContent = "–";
     packsEl.textContent = "–";
     costEl.textContent = m.error;
+    if (cutTilesEl) cutTilesEl.textContent = "–";
+    if (wasteEl) wasteEl.textContent = "–";
     return;
   }
 
   const d = m.data;
   const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
+  const f1 = (x) => (Number.isFinite(x) ? x.toFixed(1) : "–");
 
   areaEl.textContent = `${f2(d.area.netAreaM2)} m²`;
   tilesEl.textContent = `${d.tiles.totalTilesWithReserve} (${d.tiles.fullTiles} full, ${d.tiles.cutTiles} cut, ${d.tiles.reusedCuts} reused)`;
@@ -74,6 +79,14 @@ export function renderMetrics(state) {
   }
 
   costEl.textContent = `${f2(d.pricing.priceTotal)} €`;
+
+  if (cutTilesEl) {
+    cutTilesEl.textContent = `${d.labor.cutTiles} (${f1(d.labor.cutTilesPct)}%)`;
+  }
+
+  if (wasteEl) {
+    wasteEl.textContent = `${f2(d.material.wasteAreaM2)} m² (${f1(d.material.wastePct)}%, ~${d.material.wasteTiles_est} tiles)`;
+  }
 }
 
 export function renderStateView(state) {
