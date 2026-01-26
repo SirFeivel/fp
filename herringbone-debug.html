@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Herringbone Pattern Debug</title>
+  <style>
+    body {
+      margin: 20px;
+      font-family: monospace;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1, h2, h3 { color: #fff; }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 30px;
+    }
+    .pattern-box {
+      background: #16213e;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    svg {
+      border: 2px solid #333;
+      background: #0f0f23;
+    }
+    .tile-h {
+      fill: rgba(100, 149, 237, 0.7);
+      stroke: #4a90d9;
+      stroke-width: 1;
+    }
+    .tile-v {
+      fill: rgba(144, 238, 144, 0.7);
+      stroke: #5cb85c;
+      stroke-width: 1;
+    }
+    .room {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #aaa;
+      max-width: 500px;
+    }
+    .reference {
+      background: #1e3a5f;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      max-width: 800px;
+    }
+    pre {
+      background: #0a0a1a;
+      padding: 10px;
+      font-size: 10px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Herringbone Pattern Debug</h1>
+
+  <div class="reference">
+    <h3>What Herringbone Should Look Like:</h3>
+    <pre>
+Classic 90° Herringbone (tiles L×W where L=3, W=1):
+
+The pattern consists of L-shaped pairs arranged diagonally:
+
+      [=H=]         &lt;- Horizontal tile
+          |
+          |V        &lt;- Vertical tile (connects to H's right end)
+          |
+      [=H=]|        &lt;- Next H tile (connects to V's bottom)
+          |
+          |V
+          |
+      [=H=]|
+          |V
+
+Key characteristics:
+- Each H tile's RIGHT END meets a V tile's TOP
+- Each V tile's BOTTOM meets the next H tile's LEFT END
+- This creates a continuous zigzag going down-right
+- The pattern appears as interlocking "V" or "L" shapes
+    </pre>
+  </div>
+
+  <div class="container">
+    <div class="pattern-box">
+      <h3>Algorithm 1: L-Shape Units</h3>
+      <svg id="algo1" width="500" height="400" viewBox="-20 -50 540 440"></svg>
+      <div class="info" id="info1"></div>
+    </div>
+
+    <div class="pattern-box">
+      <h3>Algorithm 2: Diagonal Rows</h3>
+      <svg id="algo2" width="500" height="400" viewBox="-20 -50 540 440"></svg>
+      <div class="info" id="info2"></div>
+    </div>
+
+    <div class="pattern-box">
+      <h3>Algorithm 3: Stacked Zigzag</h3>
+      <svg id="algo3" width="500" height="400" viewBox="-20 -50 540 440"></svg>
+      <div class="info" id="info3"></div>
+    </div>
+  </div>
+
+  <script>
+    const L = 60;  // Long edge
+    const W = 20;  // Short edge
+    const G = 2;   // Grout
+    const roomW = 500;
+    const roomH = 350;
+
+    function createSVGRect(x, y, w, h, cls) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', w);
+      rect.setAttribute('height', h);
+      rect.setAttribute('class', cls);
+      return rect;
+    }
+
+    function drawRoom(svg) {
+      const room = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      room.setAttribute('x', 0);
+      room.setAttribute('y', 0);
+      room.setAttribute('width', roomW);
+      room.setAttribute('height', roomH);
+      room.setAttribute('class', 'room');
+      svg.appendChild(room);
+    }
+
+    // Algorithm 1: L-Shape Units
+    // Each unit is an L-shape made of one H tile and one V tile
+    function algorithm1(svg) {
+      drawRoom(svg);
+      let count = 0;
+
+      // Unit dimensions
+      const unitW = L + W + G;  // Width of one L-shape unit
+      const unitH = L + G;      // Height progression per diagonal step
+
+      // Generate L-shaped units along diagonals
+      for (let diag = -5; diag < 15; diag++) {
+        for (let step = -5; step < 15; step++) {
+          // Position of this L-shape unit
+          const baseX = diag * (W + G) + step * unitW;
+          const baseY = step * (W + G);
+
+          // H tile: horizontal at base position
+          const hx = baseX;
+          const hy = baseY;
+          if (hx > -L && hx < roomW + L && hy > -W && hy < roomH + W) {
+            svg.appendChild(createSVGRect(hx, hy, L, W, 'tile-h'));
+            count++;
+          }
+
+          // V tile: vertical, positioned so its top-left connects to H's top-right
+          // V extends upward from H tile's right end
+          const vx = hx + L + G;
+          const vy = hy - L + W;
+          if (vx > -W && vx < roomW + W && vy > -L && vy < roomH + L) {
+            svg.appendChild(createSVGRect(vx, vy, W, L, 'tile-v'));
+            count++;
+          }
+        }
+      }
+      return count;
+    }
+
+    // Algorithm 2: Diagonal rows with alternating orientations
+    function algorithm2(svg) {
+      drawRoom(svg);
+      let count = 0;
+
+      const step = W + G;
+
+      for (let row = -10; row < 30; row++) {
+        for (let col = -10; col < 30; col++) {
+          const diag = row + col;
+          const isH = diag % 2 === 0;
+
+          // Sheared grid position
+          const baseX = col * step + row * step;
+          const baseY = row * step;
+
+          let x, y, w, h, cls;
+          if (isH) {
+            // Horizontal tile
+            x = baseX;
+            y = baseY;
+            w = L;
+            h = W;
+            cls = 'tile-h';
+          } else {
+            // Vertical tile - offset to interlock
+            x = baseX + L - W;
+            y = baseY - L + W;
+            w = W;
+            h = L;
+            cls = 'tile-v';
+          }
+
+          // Clip to room bounds (roughly)
+          if (x > -L && x < roomW + L && y > -L && y < roomH + L) {
+            svg.appendChild(createSVGRect(x, y, w, h, cls));
+            count++;
+          }
+        }
+      }
+      return count;
+    }
+
+    // Algorithm 3: Proper zigzag - tiles form continuous diagonal lines
+    function algorithm3(svg) {
+      drawRoom(svg);
+      let count = 0;
+
+      // In true herringbone, we have diagonal "chains" of tiles
+      // Each chain alternates H-V-H-V going down and to the right
+      // Adjacent chains are offset
+
+      const chainSpacing = W + G;  // Horizontal spacing between chain starts
+
+      for (let chain = -20; chain < 30; chain++) {
+        const chainStartX = chain * chainSpacing;
+        const chainStartY = 0;
+
+        // Walk down the chain, alternating H and V
+        let x = chainStartX;
+        let y = chainStartY - chain * (L + G);  // Offset chains vertically
+
+        for (let i = 0; i < 20; i++) {
+          const isH = i % 2 === 0;
+
+          if (isH) {
+            // Horizontal tile
+            if (x > -L && x < roomW + L && y > -W && y < roomH + W) {
+              svg.appendChild(createSVGRect(x, y, L, W, 'tile-h'));
+              count++;
+            }
+            // Next position: V tile starts at H's right end, going up
+            x = x + L + G;
+            y = y - (L - W);
+          } else {
+            // Vertical tile
+            if (x > -W && x < roomW + W && y > -L && y < roomH + L) {
+              svg.appendChild(createSVGRect(x, y, W, L, 'tile-v'));
+              count++;
+            }
+            // Next position: H tile starts at V's bottom, going right
+            x = x + W + G;
+            y = y + L - W + G;
+          }
+        }
+      }
+      return count;
+    }
+
+    // Run all algorithms
+    const count1 = algorithm1(document.getElementById('algo1'));
+    document.getElementById('info1').textContent = `${count1} tiles. L-shapes (H+V) arranged in diagonal grid.`;
+
+    const count2 = algorithm2(document.getElementById('algo2'));
+    document.getElementById('info2').textContent = `${count2} tiles. Sheared grid with alternating orientations.`;
+
+    const count3 = algorithm3(document.getElementById('algo3'));
+    document.getElementById('info3').textContent = `${count3} tiles. Chains of H-V-H-V going diagonally.`;
+  </script>
+</body>
+</html>
