@@ -374,8 +374,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     const unionPath = multiPolygonToPathD(u.mp);
     svg.appendChild(svgEl("path", {
       d: unionPath,
-      fill: "rgba(0,255,0,0.35)",
-      stroke: "rgba(0,255,0,0.95)",
+      fill: "rgba(239,68,68,0.15)",
+      stroke: "rgba(239,68,68,0.55)",
       "stroke-width": 1.5
     }));
   }

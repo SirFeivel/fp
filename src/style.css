@@ -135,7 +135,7 @@ body{
 /* ---------------- Layout ---------------- */
 .layout{
   display:grid;
-  grid-template-columns: minmax(48px, var(--panel-width)) auto 1fr auto minmax(48px, var(--panel-width-right));
+  grid-template-columns: var(--panel-width) auto 1fr auto var(--panel-width-right);
   gap:0;
   padding:12px;
   height:calc(100% - 56px);
@@ -200,11 +200,6 @@ body{
 .panel.collapsed .metrics-panel,
 .panel.collapsed .section-title{
   display:none;
-}
-
-.panel.collapsed{
-  width:48px;
-  min-width:48px;
 }
 
 .panel.collapsed .btn-collapse svg{
