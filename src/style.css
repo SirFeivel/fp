@@ -96,8 +96,6 @@ body{
 .viewer{
   background:var(--panel2);
   margin-left:12px;
-  max-width:1200px;
-  justify-self:start;
 }
 
 /* Resize Handle */
@@ -322,6 +320,7 @@ hr{
   border:1px solid var(--line);
   border-radius:var(--r-md);
   background:rgba(0,0,0,.08);
+  max-width:1000px;
 }
 
 .metrics-panel .hdrTitle{
@@ -407,10 +406,27 @@ hr{
   border-bottom:1px solid var(--line);
   margin-bottom:16px;
   overflow-x:auto;
-  scrollbar-width:none;
+  overflow-y:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(122,162,255,.3) transparent;
 }
 
-.tabs::-webkit-scrollbar{ display:none; }
+.tabs::-webkit-scrollbar{
+  height:6px;
+}
+
+.tabs::-webkit-scrollbar-track{
+  background:transparent;
+}
+
+.tabs::-webkit-scrollbar-thumb{
+  background:rgba(122,162,255,.3);
+  border-radius:999px;
+}
+
+.tabs::-webkit-scrollbar-thumb:hover{
+  background:rgba(122,162,255,.5);
+}
 
 .tab{
   display:flex;
@@ -507,6 +523,7 @@ hr{
   }
   .resize-handle{ display:none; }
   .panel{ margin-right:0; margin-bottom:12px; }
-  .viewer{ margin-left:0; }
+  .viewer{ margin-left:0; max-width:100%; }
+  .metrics-panel{ max-width:100%; }
   #planSvg{ height:420px; }
 }
