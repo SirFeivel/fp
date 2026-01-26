@@ -1,5 +1,6 @@
 // src/exclusions.js
 import { deepClone, uuid } from './core.js';
+import { t } from './i18n.js';
 
 export function createExclusionsController({
   getState, // () => state
@@ -20,7 +21,7 @@ export function createExclusionsController({
     const ex = {
       id: uuid(),
       type: 'rect',
-      label: `Rechteck ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.rect')} ${state.exclusions.length + 1}`,
       x: w * 0.25,
       y: h * 0.25,
       w: Math.max(10, w * 0.2),
@@ -29,7 +30,7 @@ export function createExclusionsController({
     const next = deepClone(state);
     next.exclusions.push(ex);
     setSelectedId(ex.id);
-    commit('Ausschluss hinzugefügt', next);
+    commit(t('exclusions.added'), next);
   }
 
   function addCircle() {
@@ -40,7 +41,7 @@ export function createExclusionsController({
     const ex = {
       id: uuid(),
       type: 'circle',
-      label: `Kreis ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.circle')} ${state.exclusions.length + 1}`,
       cx: w * 0.5,
       cy: h * 0.5,
       r,
@@ -48,7 +49,7 @@ export function createExclusionsController({
     const next = deepClone(state);
     next.exclusions.push(ex);
     setSelectedId(ex.id);
-    commit('Ausschluss hinzugefügt', next);
+    commit(t('exclusions.added'), next);
   }
 
   function addTri() {
@@ -61,7 +62,7 @@ export function createExclusionsController({
     const ex = {
       id: uuid(),
       type: 'tri',
-      label: `Dreieck ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.triangle')} ${state.exclusions.length + 1}`,
       p1: { x: cx, y: cy - size },
       p2: { x: cx - size, y: cy + size },
       p3: { x: cx + size, y: cy + size },
@@ -69,7 +70,7 @@ export function createExclusionsController({
     const next = deepClone(state);
     next.exclusions.push(ex);
     setSelectedId(ex.id);
-    commit('Ausschluss hinzugefügt', next);
+    commit(t('exclusions.added'), next);
   }
 
   function deleteSelectedExcl() {
@@ -83,7 +84,7 @@ export function createExclusionsController({
     if (next.exclusions.length === beforeLen) return;
 
     setSelectedId(next.exclusions.at(-1)?.id ?? null);
-    commit('Ausschluss gelöscht', next);
+    commit(t('exclusions.deleted'), next);
   }
 
   function commitExclProps(label) {

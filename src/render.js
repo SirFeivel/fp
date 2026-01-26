@@ -1,6 +1,7 @@
 // src/render.js
 import { computePlanMetrics } from "./calc.js";
 import { escapeHTML } from "./core.js";
+import { t } from "./i18n.js";
 import {
   svgEl,
   multiPolygonToPathD,
@@ -17,8 +18,8 @@ export function renderWarnings(state, validateState) {
   wrap.innerHTML = "";
 
   const all = [
-    ...errors.map((x) => ({ ...x, level: "Error" })),
-    ...warns.map((x) => ({ ...x, level: "Warn" }))
+    ...errors.map((x) => ({ ...x, level: t("warnings.error") })),
+    ...warns.map((x) => ({ ...x, level: t("warnings.warn") }))
   ];
 
   const pill = document.getElementById("warnPill");
@@ -27,7 +28,7 @@ export function renderWarnings(state, validateState) {
   if (all.length === 0) {
     const div = document.createElement("div");
     div.className = "warnItem";
-    div.innerHTML = `<div class="wTitle">Keine Warnungen</div><div class="wText">Validierung ok.</div>`;
+    div.innerHTML = `<div class="wTitle">${t("warnings.none")}</div><div class="wText">${t("warnings.validationOk")}</div>`;
     wrap.appendChild(div);
     return;
   }
@@ -58,7 +59,7 @@ export function renderMetrics(state) {
   const m = computePlanMetrics(state);
   if (!m.ok) {
     el.innerHTML = `<div class="warnItem">
-      <div class="wTitle">Berechnung</div>
+      <div class="wTitle">${t("metrics.title")}</div>
       <div class="wText">${escapeHTML(m.error)}</div>
     </div>`;
     return;
@@ -66,23 +67,23 @@ export function renderMetrics(state) {
 
   const d = m.data;
   const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
-  const yesNo = (v) => (v ? "Ja" : "Nein");
+  const yesNo = (v) => (v ? t("metrics.yes") : t("metrics.no"));
 
   el.innerHTML = `
-    <div class="hdrTitle">Berechnung</div>
-    <div>Fliesen gesamt: ${d.tiles.totalTilesWithReserve}</div>
-    <div>Fliesen (voll): ${d.tiles.fullTiles}</div>
-    <div>Fliesen (Schnitt): ${d.tiles.cutTiles}</div>
-    <div>Wiederverwendet (Cuts): ${d.tiles.reusedCuts}</div>
-    <div>Drehen erlaubt: ${yesNo(d.waste.allowRotate)}</div>
-    <div>Verschnitt optimieren: ${yesNo(d.waste.optimizeCuts)}</div>
+    <div class="hdrTitle">${t("metrics.title")}</div>
+    <div>${t("metrics.totalTiles")} ${d.tiles.totalTilesWithReserve}</div>
+    <div>${t("metrics.fullTiles")} ${d.tiles.fullTiles}</div>
+    <div>${t("metrics.cutTiles")} ${d.tiles.cutTiles}</div>
+    <div>${t("metrics.reusedCuts")} ${d.tiles.reusedCuts}</div>
+    <div>${t("metrics.allowRotate")} ${yesNo(d.waste.allowRotate)}</div>
+    <div>${t("metrics.optimizeCuts")} ${yesNo(d.waste.optimizeCuts)}</div>
 
-    <div>Verschnitt (Einkauf): ${d.material.wasteTiles_est} (${f2(d.material.wastePct)}%)</div>
-    <div>Fläche (Netto): ${f2(d.area.netAreaM2)} m²</div>
-    <div>Preis: ${f2(d.pricing.priceTotal)} €</div>
+    <div>${t("metrics.waste")} ${d.material.wasteTiles_est} (${f2(d.material.wastePct)}%)</div>
+    <div>${t("metrics.netArea")} ${f2(d.area.netAreaM2)} m²</div>
+    <div>${t("metrics.price")} ${f2(d.pricing.priceTotal)} €</div>
 
     <div class="meta subtle" style="margin-top:8px;">
-      Beschnitt (Aufwand): ${d.labor.cutTiles} Fliesen (${f2(d.labor.cutTilesPct)}%)
+      ${t("metrics.cutWork")} ${d.labor.cutTiles} ${t("metrics.fullTiles").replace(":", "")} (${f2(d.labor.cutTilesPct)}%)
     </div>
 `;
  
@@ -163,7 +164,7 @@ export function renderExclList(state, selectedExclId) {
   if (!state.exclusions.length) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "– keine –";
+    opt.textContent = t("project.none");
     sel.appendChild(opt);
     sel.disabled = true;
     return;
@@ -191,7 +192,7 @@ export function renderExclProps({
   if (!ex) {
     const div = document.createElement("div");
     div.className = "meta subtle span2";
-    div.textContent = "– nichts ausgewählt –";
+    div.textContent = t("exclusions.noneSelected");
     wrap.appendChild(div);
     return;
   }
@@ -205,7 +206,7 @@ export function renderExclProps({
     wrap.appendChild(d);
     const inp = d.querySelector("input");
     inp.value = value;
-    inp.addEventListener("blur", () => commitExclProps("Ausschluss geändert"));
+    inp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -217,11 +218,11 @@ export function renderExclProps({
 
   const labelDiv = document.createElement("div");
   labelDiv.className = "field span2";
-  labelDiv.innerHTML = `<label>Bezeichnung</label><input id="exLabel" type="text" />`;
+  labelDiv.innerHTML = `<label>${t("exclusions.label")}</label><input id="exLabel" type="text" />`;
   wrap.appendChild(labelDiv);
   const labelInp = labelDiv.querySelector("input");
   labelInp.value = ex.label || "";
-  labelInp.addEventListener("blur", () => commitExclProps("Ausschluss geändert"));
+  labelInp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
   labelInp.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -230,21 +231,21 @@ export function renderExclProps({
   });
 
   if (ex.type === "rect") {
-    field("X (cm)", "exX", ex.x);
-    field("Y (cm)", "exY", ex.y);
-    field("Breite (cm)", "exW", ex.w);
-    field("Höhe (cm)", "exH", ex.h);
+    field(t("exclProps.x"), "exX", ex.x);
+    field(t("exclProps.y"), "exY", ex.y);
+    field(t("exclProps.width"), "exW", ex.w);
+    field(t("exclProps.height"), "exH", ex.h);
   } else if (ex.type === "circle") {
-    field("Mitte X (cm)", "exCX", ex.cx);
-    field("Mitte Y (cm)", "exCY", ex.cy);
-    field("Radius (cm)", "exR", ex.r);
+    field(t("exclProps.centerX"), "exCX", ex.cx);
+    field(t("exclProps.centerY"), "exCY", ex.cy);
+    field(t("exclProps.radius"), "exR", ex.r);
   } else if (ex.type === "tri") {
-    field("P1 X (cm)", "exP1X", ex.p1.x);
-    field("P1 Y (cm)", "exP1Y", ex.p1.y);
-    field("P2 X (cm)", "exP2X", ex.p2.x);
-    field("P2 Y (cm)", "exP2Y", ex.p2.y);
-    field("P3 X (cm)", "exP3X", ex.p3.x);
-    field("P3 Y (cm)", "exP3Y", ex.p3.y);
+    field(t("exclProps.p1x"), "exP1X", ex.p1.x);
+    field(t("exclProps.p1y"), "exP1Y", ex.p1.y);
+    field(t("exclProps.p2x"), "exP2X", ex.p2.x);
+    field(t("exclProps.p2y"), "exP2Y", ex.p2.y);
+    field(t("exclProps.p3x"), "exP3X", ex.p3.x);
+    field(t("exclProps.p3y"), "exP3Y", ex.p3.y);
   }
 }
 

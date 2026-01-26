@@ -3,6 +3,8 @@
  * @typedef {{errors: ValidationMessage[], warns: ValidationMessage[]}} ValidationResult
  */
 
+import { t } from "./i18n.js";
+
 /**
  * Calculate bounding box for an exclusion shape
  * @param {Object} ex - Exclusion object
@@ -46,13 +48,13 @@ export function validateState(s) {
     roomH = s?.room?.heightCm;
   if (!n(roomW) || roomW <= 0)
     errors.push({
-      title: "Raumbreite ungültig",
-      text: `Aktueller Wert: "${roomW}". Muss eine positive Zahl > 0 sein.`
+      title: t("validation.roomWidthInvalid"),
+      text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
     });
   if (!n(roomH) || roomH <= 0)
     errors.push({
-      title: "Raumlänge ungültig",
-      text: `Aktueller Wert: "${roomH}". Muss eine positive Zahl > 0 sein.`
+      title: t("validation.roomHeightInvalid"),
+      text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
     });
 
   const tileW = s?.tile?.widthCm,
@@ -60,25 +62,25 @@ export function validateState(s) {
   const grout = s?.grout?.widthCm;
   if (!n(tileW) || tileW <= 0)
     errors.push({
-      title: "Fliesenbreite ungültig",
-      text: `Aktueller Wert: "${tileW}". Muss eine positive Zahl > 0 sein.`
+      title: t("validation.tileWidthInvalid"),
+      text: `${t("validation.currentValue")} "${tileW}". ${t("validation.tileWidthText")}`
     });
   if (!n(tileH) || tileH <= 0)
     errors.push({
-      title: "Fliesenlänge ungültig",
-      text: `Aktueller Wert: "${tileH}". Muss eine positive Zahl > 0 sein.`
+      title: t("validation.tileHeightInvalid"),
+      text: `${t("validation.currentValue")} "${tileH}". ${t("validation.tileHeightText")}`
     });
   if (!n(grout) || grout < 0)
     errors.push({
-      title: "Fuge ungültig",
-      text: `Aktueller Wert: "${grout}". Muss eine Zahl ≥ 0 sein.`
+      title: t("validation.groutInvalid"),
+      text: `${t("validation.currentValue")} "${grout}". ${t("validation.groutText")}`
     });
 
   const rot = s?.pattern?.rotationDeg;
   if (n(rot) && (rot % 45 !== 0 || rot < 0 || rot >= 360)) {
     warns.push({
-      title: "Rotation außerhalb 45° Raster",
-      text: "MVP: 0..315 in 45°-Schritten."
+      title: t("validation.rotationWarning"),
+      text: t("validation.rotationText")
     });
   }
 
@@ -94,8 +96,8 @@ export function validateState(s) {
           out.maxY > roomH
         ) {
           warns.push({
-            title: "Ausschluss außerhalb Raum",
-            text: `${ex.label || ex.type} liegt teilweise außerhalb.`
+            title: t("exclusions.outside"),
+            text: `${ex.label || ex.type} ${t("validation.exclOutside")}`
           });
         }
       }

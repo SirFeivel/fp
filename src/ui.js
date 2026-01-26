@@ -1,5 +1,6 @@
 // src/ui.js
 import { downloadText, safeParseJSON } from "./core.js";
+import { t } from "./i18n.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
   if (!el) return;
@@ -17,14 +18,14 @@ async function handleImportFile(file, { validateState, commit }) {
   const text = await file.text();
   const parsed = safeParseJSON(text);
   if (!parsed.ok) {
-    alert("Import fehlgeschlagen: JSON nicht lesbar.");
+    alert(t("importExport.importFailed"));
     return;
   }
   const candidate = parsed.value;
   const { errors } = validateState(candidate);
   if (errors.length > 0) {
     alert(
-      "Import abgelehnt (Errors):\n- " + errors.map((e) => e.title).join("\n- ")
+      t("importExport.importRejected") + "\n- " + errors.map((e) => e.title).join("\n- ")
     );
     return;
   }
@@ -125,13 +126,13 @@ export function bindUI({
   document.getElementById("btnLoadSession")?.addEventListener("click", () => {
     const ok = store.loadSessionIfAny();
     if (!ok) {
-      alert("Keine gültige Session gefunden.");
+      alert(t("errors.noSession"));
       return;
     }
     setSelectedExcl(null);
     resetErrors();
     store.autosaveSession(updateMeta);
-    renderAll("Letzten Stand wiederhergestellt");
+    renderAll(t("errors.sessionRestored"));
   });
 
   document.getElementById("btnSaveProject")?.addEventListener("click", () => {
@@ -141,7 +142,7 @@ export function bindUI({
       (state.room?.name ?? "Projekt");
     store.saveCurrentAsProject(name);
     store.autosaveSession(updateMeta);
-    renderAll("Projekt gespeichert");
+    renderAll(t("project.saved"));
   });
 
   document.getElementById("btnLoadProject")?.addEventListener("click", () => {
@@ -150,12 +151,12 @@ export function bindUI({
 
     const res = store.loadProjectById(id);
     if (!res.ok) {
-      alert("Projekt nicht gefunden.");
+      alert(t("project.notFound"));
       return;
     }
     setSelectedExcl(null);
     resetErrors();
-    renderAll(`Projekt geladen: ${res.name}`);
+    renderAll(`${t("project.loaded")}: ${res.name}`);
   });
 
   document.getElementById("btnDeleteProject")?.addEventListener("click", () => {
@@ -163,27 +164,27 @@ export function bindUI({
     if (!id) return;
     store.deleteProjectById(id);
     store.autosaveSession(updateMeta);
-    renderAll("Projekt gelöscht");
+    renderAll(t("project.deleted"));
   });
 
   // Room inputs
   wireInputCommit(document.getElementById("roomName"), {
     markDirty: () => store.markDirty(),
-    commitLabel: "Raum geändert",
+    commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
   wireInputCommit(document.getElementById("roomW"), {
     markDirty: () => store.markDirty(),
-    commitLabel: "Raum geändert",
+    commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
   wireInputCommit(document.getElementById("roomH"), {
     markDirty: () => store.markDirty(),
-    commitLabel: "Raum geändert",
+    commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
   document.getElementById("showGrid")?.addEventListener("change", () =>
-    commitFromRoomInputs("Ansicht geändert")
+    commitFromRoomInputs(t("room.viewChanged"))
   );
 
   // Tile + Pattern + Pricing
@@ -202,50 +203,50 @@ export function bindUI({
   ].forEach((id) =>
     wireInputCommit(document.getElementById(id), {
       markDirty: () => store.markDirty(),
-      commitLabel: "Parameter geändert",
+      commitLabel: t("tile.changed"),
       commitFn: commitFromTilePatternInputs
     })
   );
 
   ["patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", () =>
-      commitFromTilePatternInputs("Muster geändert")
+      commitFromTilePatternInputs(t("tile.patternChanged"))
     );
   });
 
   // Waste toggles
   document.getElementById("wasteAllowRotate")?.addEventListener("change", () =>
-    commitFromTilePatternInputs("Reuse geändert")
+    commitFromTilePatternInputs(t("waste.changed"))
   );
   document.getElementById("wasteOptimizeCuts")?.addEventListener("change", () =>
-    commitFromTilePatternInputs("Verschnitt-Optimierung geändert")
+    commitFromTilePatternInputs(t("waste.optimizeChanged"))
   );
 
   // Debug toggle
   document.getElementById("debugShowNeeds")?.addEventListener("change", () =>
-    commitFromTilePatternInputs("Debug geändert")
+    commitFromTilePatternInputs(t("debug.changed"))
   );
 
   // Offset buttons
   document.getElementById("btnOffLeft")?.addEventListener("click", () => {
     const el = document.getElementById("offsetX");
     if (el) el.value = String(Number(el.value || 0) - 1);
-    commitFromTilePatternInputs("Offset geändert");
+    commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
   document.getElementById("btnOffRight")?.addEventListener("click", () => {
     const el = document.getElementById("offsetX");
     if (el) el.value = String(Number(el.value || 0) + 1);
-    commitFromTilePatternInputs("Offset geändert");
+    commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
   document.getElementById("btnOffUp")?.addEventListener("click", () => {
     const el = document.getElementById("offsetY");
     if (el) el.value = String(Number(el.value || 0) - 1);
-    commitFromTilePatternInputs("Offset geändert");
+    commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
   document.getElementById("btnOffDown")?.addEventListener("click", () => {
     const el = document.getElementById("offsetY");
     if (el) el.value = String(Number(el.value || 0) + 1);
-    commitFromTilePatternInputs("Offset geändert");
+    commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
 
   // Exclusions
@@ -290,9 +291,9 @@ export function bindUI({
     const state = store.getState();
     try {
       await navigator.clipboard.writeText(JSON.stringify(state, null, 2));
-      alert("State kopiert.");
+      alert(t("importExport.stateCopied"));
     } catch {
-      alert("Copy fehlgeschlagen (Clipboard nicht verfügbar).");
+      alert(t("importExport.copyFailed"));
     }
   });
 

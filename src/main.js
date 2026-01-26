@@ -7,6 +7,7 @@ import { createStateStore } from "./state.js";
 import { createExclusionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { bindUI } from "./ui.js";
+import { t, setLanguage, getLanguage } from "./i18n.js";
 
 import {
   renderWarnings,
@@ -32,7 +33,7 @@ function updateMeta() {
   const last = store.getLastSavedAt();
   document.getElementById("lastSaved").textContent = last ? last : "–";
   document.getElementById("sessionStatus").textContent = localStorage.getItem(LS_SESSION)
-    ? "vorhanden"
+    ? t("session.present")
     : "–";
 }
 
@@ -44,7 +45,7 @@ function refreshProjectSelect() {
   if (projects.length === 0) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "– keine –";
+    opt.textContent = t("project.none");
     sel.appendChild(opt);
     sel.disabled = true;
     return;
@@ -112,7 +113,7 @@ function renderAll(lastLabel) {
       const div = document.createElement("div");
       div.className = "warnItem";
       div.style.border = "2px solid rgba(255,107,107,0.5)";
-      div.innerHTML = `<div class="wTitle">Fehler: Rendering fehlgeschlagen</div><div class="wText">Bitte Seite neu laden. ${error.message}</div>`;
+      div.innerHTML = `<div class="wTitle">${t("errors.renderFailed")}</div><div class="wText">${t("errors.reloadPage")} ${error.message}</div>`;
       errorDiv.prepend(div);
     }
   }
@@ -140,6 +141,24 @@ const dragController = createExclusionDragController({
   getSelectedId: () => selectedExclId
 });
 
+function updateAllTranslations() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const text = t(key);
+    if (el.tagName === "INPUT" && el.type !== "checkbox" && el.type !== "radio") {
+      return;
+    }
+    el.textContent = text;
+  });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    el.placeholder = t(key);
+  });
+
+  renderAll();
+}
+
 (function main() {
   const hadSession = store.loadSessionIfAny();
   store.autosaveSession(updateMeta);
@@ -159,5 +178,15 @@ const dragController = createExclusionDragController({
     }
   });
 
-  renderAll(hadSession ? "Init (Session)" : "Init");
+  const langSelect = document.getElementById("langSelect");
+  if (langSelect) {
+    langSelect.value = getLanguage();
+    langSelect.addEventListener("change", () => {
+      setLanguage(langSelect.value);
+      updateAllTranslations();
+    });
+  }
+
+  updateAllTranslations();
+  renderAll(hadSession ? t("init.withSession") : t("init.default"));
 })();
