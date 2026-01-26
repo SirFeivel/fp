@@ -1,68 +1,77 @@
 export function initResize() {
-  const handle = document.querySelector('.resize-handle');
-  const layout = document.querySelector('.layout');
+  const handles = document.querySelectorAll('.resize-handle');
+  if (!handles.length) return;
 
-  if (!handle || !layout) return;
+  handles.forEach((handle, index) => {
+    const isRightPanel = index === 1;
+    const MIN_WIDTH = 280;
+    const MAX_WIDTH = 800;
+    const storageKey = isRightPanel ? 'panelWidthRight' : 'panelWidth';
 
-  const MIN_WIDTH = 280;
-  const MAX_WIDTH = 800;
-
-  const savedWidth = localStorage.getItem('panelWidth');
-  if (savedWidth) {
-    const width = parseInt(savedWidth, 10);
-    if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
-      document.documentElement.style.setProperty('--panel-width', `${width}px`);
+    const savedWidth = localStorage.getItem(storageKey);
+    if (savedWidth && isRightPanel) {
+      const width = parseInt(savedWidth, 10);
+      if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
+        document.documentElement.style.setProperty('--panel-width-right', `${width}px`);
+      }
+    } else if (savedWidth && !isRightPanel) {
+      const width = parseInt(savedWidth, 10);
+      if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
+        document.documentElement.style.setProperty('--panel-width', `${width}px`);
+      }
     }
-  }
 
-  let isResizing = false;
-  let startX = 0;
-  let startWidth = 0;
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
 
-  function getStartWidth() {
-    const computedStyle = getComputedStyle(document.documentElement);
-    const widthStr = computedStyle.getPropertyValue('--panel-width').trim();
-    return parseInt(widthStr, 10) || 420;
-  }
+    function getStartWidth() {
+      const computedStyle = getComputedStyle(document.documentElement);
+      const prop = isRightPanel ? '--panel-width-right' : '--panel-width';
+      const widthStr = computedStyle.getPropertyValue(prop).trim();
+      return parseInt(widthStr, 10) || 420;
+    }
 
-  function onMouseDown(e) {
-    isResizing = true;
-    startX = e.clientX;
-    startWidth = getStartWidth();
+    function onMouseDown(e) {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = getStartWidth();
 
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
 
-  function onMouseMove(e) {
-    if (!isResizing) return;
+    function onMouseMove(e) {
+      if (!isResizing) return;
 
-    const delta = e.clientX - startX;
-    let newWidth = startWidth + delta;
+      const delta = isRightPanel ? startX - e.clientX : e.clientX - startX;
+      let newWidth = startWidth + delta;
 
-    newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, newWidth));
+      newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, newWidth));
 
-    document.documentElement.style.setProperty('--panel-width', `${newWidth}px`);
-  }
+      const prop = isRightPanel ? '--panel-width-right' : '--panel-width';
+      document.documentElement.style.setProperty(prop, `${newWidth}px`);
+    }
 
-  function onMouseUp() {
-    if (!isResizing) return;
+    function onMouseUp() {
+      if (!isResizing) return;
 
-    isResizing = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
+      isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
 
-    const finalWidth = getStartWidth();
-    localStorage.setItem('panelWidth', finalWidth.toString());
+      const finalWidth = getStartWidth();
+      localStorage.setItem(storageKey, finalWidth.toString());
 
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-  }
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
 
-  handle.addEventListener('mousedown', onMouseDown);
+    handle.addEventListener('mousedown', onMouseDown);
+  });
 }
 
 export function initVerticalResize() {

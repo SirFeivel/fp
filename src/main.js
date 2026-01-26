@@ -9,8 +9,9 @@ import { createExclusionsController } from "./exclusions.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initTabs } from "./tabs.js";
-import { initResize, initVerticalResize } from "./resize.js";
+import { initResize } from "./resize.js";
 import { initFullscreen } from "./fullscreen.js";
+import { initCollapse } from "./collapse.js";
 
 import {
   renderWarnings,
@@ -169,7 +170,7 @@ function updateAllTranslations() {
 
   initTabs();
   initResize();
-  initVerticalResize();
+  initCollapse();
   initFullscreen(dragController);
 
   bindUI({

@@ -385,8 +385,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
   for (const ex of state.exclusions) {
     const isSel = ex.id === selectedExclId;
     const common = {
-      fill: isSel ? "rgba(122,162,255,0.20)" : "rgba(122,162,255,0.10)",
-      stroke: isSel ? "rgba(122,162,255,0.95)" : "rgba(122,162,255,0.45)",
+      fill: isSel ? "rgba(239,68,68,0.25)" : "rgba(239,68,68,0.15)",
+      stroke: isSel ? "rgba(239,68,68,0.95)" : "rgba(239,68,68,0.55)",
       "stroke-width": isSel ? 2 : 1,
       cursor: "move",
       "data-exid": ex.id
