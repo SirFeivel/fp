@@ -70,15 +70,15 @@
     <pre>
 The 90° herringbone pattern: Each tile's SHORT edge aligns with the LONG edge of the adjacent tile.
 
-Repeating unit (4 tiles):
-┌───────────┬───┐
-│     H1    │ V1│    H1 = Horizontal tile (L × W)
-│           │ V1│    V1 = Vertical tile (W × L)
-├───┬───────┴───┤
-│ V2│     H2    │    V2 = Vertical tile (W × L)
-│ V2│           │    H2 = Horizontal tile (L × W)
-└───┴───────────┘
+For 2:1 tiles (L = 2W), the repeating unit is:
+┌─────────┬───┬───┐
+│   H1    │ V1│ V2│    Left half: 2 H tiles stacked vertically
+├─────────┤   │   │    Right half: 2 V tiles side by side
+│   H2    │   │   │
+└─────────┴───┴───┘    H tiles: L × W
+                       V tiles: W × L
 
+For 3:1 tiles (L = 3W), 3 H tiles stack, 3 V tiles sit side by side.
 Each row is offset by (L + grout) to create the stepped pattern.
     </pre>
   </div>
@@ -124,54 +124,45 @@ Each row is offset by (L + grout) to create the stepped pattern.
       svg.appendChild(room);
     }
 
-    // 90° Herringbone with 4-tile repeating unit
+    // 90° Herringbone - stacked H tiles + side-by-side V tiles
     function herringbone90(svg, L, W, G, roomW, roomH) {
       drawRoom(svg, roomW, roomH);
       let count = 0;
 
-      // Repeating unit dimensions
-      const unitW = L + W + 2 * G;
-      const unitH = L + W + 2 * G;
+      // How many tiles stack/sit side by side
+      const tilesPerStack = Math.max(1, Math.round(L / W));
+
+      // Unit dimensions: left half has stacked H tiles, right half has V tiles side by side
+      const unitW = 2 * L + 2 * G;
+      const unitH = L + G;
 
       // Generate units
       for (let row = -2; row < Math.ceil(roomH / unitH) + 2; row++) {
         for (let col = -2; col < Math.ceil(roomW / unitW) + 2; col++) {
-          // Odd rows are offset
+          // Odd rows are offset by L
           const rowOffset = (row % 2 === 0) ? 0 : (L + G);
 
           const unitX = col * unitW + rowOffset;
           const unitY = row * unitH;
 
-          // Tile 1: H at top-left
-          const h1x = unitX;
-          const h1y = unitY;
-          if (h1x + L > 0 && h1x < roomW && h1y + W > 0 && h1y < roomH) {
-            svg.appendChild(createSVGRect(h1x, h1y, L, W, 'tile-h'));
-            count++;
+          // Left half: stacked H tiles
+          for (let i = 0; i < tilesPerStack; i++) {
+            const hx = unitX;
+            const hy = unitY + i * (W + G);
+            if (hx + L > 0 && hx < roomW && hy + W > 0 && hy < roomH) {
+              svg.appendChild(createSVGRect(hx, hy, L, W, 'tile-h'));
+              count++;
+            }
           }
 
-          // Tile 2: V at top-right
-          const v1x = unitX + L + G;
-          const v1y = unitY;
-          if (v1x + W > 0 && v1x < roomW && v1y + L > 0 && v1y < roomH) {
-            svg.appendChild(createSVGRect(v1x, v1y, W, L, 'tile-v'));
-            count++;
-          }
-
-          // Tile 3: V at bottom-left
-          const v2x = unitX;
-          const v2y = unitY + W + G;
-          if (v2x + W > 0 && v2x < roomW && v2y + L > 0 && v2y < roomH) {
-            svg.appendChild(createSVGRect(v2x, v2y, W, L, 'tile-v'));
-            count++;
-          }
-
-          // Tile 4: H at bottom-right
-          const h2x = unitX + W + G;
-          const h2y = unitY + L + G;
-          if (h2x + L > 0 && h2x < roomW && h2y + W > 0 && h2y < roomH) {
-            svg.appendChild(createSVGRect(h2x, h2y, L, W, 'tile-h'));
-            count++;
+          // Right half: V tiles side by side
+          for (let i = 0; i < tilesPerStack; i++) {
+            const vx = unitX + L + G + i * (W + G);
+            const vy = unitY;
+            if (vx + W > 0 && vx < roomW && vy + L > 0 && vy < roomH) {
+              svg.appendChild(createSVGRect(vx, vy, W, L, 'tile-v'));
+              count++;
+            }
           }
         }
       }

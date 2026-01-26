@@ -474,22 +474,25 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const W = Math.min(tw, th);
 
   // 90° Herringbone pattern:
-  // Each tile's SHORT edge aligns with the LONG edge of the adjacent tile.
-  // The pattern consists of alternating H and V tiles arranged so that:
+  // The pattern places tiles row by row where:
+  // - Each row alternates between H-columns and V-columns
+  // - H tile: L wide × W tall
+  // - V tile: W wide × L tall
+  // - Rows are offset to create the stepped herringbone effect
   //
-  //   [====H====]        <- H tile (L×W)
-  //             [V]      <- V tile (W×L) - short edge meets H's long edge
-  //             [V]
-  //   [====H====][V]
-  //             [V]
-  //             [V]
-  //   [====H====][V]
-  //
-  // The repeating unit is (L+W) wide and (L+W) tall.
-  // Odd rows are offset by (L+grout) to create the stepped effect.
+  // Row structure (simplified for L=2W):
+  // Row 0: [H][H][V V][H][H][V V]...
+  // Row 1:    [H][H][V V][H][H]...  (offset by L)
 
-  const unitW = L + W + 2 * grout;  // Width of repeating unit
-  const unitH = L + W + 2 * grout;  // Height of repeating unit
+  // The herringbone repeating unit for 2:1 tiles is 4W×2W:
+  // [H1 H1][V1 V2]    H tiles: L×W = 2W×W
+  // [H2 H2][V1 V2]    V tiles: W×L = W×2W
+  //
+  // For general L:W ratio, the unit is 2L × L (when L = n*W for integer n)
+
+  // Unit dimensions
+  const unitW = 2 * L + 2 * grout;  // 2 H tiles side by side = 2L, or 2L V tiles
+  const unitH = L + grout;          // Height = L (one V tile height)
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -517,7 +520,9 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const startRow = Math.floor((minY - anchorY) / unitH) - 1;
   const endRow = Math.ceil((maxY - anchorY) / unitH) + 1;
 
-  const estTiles = (endCol - startCol) * (endRow - startRow) * 4;
+  // Calculate how many H tiles stack to match one V tile height
+  const tilesPerStack = Math.max(1, Math.round(L / W));
+  const estTiles = (endCol - startCol) * (endRow - startRow) * (tilesPerStack + 2) * 2;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -528,45 +533,43 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   // Generate herringbone pattern
   for (let row = startRow; row <= endRow; row++) {
     for (let col = startCol; col <= endCol; col++) {
-      // Odd rows are offset by (L + grout) to create the stepped pattern
-      const rowOffset = (row % 2 === 0) ? 0 : (L + grout);
+      // Odd rows are offset by L to create the stepped pattern
+      const rowOffset = (row % 2 === 0) ? 0 : L + grout;
 
       const unitX = anchorX + col * unitW + rowOffset;
       const unitY = anchorY + row * unitH;
 
-      // Each unit contains 4 tiles:
-      // Top-left: H tile
-      // Top-right: V tile (extending down)
-      // Bottom-left: V tile (extending down)
-      // Bottom-right: H tile
+      // Left half of unit: stack of H tiles (tilesPerStack tiles stacked vertically)
+      for (let i = 0; i < tilesPerStack; i++) {
+        const hx = unitX;
+        const hy = unitY + i * (W + grout);
+        const hPoly = tileRectPolygon(hx, hy, L, W, origin.x, origin.y, rotRad);
 
-      // Tile 1: H at top-left of unit
-      const h1x = unitX;
-      const h1y = unitY;
-      const h1Poly = tileRectPolygon(h1x, h1y, L, W, origin.x, origin.y, rotRad);
-
-      // Tile 2: V at top-right, extending downward
-      const v1x = unitX + L + grout;
-      const v1y = unitY;
-      const v1Poly = tileRectPolygon(v1x, v1y, W, L, origin.x, origin.y, rotRad);
-
-      // Tile 3: V at bottom-left, extending downward
-      const v2x = unitX;
-      const v2y = unitY + W + grout;
-      const v2Poly = tileRectPolygon(v2x, v2y, W, L, origin.x, origin.y, rotRad);
-
-      // Tile 4: H at bottom-right
-      const h2x = unitX + W + grout;
-      const h2y = unitY + L + grout;
-      const h2Poly = tileRectPolygon(h2x, h2y, L, W, origin.x, origin.y, rotRad);
-
-      // Process all 4 tiles
-      const tilesToProcess = [h1Poly, v1Poly, v2Poly, h2Poly];
-
-      for (const tilePoly of tilesToProcess) {
         let clipped;
         try {
-          clipped = polygonClipping.intersection(availableMP, tilePoly);
+          clipped = polygonClipping.intersection(availableMP, hPoly);
+        } catch (e) {
+          return { tiles: [], error: String(e?.message || e) };
+        }
+        if (clipped && clipped.length) {
+          const d = multiPolygonToPathD(clipped);
+          if (d) {
+            const gotArea = multiPolyArea(clipped);
+            const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+            tiles.push({ d, isFull });
+          }
+        }
+      }
+
+      // Right half of unit: V tiles side by side (tilesPerStack tiles)
+      for (let i = 0; i < tilesPerStack; i++) {
+        const vx = unitX + L + grout + i * (W + grout);
+        const vy = unitY;
+        const vPoly = tileRectPolygon(vx, vy, W, L, origin.x, origin.y, rotRad);
+
+        let clipped;
+        try {
+          clipped = polygonClipping.intersection(availableMP, vPoly);
         } catch (e) {
           return { tiles: [], error: String(e?.message || e) };
         }
