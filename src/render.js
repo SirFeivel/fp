@@ -235,6 +235,18 @@ export function renderTilePatternForm(state) {
   const isRB = currentRoom?.pattern?.type === "runningBond";
   document.getElementById("bondFraction").disabled = !isRB;
 
+  const shape = currentRoom?.tile?.shape || "rect";
+  const tileHField = document.getElementById("tileHeightField");
+  const hexHint = document.getElementById("hexHint");
+
+  if (shape === "hex") {
+    if (tileHField) tileHField.style.display = "none";
+    if (hexHint) hexHint.style.display = "block";
+  } else {
+    if (tileHField) tileHField.style.display = "";
+    if (hexHint) hexHint.style.display = "none";
+  }
+
   // Pricing
   const pricePerM2 = document.getElementById("pricePerM2");
   const packM2 = document.getElementById("packM2");

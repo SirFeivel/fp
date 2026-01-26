@@ -176,9 +176,12 @@
                   <label data-i18n="tile.width">Fliese Breite (cm)</label>
                   <input id="tileW" type="number" min="0" step="0.1" />
                 </div>
-                <div class="field">
+                <div class="field" id="tileHeightField">
                   <label data-i18n="tile.height">Fliese Länge (cm)</label>
                   <input id="tileH" type="number" min="0" step="0.1" />
+                </div>
+                <div class="meta subtle span2" id="hexHint" style="display: none; margin-top: -8px;">
+                  <span data-i18n="tile.hexHint">For hexagonal tiles, width = flat-to-flat distance. Height is auto-calculated.</span>
                 </div>
                 <div class="field">
                   <label data-i18n="tile.grout">Fuge (cm)</label>

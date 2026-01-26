@@ -84,17 +84,27 @@ export function tileRectPolygon(x, y, tw, th, originX, originY, rotRad) {
 }
 
 export function tileHexPolygon(cx, cy, widthCm, originX, originY, rotRad) {
-  const radius = widthCm / Math.sqrt(3);
-  const points = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i;
-    const px = cx + radius * Math.cos(angle);
-    const py = cy + radius * Math.sin(angle);
+  const sideLength = widthCm / Math.sqrt(3);
+  const halfWidth = widthCm / 2;
+  const quarterHeight = sideLength / 2;
+  const halfHeight = sideLength;
+
+  const points = [
+    [cx - halfWidth, cy - quarterHeight],
+    [cx - halfWidth, cy + quarterHeight],
+    [cx, cy + halfHeight],
+    [cx + halfWidth, cy + quarterHeight],
+    [cx + halfWidth, cy - quarterHeight],
+    [cx, cy - halfHeight]
+  ];
+
+  const rotatedPoints = points.map(([px, py]) => {
     const rotated = rotatePoint2(px, py, originX, originY, rotRad);
-    points.push([rotated.x, rotated.y]);
-  }
-  points.push([points[0][0], points[0][1]]);
-  return [[points]];
+    return [rotated.x, rotated.y];
+  });
+
+  rotatedPoints.push([rotatedPoints[0][0], rotatedPoints[0][1]]);
+  return [[rotatedPoints]];
 }
 
 export function ringArea(ring) {
@@ -376,11 +386,11 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const radius = tw / Math.sqrt(3);
-  const hexHeight = radius * 2;
+  const sideLength = tw / Math.sqrt(3);
+  const hexHeight = sideLength * 2;
   const hexWidth = tw;
 
-  const stepX = hexWidth * 0.75 + grout;
+  const stepX = hexWidth + grout;
   const stepY = hexHeight + grout;
 
   const bounds = getRoomBounds(currentRoom);
@@ -400,8 +410,8 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    anchorX -= radius;
-    anchorY -= radius;
+    anchorX -= hexWidth / 2;
+    anchorY -= hexHeight / 2;
   }
 
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
@@ -416,11 +426,11 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout) {
   }
 
   const tiles = [];
-  const hexFullArea = (3 * Math.sqrt(3) / 2) * radius * radius;
+  const hexFullArea = (3 * Math.sqrt(3) / 2) * sideLength * sideLength;
 
   for (let r = 0; r < estRows; r++) {
     const y = startY + r * stepY;
-    const rowOffset = (r % 2) * (hexWidth * 0.375);
+    const rowOffset = (r % 2) * (hexWidth * 0.5);
 
     for (let c = 0; c < estCols; c++) {
       const x = startX + c * stepX + rowOffset;

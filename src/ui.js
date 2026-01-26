@@ -70,9 +70,19 @@ export function bindUI({
     const currentRoom = getCurrentRoom(next);
     if (!currentRoom) return;
 
-    currentRoom.tile.widthCm = Number(document.getElementById("tileW")?.value);
-    currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
-    currentRoom.tile.shape = document.getElementById("tileShape")?.value || "rect";
+    const shape = document.getElementById("tileShape")?.value || "rect";
+    const widthCm = Number(document.getElementById("tileW")?.value);
+
+    currentRoom.tile.shape = shape;
+    currentRoom.tile.widthCm = widthCm;
+
+    if (shape === "hex") {
+      const sideLength = widthCm / Math.sqrt(3);
+      currentRoom.tile.heightCm = sideLength * 2;
+    } else {
+      currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
+    }
+
     currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value);
 
     currentRoom.pattern.type = document.getElementById("patternType")?.value;
@@ -128,6 +138,27 @@ export function bindUI({
     const sel = document.getElementById("sectionsList");
     if (!sel) return;
     sel.addEventListener("change", () => setSelectedSection(sel.value || null));
+  }
+
+  function updateTileShapeUI() {
+    const shape = document.getElementById("tileShape")?.value || "rect";
+    const tileHField = document.getElementById("tileHeightField");
+    const hexHint = document.getElementById("hexHint");
+    const tileHInput = document.getElementById("tileH");
+
+    if (shape === "hex") {
+      if (tileHField) tileHField.style.display = "none";
+      if (hexHint) hexHint.style.display = "block";
+
+      const widthCm = Number(document.getElementById("tileW")?.value) || 0;
+      if (widthCm > 0 && tileHInput) {
+        const sideLength = widthCm / Math.sqrt(3);
+        tileHInput.value = (sideLength * 2).toFixed(2);
+      }
+    } else {
+      if (tileHField) tileHField.style.display = "";
+      if (hexHint) hexHint.style.display = "none";
+    }
   }
 
   // Buttons
@@ -217,18 +248,34 @@ export function bindUI({
     "packM2",
     'reserveTiles',
     'wasteKerfCm',
-  ].forEach((id) =>
-    wireInputCommit(document.getElementById(id), {
-      markDirty: () => store.markDirty(),
-      commitLabel: t("tile.changed"),
-      commitFn: commitFromTilePatternInputs
-    })
-  );
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (id === "tileW") {
+      el?.addEventListener("input", () => {
+        updateTileShapeUI();
+        store.markDirty();
+      });
+      el?.addEventListener("blur", () => commitFromTilePatternInputs(t("tile.changed")));
+      el?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          el.blur();
+        }
+      });
+    } else {
+      wireInputCommit(el, {
+        markDirty: () => store.markDirty(),
+        commitLabel: t("tile.changed"),
+        commitFn: commitFromTilePatternInputs
+      });
+    }
+  });
 
   ["tileShape", "patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
-    document.getElementById(id)?.addEventListener("change", () =>
-      commitFromTilePatternInputs(t("tile.patternChanged"))
-    );
+    document.getElementById(id)?.addEventListener("change", () => {
+      if (id === "tileShape") updateTileShapeUI();
+      commitFromTilePatternInputs(t("tile.patternChanged"));
+    });
   });
 
   // Waste toggles
