@@ -1,5 +1,6 @@
 // src/calc.js
 import { computeAvailableArea, tilesForPreview, multiPolyArea } from "./geometry.js";
+import { getCurrentRoom } from "./core.js";
 
 // cm² -> m²
 function cm2ToM2(aCm2) {
@@ -193,13 +194,18 @@ export function computePlanMetrics(state) {
     return { ok: false, error: "Ungültige Fliesen- oder Fugenmaße.", data: null };
   }
 
+  const currentRoom = getCurrentRoom(state);
+  if (!currentRoom) {
+    return { ok: false, error: "Kein Raum ausgewählt.", data: null };
+  }
+
   // options
   const allowRotate = state?.waste?.allowRotate !== false; // default true
   const optimizeCuts = Boolean(state?.waste?.optimizeCuts); // default false
   const kerfCm = clampPos(state?.waste?.kerfCm); // default 0
 
   // Available area
-  const avail = computeAvailableArea(state.room, state.exclusions);
+  const avail = computeAvailableArea(currentRoom, currentRoom.exclusions);
   if (!avail.mp) return { ok: false, error: "Keine verfügbare Fläche.", data: null };
 
   // Preview tiles (clipped paths)

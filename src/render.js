@@ -1,6 +1,6 @@
 // src/render.js
 import { computePlanMetrics } from "./calc.js";
-import { escapeHTML } from "./core.js";
+import { escapeHTML, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
 import {
   svgEl,
@@ -100,9 +100,10 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 }
 
 export function renderRoomForm(state) {
-  document.getElementById("roomName").value = state.room?.name ?? "";
-  document.getElementById("roomW").value = state.room?.widthCm ?? "";
-  document.getElementById("roomH").value = state.room?.heightCm ?? "";
+  const currentRoom = getCurrentRoom(state);
+  document.getElementById("roomName").value = currentRoom?.name ?? "";
+  document.getElementById("roomW").value = currentRoom?.widthCm ?? "";
+  document.getElementById("roomH").value = currentRoom?.heightCm ?? "";
   document.getElementById("showGrid").checked = Boolean(state.view?.showGrid);
 }
 
@@ -156,7 +157,9 @@ export function renderTilePatternForm(state) {
 export function renderExclList(state, selectedExclId) {
   const sel = document.getElementById("exclList");
   sel.innerHTML = "";
-  if (!state.exclusions.length) {
+  const currentRoom = getCurrentRoom(state);
+  const exclusions = currentRoom?.exclusions || [];
+  if (!exclusions.length) {
     const opt = document.createElement("option");
     opt.value = "";
     opt.textContent = t("project.none");
@@ -165,7 +168,7 @@ export function renderExclList(state, selectedExclId) {
     return;
   }
   sel.disabled = false;
-  for (const ex of state.exclusions) {
+  for (const ex of exclusions) {
     const opt = document.createElement("option");
     opt.value = ex.id;
     opt.textContent = `${ex.label || ex.type}`;
@@ -256,8 +259,17 @@ export function renderPlanSvg({
   metrics // optional; if omitted we compute it here
 }) {
   const svg = document.getElementById("planSvg");
-  const w = state.room.widthCm;
-  const h = state.room.heightCm;
+  const currentRoom = getCurrentRoom(state);
+
+  if (!currentRoom) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute("viewBox", "0 0 100 100");
+    return;
+  }
+
+  const w = currentRoom.widthCm;
+  const h = currentRoom.heightCm;
+  const exclusions = currentRoom.exclusions || [];
 
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
@@ -304,11 +316,11 @@ export function renderPlanSvg({
     "font-size": 14,
     "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
   });
-  label.textContent = `${state.room.name} — ${w}×${h} cm`;
+  label.textContent = `${currentRoom.name} — ${w}×${h} cm`;
   svg.appendChild(label);
 
   // tiles
-  const avail = computeAvailableArea(state.room, state.exclusions);
+  const avail = computeAvailableArea(currentRoom, exclusions);
   if (avail.error) setLastTileError(avail.error);
   else setLastTileError(null);
 
@@ -366,7 +378,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 }
 
   // union overlay
-  const u = computeExclusionsUnion(state.exclusions);
+  const u = computeExclusionsUnion(exclusions);
   if (u.error) setLastUnionError(u.error);
   else setLastUnionError(null);
 
@@ -382,7 +394,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
   // exclusion shapes
   const gEx = svgEl("g");
-  for (const ex of state.exclusions) {
+  for (const ex of exclusions) {
     const isSel = ex.id === selectedExclId;
     const common = {
       fill: isSel ? "rgba(239,68,68,0.25)" : "rgba(239,68,68,0.15)",

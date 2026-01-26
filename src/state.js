@@ -9,15 +9,61 @@ import {
 } from './core.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
-  // ✅ NEU: Normalizer (für alte Sessions ohne neue Felder)
   function normalizeState(s) {
     if (!s || typeof s !== "object") return defaultStateFn();
 
-    // waste
+    const version = s.meta?.version || 1;
+
+    if (version === 1) {
+      s = migrateV1ToV2(s);
+    }
+
     if (!s.waste || typeof s.waste !== "object") s.waste = { allowRotate: true };
     if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = true;
 
     return s;
+  }
+
+  function migrateV1ToV2(oldState) {
+    const floorId = uuid();
+    const roomId = uuid();
+
+    const newState = {
+      meta: { version: 2, updatedAt: nowISO() },
+      project: { name: oldState.room?.name || "Projekt" },
+      floors: [
+        {
+          id: floorId,
+          name: "Erdgeschoss",
+          rooms: [
+            {
+              id: roomId,
+              name: oldState.room?.name || "Raum",
+              widthCm: oldState.room?.widthCm || 600,
+              heightCm: oldState.room?.heightCm || 400,
+              exclusions: oldState.exclusions || []
+            }
+          ]
+        }
+      ],
+      selectedFloorId: floorId,
+      selectedRoomId: roomId,
+      tile: oldState.tile || { widthCm: 60, heightCm: 60 },
+      grout: oldState.grout || { widthCm: 0.2 },
+      pattern: oldState.pattern || {
+        type: "grid",
+        bondFraction: 0.5,
+        rotationDeg: 0,
+        offsetXcm: 0,
+        offsetYcm: 0,
+        origin: { preset: "tl", xCm: 0, yCm: 0 }
+      },
+      pricing: oldState.pricing || { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
+      waste: oldState.waste || { allowRotate: true },
+      view: oldState.view || { showGrid: true, showNeeds: false }
+    };
+
+    return newState;
   }
 
   let state = normalizeState(defaultStateFn());

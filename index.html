@@ -77,7 +77,31 @@
           <!-- Room Tab -->
           <div class="tab-panel" data-tab-panel="room">
             <div class="section-card">
-              <h3 class="section-title" data-i18n="room.title">Raum</h3>
+              <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
+              <div class="grid2">
+                <div class="field span2">
+                  <label data-i18n="structure.floor">Etage</label>
+                  <select id="floorSelect"></select>
+                </div>
+              </div>
+              <div class="btnrow">
+                <button id="btnAddFloor" class="btn" data-i18n="structure.addFloor">Etage hinzufügen</button>
+                <button id="btnDeleteFloor" class="btn" data-i18n="structure.deleteFloor">Etage löschen</button>
+              </div>
+              <div class="grid2" style="margin-top: 1rem;">
+                <div class="field span2">
+                  <label data-i18n="structure.room">Raum</label>
+                  <select id="roomSelect"></select>
+                </div>
+              </div>
+              <div class="btnrow">
+                <button id="btnAddRoom" class="btn" data-i18n="structure.addRoom">Raum hinzufügen</button>
+                <button id="btnDeleteRoom" class="btn" data-i18n="structure.deleteRoom">Raum löschen</button>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="room.title">Raum Details</h3>
               <div class="grid2">
                 <div class="field span2">
                   <label data-i18n="room.name">Raumname</label>

@@ -1,5 +1,5 @@
 import polygonClipping from "polygon-clipping";
-import { degToRad } from "./core.js";
+import { degToRad, getCurrentRoom } from "./core.js";
 import {
   CIRCLE_APPROXIMATION_STEPS,
   TILE_MARGIN_MULTIPLIER,
@@ -227,6 +227,11 @@ export function tilesForPreview(state, availableMP) {
     return { tiles: [], error: null };
   }
 
+  const currentRoom = getCurrentRoom(state);
+  if (!currentRoom) {
+    return { tiles: [], error: "Kein Raum ausgewählt." };
+  }
+
   const stepX = tw + grout;
   const stepY = th + grout;
 
@@ -236,7 +241,7 @@ export function tilesForPreview(state, availableMP) {
   const offX = Number(state.pattern?.offsetXcm) || 0;
   const offY = Number(state.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(state.room, state.pattern);
+  const origin = computeOriginPoint(currentRoom, state.pattern);
   const preset = state.pattern?.origin?.preset || "tl";
 
   const type = state.pattern?.type || "grid";
@@ -244,8 +249,8 @@ export function tilesForPreview(state, availableMP) {
   const rowShiftCm = type === "runningBond" ? tw * frac : 0;
   const bondPeriod = type === "runningBond" ? detectBondPeriod(frac) : 0;
 
-  const w = state.room.widthCm,
-    h = state.room.heightCm;
+  const w = currentRoom.widthCm,
+    h = currentRoom.heightCm;
 
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 

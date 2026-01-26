@@ -1,17 +1,73 @@
 import { describe, it, expect } from 'vitest';
 import { computePlanMetrics } from './calc.js';
 
+function createTestState(oldOrNew = {}) {
+  const floorId = 'test-floor';
+  const roomId = 'test-room';
+
+  if (oldOrNew.room) {
+    const newState = {
+      meta: { version: 2 },
+      project: { name: oldOrNew.room.name || 'Test' },
+      floors: [{
+        id: floorId,
+        name: 'Test Floor',
+        rooms: [{
+          id: roomId,
+          name: oldOrNew.room.name || 'Test Room',
+          widthCm: oldOrNew.room.widthCm || 400,
+          heightCm: oldOrNew.room.heightCm || 500,
+          exclusions: oldOrNew.exclusions || []
+        }]
+      }],
+      selectedFloorId: floorId,
+      selectedRoomId: roomId,
+      tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
+      grout: oldOrNew.grout || { widthCm: 1 },
+      pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+      pricing: oldOrNew.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
+      waste: oldOrNew.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+      view: oldOrNew.view || { showGrid: true, showNeeds: false }
+    };
+    return newState;
+  }
+
+  const defaults = {
+    meta: { version: 2 },
+    project: { name: 'Test' },
+    floors: [{
+      id: floorId,
+      name: 'Test Floor',
+      rooms: [{
+        id: roomId,
+        name: 'Test Room',
+        widthCm: 400,
+        heightCm: 500,
+        exclusions: []
+      }]
+    }],
+    selectedFloorId: floorId,
+    selectedRoomId: roomId,
+    tile: { widthCm: 30, heightCm: 60 },
+    grout: { widthCm: 1 },
+    pattern: { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+    pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
+    waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+    view: { showGrid: true, showNeeds: false }
+  };
+
+  const state = { ...defaults, ...oldOrNew };
+
+  if (oldOrNew.roomOverrides) {
+    state.floors[0].rooms[0] = { ...state.floors[0].rooms[0], ...oldOrNew.roomOverrides };
+  }
+
+  return state;
+}
+
 describe('computePlanMetrics', () => {
   it('returns error for invalid tile dimensions', () => {
-    const state = {
-      room: { widthCm: 400, heightCm: 500 },
-      tile: { widthCm: 0, heightCm: 60 },
-      grout: { widthCm: 1 },
-      exclusions: [],
-      pattern: { type: 'grid', rotationDeg: 0 },
-      pricing: {},
-      waste: {},
-    };
+    const state = createTestState({ tile: { widthCm: 0, heightCm: 60 } });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(false);
@@ -19,15 +75,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('returns error for negative grout width', () => {
-    const state = {
-      room: { widthCm: 400, heightCm: 500 },
-      tile: { widthCm: 30, heightCm: 60 },
-      grout: { widthCm: -1 },
-      exclusions: [],
-      pattern: { type: 'grid', rotationDeg: 0 },
-      pricing: {},
-      waste: {},
-    };
+    const state = createTestState({ grout: { widthCm: -1 } });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(false);
@@ -35,15 +83,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('calculates metrics for simple room with no exclusions', () => {
-    const state = {
-      room: { widthCm: 400, heightCm: 500 },
-      tile: { widthCm: 30, heightCm: 60 },
-      grout: { widthCm: 1 },
-      exclusions: [],
-      pattern: { type: 'grid', rotationDeg: 0 },
-      pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
-      waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
-    };
+    const state = createTestState();
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -56,8 +96,8 @@ describe('computePlanMetrics', () => {
   });
 
   it('counts full and cut tiles correctly', () => {
-    const state = {
-      room: { widthCm: 100, heightCm: 100 },
+    const state = createTestState({
+      roomOverrides: { widthCm: 100, heightCm: 100 },
       tile: { widthCm: 30, heightCm: 30 },
       grout: { widthCm: 1 },
       exclusions: [],

@@ -56,10 +56,33 @@ export function degToRad(d) {
 }
 
 export function defaultState() {
+  const floorId = uuid();
+  const roomId = uuid();
+
   return {
-    meta: { version: 1, updatedAt: nowISO() },
-    room: { name: "Raum", widthCm: 600, heightCm: 400 },
-    exclusions: [],
+    meta: { version: 2, updatedAt: nowISO() },
+
+    project: { name: "Projekt" },
+
+    floors: [
+      {
+        id: floorId,
+        name: "Erdgeschoss",
+        rooms: [
+          {
+            id: roomId,
+            name: "Raum",
+            widthCm: 600,
+            heightCm: 400,
+            exclusions: []
+          }
+        ]
+      }
+    ],
+
+    selectedFloorId: floorId,
+    selectedRoomId: roomId,
+
     tile: { widthCm: 60, heightCm: 60 },
     grout: { widthCm: 0.2 },
     pattern: {
@@ -72,15 +95,33 @@ export function defaultState() {
     },
     pricing: { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
 
-    // NEW: waste options (persisted)
     waste: {
       allowRotate: true
     },
 
-    // NEW: view options (persisted)
     view: {
       showGrid: true,
-      showNeeds: false // Toggle "Debug: Reststück-Bedarf anzeigen"
+      showNeeds: false
     }
   };
+}
+
+export function getCurrentRoom(state) {
+  if (!state.floors || !state.selectedFloorId || !state.selectedRoomId) {
+    return null;
+  }
+
+  const floor = state.floors.find(f => f.id === state.selectedFloorId);
+  if (!floor || !floor.rooms) return null;
+
+  const room = floor.rooms.find(r => r.id === state.selectedRoomId);
+  return room || null;
+}
+
+export function getCurrentFloor(state) {
+  if (!state.floors || !state.selectedFloorId) {
+    return null;
+  }
+
+  return state.floors.find(f => f.id === state.selectedFloorId) || null;
 }

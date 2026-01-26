@@ -1,5 +1,5 @@
 // src/exclusions.js
-import { deepClone, uuid } from './core.js';
+import { deepClone, uuid, getCurrentRoom } from './core.js';
 import { t } from './i18n.js';
 
 export function createExclusionsController({
@@ -11,64 +11,83 @@ export function createExclusionsController({
   function getSelectedExcl() {
     const state = getState();
     const id = getSelectedId();
-    return state.exclusions.find((e) => e.id === id) || null;
+    const room = getCurrentRoom(state);
+    if (!room) return null;
+    return room.exclusions.find((e) => e.id === id) || null;
   }
 
   function addRect() {
     const state = getState();
-    const w = state.room.widthCm,
-      h = state.room.heightCm;
+    const room = getCurrentRoom(state);
+    if (!room) return;
+
+    const w = room.widthCm, h = room.heightCm;
     const ex = {
       id: uuid(),
       type: 'rect',
-      label: `${t('exclusions.rect')} ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.rect')} ${room.exclusions.length + 1}`,
       x: w * 0.25,
       y: h * 0.25,
       w: Math.max(10, w * 0.2),
       h: Math.max(10, h * 0.2),
     };
+
     const next = deepClone(state);
-    next.exclusions.push(ex);
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
+
+    nextRoom.exclusions.push(ex);
     setSelectedId(ex.id);
     commit(t('exclusions.added'), next);
   }
 
   function addCircle() {
     const state = getState();
-    const w = state.room.widthCm,
-      h = state.room.heightCm;
+    const room = getCurrentRoom(state);
+    if (!room) return;
+
+    const w = room.widthCm, h = room.heightCm;
     const r = Math.max(10, Math.min(w, h) * 0.1);
     const ex = {
       id: uuid(),
       type: 'circle',
-      label: `${t('exclusions.circle')} ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.circle')} ${room.exclusions.length + 1}`,
       cx: w * 0.5,
       cy: h * 0.5,
       r,
     };
+
     const next = deepClone(state);
-    next.exclusions.push(ex);
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
+
+    nextRoom.exclusions.push(ex);
     setSelectedId(ex.id);
     commit(t('exclusions.added'), next);
   }
 
   function addTri() {
     const state = getState();
-    const w = state.room.widthCm,
-      h = state.room.heightCm;
-    const cx = w * 0.5,
-      cy = h * 0.5;
+    const room = getCurrentRoom(state);
+    if (!room) return;
+
+    const w = room.widthCm, h = room.heightCm;
+    const cx = w * 0.5, cy = h * 0.5;
     const size = Math.max(10, Math.min(w, h) * 0.12);
     const ex = {
       id: uuid(),
       type: 'tri',
-      label: `${t('exclusions.triangle')} ${state.exclusions.length + 1}`,
+      label: `${t('exclusions.triangle')} ${room.exclusions.length + 1}`,
       p1: { x: cx, y: cy - size },
       p2: { x: cx - size, y: cy + size },
       p3: { x: cx + size, y: cy + size },
     };
+
     const next = deepClone(state);
-    next.exclusions.push(ex);
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
+
+    nextRoom.exclusions.push(ex);
     setSelectedId(ex.id);
     commit(t('exclusions.added'), next);
   }
@@ -79,11 +98,14 @@ export function createExclusionsController({
     if (!id) return;
 
     const next = deepClone(state);
-    const beforeLen = next.exclusions.length;
-    next.exclusions = next.exclusions.filter((e) => e.id !== id);
-    if (next.exclusions.length === beforeLen) return;
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
 
-    setSelectedId(next.exclusions.at(-1)?.id ?? null);
+    const beforeLen = nextRoom.exclusions.length;
+    nextRoom.exclusions = nextRoom.exclusions.filter((e) => e.id !== id);
+    if (nextRoom.exclusions.length === beforeLen) return;
+
+    setSelectedId(nextRoom.exclusions.at(-1)?.id ?? null);
     commit(t('exclusions.deleted'), next);
   }
 
@@ -93,10 +115,13 @@ export function createExclusionsController({
     if (!id) return;
 
     const next = deepClone(state);
-    const idx = next.exclusions.findIndex((e) => e.id === id);
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
+
+    const idx = nextRoom.exclusions.findIndex((e) => e.id === id);
     if (idx < 0) return;
 
-    const cur = next.exclusions[idx];
+    const cur = nextRoom.exclusions[idx];
 
     const labelInp = document.getElementById('exLabel');
     if (labelInp) cur.label = labelInp.value ?? cur.label;

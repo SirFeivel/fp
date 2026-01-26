@@ -1,5 +1,5 @@
 // src/ui.js
-import { downloadText, safeParseJSON } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
@@ -47,9 +47,13 @@ export function bindUI({
     const state = store.getState();
     const next = structuredClone(state);
 
-    next.room.name = document.getElementById("roomName")?.value ?? "";
-    next.room.widthCm = Number(document.getElementById("roomW")?.value);
-    next.room.heightCm = Number(document.getElementById("roomH")?.value);
+    const nextRoom = getCurrentRoom(next);
+    if (nextRoom) {
+      nextRoom.name = document.getElementById("roomName")?.value ?? "";
+      nextRoom.widthCm = Number(document.getElementById("roomW")?.value);
+      nextRoom.heightCm = Number(document.getElementById("roomH")?.value);
+    }
+
     next.view = next.view || {};
     next.view.showGrid = Boolean(document.getElementById("showGrid")?.checked);
 
@@ -139,7 +143,7 @@ export function bindUI({
     const state = store.getState();
     const name =
       document.getElementById("projectName")?.value.trim() ||
-      (state.room?.name ?? "Projekt");
+      (state.project?.name ?? "Projekt");
     store.saveCurrentAsProject(name);
     store.autosaveSession(updateMeta);
     renderAll(t("project.saved"));
@@ -267,7 +271,7 @@ export function bindUI({
   // Export
   document.getElementById("btnExport")?.addEventListener("click", () => {
     const state = store.getState();
-    const fname = `floorplanner_state_${(state.room?.name || "projekt").replace(
+    const fname = `floorplanner_state_${(state.project?.name || "projekt").replace(
       /\s+/g,
       "_"
     )}.json`;

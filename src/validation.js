@@ -4,6 +4,7 @@
  */
 
 import { t } from "./i18n.js";
+import { getCurrentRoom } from "./core.js";
 
 /**
  * Calculate bounding box for an exclusion shape
@@ -44,18 +45,27 @@ export function validateState(s) {
   const warns = [];
   const n = (v) => typeof v === "number" && Number.isFinite(v);
 
-  const roomW = s?.room?.widthCm,
-    roomH = s?.room?.heightCm;
-  if (!n(roomW) || roomW <= 0)
+  const currentRoom = getCurrentRoom(s);
+  const roomW = currentRoom?.widthCm;
+  const roomH = currentRoom?.heightCm;
+
+  if (!currentRoom) {
     errors.push({
-      title: t("validation.roomWidthInvalid"),
-      text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
+      title: t("validation.noRoomSelected"),
+      text: t("validation.selectRoom")
     });
-  if (!n(roomH) || roomH <= 0)
-    errors.push({
-      title: t("validation.roomHeightInvalid"),
-      text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
-    });
+  } else {
+    if (!n(roomW) || roomW <= 0)
+      errors.push({
+        title: t("validation.roomWidthInvalid"),
+        text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
+      });
+    if (!n(roomH) || roomH <= 0)
+      errors.push({
+        title: t("validation.roomHeightInvalid"),
+        text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
+      });
+  }
 
   const tileW = s?.tile?.widthCm,
     tileH = s?.tile?.heightCm;
@@ -84,8 +94,8 @@ export function validateState(s) {
     });
   }
 
-  if (Array.isArray(s.exclusions)) {
-    for (const ex of s.exclusions) {
+  if (currentRoom && Array.isArray(currentRoom.exclusions)) {
+    for (const ex of currentRoom.exclusions) {
       if (!ex?.id || !ex?.type) continue;
       const out = exclusionBounds(ex);
       if (out && n(roomW) && n(roomH)) {

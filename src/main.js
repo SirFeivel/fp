@@ -24,6 +24,7 @@ import {
   renderExclProps,
   renderPlanSvg
 } from "./render.js";
+import { createStructureController } from "./structure.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -76,6 +77,8 @@ function renderAll(lastLabel) {
   try {
     const state = store.getState();
 
+    structure.renderFloorSelect();
+    structure.renderRoomSelect();
     renderRoomForm(state);
     renderTilePatternForm(state);
 
@@ -134,6 +137,13 @@ const excl = createExclusionsController({
   setSelectedId
 });
 
+const structure = createStructureController({
+  store,
+  renderAll,
+  updateMeta,
+  resetSelectedExcl: () => setSelectedExcl(null)
+});
+
 const dragController = createExclusionDragController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getState: () => store.getState(),
@@ -186,6 +196,30 @@ function updateAllTranslations() {
       lastUnionError = null;
       lastTileError = null;
     }
+  });
+
+  document.getElementById("floorSelect")?.addEventListener("change", (e) => {
+    structure.selectFloor(e.target.value);
+  });
+
+  document.getElementById("roomSelect")?.addEventListener("change", (e) => {
+    structure.selectRoom(e.target.value);
+  });
+
+  document.getElementById("btnAddFloor")?.addEventListener("click", () => {
+    structure.addFloor();
+  });
+
+  document.getElementById("btnDeleteFloor")?.addEventListener("click", () => {
+    structure.deleteFloor();
+  });
+
+  document.getElementById("btnAddRoom")?.addEventListener("click", () => {
+    structure.addRoom();
+  });
+
+  document.getElementById("btnDeleteRoom")?.addEventListener("click", () => {
+    structure.deleteRoom();
   });
 
   const langSelect = document.getElementById("langSelect");

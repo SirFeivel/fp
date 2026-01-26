@@ -27,8 +27,21 @@ const translations = {
       notFound: "Projekt nicht gefunden.",
       none: "– keine –"
     },
+    structure: {
+      title: "Struktur",
+      floor: "Etage",
+      room: "Raum",
+      addFloor: "Etage hinzufügen",
+      deleteFloor: "Etage löschen",
+      addRoom: "Raum hinzufügen",
+      deleteRoom: "Raum löschen",
+      floorAdded: "Etage hinzugefügt",
+      floorDeleted: "Etage gelöscht",
+      roomAdded: "Raum hinzugefügt",
+      roomDeleted: "Raum gelöscht"
+    },
     room: {
-      title: "Raum",
+      title: "Raum Details",
       sectionDisplay: "Anzeige",
       name: "Raumname",
       width: "Breite (cm)",
@@ -144,6 +157,8 @@ const translations = {
       warn: "Warn"
     },
     validation: {
+      noRoomSelected: "Kein Raum ausgewählt",
+      selectRoom: "Bitte wählen Sie einen Raum aus.",
       roomWidthInvalid: "Raumbreite ungültig",
       roomWidthText: "Muss eine positive Zahl > 0 sein.",
       roomHeightInvalid: "Raumlänge ungültig",
@@ -232,8 +247,21 @@ const translations = {
       notFound: "Project not found.",
       none: "– none –"
     },
+    structure: {
+      title: "Structure",
+      floor: "Floor",
+      room: "Room",
+      addFloor: "Add Floor",
+      deleteFloor: "Delete Floor",
+      addRoom: "Add Room",
+      deleteRoom: "Delete Room",
+      floorAdded: "Floor added",
+      floorDeleted: "Floor deleted",
+      roomAdded: "Room added",
+      roomDeleted: "Room deleted"
+    },
     room: {
-      title: "Room",
+      title: "Room Details",
       sectionDisplay: "Display",
       name: "Room Name",
       width: "Width (cm)",
@@ -349,6 +377,8 @@ const translations = {
       warn: "Warn"
     },
     validation: {
+      noRoomSelected: "No room selected",
+      selectRoom: "Please select a room.",
       roomWidthInvalid: "Room width invalid",
       roomWidthText: "Must be a positive number > 0.",
       roomHeightInvalid: "Room height invalid",
