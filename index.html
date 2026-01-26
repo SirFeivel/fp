@@ -45,9 +45,9 @@
             <span class="tab-icon">💾</span>
             <span data-i18n="project.title">Projekt</span>
           </button>
-          <button class="tab" data-tab="advanced">
-            <span class="tab-icon">⚙️</span>
-            <span>Advanced</span>
+          <button class="tab" data-tab="debug">
+            <span class="tab-icon">🐛</span>
+            <span data-i18n="debug.title">Debug</span>
           </button>
         </nav>
 
@@ -73,7 +73,7 @@
             </div>
 
             <div class="section-card">
-              <h3 class="section-title" data-i18n="room.showGrid">Anzeige</h3>
+              <h3 class="section-title" data-i18n="room.sectionDisplay">Anzeige</h3>
               <label class="inline">
                 <input id="showGrid" type="checkbox" />
                 <span data-i18n="room.showGrid">Hilfsraster anzeigen</span>
@@ -84,7 +84,7 @@
           <!-- Tiles & Pattern Tab -->
           <div class="tab-panel" data-tab-panel="tiles">
             <div class="section-card">
-              <h3 class="section-title" data-i18n="tile.title">Fliesen & Fuge</h3>
+              <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
               <div class="grid2">
                 <div class="field">
                   <label data-i18n="tile.width">Fliese Breite (cm)</label>
@@ -102,7 +102,7 @@
             </div>
 
             <div class="section-card">
-              <h3 class="section-title">Muster</h3>
+              <h3 class="section-title" data-i18n="tile.sectionPattern">Muster</h3>
               <div class="grid2">
                 <div class="field">
                   <label data-i18n="tile.pattern">Muster</label>
@@ -136,7 +136,7 @@
             </div>
 
             <div class="section-card">
-              <h3 class="section-title">Position & Offset</h3>
+              <h3 class="section-title" data-i18n="tile.sectionPosition">Position & Offset</h3>
               <div class="grid2">
                 <div class="field">
                   <label data-i18n="origin.preset">Startpunkt Preset</label>
@@ -175,7 +175,7 @@
             </div>
 
             <div class="section-card">
-              <h3 class="section-title" data-i18n="pricing.title">Preis & Verschnitt</h3>
+              <h3 class="section-title" data-i18n="tile.sectionPricing">Preis & Verschnitt</h3>
               <div class="grid2">
                 <div class="field">
                   <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
@@ -307,10 +307,10 @@
             </div>
           </div>
 
-          <!-- Advanced Tab -->
-          <div class="tab-panel" data-tab-panel="advanced">
+          <!-- Debug Tab -->
+          <div class="tab-panel" data-tab-panel="debug">
             <div class="section-card">
-              <h3 class="section-title">Debug Optionen</h3>
+              <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
               <label class="chk">
                 <input id="debugShowNeeds" type="checkbox" />
                 <span data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
@@ -346,17 +346,25 @@
           </div>
         </div>
 
-        <div id="metrics" style="margin-top: 12px">
-          <div class="hdrTitle">Metriken</div>
-          <div class="kv">
-            <div class="k">Fläche:</div>
-            <div class="v" id="metricArea">–</div>
-            <div class="k">Fliesen:</div>
-            <div class="v" id="metricTiles">–</div>
-            <div class="k">Packungen:</div>
-            <div class="v" id="metricPacks">–</div>
-            <div class="k">Kosten:</div>
-            <div class="v" id="metricCost">–</div>
+        <div id="metrics" class="metrics-panel">
+          <div class="hdrTitle" data-i18n="metrics.title">Berechnung</div>
+          <div class="metric-grid">
+            <div class="metric-item">
+              <div class="metric-label" data-i18n="metrics.netArea">Fläche:</div>
+              <div class="metric-value" id="metricArea">–</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label" data-i18n="metrics.totalTiles">Fliesen:</div>
+              <div class="metric-value" id="metricTiles">–</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">Packungen:</div>
+              <div class="metric-value" id="metricPacks">–</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label" data-i18n="metrics.price">Kosten:</div>
+              <div class="metric-value" id="metricCost">–</div>
+            </div>
           </div>
         </div>
       </section>

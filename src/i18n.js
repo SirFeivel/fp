@@ -29,6 +29,7 @@ const translations = {
     },
     room: {
       title: "Raum",
+      sectionDisplay: "Anzeige",
       name: "Raumname",
       width: "Breite (cm)",
       height: "Länge (cm)",
@@ -37,7 +38,11 @@ const translations = {
       viewChanged: "Ansicht geändert"
     },
     tile: {
-      title: "Fliesen & Muster",
+      title: "Fliesen",
+      sectionTiles: "Fliesen & Fuge",
+      sectionPattern: "Muster",
+      sectionPosition: "Position & Offset",
+      sectionPricing: "Preis & Verschnitt",
       width: "Fliese Breite (cm)",
       height: "Fliese Länge (cm)",
       grout: "Fuge (cm)",
@@ -175,7 +180,9 @@ const translations = {
       title: "Live State (read-only)"
     },
     debug: {
-      showNeeds: "Debug: Reststück-Bedarf anzeigen",
+      title: "Debug",
+      sectionOptions: "Debug Optionen",
+      showNeeds: "Reststück-Bedarf anzeigen",
       changed: "Debug geändert"
     },
     init: {
@@ -224,6 +231,7 @@ const translations = {
     },
     room: {
       title: "Room",
+      sectionDisplay: "Display",
       name: "Room Name",
       width: "Width (cm)",
       height: "Length (cm)",
@@ -232,7 +240,11 @@ const translations = {
       viewChanged: "View changed"
     },
     tile: {
-      title: "Tiles & Pattern",
+      title: "Tiles",
+      sectionTiles: "Tiles & Grout",
+      sectionPattern: "Pattern",
+      sectionPosition: "Position & Offset",
+      sectionPricing: "Pricing & Waste",
       width: "Tile Width (cm)",
       height: "Tile Height (cm)",
       grout: "Grout (cm)",
@@ -370,7 +382,9 @@ const translations = {
       title: "Live State (read-only)"
     },
     debug: {
-      showNeeds: "Debug: Show leftover needs",
+      title: "Debug",
+      sectionOptions: "Debug Options",
+      showNeeds: "Show leftover needs",
       changed: "Debug changed"
     },
     init: {

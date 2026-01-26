@@ -278,40 +278,53 @@ hr{
 }
 
 /* ---------------- Metrics ---------------- */
-/* Make metrics visually consistent with other panels */
-#metrics{
+.metrics-panel{
+  margin-top:12px;
+  padding:12px;
   border:1px solid var(--line);
   border-radius:var(--r-md);
-  padding:var(--p-md);
-  background:rgba(0,0,0,.10);
+  background:rgba(0,0,0,.08);
 }
 
-#metrics .hdrTitle{
+.metrics-panel .hdrTitle{
   font-weight:700;
-  margin-bottom:8px;
+  margin-bottom:12px;
   font-size:var(--fs-md);
+  color:var(--text);
 }
 
-#metrics .kv{
+.metric-grid{
   display:grid;
-  grid-template-columns: 1fr auto;
-  gap:6px 12px;
+  gap:8px;
+}
+
+.metric-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:8px 0;
+  border-bottom:1px solid rgba(231,238,252,.05);
+}
+
+.metric-item:last-child{
+  border-bottom:none;
+  padding-bottom:0;
+}
+
+.metric-label{
   font-size:var(--fs-md);
-}
-
-#metrics .kv .k{
   color:rgba(231,238,252,.72);
+  font-weight:500;
 }
 
-#metrics .kv .v{
-  text-align:right;
-  font-variant-numeric:tabular-nums;
+.metric-value{
+  font-size:var(--fs-md);
   color:rgba(231,238,252,.95);
-}
-
-#metrics .meta{
-  color:rgba(231,238,252,.62);
-  font-size:var(--fs-sm);
+  font-weight:500;
+  text-align:right;
+  flex:1;
+  margin-left:12px;
+  font-variant-numeric:tabular-nums;
 }
 
 /* ---------------- Code block ---------------- */

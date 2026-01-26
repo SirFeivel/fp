@@ -44,49 +44,32 @@ export function renderWarnings(state, validateState) {
 }
 
 export function renderMetrics(state) {
-  let el = document.getElementById("metrics");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "metrics";
-    el.className = "panel";
-    el.style.marginTop = "12px";
+  const areaEl = document.getElementById("metricArea");
+  const tilesEl = document.getElementById("metricTiles");
+  const packsEl = document.getElementById("metricPacks");
+  const costEl = document.getElementById("metricCost");
 
-    const warningsEl = document.getElementById("warnings");
-    if (warningsEl && warningsEl.parentNode) warningsEl.after(el);
-    else document.body.appendChild(el);
-  }
+  if (!areaEl || !tilesEl || !packsEl || !costEl) return;
 
   const m = computePlanMetrics(state);
   if (!m.ok) {
-    el.innerHTML = `<div class="warnItem">
-      <div class="wTitle">${t("metrics.title")}</div>
-      <div class="wText">${escapeHTML(m.error)}</div>
-    </div>`;
+    areaEl.textContent = "–";
+    tilesEl.textContent = "–";
+    packsEl.textContent = "–";
+    costEl.textContent = m.error;
     return;
   }
 
   const d = m.data;
   const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
-  const yesNo = (v) => (v ? t("metrics.yes") : t("metrics.no"));
 
-  el.innerHTML = `
-    <div class="hdrTitle">${t("metrics.title")}</div>
-    <div>${t("metrics.totalTiles")} ${d.tiles.totalTilesWithReserve}</div>
-    <div>${t("metrics.fullTiles")} ${d.tiles.fullTiles}</div>
-    <div>${t("metrics.cutTiles")} ${d.tiles.cutTiles}</div>
-    <div>${t("metrics.reusedCuts")} ${d.tiles.reusedCuts}</div>
-    <div>${t("metrics.allowRotate")} ${yesNo(d.waste.allowRotate)}</div>
-    <div>${t("metrics.optimizeCuts")} ${yesNo(d.waste.optimizeCuts)}</div>
+  areaEl.textContent = `${f2(d.area.netAreaM2)} m²`;
+  tilesEl.textContent = `${d.tiles.totalTilesWithReserve} (${d.tiles.fullTiles} full, ${d.tiles.cutTiles} cut, ${d.tiles.reusedCuts} reused)`;
 
-    <div>${t("metrics.waste")} ${d.material.wasteTiles_est} (${f2(d.material.wastePct)}%)</div>
-    <div>${t("metrics.netArea")} ${f2(d.area.netAreaM2)} m²</div>
-    <div>${t("metrics.price")} ${f2(d.pricing.priceTotal)} €</div>
+  const packs = d.pricing.packM2 > 0 ? Math.ceil(d.material.totalTilesM2 / d.pricing.packM2) : 0;
+  packsEl.textContent = packs > 0 ? `${packs} (${f2(d.material.totalTilesM2)} m²)` : `${f2(d.material.totalTilesM2)} m²`;
 
-    <div class="meta subtle" style="margin-top:8px;">
-      ${t("metrics.cutWork")} ${d.labor.cutTiles} ${t("metrics.fullTiles").replace(":", "")} (${f2(d.labor.cutTilesPct)}%)
-    </div>
-`;
- 
+  costEl.textContent = `${f2(d.pricing.priceTotal)} €`;
 }
 
 export function renderStateView(state) {
