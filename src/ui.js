@@ -275,6 +275,10 @@ export function bindUI({
   });
 
   // Import
+  document.getElementById("btnImport")?.addEventListener("click", () => {
+    document.getElementById("fileImport")?.click();
+  });
+
   document.getElementById("fileImport")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
