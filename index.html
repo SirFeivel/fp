@@ -328,44 +328,51 @@
       <div class="resize-handle"></div>
 
       <section class="viewer">
-        <div class="viewerHead">
-          <h2 data-i18n="warnings.title">Warnungen</h2>
-          <div class="pill" id="warnPill">0</div>
-        </div>
-        <div id="warnings" class="warnings"></div>
+        <div class="viewer-top">
+          <div class="viewerHead">
+            <h2 data-i18n="warnings.title">Warnungen</h2>
+            <div class="pill" id="warnPill">0</div>
+          </div>
+          <div id="warnings" class="warnings"></div>
 
-        <div class="viewerHead">
-          <h2 data-i18n="plan.title">Plan (SVG)</h2>
-          <div class="btnrow">
-            <button id="btnCopy" class="btn small" data-i18n="importExport.copy">Copy State</button>
+          <div class="viewerHead">
+            <h2 data-i18n="plan.title">Plan (SVG)</h2>
+            <div class="btnrow">
+              <button id="btnFullscreen" class="btn small" title="Fullscreen View">⛶</button>
+              <button id="btnCopy" class="btn small" data-i18n="importExport.copy">Copy State</button>
+            </div>
+          </div>
+
+          <div class="svgWrap">
+            <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div class="hintline" data-i18n="plan.hint">
+              Tipp: Klick wählt aus • Drag verschiebt
+            </div>
           </div>
         </div>
 
-        <div class="svgWrap">
-          <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
-          <div class="hintline" data-i18n="plan.hint">
-            Tipp: Klick wählt aus • Drag verschiebt
-          </div>
-        </div>
+        <div class="vertical-resize-handle"></div>
 
-        <div id="metrics" class="metrics-panel">
-          <div class="hdrTitle" data-i18n="metrics.title">Berechnung</div>
-          <div class="metric-grid">
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.netArea">Fläche:</div>
-              <div class="metric-value" id="metricArea">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.totalTiles">Fliesen:</div>
-              <div class="metric-value" id="metricTiles">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label">Packungen:</div>
-              <div class="metric-value" id="metricPacks">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.price">Kosten:</div>
-              <div class="metric-value" id="metricCost">–</div>
+        <div class="viewer-bottom">
+          <div id="metrics" class="metrics-panel">
+            <div class="hdrTitle" data-i18n="metrics.title">Berechnung</div>
+            <div class="metric-grid">
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.netArea">Fläche:</div>
+                <div class="metric-value" id="metricArea">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.totalTiles">Fliesen:</div>
+                <div class="metric-value" id="metricTiles">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label">Packungen:</div>
+                <div class="metric-value" id="metricPacks">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.price">Kosten:</div>
+                <div class="metric-value" id="metricCost">–</div>
+              </div>
             </div>
           </div>
         </div>

@@ -64,3 +64,74 @@ export function initResize() {
 
   handle.addEventListener('mousedown', onMouseDown);
 }
+
+export function initVerticalResize() {
+  const handle = document.querySelector('.vertical-resize-handle');
+  const viewer = document.querySelector('.viewer');
+  const viewerTop = document.querySelector('.viewer-top');
+
+  if (!handle || !viewer || !viewerTop) return;
+
+  const MIN_HEIGHT_PERCENT = 20;
+  const MAX_HEIGHT_PERCENT = 80;
+
+  const savedHeight = localStorage.getItem('viewerTopHeight');
+  if (savedHeight) {
+    const height = parseInt(savedHeight, 10);
+    if (height >= MIN_HEIGHT_PERCENT && height <= MAX_HEIGHT_PERCENT) {
+      document.documentElement.style.setProperty('--viewer-top-height', `${height}%`);
+    }
+  }
+
+  let isResizing = false;
+  let startY = 0;
+  let startHeight = 0;
+  let viewerHeight = 0;
+
+  function getStartHeight() {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const heightStr = computedStyle.getPropertyValue('--viewer-top-height').trim();
+    return parseInt(heightStr, 10) || 60;
+  }
+
+  function onMouseDown(e) {
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = getStartHeight();
+    viewerHeight = viewer.offsetHeight;
+
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    if (!isResizing) return;
+
+    const delta = e.clientY - startY;
+    const deltaPercent = (delta / viewerHeight) * 100;
+    let newHeight = startHeight + deltaPercent;
+
+    newHeight = Math.max(MIN_HEIGHT_PERCENT, Math.min(MAX_HEIGHT_PERCENT, newHeight));
+
+    document.documentElement.style.setProperty('--viewer-top-height', `${newHeight}%`);
+  }
+
+  function onMouseUp() {
+    if (!isResizing) return;
+
+    isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+
+    const finalHeight = getStartHeight();
+    localStorage.setItem('viewerTopHeight', finalHeight.toString());
+
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  handle.addEventListener('mousedown', onMouseDown);
+}
