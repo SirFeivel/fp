@@ -28,6 +28,16 @@ export function initTabs() {
     });
   });
 
-  const savedTab = localStorage.getItem('activeTab') || 'room';
+  let savedTab = localStorage.getItem('activeTab') || 'room';
+
+  if (savedTab === 'advanced') {
+    savedTab = 'debug';
+  }
+
+  const validTabs = Array.from(tabButtons).map(btn => btn.dataset.tab);
+  if (!validTabs.includes(savedTab)) {
+    savedTab = 'room';
+  }
+
   switchTab(savedTab);
 }
