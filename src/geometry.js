@@ -391,7 +391,7 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout) {
   const hexWidth = tw;
 
   const stepX = hexWidth + grout;
-  const stepY = hexHeight + grout;
+  const stepY = hexHeight * 0.75 + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
