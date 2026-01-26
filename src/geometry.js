@@ -220,32 +220,32 @@ function detectBondPeriod(frac) {
 }
 
 export function tilesForPreview(state, availableMP) {
-  const tw = Number(state.tile?.widthCm);
-  const th = Number(state.tile?.heightCm);
-  const grout = Number(state.grout?.widthCm) || 0;
-  if (!(tw > 0) || !(th > 0) || grout < 0) {
-    return { tiles: [], error: null };
-  }
-
   const currentRoom = getCurrentRoom(state);
   if (!currentRoom) {
     return { tiles: [], error: "Kein Raum ausgewählt." };
   }
 
+  const tw = Number(currentRoom.tile?.widthCm);
+  const th = Number(currentRoom.tile?.heightCm);
+  const grout = Number(currentRoom.grout?.widthCm) || 0;
+  if (!(tw > 0) || !(th > 0) || grout < 0) {
+    return { tiles: [], error: null };
+  }
+
   const stepX = tw + grout;
   const stepY = th + grout;
 
-  const rotDeg = Number(state.pattern?.rotationDeg) || 0;
+  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
-  const offX = Number(state.pattern?.offsetXcm) || 0;
-  const offY = Number(state.pattern?.offsetYcm) || 0;
+  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, state.pattern);
-  const preset = state.pattern?.origin?.preset || "tl";
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const type = state.pattern?.type || "grid";
-  const frac = Number(state.pattern?.bondFraction) || 0.5;
+  const type = currentRoom.pattern?.type || "grid";
+  const frac = Number(currentRoom.pattern?.bondFraction) || 0.5;
   const rowShiftCm = type === "runningBond" ? tw * frac : 0;
   const bondPeriod = type === "runningBond" ? detectBondPeriod(frac) : 0;
 

@@ -4,8 +4,29 @@ import { createExclusionsController } from './exclusions.js';
 describe('createExclusionsController', () => {
   function createMockController(initialState = null) {
     const state = initialState || {
-      room: { widthCm: 200, heightCm: 300 },
-      exclusions: [],
+      floors: [{
+        id: 'floor1',
+        name: 'Test Floor',
+        rooms: [{
+          id: 'room1',
+          name: 'Test Room',
+          widthCm: 200,
+          heightCm: 300,
+          exclusions: [],
+          tile: { widthCm: 60, heightCm: 60 },
+          grout: { widthCm: 0.2 },
+          pattern: {
+            type: "grid",
+            bondFraction: 0.5,
+            rotationDeg: 0,
+            offsetXcm: 0,
+            offsetYcm: 0,
+            origin: { preset: "tl", xCm: 0, yCm: 0 }
+          }
+        }]
+      }],
+      selectedFloorId: 'floor1',
+      selectedRoomId: 'room1'
     };
 
     let selectedId = null;
@@ -35,9 +56,10 @@ describe('createExclusionsController', () => {
 
       controller.addRect();
 
+      const room = state.floors[0].rooms[0];
       expect(commit).toHaveBeenCalledWith('Ausschluss hinzugefügt', expect.any(Object));
-      expect(state.exclusions).toHaveLength(1);
-      expect(state.exclusions[0].type).toBe('rect');
+      expect(room.exclusions).toHaveLength(1);
+      expect(room.exclusions[0].type).toBe('rect');
       expect(setSelectedId).toHaveBeenCalled();
     });
 
@@ -46,7 +68,8 @@ describe('createExclusionsController', () => {
 
       controller.addRect();
 
-      const rect = state.exclusions[0];
+      const room = state.floors[0].rooms[0];
+      const rect = room.exclusions[0];
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.y).toBeGreaterThanOrEqual(0);
       expect(rect.w).toBeGreaterThan(0);
@@ -59,7 +82,8 @@ describe('createExclusionsController', () => {
       controller.addRect();
       controller.addRect();
 
-      expect(state.exclusions[0].id).not.toBe(state.exclusions[1].id);
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].id).not.toBe(room.exclusions[1].id);
     });
 
     it('sets label for rect', () => {
@@ -67,7 +91,8 @@ describe('createExclusionsController', () => {
 
       controller.addRect();
 
-      expect(state.exclusions[0].label).toContain('Rechteck');
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].label).toContain('Rechteck');
     });
 
     it('selects newly added rect', () => {
@@ -75,7 +100,8 @@ describe('createExclusionsController', () => {
 
       controller.addRect();
 
-      expect(setSelectedId).toHaveBeenCalledWith(state.exclusions[0].id);
+      const room = state.floors[0].rooms[0];
+      expect(setSelectedId).toHaveBeenCalledWith(room.exclusions[0].id);
     });
   });
 
@@ -85,9 +111,10 @@ describe('createExclusionsController', () => {
 
       controller.addCircle();
 
+      const room = state.floors[0].rooms[0];
       expect(commit).toHaveBeenCalledWith('Ausschluss hinzugefügt', expect.any(Object));
-      expect(state.exclusions).toHaveLength(1);
-      expect(state.exclusions[0].type).toBe('circle');
+      expect(room.exclusions).toHaveLength(1);
+      expect(room.exclusions[0].type).toBe('circle');
     });
 
     it('creates circle with valid properties', () => {
@@ -95,7 +122,8 @@ describe('createExclusionsController', () => {
 
       controller.addCircle();
 
-      const circle = state.exclusions[0];
+      const room = state.floors[0].rooms[0];
+      const circle = room.exclusions[0];
       expect(circle.cx).toBeGreaterThanOrEqual(0);
       expect(circle.cy).toBeGreaterThanOrEqual(0);
       expect(circle.r).toBeGreaterThan(0);
@@ -106,7 +134,8 @@ describe('createExclusionsController', () => {
 
       controller.addCircle();
 
-      expect(state.exclusions[0].label).toContain('Kreis');
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].label).toContain('Kreis');
     });
 
     it('selects newly added circle', () => {
@@ -114,7 +143,8 @@ describe('createExclusionsController', () => {
 
       controller.addCircle();
 
-      expect(setSelectedId).toHaveBeenCalledWith(state.exclusions[0].id);
+      const room = state.floors[0].rooms[0];
+      expect(setSelectedId).toHaveBeenCalledWith(room.exclusions[0].id);
     });
   });
 
@@ -124,9 +154,10 @@ describe('createExclusionsController', () => {
 
       controller.addTri();
 
+      const room = state.floors[0].rooms[0];
       expect(commit).toHaveBeenCalledWith('Ausschluss hinzugefügt', expect.any(Object));
-      expect(state.exclusions).toHaveLength(1);
-      expect(state.exclusions[0].type).toBe('tri');
+      expect(room.exclusions).toHaveLength(1);
+      expect(room.exclusions[0].type).toBe('tri');
     });
 
     it('creates triangle with three points', () => {
@@ -134,7 +165,8 @@ describe('createExclusionsController', () => {
 
       controller.addTri();
 
-      const tri = state.exclusions[0];
+      const room = state.floors[0].rooms[0];
+      const tri = room.exclusions[0];
       expect(tri.p1).toBeDefined();
       expect(tri.p2).toBeDefined();
       expect(tri.p3).toBeDefined();
@@ -147,7 +179,8 @@ describe('createExclusionsController', () => {
 
       controller.addTri();
 
-      expect(state.exclusions[0].label).toContain('Dreieck');
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].label).toContain('Dreieck');
     });
 
     it('selects newly added triangle', () => {
@@ -155,24 +188,37 @@ describe('createExclusionsController', () => {
 
       controller.addTri();
 
-      expect(setSelectedId).toHaveBeenCalledWith(state.exclusions[0].id);
+      const room = state.floors[0].rooms[0];
+      expect(setSelectedId).toHaveBeenCalledWith(room.exclusions[0].id);
     });
   });
 
   describe('deleteSelectedExcl', () => {
     it('deletes selected exclusion', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [
-          { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
-          { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
-        ],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [
+              { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
+              { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
+            ]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const { controller, state, commit } = createMockController(initialState);
 
       controller.deleteSelectedExcl();
 
-      expect(state.exclusions).toHaveLength(2);
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions).toHaveLength(2);
     });
 
     it('does nothing when no selection', () => {
@@ -185,8 +231,19 @@ describe('createExclusionsController', () => {
 
     it('does nothing when selected id not found', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       let selectedId = 'non-existent';
       const { controller, commit } = createMockController(initialState);
@@ -198,11 +255,22 @@ describe('createExclusionsController', () => {
 
     it('selects last exclusion after deletion', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [
-          { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
-          { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
-        ],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [
+              { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
+              { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
+            ]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const mock = createMockController(initialState);
 
@@ -214,8 +282,19 @@ describe('createExclusionsController', () => {
 
     it('selects null when last exclusion deleted', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const mock = createMockController(initialState);
 
@@ -229,11 +308,22 @@ describe('createExclusionsController', () => {
   describe('getSelectedExcl', () => {
     it('returns selected exclusion', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [
-          { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
-          { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
-        ],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [
+              { id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 },
+              { id: '2', type: 'circle', cx: 50, cy: 50, r: 10 },
+            ]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const mock = createMockController(initialState);
 
@@ -255,8 +345,19 @@ describe('createExclusionsController', () => {
 
     it('returns null when selected id not found', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const mock = createMockController(initialState);
 
@@ -278,8 +379,19 @@ describe('createExclusionsController', () => {
 
     it('does nothing when selected id not found', () => {
       const initialState = {
-        room: { widthCm: 200, heightCm: 300 },
-        exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }],
+        floors: [{
+          id: 'floor1',
+          name: 'Test Floor',
+          rooms: [{
+            id: 'room1',
+            name: 'Test Room',
+            widthCm: 200,
+            heightCm: 300,
+            exclusions: [{ id: '1', type: 'rect', x: 0, y: 0, w: 10, h: 10 }]
+          }]
+        }],
+        selectedFloorId: 'floor1',
+        selectedRoomId: 'room1'
       };
       const mock = createMockController(initialState);
 
@@ -298,23 +410,25 @@ describe('createExclusionsController', () => {
       controller.addCircle();
       controller.addTri();
 
-      expect(state.exclusions).toHaveLength(3);
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions).toHaveLength(3);
 
       controller.deleteSelectedExcl();
-      expect(state.exclusions).toHaveLength(2);
+      expect(room.exclusions).toHaveLength(2);
     });
 
     it('maintains separate ids for different shapes', () => {
       const { controller, state } = createMockController();
 
       controller.addRect();
-      const rectId = state.exclusions[0].id;
+      const room = state.floors[0].rooms[0];
+      const rectId = room.exclusions[0].id;
 
       controller.addCircle();
-      const circleId = state.exclusions[1].id;
+      const circleId = room.exclusions[1].id;
 
       controller.addTri();
-      const triId = state.exclusions[2].id;
+      const triId = room.exclusions[2].id;
 
       expect(rectId).not.toBe(circleId);
       expect(circleId).not.toBe(triId);

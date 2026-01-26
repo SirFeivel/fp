@@ -108,26 +108,28 @@ export function renderRoomForm(state) {
 }
 
 export function renderTilePatternForm(state) {
-  document.getElementById("tileW").value = state.tile?.widthCm ?? "";
-  document.getElementById("tileH").value = state.tile?.heightCm ?? "";
-  document.getElementById("groutW").value = state.grout?.widthCm ?? "";
+  const currentRoom = getCurrentRoom(state);
 
-  document.getElementById("patternType").value = state.pattern?.type ?? "grid";
+  document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
+  document.getElementById("tileH").value = currentRoom?.tile?.heightCm ?? "";
+  document.getElementById("groutW").value = currentRoom?.grout?.widthCm ?? "";
+
+  document.getElementById("patternType").value = currentRoom?.pattern?.type ?? "grid";
   document.getElementById("bondFraction").value = String(
-    state.pattern?.bondFraction ?? 0.5
+    currentRoom?.pattern?.bondFraction ?? 0.5
   );
   document.getElementById("rotationDeg").value = String(
-    state.pattern?.rotationDeg ?? 0
+    currentRoom?.pattern?.rotationDeg ?? 0
   );
-  document.getElementById("offsetX").value = state.pattern?.offsetXcm ?? 0;
-  document.getElementById("offsetY").value = state.pattern?.offsetYcm ?? 0;
+  document.getElementById("offsetX").value = currentRoom?.pattern?.offsetXcm ?? 0;
+  document.getElementById("offsetY").value = currentRoom?.pattern?.offsetYcm ?? 0;
 
   document.getElementById("originPreset").value =
-    state.pattern?.origin?.preset ?? "tl";
-  document.getElementById("originX").value = state.pattern?.origin?.xCm ?? 0;
-  document.getElementById("originY").value = state.pattern?.origin?.yCm ?? 0;
+    currentRoom?.pattern?.origin?.preset ?? "tl";
+  document.getElementById("originX").value = currentRoom?.pattern?.origin?.xCm ?? 0;
+  document.getElementById("originY").value = currentRoom?.pattern?.origin?.yCm ?? 0;
 
-  const isRB = state.pattern?.type === "runningBond";
+  const isRB = currentRoom?.pattern?.type === "runningBond";
   document.getElementById("bondFraction").disabled = !isRB;
 
   // Pricing

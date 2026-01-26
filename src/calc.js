@@ -186,17 +186,17 @@ class OffcutPool {
 }
 
 export function computePlanMetrics(state) {
-  const tw = Number(state.tile?.widthCm);
-  const th = Number(state.tile?.heightCm);
-  const grout = Number(state.grout?.widthCm) || 0;
-
-  if (!(tw > 0) || !(th > 0) || grout < 0) {
-    return { ok: false, error: "Ungültige Fliesen- oder Fugenmaße.", data: null };
-  }
-
   const currentRoom = getCurrentRoom(state);
   if (!currentRoom) {
     return { ok: false, error: "Kein Raum ausgewählt.", data: null };
+  }
+
+  const tw = Number(currentRoom.tile?.widthCm);
+  const th = Number(currentRoom.tile?.heightCm);
+  const grout = Number(currentRoom.grout?.widthCm) || 0;
+
+  if (!(tw > 0) || !(th > 0) || grout < 0) {
+    return { ok: false, error: "Ungültige Fliesen- oder Fugenmaße.", data: null };
   }
 
   // options

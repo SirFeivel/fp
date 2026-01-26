@@ -64,23 +64,26 @@ export function bindUI({
     const state = store.getState();
     const next = structuredClone(state);
 
-    next.tile.widthCm = Number(document.getElementById("tileW")?.value);
-    next.tile.heightCm = Number(document.getElementById("tileH")?.value);
-    next.grout.widthCm = Number(document.getElementById("groutW")?.value);
+    const currentRoom = getCurrentRoom(next);
+    if (!currentRoom) return;
 
-    next.pattern.type = document.getElementById("patternType")?.value;
-    next.pattern.bondFraction = Number(
+    currentRoom.tile.widthCm = Number(document.getElementById("tileW")?.value);
+    currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
+    currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value);
+
+    currentRoom.pattern.type = document.getElementById("patternType")?.value;
+    currentRoom.pattern.bondFraction = Number(
       document.getElementById("bondFraction")?.value
     );
-    next.pattern.rotationDeg = Number(
+    currentRoom.pattern.rotationDeg = Number(
       document.getElementById("rotationDeg")?.value
     );
-    next.pattern.offsetXcm = Number(document.getElementById("offsetX")?.value);
-    next.pattern.offsetYcm = Number(document.getElementById("offsetY")?.value);
+    currentRoom.pattern.offsetXcm = Number(document.getElementById("offsetX")?.value);
+    currentRoom.pattern.offsetYcm = Number(document.getElementById("offsetY")?.value);
 
-    next.pattern.origin.preset = document.getElementById("originPreset")?.value;
-    next.pattern.origin.xCm = Number(document.getElementById("originX")?.value);
-    next.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
+    currentRoom.pattern.origin.preset = document.getElementById("originPreset")?.value;
+    currentRoom.pattern.origin.xCm = Number(document.getElementById("originX")?.value);
+    currentRoom.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
 
     // Pricing
     next.pricing = next.pricing || {};

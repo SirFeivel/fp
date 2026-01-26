@@ -74,7 +74,17 @@ export function defaultState() {
             name: "Raum",
             widthCm: 600,
             heightCm: 400,
-            exclusions: []
+            exclusions: [],
+            tile: { widthCm: 60, heightCm: 60 },
+            grout: { widthCm: 0.2 },
+            pattern: {
+              type: "grid",
+              bondFraction: 0.5,
+              rotationDeg: 0,
+              offsetXcm: 0,
+              offsetYcm: 0,
+              origin: { preset: "tl", xCm: 0, yCm: 0 }
+            }
           }
         ]
       }
@@ -83,16 +93,6 @@ export function defaultState() {
     selectedFloorId: floorId,
     selectedRoomId: roomId,
 
-    tile: { widthCm: 60, heightCm: 60 },
-    grout: { widthCm: 0.2 },
-    pattern: {
-      type: "grid",
-      bondFraction: 0.5,
-      rotationDeg: 0,
-      offsetXcm: 0,
-      offsetYcm: 0,
-      origin: { preset: "tl", xCm: 0, yCm: 0 }
-    },
     pricing: { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
 
     waste: {

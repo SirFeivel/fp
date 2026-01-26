@@ -78,6 +78,7 @@ function renderAll(lastLabel) {
     const state = store.getState();
 
     structure.renderFloorSelect();
+    structure.renderFloorName();
     structure.renderRoomSelect();
     renderRoomForm(state);
     renderTilePatternForm(state);
@@ -204,6 +205,10 @@ function updateAllTranslations() {
 
   document.getElementById("roomSelect")?.addEventListener("change", (e) => {
     structure.selectRoom(e.target.value);
+  });
+
+  document.getElementById("floorName")?.addEventListener("change", () => {
+    structure.commitFloorName();
   });
 
   document.getElementById("btnAddFloor")?.addEventListener("click", () => {
