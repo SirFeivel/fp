@@ -1,5 +1,5 @@
 // src/drag.js
-import { deepClone } from "./core.js";
+import { deepClone, getCurrentRoom } from "./core.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -41,11 +41,14 @@ export function createExclusionDragController({
 
     const state = getState();
     const temp = deepClone(state);
-    const idx = temp.exclusions.findIndex((x) => x.id === drag.id);
+    const currentRoom = getCurrentRoom(temp);
+    if (!currentRoom || !currentRoom.exclusions) return;
+
+    const idx = currentRoom.exclusions.findIndex((x) => x.id === drag.id);
     if (idx < 0) return;
 
     const start = drag.startShape;
-    const cur = temp.exclusions[idx];
+    const cur = currentRoom.exclusions[idx];
 
     if (cur.type === "rect") {
       cur.x = start.x + dx;
