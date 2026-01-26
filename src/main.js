@@ -9,6 +9,7 @@ import { createExclusionsController } from "./exclusions.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initTabs } from "./tabs.js";
+import { initResize } from "./resize.js";
 
 import {
   renderWarnings,
@@ -165,6 +166,7 @@ function updateAllTranslations() {
   store.autosaveSession(updateMeta);
 
   initTabs();
+  initResize();
 
   bindUI({
     store,

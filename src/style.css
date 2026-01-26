@@ -34,6 +34,8 @@
   --fs-section:14px;
   --fs-lg:16px;
   --fs-xl:18px;
+
+  --panel-width:420px;
 }
 
 *{ box-sizing:border-box; }
@@ -74,8 +76,8 @@ body{
 /* ---------------- Layout ---------------- */
 .layout{
   display:grid;
-  grid-template-columns: 420px 1fr;
-  gap:12px;
+  grid-template-columns: var(--panel-width) auto 1fr;
+  gap:0;
   padding:12px;
   height:calc(100% - 56px);
 }
@@ -90,8 +92,39 @@ body{
   box-shadow:var(--shadow);
 }
 
-.panel{ background:var(--panel); }
-.viewer{ background:var(--panel2); }
+.panel{ background:var(--panel); margin-right:12px; }
+.viewer{ background:var(--panel2); margin-left:12px; }
+
+/* Resize Handle */
+.resize-handle{
+  width:6px;
+  cursor:col-resize;
+  background:transparent;
+  position:relative;
+  transition:background 0.2s ease;
+}
+
+.resize-handle:hover{
+  background:rgba(122,162,255,.15);
+}
+
+.resize-handle::before{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%, -50%);
+  width:2px;
+  height:40px;
+  background:var(--line);
+  border-radius:999px;
+  transition:all 0.2s ease;
+}
+
+.resize-handle:hover::before{
+  background:var(--accent);
+  height:60px;
+}
 
 /* Headings */
 h2{
@@ -463,6 +496,12 @@ hr{
 
 /* Responsive */
 @media (max-width: 980px){
-  .layout{ grid-template-columns: 1fr; height:auto; }
+  .layout{
+    grid-template-columns: 1fr;
+    height:auto;
+  }
+  .resize-handle{ display:none; }
+  .panel{ margin-right:0; margin-bottom:12px; }
+  .viewer{ margin-left:0; }
   #planSvg{ height:420px; }
 }
