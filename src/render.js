@@ -7,8 +7,10 @@ import {
   multiPolygonToPathD,
   computeExclusionsUnion,
   computeAvailableArea,
-  tilesForPreview
+  tilesForPreview,
+  getRoomBounds
 } from "./geometry.js";
+import { getRoomSections } from "./composite.js";
 
 export function renderWarnings(state, validateState) {
   const { errors, warns } = validateState(state);
@@ -118,6 +120,93 @@ export function renderRoomForm(state) {
   document.getElementById("roomW").value = currentRoom?.widthCm ?? "";
   document.getElementById("roomH").value = currentRoom?.heightCm ?? "";
   document.getElementById("showGrid").checked = Boolean(state.view?.showGrid);
+}
+
+export function renderSectionsList(state, selectedSectionId) {
+  const sel = document.getElementById("sectionsList");
+  if (!sel) return;
+
+  sel.innerHTML = "";
+  const currentRoom = getCurrentRoom(state);
+  const sections = getRoomSections(currentRoom);
+
+  if (!sections.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = t("project.none");
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+
+  sel.disabled = false;
+  for (const sec of sections) {
+    const opt = document.createElement("option");
+    opt.value = sec.id;
+    const label = sec.label || `Section ${sec.id}`;
+    opt.textContent = `${label} (${sec.widthCm}×${sec.heightCm} cm)`;
+    if (sec.id === selectedSectionId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+export function renderSectionProps({
+  state,
+  selectedSectionId,
+  getSelectedSection,
+  commitSectionProps
+}) {
+  const wrap = document.getElementById("sectionProps");
+  if (!wrap) return;
+
+  const sec = getSelectedSection();
+  wrap.innerHTML = "";
+
+  if (!sec) {
+    const div = document.createElement("div");
+    div.className = "meta subtle span2";
+    div.textContent = t("room.noSectionSelected");
+    wrap.appendChild(div);
+    return;
+  }
+
+  const field = (label, id, value, step = "0.1") => {
+    const d = document.createElement("div");
+    d.className = "field";
+    d.innerHTML = `<label>${escapeHTML(
+      label
+    )}</label><input id="${id}" type="number" step="${step}" />`;
+    wrap.appendChild(d);
+    const inp = d.querySelector("input");
+    inp.value = value;
+    inp.addEventListener("blur", () => commitSectionProps(t("room.sectionChanged")));
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        inp.blur();
+      }
+    });
+    return inp;
+  };
+
+  const labelDiv = document.createElement("div");
+  labelDiv.className = "field span2";
+  labelDiv.innerHTML = `<label>${t("secProps.label")}</label><input id="secLabel" type="text" />`;
+  wrap.appendChild(labelDiv);
+  const labelInp = labelDiv.querySelector("input");
+  labelInp.value = sec.label || "";
+  labelInp.addEventListener("blur", () => commitSectionProps(t("room.sectionChanged")));
+  labelInp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      labelInp.blur();
+    }
+  });
+
+  field(t("secProps.x"), "secX", sec.x, "1");
+  field(t("secProps.y"), "secY", sec.y, "1");
+  field(t("secProps.width"), "secW", sec.widthCm, "0.1");
+  field(t("secProps.height"), "secH", sec.heightCm, "0.1");
 }
 
 export function renderTilePatternForm(state) {
@@ -282,33 +371,46 @@ export function renderPlanSvg({
     return;
   }
 
-  const w = currentRoom.widthCm;
-  const h = currentRoom.heightCm;
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
+  const minX = bounds.minX;
+  const minY = bounds.minY;
+  const maxX = bounds.maxX;
+  const maxY = bounds.maxY;
   const exclusions = currentRoom.exclusions || [];
+  const sections = getRoomSections(currentRoom);
 
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  const viewBoxPadding = 20;
+  svg.setAttribute("viewBox", `${minX - viewBoxPadding} ${minY - viewBoxPadding} ${w + 2 * viewBoxPadding} ${h + 2 * viewBoxPadding}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
-  svg.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, fill: "#081022" }));
+  svg.appendChild(svgEl("rect", {
+    x: minX - viewBoxPadding,
+    y: minY - viewBoxPadding,
+    width: w + 2 * viewBoxPadding,
+    height: h + 2 * viewBoxPadding,
+    fill: "#081022"
+  }));
 
   // grid
   if (state.view?.showGrid) {
     const g = svgEl("g", { opacity: 0.8 });
     const minor = 10, major = 100;
-    for (let x = 0; x <= w; x += minor) {
-      const isMajor = x % major === 0;
+    for (let x = minX; x <= maxX; x += minor) {
+      const isMajor = (x - minX) % major === 0;
       g.appendChild(svgEl("line", {
-        x1: x, y1: 0, x2: x, y2: h,
+        x1: x, y1: minY, x2: x, y2: maxY,
         stroke: isMajor ? "#1f2b46" : "#14203a",
         "stroke-width": isMajor ? 0.8 : 0.4
       }));
     }
-    for (let y = 0; y <= h; y += minor) {
-      const isMajor = y % major === 0;
+    for (let y = minY; y <= maxY; y += minor) {
+      const isMajor = (y - minY) % major === 0;
       g.appendChild(svgEl("line", {
-        x1: 0, y1: y, x2: w, y2: y,
+        x1: minX, y1: y, x2: maxX, y2: y,
         stroke: isMajor ? "#1f2b46" : "#14203a",
         "stroke-width": isMajor ? 0.8 : 0.4
       }));
@@ -316,22 +418,43 @@ export function renderPlanSvg({
     svg.appendChild(g);
   }
 
-  // room outline
-  svg.appendChild(svgEl("rect", {
-    x: 0, y: 0, width: w, height: h,
-    fill: "rgba(122,162,255,0.06)",
-    stroke: "rgba(122,162,255,0.8)",
-    "stroke-width": 1.2
-  }));
+  // room sections
+  for (const section of sections) {
+    if (!(section.widthCm > 0 && section.heightCm > 0)) continue;
+
+    svg.appendChild(svgEl("rect", {
+      x: section.x,
+      y: section.y,
+      width: section.widthCm,
+      height: section.heightCm,
+      fill: "rgba(122,162,255,0.06)",
+      stroke: "rgba(122,162,255,0.8)",
+      "stroke-width": 1.2
+    }));
+
+    if (section.label && sections.length > 1) {
+      const sectionLabel = svgEl("text", {
+        x: section.x + 8,
+        y: section.y + 18,
+        fill: "rgba(231,238,252,0.70)",
+        "font-size": 12,
+        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
+      });
+      sectionLabel.textContent = section.label;
+      svg.appendChild(sectionLabel);
+    }
+  }
 
   const label = svgEl("text", {
-    x: 8,
-    y: 18,
+    x: minX + 8,
+    y: minY + 18,
     fill: "rgba(231,238,252,0.95)",
     "font-size": 14,
     "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
   });
-  label.textContent = `${currentRoom.name} — ${w}×${h} cm`;
+  const totalArea = (w * h / 10000).toFixed(2);
+  const sectionInfo = sections.length > 1 ? ` (${sections.length} sections)` : "";
+  label.textContent = `${currentRoom.name} — ${totalArea} m²${sectionInfo}`;
   svg.appendChild(label);
 
   // tiles
@@ -442,7 +565,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
   // errors overlay
   if (lastUnionError) {
     const t = svgEl("text", {
-      x: 8, y: 38,
+      x: minX + 8, y: minY + 38,
       fill: "rgba(255,107,107,0.95)",
       "font-size": 12,
       "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
@@ -452,7 +575,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
   }
   if (lastTileError) {
     const t2 = svgEl("text", {
-      x: 8, y: 54,
+      x: minX + 8, y: minY + 54,
       fill: "rgba(255,204,102,0.95)",
       "font-size": 12,
       "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"

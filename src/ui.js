@@ -1,6 +1,7 @@
 // src/ui.js
 import { downloadText, safeParseJSON, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
+import { getRoomSections } from "./composite.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
   if (!el) return;
@@ -35,12 +36,14 @@ async function handleImportFile(file, { validateState, commit }) {
 export function bindUI({
   store,
   excl,
+  sections,
   renderAll,
   refreshProjectSelect,
   updateMeta,
   validateState,
   defaultStateFn,
   setSelectedExcl,
+  setSelectedSection,
   resetErrors
 }) {
   function commitFromRoomInputs(label) {
@@ -118,6 +121,12 @@ export function bindUI({
     const sel = document.getElementById("exclList");
     if (!sel) return;
     sel.addEventListener("change", () => setSelectedExcl(sel.value || null));
+  }
+
+  function bindSectionsList() {
+    const sel = document.getElementById("sectionsList");
+    if (!sel) return;
+    sel.addEventListener("change", () => setSelectedSection(sel.value || null));
   }
 
   // Buttons
@@ -255,6 +264,18 @@ export function bindUI({
     if (el) el.value = String(Number(el.value || 0) + 1);
     commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
+
+  // Sections
+  document.getElementById("btnAddSection")?.addEventListener("click", () => {
+    if (sections) sections.addSection("right");
+  });
+  document.getElementById("btnConvertToSections")?.addEventListener("click", () => {
+    if (sections) sections.convertToSections();
+  });
+  document.getElementById("btnDeleteSection")?.addEventListener("click", () => {
+    if (sections) sections.deleteSelectedSection();
+  });
+  bindSectionsList();
 
   // Exclusions
   document.getElementById("btnAddRect")?.addEventListener("click", excl.addRect);

@@ -1,6 +1,7 @@
 // src/exclusions.js
 import { deepClone, uuid, getCurrentRoom } from './core.js';
 import { t } from './i18n.js';
+import { getRoomBounds } from './geometry.js';
 
 export function createExclusionsController({
   getState, // () => state
@@ -21,13 +22,15 @@ export function createExclusionsController({
     const room = getCurrentRoom(state);
     if (!room) return;
 
-    const w = room.widthCm, h = room.heightCm;
+    const bounds = getRoomBounds(room);
+    const w = bounds.width;
+    const h = bounds.height;
     const ex = {
       id: uuid(),
       type: 'rect',
       label: `${t('exclusions.rect')} ${room.exclusions.length + 1}`,
-      x: w * 0.25,
-      y: h * 0.25,
+      x: bounds.minX + w * 0.25,
+      y: bounds.minY + h * 0.25,
       w: Math.max(10, w * 0.2),
       h: Math.max(10, h * 0.2),
     };
@@ -46,14 +49,16 @@ export function createExclusionsController({
     const room = getCurrentRoom(state);
     if (!room) return;
 
-    const w = room.widthCm, h = room.heightCm;
+    const bounds = getRoomBounds(room);
+    const w = bounds.width;
+    const h = bounds.height;
     const r = Math.max(10, Math.min(w, h) * 0.1);
     const ex = {
       id: uuid(),
       type: 'circle',
       label: `${t('exclusions.circle')} ${room.exclusions.length + 1}`,
-      cx: w * 0.5,
-      cy: h * 0.5,
+      cx: bounds.minX + w * 0.5,
+      cy: bounds.minY + h * 0.5,
       r,
     };
 
@@ -71,8 +76,11 @@ export function createExclusionsController({
     const room = getCurrentRoom(state);
     if (!room) return;
 
-    const w = room.widthCm, h = room.heightCm;
-    const cx = w * 0.5, cy = h * 0.5;
+    const bounds = getRoomBounds(room);
+    const w = bounds.width;
+    const h = bounds.height;
+    const cx = bounds.minX + w * 0.5;
+    const cy = bounds.minY + h * 0.5;
     const size = Math.max(10, Math.min(w, h) * 0.12);
     const ex = {
       id: uuid(),

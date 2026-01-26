@@ -5,6 +5,7 @@
 
 import { t } from "./i18n.js";
 import { getCurrentRoom } from "./core.js";
+import { getRoomSections, computeCompositeBounds, validateSections as validateSectionsGeometry } from "./composite.js";
 
 /**
  * Calculate bounding box for an exclusion shape
@@ -46,8 +47,6 @@ export function validateState(s) {
   const n = (v) => typeof v === "number" && Number.isFinite(v);
 
   const currentRoom = getCurrentRoom(s);
-  const roomW = currentRoom?.widthCm;
-  const roomH = currentRoom?.heightCm;
 
   if (!currentRoom) {
     errors.push({
@@ -55,17 +54,34 @@ export function validateState(s) {
       text: t("validation.selectRoom")
     });
   } else {
-    if (!n(roomW) || roomW <= 0)
-      errors.push({
-        title: t("validation.roomWidthInvalid"),
-        text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
-      });
-    if (!n(roomH) || roomH <= 0)
-      errors.push({
-        title: t("validation.roomHeightInvalid"),
-        text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
-      });
+    const sections = getRoomSections(currentRoom);
+    if (sections.length > 0) {
+      const sectionsValidation = validateSectionsGeometry(sections);
+      errors.push(...sectionsValidation.errors);
+      warns.push(...sectionsValidation.warnings);
+    } else {
+      const roomW = currentRoom?.widthCm;
+      const roomH = currentRoom?.heightCm;
+
+      if (!n(roomW) || roomW <= 0) {
+        errors.push({
+          title: t("validation.roomWidthInvalid"),
+          text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
+        });
+      }
+      if (!n(roomH) || roomH <= 0) {
+        errors.push({
+          title: t("validation.roomHeightInvalid"),
+          text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
+        });
+      }
+    }
   }
+
+  const sections = getRoomSections(currentRoom);
+  const bounds = computeCompositeBounds(sections);
+  const roomW = bounds.width;
+  const roomH = bounds.height;
 
   const tileW = currentRoom?.tile?.widthCm;
   const tileH = currentRoom?.tile?.heightCm;

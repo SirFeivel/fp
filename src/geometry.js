@@ -9,6 +9,9 @@ import {
   BOND_PERIOD_MAX,
   BOND_PERIOD_EPSILON
 } from "./constants.js";
+import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
+
+export { getRoomSections } from "./composite.js";
 
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -17,19 +20,27 @@ export function svgEl(tag, attrs = {}) {
 }
 
 export function roomPolygon(room) {
-  const w = room.widthCm,
-    h = room.heightCm;
-  return [
-    [
-      [
-        [0, 0],
-        [w, 0],
-        [w, h],
-        [0, h],
-        [0, 0],
-      ],
-    ],
-  ];
+  const sections = getRoomSections(room);
+  if (sections.length === 0) {
+    return [[[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]]];
+  }
+
+  const { mp, error } = computeCompositePolygon(sections);
+  if (error || !mp) {
+    const w = room.widthCm || 0;
+    const h = room.heightCm || 0;
+    return [[[[[0, 0], [w, 0], [w, h], [0, h], [0, 0]]]]];
+  }
+
+  return mp;
+}
+
+export function getRoomBounds(room) {
+  const sections = getRoomSections(room);
+  if (sections.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+  }
+  return computeCompositeBounds(sections);
 }
 
 export function multiPolygonToPathD(mp) {
@@ -165,16 +176,20 @@ export function computeAvailableArea(room, exclusions) {
 }
 
 export function computeOriginPoint(room, pattern) {
-  const w = room.widthCm,
-    h = room.heightCm;
+  const bounds = getRoomBounds(room);
+  const w = bounds.width;
+  const h = bounds.height;
+  const minX = bounds.minX;
+  const minY = bounds.minY;
+
   const o = pattern?.origin || { preset: "tl", xCm: 0, yCm: 0 };
   const preset = o.preset || "tl";
 
-  if (preset === "tl") return { x: 0, y: 0 };
-  if (preset === "tr") return { x: w, y: 0 };
-  if (preset === "bl") return { x: 0, y: h };
-  if (preset === "br") return { x: w, y: h };
-  if (preset === "center") return { x: w / 2, y: h / 2 };
+  if (preset === "tl") return { x: minX, y: minY };
+  if (preset === "tr") return { x: minX + w, y: minY };
+  if (preset === "bl") return { x: minX, y: minY + h };
+  if (preset === "br") return { x: minX + w, y: minY + h };
+  if (preset === "center") return { x: minX + w / 2, y: minY + h / 2 };
 
   // "free"
   return { x: Number(o.xCm) || 0, y: Number(o.yCm) || 0 };
@@ -249,8 +264,9 @@ export function tilesForPreview(state, availableMP) {
   const rowShiftCm = type === "runningBond" ? tw * frac : 0;
   const bondPeriod = type === "runningBond" ? detectBondPeriod(frac) : 0;
 
-  const w = currentRoom.widthCm,
-    h = currentRoom.heightCm;
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
 
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 

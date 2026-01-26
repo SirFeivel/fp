@@ -1,5 +1,5 @@
 // src/calc.js
-import { computeAvailableArea, tilesForPreview, multiPolyArea } from "./geometry.js";
+import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds } from "./geometry.js";
 import { getCurrentRoom } from "./core.js";
 
 // cm² -> m²
@@ -523,8 +523,9 @@ export function computePlanMetrics(state) {
   const totalPlacedTiles = fullTiles + cutTiles; // what you see in the preview
   const cutTilesPct = totalPlacedTiles > 0 ? (cutTiles / totalPlacedTiles) * 100 : 0;
 
-  // Room gross
-  const roomAreaCm2 = Number(currentRoom?.widthCm) * Number(currentRoom?.heightCm);
+  // Room gross (bounding box area)
+  const bounds = getRoomBounds(currentRoom);
+  const roomAreaCm2 = bounds.width * bounds.height;
   const grossRoomAreaM2 = cm2ToM2(roomAreaCm2);
 
   // Pricing (still per installed area)

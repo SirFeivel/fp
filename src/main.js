@@ -6,6 +6,7 @@ import { LS_SESSION, defaultState } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
+import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initTabs } from "./tabs.js";
@@ -22,7 +23,9 @@ import {
   renderTilePatternForm,
   renderExclList,
   renderExclProps,
-  renderPlanSvg
+  renderPlanSvg,
+  renderSectionsList,
+  renderSectionProps
 } from "./render.js";
 import { createStructureController } from "./structure.js";
 
@@ -31,6 +34,7 @@ const store = createStateStore(defaultState, validateState);
 window.__fpStore = store; // keep for console testing
 
 let selectedExclId = null;
+let selectedSectionId = null;
 let lastUnionError = null;
 let lastTileError = null;
 
@@ -73,6 +77,14 @@ function setSelectedId(id) {
   selectedExclId = id || null;
 }
 
+function setSelectedSection(id) {
+  selectedSectionId = id || null;
+  renderAll();
+}
+function setSelectedSectionId(id) {
+  selectedSectionId = id || null;
+}
+
 function renderAll(lastLabel) {
   try {
     const state = store.getState();
@@ -82,6 +94,14 @@ function renderAll(lastLabel) {
     structure.renderRoomSelect();
     renderRoomForm(state);
     renderTilePatternForm(state);
+
+    renderSectionsList(state, selectedSectionId);
+    renderSectionProps({
+      state,
+      selectedSectionId,
+      getSelectedSection: sections.getSelectedSection,
+      commitSectionProps: sections.commitSectionProps
+    });
 
     renderExclList(state, selectedExclId);
     renderExclProps({
@@ -138,6 +158,13 @@ const excl = createExclusionsController({
   setSelectedId
 });
 
+const sections = createSectionsController({
+  getState: () => store.getState(),
+  commit: commitViaStore,
+  getSelectedId: () => selectedSectionId,
+  setSelectedId: setSelectedSectionId
+});
+
 const structure = createStructureController({
   store,
   renderAll,
@@ -187,12 +214,14 @@ function updateAllTranslations() {
   bindUI({
     store,
     excl,
+    sections,
     renderAll,
     refreshProjectSelect,
     updateMeta,
     validateState,
     defaultStateFn: defaultState,
     setSelectedExcl,
+    setSelectedSection,
     resetErrors: () => {
       lastUnionError = null;
       lastTileError = null;

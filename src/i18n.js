@@ -50,7 +50,27 @@ const translations = {
       height: "Länge (cm)",
       showGrid: "Hilfsraster anzeigen",
       changed: "Raum geändert",
-      viewChanged: "Ansicht geändert"
+      viewChanged: "Ansicht geändert",
+      legacyHint: "Legacy: Einzelnes Rechteck. Nutzen Sie Abschnitte für komplexe Formen.",
+      sections: "Raum-Abschnitte (L/T/U-Formen)",
+      sectionsHint: "Fügen Sie mehrere Abschnitte hinzu, um nicht-rechteckige Räume zu erstellen",
+      addSection: "+ Abschnitt hinzufügen",
+      convert: "In Abschnitte umwandeln",
+      sectionsList: "Abschnitte",
+      deleteSection: "Abschnitt löschen",
+      sectionProps: "Abschnitt-Eigenschaften",
+      noSectionSelected: "– kein Abschnitt ausgewählt –",
+      sectionAdded: "Abschnitt hinzugefügt",
+      sectionDeleted: "Abschnitt gelöscht",
+      sectionChanged: "Abschnitt geändert",
+      convertedToSections: "In Abschnitte umgewandelt"
+    },
+    secProps: {
+      label: "Bezeichnung",
+      x: "X (cm)",
+      y: "Y (cm)",
+      width: "Breite (cm)",
+      height: "Höhe (cm)"
     },
     tile: {
       title: "Fliesen",
@@ -272,7 +292,27 @@ const translations = {
       height: "Length (cm)",
       showGrid: "Show Grid",
       changed: "Room changed",
-      viewChanged: "View changed"
+      viewChanged: "View changed",
+      legacyHint: "Legacy: Single rectangle. Use sections below for complex shapes.",
+      sections: "Room Sections (L/T/U shapes)",
+      sectionsHint: "Add multiple sections to create non-rectangular rooms",
+      addSection: "+ Add Section",
+      convert: "Convert to Sections",
+      sectionsList: "Sections",
+      deleteSection: "Delete Section",
+      sectionProps: "Section Properties",
+      noSectionSelected: "– no section selected –",
+      sectionAdded: "Section added",
+      sectionDeleted: "Section deleted",
+      sectionChanged: "Section changed",
+      convertedToSections: "Converted to sections"
+    },
+    secProps: {
+      label: "Label",
+      x: "X (cm)",
+      y: "Y (cm)",
+      width: "Width (cm)",
+      height: "Height (cm)"
     },
     tile: {
       title: "Tiles",

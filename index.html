@@ -120,6 +120,36 @@
                   <input id="roomH" type="number" min="0" step="0.1" />
                 </div>
               </div>
+              <div class="meta subtle" style="margin-top: 8px;">
+                <span data-i18n="room.legacyHint">Legacy: Single rectangle. Use sections below for complex shapes.</span>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="room.sections">Room Sections (L/T/U shapes)</h3>
+              <div class="meta subtle" style="margin-bottom: 10px;">
+                <span data-i18n="room.sectionsHint">Add multiple sections to create non-rectangular rooms</span>
+              </div>
+              <div class="btnrow">
+                <button id="btnAddSection" class="btn" data-i18n="room.addSection">+ Add Section</button>
+                <button id="btnConvertToSections" class="btn" data-i18n="room.convert">Convert to Sections</button>
+              </div>
+              <div class="grid2" style="margin-top: 10px">
+                <div class="field span2">
+                  <label data-i18n="room.sectionsList">Sections</label>
+                  <select id="sectionsList" size="4"></select>
+                </div>
+              </div>
+              <div class="btnrow" style="margin-top: 10px">
+                <button id="btnDeleteSection" class="btn danger" data-i18n="room.deleteSection">Delete Section</button>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <h3 class="section-title" data-i18n="room.sectionProps">Section Properties</h3>
+              <div id="sectionProps" class="grid2">
+                <div class="meta subtle span2" data-i18n="room.noSectionSelected">– no section selected –</div>
+              </div>
             </div>
 
             <div class="section-card">
