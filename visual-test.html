@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pattern Visual Test</title>
+  <style>
+    body {
+      margin: 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+    .pattern-container {
+      display: inline-block;
+      margin: 20px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+      color: #333;
+    }
+    svg {
+      border: 1px solid #ddd;
+      background: white;
+    }
+    .tile {
+      fill: #e8e8e8;
+      stroke: #333;
+      stroke-width: 1;
+    }
+    .stats {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pattern Visual Tests</h1>
+
+  <div class="pattern-container">
+    <h2>Grid Pattern</h2>
+    <svg id="grid" width="400" height="400"></svg>
+    <div class="stats" id="grid-stats"></div>
+  </div>
+
+  <div class="pattern-container">
+    <h2>Running Bond</h2>
+    <svg id="runningbond" width="400" height="400"></svg>
+    <div class="stats" id="runningbond-stats"></div>
+  </div>
+
+  <div class="pattern-container">
+    <h2>Herringbone</h2>
+    <svg id="herringbone" width="400" height="400"></svg>
+    <div class="stats" id="herringbone-stats"></div>
+  </div>
+
+  <div class="pattern-container">
+    <h2>Basketweave</h2>
+    <svg id="basketweave" width="400" height="400"></svg>
+    <div class="stats" id="basketweave-stats"></div>
+  </div>
+
+  <script type="module">
+    import { tilesForPreviewGrid, tilesForPreviewRunningBond, tilesForPreviewHerringbone, tilesForPreviewBasketweave } from './src/geometry.js';
+
+    const room = {
+      walls: [
+        { x1: 0, y1: 0, x2: 400, y2: 0 },
+        { x1: 400, y1: 0, x2: 400, y2: 400 },
+        { x1: 400, y1: 400, x2: 0, y2: 400 },
+        { x1: 0, y1: 400, x2: 0, y2: 0 }
+      ],
+      exclusions: [],
+      pattern: {
+        rotationDeg: 0,
+        offsetXcm: 0,
+        offsetYcm: 0,
+        origin: { preset: 'tl' }
+      }
+    };
+
+    const state = {
+      rooms: [room],
+      currentRoomIdx: 0
+    };
+
+    const availableMP = [[
+      [[0, 0], [400, 0], [400, 400], [0, 400], [0, 0]]
+    ]];
+
+    const tw = 60;
+    const th = 20;
+    const grout = 2;
+
+    function renderPattern(svgId, statsId, tiles, patternName) {
+      const svg = document.getElementById(svgId);
+      const stats = document.getElementById(statsId);
+
+      svg.innerHTML = '';
+
+      tiles.forEach(tile => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', tile.d);
+        path.classList.add('tile');
+        if (!tile.isFull) {
+          path.style.fill = '#ffcccc';
+        }
+        svg.appendChild(path);
+      });
+
+      const fullCount = tiles.filter(t => t.isFull).length;
+      const cutCount = tiles.filter(t => !t.isFull).length;
+      stats.innerHTML = `Total: ${tiles.length} tiles<br>Full: ${fullCount}<br>Cut: ${cutCount}`;
+    }
+
+    const gridResult = tilesForPreviewGrid(state, availableMP, tw, th, grout);
+    if (gridResult.error) {
+      console.error('Grid error:', gridResult.error);
+    } else {
+      renderPattern('grid', 'grid-stats', gridResult.tiles, 'Grid');
+    }
+
+    const runningbondResult = tilesForPreviewRunningBond(state, availableMP, tw, th, grout);
+    if (runningbondResult.error) {
+      console.error('Running Bond error:', runningbondResult.error);
+    } else {
+      renderPattern('runningbond', 'runningbond-stats', runningbondResult.tiles, 'Running Bond');
+    }
+
+    const herringboneResult = tilesForPreviewHerringbone(state, availableMP, tw, th, grout);
+    if (herringboneResult.error) {
+      console.error('Herringbone error:', herringboneResult.error);
+    } else {
+      renderPattern('herringbone', 'herringbone-stats', herringboneResult.tiles, 'Herringbone');
+    }
+
+    const basketweaveResult = tilesForPreviewBasketweave(state, availableMP, tw, th, grout);
+    if (basketweaveResult.error) {
+      console.error('Basketweave error:', basketweaveResult.error);
+    } else {
+      renderPattern('basketweave', 'basketweave-stats', basketweaveResult.tiles, 'Basketweave');
+    }
+  </script>
+</body>
+</html>

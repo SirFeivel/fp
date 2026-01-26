@@ -469,8 +469,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  const stepX = th + grout;
-  const stepY = tw + grout;
+  const stepX = tw + th + grout;
+  const stepY = tw + tw + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -478,8 +478,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
 
   const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 
-  const marginX = TILE_MARGIN_MULTIPLIER * Math.max(tw, th);
-  const marginY = TILE_MARGIN_MULTIPLIER * Math.max(tw, th);
+  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
+  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
   const minX = b.minX - marginX;
   const maxX = b.maxX + marginX;
@@ -489,8 +489,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
-    anchorX -= th / 2;
-    anchorY -= tw / 2;
+    anchorX -= stepX / 2;
+    anchorY -= stepY / 2;
   }
 
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
@@ -499,7 +499,7 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const estCols = Math.ceil((maxX - startX) / stepX) + 2;
   const estRows = Math.ceil((maxY - startY) / stepY) + 2;
 
-  const estTiles = estCols * estRows;
+  const estTiles = estCols * estRows * 4;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -507,46 +507,86 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const tiles = [];
   const fullArea = tw * th;
 
-  for (let c = 0; c < estCols; c++) {
-    const isHorizontal = c % 2 === 0;
-    const colOffset = isHorizontal ? 0 : tw / 2;
-    const tileStepY = isHorizontal ? (th + grout) : (tw + grout);
+  for (let row = 0; row < estRows; row++) {
+    for (let col = 0; col < estCols; col++) {
+      const unitX = startX + col * stepX;
+      const unitY = startY + row * stepY;
 
-    const colStartY = startY + colOffset;
-    const colRows = Math.ceil((maxY - colStartY) / tileStepY) + 2;
+      const tile1X = unitX;
+      const tile1Y = unitY;
+      const tile1P = tileRectPolygon(tile1X, tile1Y, tw, th, origin.x, origin.y, rotRad);
 
-    for (let r = 0; r < colRows; r++) {
-      const baseX = startX + c * stepX;
-      const baseY = colStartY + r * tileStepY;
-
-      const tileW = isHorizontal ? tw : th;
-      const tileH = isHorizontal ? th : tw;
-
-      const tileP = tileRectPolygon(
-        baseX,
-        baseY,
-        tileW,
-        tileH,
-        origin.x,
-        origin.y,
-        rotRad
-      );
-
-      let clipped;
+      let clipped1;
       try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
+        clipped1 = polygonClipping.intersection(availableMP, tile1P);
       } catch (e) {
         return { tiles: [], error: String(e?.message || e) };
       }
-      if (!clipped || !clipped.length) continue;
+      if (clipped1 && clipped1.length) {
+        const d = multiPolygonToPathD(clipped1);
+        if (d) {
+          const gotArea = multiPolyArea(clipped1);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      }
 
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
+      const tile2X = unitX + (tw + grout);
+      const tile2Y = unitY;
+      const tile2P = tileRectPolygon(tile2X, tile2Y, th, tw, origin.x, origin.y, rotRad);
 
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+      let clipped2;
+      try {
+        clipped2 = polygonClipping.intersection(availableMP, tile2P);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (clipped2 && clipped2.length) {
+        const d = multiPolygonToPathD(clipped2);
+        if (d) {
+          const gotArea = multiPolyArea(clipped2);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      }
 
-      tiles.push({ d, isFull });
+      const tile3X = unitX;
+      const tile3Y = unitY + (tw + grout);
+      const tile3P = tileRectPolygon(tile3X, tile3Y, th, tw, origin.x, origin.y, rotRad);
+
+      let clipped3;
+      try {
+        clipped3 = polygonClipping.intersection(availableMP, tile3P);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (clipped3 && clipped3.length) {
+        const d = multiPolygonToPathD(clipped3);
+        if (d) {
+          const gotArea = multiPolyArea(clipped3);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      }
+
+      const tile4X = unitX + (tw + grout);
+      const tile4Y = unitY + (tw + grout);
+      const tile4P = tileRectPolygon(tile4X, tile4Y, tw, th, origin.x, origin.y, rotRad);
+
+      let clipped4;
+      try {
+        clipped4 = polygonClipping.intersection(availableMP, tile4P);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (clipped4 && clipped4.length) {
+        const d = multiPolygonToPathD(clipped4);
+        if (d) {
+          const gotArea = multiPolyArea(clipped4);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      }
     }
   }
 
