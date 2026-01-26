@@ -10,6 +10,7 @@ import {
   computeExclusionsUnion,
   computeAvailableArea,
   computeOriginPoint,
+  tilesForPreviewHerringbone,
 } from './geometry.js';
 
 describe('roomPolygon', () => {
@@ -414,5 +415,147 @@ describe('computeOriginPoint', () => {
     const pattern = { origin: { preset: 'free', xCm: 'invalid', yCm: null } };
     const result = computeOriginPoint(room, pattern);
     expect(result).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('tilesForPreviewHerringbone', () => {
+  // Helper to create minimal state for testing
+  function createTestState(roomWidth, roomHeight, tileWidth, tileHeight, grout = 0) {
+    return {
+      floors: [{
+        id: 'floor-1',
+        rooms: [{
+          id: 'room-1',
+          widthCm: roomWidth,
+          heightCm: roomHeight,
+          tile: { widthCm: tileWidth, heightCm: tileHeight },
+          grout: { widthCm: grout },
+          pattern: {
+            type: 'herringbone',
+            rotationDeg: 0,
+            offsetXcm: 0,
+            offsetYcm: 0,
+            origin: { preset: 'tl' }
+          }
+        }]
+      }],
+      selectedFloorId: 'floor-1',
+      selectedRoomId: 'room-1'
+    };
+  }
+
+  // Helper to create available area polygon
+  function createRoomPolygon(width, height) {
+    return [[[[0, 0], [width, 0], [width, height], [0, height], [0, 0]]]];
+  }
+
+  it('generates tiles for a simple room', () => {
+    const state = createTestState(200, 200, 30, 10, 0);
+    const availableMP = createRoomPolygon(200, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles).toBeDefined();
+    expect(result.tiles.length).toBeGreaterThan(0);
+  });
+
+  it('generates both full and cut tiles', () => {
+    const state = createTestState(200, 200, 30, 10, 0);
+    const availableMP = createRoomPolygon(200, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+
+    expect(result.error).toBeNull();
+
+    const fullTiles = result.tiles.filter(t => t.isFull);
+    const cutTiles = result.tiles.filter(t => !t.isFull);
+
+    // Should have some full tiles in the interior
+    expect(fullTiles.length).toBeGreaterThan(0);
+    // Should have some cut tiles at the edges
+    expect(cutTiles.length).toBeGreaterThan(0);
+  });
+
+  it('respects grout spacing', () => {
+    const state = createTestState(200, 200, 30, 10, 2);
+    const availableMP = createRoomPolygon(200, 200);
+
+    const resultNoGrout = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+    const resultWithGrout = tilesForPreviewHerringbone(state, availableMP, 30, 10, 2);
+
+    expect(resultNoGrout.error).toBeNull();
+    expect(resultWithGrout.error).toBeNull();
+
+    // With grout, fewer tiles should fit in the same space
+    expect(resultWithGrout.tiles.length).toBeLessThanOrEqual(resultNoGrout.tiles.length);
+  });
+
+  it('handles square-ish tiles', () => {
+    const state = createTestState(200, 200, 20, 15, 0);
+    const availableMP = createRoomPolygon(200, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 20, 15, 0);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+  });
+
+  it('handles narrow room', () => {
+    const state = createTestState(50, 300, 30, 10, 0);
+    const availableMP = createRoomPolygon(50, 300);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+  });
+
+  it('uses longer dimension as tile length', () => {
+    const state = createTestState(200, 200, 10, 30, 0); // Note: width < height
+    const availableMP = createRoomPolygon(200, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 10, 30, 0);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+
+    // The pattern should work the same regardless of which dimension is larger
+    const stateSwapped = createTestState(200, 200, 30, 10, 0);
+    const resultSwapped = tilesForPreviewHerringbone(stateSwapped, availableMP, 30, 10, 0);
+
+    // Both should produce similar tile counts (not necessarily identical due to edge effects)
+    expect(Math.abs(result.tiles.length - resultSwapped.tiles.length)).toBeLessThan(result.tiles.length * 0.1);
+  });
+
+  it('returns error for too many tiles', () => {
+    // Very small tiles in a large room would exceed MAX_PREVIEW_TILES
+    const state = createTestState(10000, 10000, 5, 2, 0);
+    const availableMP = createRoomPolygon(10000, 10000);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 5, 2, 0);
+
+    expect(result.error).not.toBeNull();
+    expect(result.tiles).toEqual([]);
+  });
+
+  it('tiles have valid SVG path data', () => {
+    const state = createTestState(200, 200, 30, 10, 0);
+    const availableMP = createRoomPolygon(200, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+
+    expect(result.error).toBeNull();
+
+    // Each tile should have a valid 'd' path attribute
+    for (const tile of result.tiles) {
+      expect(tile.d).toBeDefined();
+      expect(typeof tile.d).toBe('string');
+      expect(tile.d.length).toBeGreaterThan(0);
+      // SVG path should start with 'M' (moveto)
+      expect(tile.d.startsWith('M')).toBe(true);
+      // SVG path should contain 'Z' (close path)
+      expect(tile.d.includes('Z')).toBe(true);
+    }
   });
 });

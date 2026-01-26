@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Herringbone Pattern Test</title>
+  <style>
+    body {
+      margin: 20px;
+      font-family: Arial, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1, h2 {
+      color: #fff;
+    }
+    .test-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 30px;
+      margin-top: 20px;
+    }
+    .pattern-box {
+      background: #16213e;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .pattern-box h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #e8e8e8;
+    }
+    svg {
+      border: 1px solid #333;
+      background: #0f0f23;
+    }
+    .tile-h {
+      fill: rgba(100, 149, 237, 0.6);
+      stroke: #4a90d9;
+      stroke-width: 1;
+    }
+    .tile-v {
+      fill: rgba(144, 238, 144, 0.6);
+      stroke: #5cb85c;
+      stroke-width: 1;
+    }
+    .tile-cut {
+      fill: rgba(255, 100, 100, 0.6);
+      stroke: #d9534f;
+      stroke-width: 1;
+    }
+    .room-outline {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .reference {
+      background: #1e3a5f;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .reference h3 {
+      margin: 0 0 10px 0;
+      color: #fff;
+    }
+    .reference p {
+      margin: 5px 0;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    pre {
+      background: #0a0a1a;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Herringbone Pattern Test</h1>
+
+  <div class="reference">
+    <h3>What is a proper Herringbone pattern?</h3>
+    <p>A herringbone pattern consists of rectangular tiles arranged in a V-shaped zigzag:</p>
+    <ul>
+      <li>Tiles are placed at 90-degree angles to each other</li>
+      <li>Each tile's short end meets the long side of the adjacent tile</li>
+      <li>The pattern creates continuous diagonal lines (the "V" shapes)</li>
+      <li>Typically uses tiles with 2:1 or 3:1 ratio (e.g., 10×30cm)</li>
+    </ul>
+    <pre>
+Classic Herringbone Layout (simplified):
+
+     [====]         &lt;-- Horizontal tile
+           |
+           |        &lt;-- Vertical tile
+           |
+     [====]|
+           |
+           |
+     [====]|
+           |[====]
+                |
+                |
+           [====]|
+    </pre>
+  </div>
+
+  <div class="test-container">
+    <div class="pattern-box">
+      <h3>Current Implementation (30×10 tiles, room 300×200)</h3>
+      <svg id="test1" width="400" height="300" viewBox="-20 -20 340 240"></svg>
+      <div class="info" id="info1"></div>
+    </div>
+
+    <div class="pattern-box">
+      <h3>With Grout (30×10 tiles, 2cm grout)</h3>
+      <svg id="test2" width="400" height="300" viewBox="-20 -20 340 240"></svg>
+      <div class="info" id="info2"></div>
+    </div>
+
+    <div class="pattern-box">
+      <h3>Square-ish tiles (20×15)</h3>
+      <svg id="test3" width="400" height="300" viewBox="-20 -20 340 240"></svg>
+      <div class="info" id="info3"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import polygonClipping from './node_modules/polygon-clipping/dist/polygon-clipping.esm.js';
+
+    // Minimal implementation to test the pattern directly
+    function tileRectPolygon(x, y, tw, th) {
+      return [[[
+        [x, y],
+        [x + tw, y],
+        [x + tw, y + th],
+        [x, y + th],
+        [x, y]
+      ]]];
+    }
+
+    function multiPolygonToPathD(mp) {
+      let d = "";
+      for (const poly of mp) {
+        for (const ring of poly) {
+          if (!ring.length) continue;
+          d += `M ${ring[0][0]} ${ring[0][1]} `;
+          for (let i = 1; i < ring.length; i++)
+            d += `L ${ring[i][0]} ${ring[i][1]} `;
+          d += "Z ";
+        }
+      }
+      return d.trim();
+    }
+
+    function multiPolyArea(mp) {
+      if (!mp || !mp.length) return 0;
+      let area = 0;
+      for (const poly of mp) {
+        if (!poly.length) continue;
+        let a = 0;
+        const ring = poly[0] || [];
+        for (let i = 0; i < ring.length - 1; i++) {
+          const [x1, y1] = ring[i], [x2, y2] = ring[i + 1];
+          a += x1 * y2 - x2 * y1;
+        }
+        area += Math.abs(a / 2);
+      }
+      return area;
+    }
+
+    function generateHerringbone(roomW, roomH, tw, th, grout) {
+      const L = Math.max(tw, th);  // Long edge
+      const W = Math.min(tw, th);  // Short edge
+
+      // In herringbone, tiles are placed along diagonal lines
+      // Step size is based on the short edge since tiles stack by their short side
+      const step = W + grout;
+
+      const roomPoly = [[[
+        [0, 0], [roomW, 0], [roomW, roomH], [0, roomH], [0, 0]
+      ]]];
+
+      const margin = L * 3;
+      const startX = -margin;
+      const startY = -margin;
+      const endX = roomW + margin;
+      const endY = roomH + margin;
+
+      // We need more columns because of the diagonal shear
+      const cols = Math.ceil((endX - startX) / step) + 10;
+      const rows = Math.ceil((endY - startY) / step) + 4;
+
+      const tiles = [];
+      const fullArea = W * L;
+
+      // Generate herringbone pattern using sheared grid
+      // Each row is shifted by 'step' to create the zigzag effect
+      for (let row = 0; row < rows; row++) {
+        for (let col = -rows; col < cols; col++) {
+          const isHorizontal = (row + col) % 2 === 0;
+
+          // Sheared grid: x position shifts right as row increases
+          // This creates the characteristic herringbone diagonal pattern
+          const baseX = startX + col * step + row * step;
+          const baseY = startY + row * step;
+
+          let tileX, tileY, tilePoly;
+
+          if (isHorizontal) {
+            // Horizontal tile: L × W
+            tileX = baseX;
+            tileY = baseY;
+            tilePoly = tileRectPolygon(tileX, tileY, L, W);
+          } else {
+            // Vertical tile: W × L
+            // Offset so it connects to the horizontal tiles properly
+            // The vertical tile's left edge should align with horizontal tile's right edge
+            tileX = baseX + L - W;
+            tileY = baseY - L + W;
+            tilePoly = tileRectPolygon(tileX, tileY, W, L);
+          }
+
+          let clipped;
+          try {
+            clipped = polygonClipping.intersection(roomPoly, tilePoly);
+          } catch (e) {
+            continue;
+          }
+          if (!clipped || !clipped.length) continue;
+
+          const d = multiPolygonToPathD(clipped);
+          if (!d) continue;
+
+          const gotArea = multiPolyArea(clipped);
+          const isFull = gotArea >= fullArea * 0.99;
+
+          tiles.push({ d, isFull, isHorizontal });
+        }
+      }
+
+      return tiles;
+    }
+
+    function renderTest(svgId, infoId, roomW, roomH, tw, th, grout) {
+      const svg = document.getElementById(svgId);
+      const info = document.getElementById(infoId);
+
+      // Draw room outline
+      const roomPath = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      roomPath.setAttribute('x', 0);
+      roomPath.setAttribute('y', 0);
+      roomPath.setAttribute('width', roomW);
+      roomPath.setAttribute('height', roomH);
+      roomPath.classList.add('room-outline');
+      svg.appendChild(roomPath);
+
+      const tiles = generateHerringbone(roomW, roomH, tw, th, grout);
+
+      tiles.forEach(tile => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', tile.d);
+        if (!tile.isFull) {
+          path.classList.add('tile-cut');
+        } else if (tile.isHorizontal) {
+          path.classList.add('tile-h');
+        } else {
+          path.classList.add('tile-v');
+        }
+        svg.appendChild(path);
+      });
+
+      const fullCount = tiles.filter(t => t.isFull).length;
+      const cutCount = tiles.filter(t => !t.isFull).length;
+      const hCount = tiles.filter(t => t.isHorizontal).length;
+      const vCount = tiles.filter(t => !t.isHorizontal).length;
+
+      info.innerHTML = `
+        Tiles: ${tiles.length} (${fullCount} full, ${cutCount} cut)<br>
+        H: ${hCount}, V: ${vCount}<br>
+        Tile size: ${tw}×${th}cm, Grout: ${grout}cm
+      `;
+    }
+
+    // Run tests
+    renderTest('test1', 'info1', 300, 200, 30, 10, 0);
+    renderTest('test2', 'info2', 300, 200, 30, 10, 2);
+    renderTest('test3', 'info3', 300, 200, 20, 15, 1);
+  </script>
+</body>
+</html>
