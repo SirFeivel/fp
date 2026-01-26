@@ -17,14 +17,14 @@ function createTestState(oldOrNew = {}) {
           name: oldOrNew.room.name || 'Test Room',
           widthCm: oldOrNew.room.widthCm || 400,
           heightCm: oldOrNew.room.heightCm || 500,
-          exclusions: oldOrNew.exclusions || []
+          exclusions: oldOrNew.exclusions || [],
+          tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
+          grout: oldOrNew.grout || { widthCm: 1 },
+          pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
         }]
       }],
       selectedFloorId: floorId,
       selectedRoomId: roomId,
-      tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
-      grout: oldOrNew.grout || { widthCm: 1 },
-      pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
       pricing: oldOrNew.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
       waste: oldOrNew.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
       view: oldOrNew.view || { showGrid: true, showNeeds: false }
@@ -43,14 +43,14 @@ function createTestState(oldOrNew = {}) {
         name: 'Test Room',
         widthCm: 400,
         heightCm: 500,
-        exclusions: []
+        exclusions: [],
+        tile: { widthCm: 30, heightCm: 60 },
+        grout: { widthCm: 1 },
+        pattern: { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
       }]
     }],
     selectedFloorId: floorId,
     selectedRoomId: roomId,
-    tile: { widthCm: 30, heightCm: 60 },
-    grout: { widthCm: 1 },
-    pattern: { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
     pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
     waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
     view: { showGrid: true, showNeeds: false }
@@ -60,6 +60,19 @@ function createTestState(oldOrNew = {}) {
 
   if (oldOrNew.roomOverrides) {
     state.floors[0].rooms[0] = { ...state.floors[0].rooms[0], ...oldOrNew.roomOverrides };
+  }
+
+  if (oldOrNew.tile) {
+    state.floors[0].rooms[0].tile = oldOrNew.tile;
+  }
+  if (oldOrNew.grout) {
+    state.floors[0].rooms[0].grout = oldOrNew.grout;
+  }
+  if (oldOrNew.pattern) {
+    state.floors[0].rooms[0].pattern = oldOrNew.pattern;
+  }
+  if (oldOrNew.exclusions) {
+    state.floors[0].rooms[0].exclusions = oldOrNew.exclusions;
   }
 
   return state;
@@ -104,7 +117,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: { allowRotate: false, optimizeCuts: false, kerfCm: 0 },
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -115,7 +128,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('calculates installed area correctly', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 200, heightCm: 200 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -123,7 +136,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -133,7 +146,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('handles room with exclusions', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 200, heightCm: 200 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -141,7 +154,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -151,7 +164,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('includes reserve tiles in purchase calculation', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 100, heightCm: 100 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -159,7 +172,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 10 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -170,7 +183,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('calculates waste percentage correctly', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 100, heightCm: 100 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -178,7 +191,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 2 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -187,7 +200,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('calculates pricing correctly', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 200, heightCm: 200 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -195,7 +208,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { pricePerM2: 100, packM2: 2, reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -209,7 +222,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('handles optimizeCuts option', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 150, heightCm: 150 },
       tile: { widthCm: 60, heightCm: 60 },
       grout: { widthCm: 1 },
@@ -217,7 +230,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0.3 },
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -226,7 +239,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('handles allowRotate option', () => {
-    const stateWithRotate = {
+    const stateWithRotate = createTestState({
       room: { widthCm: 150, heightCm: 150 },
       tile: { widthCm: 40, heightCm: 60 },
       grout: { widthCm: 1 },
@@ -234,16 +247,21 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
-    };
+    });
 
     const resultWithRotate = computePlanMetrics(stateWithRotate);
     expect(resultWithRotate.ok).toBe(true);
     expect(resultWithRotate.data.waste.allowRotate).toBe(true);
 
-    const stateNoRotate = {
-      ...stateWithRotate,
+    const stateNoRotate = createTestState({
+      room: { widthCm: 150, heightCm: 150 },
+      tile: { widthCm: 40, heightCm: 60 },
+      grout: { widthCm: 1 },
+      exclusions: [],
+      pattern: { type: 'grid', rotationDeg: 0 },
+      pricing: { reserveTiles: 0 },
       waste: { allowRotate: false, optimizeCuts: false, kerfCm: 0 },
-    };
+    });
 
     const resultNoRotate = computePlanMetrics(stateNoRotate);
     expect(resultNoRotate.ok).toBe(true);
@@ -251,7 +269,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('calculates cut tiles percentage', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 100, heightCm: 100 },
       tile: { widthCm: 40, heightCm: 40 },
       grout: { widthCm: 0 },
@@ -259,7 +277,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -268,7 +286,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('tracks reused cuts when optimizing', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 150, heightCm: 150 },
       tile: { widthCm: 60, heightCm: 60 },
       grout: { widthCm: 1 },
@@ -276,7 +294,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: { allowRotate: true, optimizeCuts: true, kerfCm: 0.3 },
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -285,7 +303,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('provides debug information', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 100, heightCm: 100 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
@@ -293,7 +311,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
@@ -304,7 +322,7 @@ describe('computePlanMetrics', () => {
   });
 
   it('handles running bond pattern', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 200, heightCm: 200 },
       tile: { widthCm: 60, heightCm: 30 },
       grout: { widthCm: 1 },
@@ -312,14 +330,14 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'runningBond', bondFraction: 0.5, rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
   });
 
   it('calculates gross room area', () => {
-    const state = {
+    const state = createTestState({
       room: { widthCm: 300, heightCm: 400 },
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 1 },
@@ -327,7 +345,7 @@ describe('computePlanMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { reserveTiles: 0 },
       waste: {},
-    };
+    });
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);

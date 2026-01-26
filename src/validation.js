@@ -67,9 +67,9 @@ export function validateState(s) {
       });
   }
 
-  const tileW = s?.tile?.widthCm,
-    tileH = s?.tile?.heightCm;
-  const grout = s?.grout?.widthCm;
+  const tileW = currentRoom?.tile?.widthCm;
+  const tileH = currentRoom?.tile?.heightCm;
+  const grout = currentRoom?.grout?.widthCm;
   if (!n(tileW) || tileW <= 0)
     errors.push({
       title: t("validation.tileWidthInvalid"),
@@ -86,7 +86,7 @@ export function validateState(s) {
       text: `${t("validation.currentValue")} "${grout}". ${t("validation.groutText")}`
     });
 
-  const rot = s?.pattern?.rotationDeg;
+  const rot = currentRoom?.pattern?.rotationDeg;
   if (n(rot) && (rot % 45 !== 0 || rot < 0 || rot >= 360)) {
     warns.push({
       title: t("validation.rotationWarning"),

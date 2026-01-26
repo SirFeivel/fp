@@ -6,6 +6,7 @@ import {
   deepClone,
   safeParseJSON,
   uuid,
+  getCurrentRoom,
 } from './core.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
@@ -205,9 +206,10 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
   function saveCurrentAsProject(name) {
     const projects = loadProjects();
+    const currentRoom = getCurrentRoom(state);
     const entry = {
       id: uuid(),
-      name: name || state.room?.name || 'Projekt',
+      name: name || state.project?.name || currentRoom?.name || 'Projekt',
       updatedAt: nowISO(),
       data: deepClone(state),
     };

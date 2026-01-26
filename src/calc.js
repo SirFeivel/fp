@@ -323,7 +323,7 @@ export function computePlanMetrics(state) {
   const cutTilesPct = totalPlacedTiles > 0 ? (cutTiles / totalPlacedTiles) * 100 : 0;
 
   // Room gross
-  const roomAreaCm2 = Number(state.room?.widthCm) * Number(state.room?.heightCm);
+  const roomAreaCm2 = Number(currentRoom?.widthCm) * Number(currentRoom?.heightCm);
   const grossRoomAreaM2 = cm2ToM2(roomAreaCm2);
 
   // Pricing (still per installed area)
