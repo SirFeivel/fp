@@ -75,6 +75,108 @@ function parsePathDToPolygon(d) {
   return [[points]];
 }
 
+/**
+ * Analyze a cut tile to extract its geometric properties
+ */
+function analyzeCutTile(tile, tileAreaCm2) {
+  const bb = bboxFromPathD(tile.d);
+  if (!bb || !(bb.w > 0 && bb.h > 0)) {
+    return null;
+  }
+
+  const polygon = parsePathDToPolygon(tile.d);
+  const bboxArea = bb.w * bb.h;
+  const actualArea = polygon ? multiPolyArea(polygon) : bboxArea;
+  const areaRatio = bboxArea > 0 ? actualArea / bboxArea : 1;
+  const isTriangularCut = areaRatio >= 0.45 && areaRatio <= 0.6;
+
+  return {
+    bb,
+    bboxArea,
+    actualArea,
+    areaRatio,
+    isTriangularCut,
+    polygon,
+  };
+}
+
+/**
+ * Find complementary pairs of cut tiles that can be cut from the same tile.
+ * Returns a Map: tileIndex -> pairedWithIndex
+ */
+function findComplementaryPairs(tiles, analyses, tw, th) {
+  const pairs = new Map();
+  const tileAreaCm2 = tw * th;
+  const dimensionTol = 0.1;
+  const areaTol = tileAreaCm2 * 0.02;
+
+  const unpairedIndices = [];
+  for (let i = 0; i < tiles.length; i++) {
+    if (!tiles[i].isFull && analyses[i]) {
+      unpairedIndices.push(i);
+    }
+  }
+
+  for (let i = 0; i < unpairedIndices.length; i++) {
+    const idx1 = unpairedIndices[i];
+    if (pairs.has(idx1)) continue;
+
+    const a1 = analyses[idx1];
+    if (!a1) continue;
+
+    for (let j = i + 1; j < unpairedIndices.length; j++) {
+      const idx2 = unpairedIndices[j];
+      if (pairs.has(idx2)) continue;
+
+      const a2 = analyses[idx2];
+      if (!a2) continue;
+
+      const dimMatch =
+        Math.abs(a1.bb.w - a2.bb.w) < dimensionTol &&
+        Math.abs(a1.bb.h - a2.bb.h) < dimensionTol;
+
+      if (!dimMatch) continue;
+
+      const combinedArea = a1.actualArea + a2.actualArea;
+      const fitsInOneTile = combinedArea >= tileAreaCm2 * 0.95 && combinedArea <= tileAreaCm2 * 1.05;
+
+      if (fitsInOneTile) {
+        pairs.set(idx1, idx2);
+        pairs.set(idx2, idx1);
+        break;
+      }
+    }
+  }
+
+  return pairs;
+}
+
+/**
+ * Sort tiles to maximize pairing efficiency.
+ * Paired tiles should be processed together.
+ */
+function optimizeTileProcessingOrder(tiles, analyses, pairs) {
+  const indices = [];
+  const processed = new Set();
+
+  for (let i = 0; i < tiles.length; i++) {
+    if (processed.has(i)) continue;
+
+    const pairedWith = pairs.get(i);
+    if (pairedWith !== undefined && !processed.has(pairedWith)) {
+      indices.push(i);
+      indices.push(pairedWith);
+      processed.add(i);
+      processed.add(pairedWith);
+    } else {
+      indices.push(i);
+      processed.add(i);
+    }
+  }
+
+  return indices;
+}
+
 function makeRect(w, h) {
   w = clampPos(w);
   h = clampPos(h);
@@ -260,55 +362,83 @@ export function computePlanMetrics(state) {
 
   const pool = new OffcutPool();
 
-  // Debug
-  const tileUsage = []; // per preview tile index
-  const cutNeeds = []; // bbox per preview tile index
-  let cutNeedAreaCm2_est = 0; // only bbox-area, as estimate
+  const tileUsage = new Array(t.tiles.length);
+  const cutNeeds = new Array(t.tiles.length);
+  let cutNeedAreaCm2_est = 0;
 
+  const analyses = new Array(t.tiles.length).fill(null);
   for (let i = 0; i < t.tiles.length; i++) {
+    const tile = t.tiles[i];
+    if (!tile.isFull) {
+      analyses[i] = analyzeCutTile(tile, tileAreaCm2);
+    }
+  }
+
+  const pairs = findComplementaryPairs(t.tiles, analyses, tw, th);
+  const processOrder = optimizeTileProcessingOrder(t.tiles, analyses, pairs);
+
+  const pairOffcuts = new Map();
+
+  for (let idx = 0; idx < processOrder.length; idx++) {
+    const i = processOrder[idx];
     const tile = t.tiles[i];
 
     if (tile.isFull) {
       fullTiles++;
-      tileUsage.push({ isFull: true, reused: false, source: "new", need: null, usedOffcut: null, createdOffcuts: [] });
-      cutNeeds.push(null);
+      tileUsage[i] = { isFull: true, reused: false, source: "new", need: null, usedOffcut: null, createdOffcuts: [] };
+      cutNeeds[i] = null;
       continue;
     }
 
     cutTiles++;
 
-    const bb = bboxFromPathD(tile.d);
+    const analysis = analyses[i];
+    const bb = analysis?.bb || bboxFromPathD(tile.d);
     const need = bb ? { x: bb.x, y: bb.y, w: bb.w, h: bb.h } : null;
-    cutNeeds.push(need);
+    cutNeeds[i] = need;
 
     if (bb && bb.w > 0 && bb.h > 0) cutNeedAreaCm2_est += bb.w * bb.h;
 
-    // No bbox => cannot reuse => treat as new cut tile without offcuts
     if (!bb || !(bb.w > 0 && bb.h > 0)) {
-      tileUsage.push({ isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts: [] });
+      tileUsage[i] = { isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts: [] };
       continue;
     }
 
-    // Calculate actual clipped area vs bounding box area for better offcut matching
-    const polygon = parsePathDToPolygon(tile.d);
-    const bboxArea = bb.w * bb.h;
-    const actualArea = polygon ? multiPolyArea(polygon) : bboxArea;
-    const areaRatio = bboxArea > 0 ? actualArea / bboxArea : 1;
+    const polygon = analysis?.polygon || parsePathDToPolygon(tile.d);
+    const bboxArea = analysis?.bboxArea || bb.w * bb.h;
+    const actualArea = analysis?.actualArea || (polygon ? multiPolyArea(polygon) : bboxArea);
+    const areaRatio = analysis?.areaRatio || (bboxArea > 0 ? actualArea / bboxArea : 1);
+    const isTriangularCut = analysis?.isTriangularCut || (areaRatio >= 0.45 && areaRatio <= 0.6);
 
-    // Detect triangular/diagonal cuts (areaRatio ~0.5 means roughly half the bounding box)
-    const isTriangularCut = areaRatio >= 0.45 && areaRatio <= 0.6;
+    const pairedWith = pairs.get(i);
+    const pairAlreadyProcessed = pairedWith !== undefined && tileUsage[pairedWith] !== undefined;
 
     let effectiveW = bb.w;
     let effectiveH = bb.h;
 
     if (areaRatio < 0.75 && !isTriangularCut) {
-      // Non-rectangular, non-triangular cuts: scale based on area ratio
       const scale = Math.sqrt(areaRatio);
       effectiveW = bb.w * scale;
       effectiveH = bb.h * scale;
     }
 
-    // Try reuse from pool using effective dimensions
+    if (pairAlreadyProcessed) {
+      const pairUsage = tileUsage[pairedWith];
+      if (!pairUsage.reused && pairUsage.createdOffcuts && pairUsage.createdOffcuts.length > 0) {
+        reusedCuts++;
+        const offcut = pairUsage.createdOffcuts[0];
+        tileUsage[i] = {
+          isFull: false,
+          reused: true,
+          source: "paired_offcut",
+          need,
+          usedOffcut: { id: offcut.id, w: offcut.w, h: offcut.h },
+          createdOffcuts: [],
+        };
+        continue;
+      }
+    }
+
     const takeRes = pool.take(effectiveW, effectiveH, {
       allowRotate,
       optimizeCuts,
@@ -318,37 +448,35 @@ export function computePlanMetrics(state) {
 
     if (takeRes.ok) {
       reusedCuts++;
-      tileUsage.push({
+      tileUsage[i] = {
         isFull: false,
         reused: true,
         source: "offcut",
         need,
         usedOffcut: takeRes.used,
         createdOffcuts: takeRes.used?.remainders || [],
-      });
+      };
       continue;
     }
 
-    // Not reused => new tile => create offcuts
     const createdOffcuts = [];
 
-    if (isTriangularCut) {
-      // For triangular cuts: the remainder is another triangle of similar size
-      // Store it as a rectangular offcut with the bounding box dimensions
-      // This works for both optimized and non-optimized modes
+    if (pairedWith !== undefined && !pairAlreadyProcessed) {
+      const offcutW = bb.w;
+      const offcutH = bb.h;
+      createdOffcuts.push({ w: offcutW, h: offcutH });
+    } else if (isTriangularCut) {
       const offcutW = bb.w;
       const offcutH = bb.h;
       const id = pool.add({ w: offcutW, h: offcutH }, "tile", false);
       if (id) createdOffcuts.push({ id, w: offcutW, h: offcutH });
     } else if (optimizeCuts) {
-      // Use guillotine remainders for rectangular cuts
       const rem = guillotineRemainders(tw, th, effectiveW, effectiveH, kerfCm);
       for (const rr of rem) {
         const id = pool.add(rr, "tile", false);
         if (id) createdOffcuts.push({ id, w: rr.w, h: rr.h });
       }
     } else {
-      // conservative single-rect by leftover area using actual area
       const leftoverArea = Math.max(0, tileAreaCm2 - actualArea);
       if (leftoverArea > 0) {
         const maxSide = Math.max(tw, th);
@@ -359,7 +487,7 @@ export function computePlanMetrics(state) {
       }
     }
 
-    tileUsage.push({ isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts });
+    tileUsage[i] = { isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts };
   }
 
   // === PURCHASE / MATERIAL (Einkauf) ===
