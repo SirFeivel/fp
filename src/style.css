@@ -886,6 +886,15 @@ hr{
   margin-bottom:12px;
 }
 
+.section-card.danger-zone {
+  border-color: rgba(255, 107, 107, 0.3);
+  background: rgba(255, 107, 107, 0.02);
+}
+
+.section-card.danger-zone .section-title {
+  color: #ff6b6b;
+}
+
 .section-card.collapsible-card {
   padding: 0;
   overflow: hidden;

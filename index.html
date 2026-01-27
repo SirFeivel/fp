@@ -68,7 +68,7 @@
           </button>
           <button class="tab" data-tab="project">
             <span class="tab-icon">💾</span>
-            <span data-i18n="project.title">Projekt</span>
+            <span data-i18n="project.tabTitle">Projekt</span>
           </button>
           <button class="tab" data-tab="debug">
             <span class="tab-icon">🐛</span>
@@ -391,23 +391,6 @@
           <div class="tab-panel" data-tab-panel="project">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="session.title">Session</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content">
-                <div class="btnrow">
-                  <button id="btnReset" class="btn" data-i18n="session.reset">Reset</button>
-                  <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
-                </div>
-                <div class="meta" style="margin-top: 10px">
-                  <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
-                  <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="project.title">Projekt speichern</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
@@ -445,6 +428,23 @@
 
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <div class="btnrow">
+                  <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
+                  <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
+                  <input id="fileImport" type="file" accept="application/json" style="display: none;" />
+                </div>
+                <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
+                  Import ist undo-bar
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="undo.history">History</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
@@ -459,19 +459,19 @@
               </div>
             </div>
 
-            <div class="section-card collapsible-card">
+            <div class="section-card collapsible-card danger-zone">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
+                <h3 class="section-title" data-i18n="session.title">Gefahrenzone</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div class="card-content">
                 <div class="btnrow">
-                  <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
-                  <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
-                  <input id="fileImport" type="file" accept="application/json" style="display: none;" />
+                  <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
+                  <button id="btnReset" class="btn danger" data-i18n="session.reset">Alles zurücksetzen (Reset)</button>
                 </div>
-                <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
-                  Import ist undo-bar
+                <div class="meta" style="margin-top: 10px">
+                  <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
+                  <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
                 </div>
               </div>
             </div>

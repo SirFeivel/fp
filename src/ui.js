@@ -233,12 +233,15 @@ export function bindUI({
 
   // Buttons
   document.getElementById("btnReset")?.addEventListener("click", () => {
-    setSelectedExcl(null);
-    resetErrors();
-    store.commit("Reset", defaultStateFn(), {
-      onRender: renderAll,
-      updateMetaCb: updateMeta
-    });
+    if (confirm(t("session.confirmReset"))) {
+      setSelectedExcl(null);
+      setSelectedSection(null);
+      resetErrors();
+      store.commit(t("session.reset"), defaultStateFn(), {
+        onRender: renderAll,
+        updateMetaCb: updateMeta
+      });
+    }
   });
 
   document.getElementById("btnLoadSession")?.addEventListener("click", () => {
