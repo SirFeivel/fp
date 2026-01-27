@@ -396,7 +396,8 @@ export function renderPlanSvg({
   lastTileError,
   setLastUnionError,
   setLastTileError,
-  metrics // optional; if omitted we compute it here
+  metrics, // optional; if omitted we compute it here
+  skipTiles = false
 }) {
   const svg = document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
@@ -494,36 +495,38 @@ export function renderPlanSvg({
   svg.appendChild(label);
 
   // tiles
-  const avail = computeAvailableArea(currentRoom, exclusions);
-  if (avail.error) setLastTileError(avail.error);
-  else setLastTileError(null);
-
   let previewTiles = [];
-  if (avail.mp) {
-    const t = tilesForPreview(state, avail.mp);
-    if (t.error) setLastTileError(t.error);
+  if (!skipTiles) {
+    const avail = computeAvailableArea(currentRoom, exclusions);
+    if (avail.error) setLastTileError(avail.error);
     else setLastTileError(null);
 
-    previewTiles = t.tiles;
+    if (avail.mp) {
+      const t = tilesForPreview(state, avail.mp);
+      if (t.error) setLastTileError(t.error);
+      else setLastTileError(null);
 
-    const g = svgEl("g", { opacity: 1 });
-    svg.appendChild(g);
+      previewTiles = t.tiles;
 
-    // Get grout color from state - use default white if grout width is 0
-    const groutWidth = currentRoom?.grout?.widthCm || 0;
-    const groutHex = groutWidth > 0 ? (currentRoom?.grout?.colorHex || "#ffffff") : "#ffffff";
-    const groutRgb = hexToRgb(groutHex);
+      const g = svgEl("g", { opacity: 1 });
+      svg.appendChild(g);
 
-    for (const tile of t.tiles) {
-      g.appendChild(svgEl("path", {
-        d: tile.d,
-        // Tile fill stays white - only grout (stroke) gets the color
-        fill: tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-        stroke: tile.isFull
-          ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
-          : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`,
-        "stroke-width": tile.isFull ? 0.5 : 1.2
-      }));
+      // Get grout color from state - use default white if grout width is 0
+      const groutWidth = currentRoom?.grout?.widthCm || 0;
+      const groutHex = groutWidth > 0 ? (currentRoom?.grout?.colorHex || "#ffffff") : "#ffffff";
+      const groutRgb = hexToRgb(groutHex);
+
+      for (const tile of t.tiles) {
+        g.appendChild(svgEl("path", {
+          d: tile.d,
+          // Tile fill stays white - only grout (stroke) gets the color
+          fill: tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
+          stroke: tile.isFull
+            ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
+            : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`,
+          "stroke-width": tile.isFull ? 0.5 : 1.2
+        }));
+      }
     }
   }
 
@@ -560,18 +563,20 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 }
 
   // union overlay
-  const u = computeExclusionsUnion(exclusions);
-  if (u.error) setLastUnionError(u.error);
-  else setLastUnionError(null);
+  if (!skipTiles) {
+    const u = computeExclusionsUnion(exclusions);
+    if (u.error) setLastUnionError(u.error);
+    else setLastUnionError(null);
 
-  if (u.mp) {
-    const unionPath = multiPolygonToPathD(u.mp);
-    svg.appendChild(svgEl("path", {
-      d: unionPath,
-      fill: "rgba(239,68,68,0.15)",
-      stroke: "rgba(239,68,68,0.55)",
-      "stroke-width": 1.5
-    }));
+    if (u.mp) {
+      const unionPath = multiPolygonToPathD(u.mp);
+      svg.appendChild(svgEl("path", {
+        d: unionPath,
+        fill: "rgba(239,68,68,0.15)",
+        stroke: "rgba(239,68,68,0.55)",
+        "stroke-width": 1.5
+      }));
+    }
   }
 
   // exclusion shapes

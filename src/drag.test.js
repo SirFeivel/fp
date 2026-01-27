@@ -124,7 +124,7 @@ describe('createExclusionDragController', () => {
       expect(typeof controller.onExclPointerDown).toBe('function');
     });
 
-    it('sets selected exclusion on pointer down without triggering render', () => {
+    it('sets selected exclusion on pointer down and triggers drag-mode render', () => {
       const exclusions = [{ id: 'ex1', type: 'rect', x: 10, y: 20, w: 50, h: 30 }];
       const { controller, setSelectedIdOnly, render } = createMockController(exclusions);
 
@@ -143,7 +143,7 @@ describe('createExclusionDragController', () => {
       controller.onExclPointerDown(mockEvent);
 
       expect(setSelectedIdOnly).toHaveBeenCalledWith('ex1');
-      expect(render).not.toHaveBeenCalled(); // Should NOT trigger render on drag start
+      expect(render).toHaveBeenCalledWith({ mode: 'drag' });
     });
 
     it('captures pointer on drag start', () => {
@@ -226,6 +226,9 @@ describe('createExclusionDragController', () => {
       mockSvg._transformedY = 100;
 
       controller.onExclPointerDown(mockDownEvent);
+      
+      // Clear initial render call from drag start
+      render.mockClear();
 
       // Simulate move
       mockSvg._transformedX = 150;
@@ -267,6 +270,9 @@ describe('createExclusionDragController', () => {
       mockSvg._transformedY = 100;
 
       controller.onExclPointerDown(mockDownEvent);
+      
+      // Clear initial render call from drag start
+      render.mockClear();
 
       // Simulate multiple moves
       for (let i = 0; i < 10; i++) {

@@ -97,23 +97,6 @@ function renderAll(lastLabel, options) {
   try {
     const state = store.getState();
 
-    if (isDrag) {
-      renderPlanSvg({
-        state,
-        selectedExclId,
-        setSelectedExcl,
-        onExclPointerDown: dragController.onExclPointerDown,
-        lastUnionError,
-        lastTileError,
-        setLastUnionError: (v) => (lastUnionError = v),
-        setLastTileError: (v) => (lastTileError = v),
-        metrics: null,
-        skipTiles: true,
-        skipUnion: true
-      });
-      return;
-    }
-
     structure.renderFloorSelect();
     structure.renderFloorName();
     structure.renderRoomSelect();

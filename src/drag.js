@@ -147,6 +147,11 @@ export function createExclusionDragController({
       el.setAttribute("fill", "rgba(239,68,68,0.25)");
     });
 
+    // Enter drag mode - skip tile rendering
+    if (render) {
+      render({ mode: "drag" });
+    }
+
     // Find exclusion from state directly
     const state = getState();
     const room = getCurrentRoom(state);
