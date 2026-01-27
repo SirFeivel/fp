@@ -118,6 +118,21 @@ describe('validateState', () => {
     expect(result.errors.length).toBe(0);
   });
 
+  it('rejects non-integer basketweave ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 25 }, {}, { type: 'basketweave' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.title.includes('Basketweave'))).toBe(true);
+  });
+
+  it('accepts integer basketweave ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'basketweave' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBe(0);
+  });
+
   it('allows zero grout width', () => {
     const state = createTestState({}, {}, { widthCm: 0 });
 

@@ -69,18 +69,27 @@ The project uses **Vitest** for unit and integration testing.
 
 ---
 
-## 4. General Development Rules
+### 4. General Development Rules
 
-### Post-Development Workflow
+#### Topic Management
+- **Branching**: When starting a new topic, always create a new branch and switch to it before making any changes.
+
+#### Post-Development Workflow
 - **Verification**: When coding is finished, always:
   - Run all tests: `npm run test`
   - Fix any potential issues or regressions.
   - Verify the build: `npm run build`
   - Run the development server to check the UI: `npm run dev`
 
-### Acceptance & Integration
+#### Acceptance & Integration
 - **Test Coverage**: When changes are accepted or ready for integration, always:
   - Check the existing test suite for relevance.
   - Extend **unit tests** and/or **visual tests** (e.g., `visual-test.html`) to cover the new code or bug fix.
   - Ensure all tests pass.
-- **Persistence**: Commit and push changes only after the above steps are completed.
+- **Persistence & Merging**:
+  - Run `npm run test` and `npm run build`.
+  - Push the topic branch to the remote repository.
+  - If everything works, merge the branch into `main`.
+  - Resolve any potential merge issues.
+  - Delete the topic branch locally and remotely.
+  - Push the updated `main` branch to the remote repository.

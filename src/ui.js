@@ -170,6 +170,32 @@ export function bindUI({
       if (tileHField) tileHField.style.display = "";
       if (hexHint) hexHint.style.display = "none";
       if (patternTypeField) patternTypeField.style.display = "";
+
+      // Only show applicable patterns for rectangular tiles
+      const patternTypeSelect = document.getElementById("patternType");
+      if (patternTypeSelect) {
+        const tw = Number(document.getElementById("tileW")?.value) || 0;
+        const th = Number(document.getElementById("tileH")?.value) || 0;
+        const isSquare = Math.abs(tw - th) < 1e-6;
+
+        Array.from(patternTypeSelect.options).forEach(opt => {
+          if (isSquare) {
+            // Patterns that don't make sense for square tiles
+            const squareInapplicable = ["runningBond", "herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+            opt.hidden = squareInapplicable.includes(opt.value);
+            opt.disabled = opt.hidden;
+          } else {
+            opt.hidden = false;
+            opt.disabled = false;
+          }
+        });
+
+        // Reset if current selection is now hidden
+        const currentOpt = patternTypeSelect.options[patternTypeSelect.selectedIndex];
+        if (currentOpt && (currentOpt.hidden || currentOpt.disabled)) {
+          patternTypeSelect.value = "grid";
+        }
+      }
     }
   }
 
@@ -263,7 +289,7 @@ export function bindUI({
     'wasteKerfCm',
   ].forEach((id) => {
     const el = document.getElementById(id);
-    if (id === "tileW") {
+    if (id === "tileW" || id === "tileH") {
       el?.addEventListener("input", () => {
         updateTileShapeUI();
         store.markDirty();

@@ -103,7 +103,7 @@ export function validateState(s) {
     });
 
   const patternType = currentRoom?.pattern?.type;
-  if (patternType === "herringbone" || patternType === "doubleHerringbone") {
+  if (patternType === "herringbone" || patternType === "doubleHerringbone" || patternType === "basketweave") {
     if (n(tileW) && n(tileH) && tileW > 0 && tileH > 0) {
       const L = Math.max(tileW, tileH);
       const W = Math.min(tileW, tileH);
@@ -119,6 +119,14 @@ export function validateState(s) {
           errors.push({
             title: t("validation.doubleHerringboneRatioTitle"),
             text: `${t("validation.doubleHerringboneRatioText")} ${ratioText}.`
+          });
+        }
+      } else if (patternType === "basketweave") {
+        if (Math.abs(ratio - nearest) > ratioEps) {
+          const ratioText = `${ratio.toFixed(2)}:1`;
+          errors.push({
+            title: t("validation.basketweaveRatioTitle"),
+            text: `${t("validation.basketweaveRatioText")} ${ratioText}.`
           });
         }
       } else if (Math.abs(ratio - nearest) > ratioEps) {

@@ -257,6 +257,11 @@ export function renderTilePatternForm(state) {
 
   const isRB = currentRoom?.pattern?.type === "runningBond";
   document.getElementById("bondFraction").disabled = !isRB;
+  // Also hide bondFraction field if not RB
+  const bondFractionField = document.getElementById("bondFraction")?.closest(".field");
+  if (bondFractionField) {
+    bondFractionField.style.display = isRB ? "" : "none";
+  }
 
   const shape = currentRoom?.tile?.shape || "rect";
   const tileHField = document.getElementById("tileHeightField");
@@ -265,9 +270,37 @@ export function renderTilePatternForm(state) {
   if (shape === "hex") {
     if (tileHField) tileHField.style.display = "none";
     if (hexHint) hexHint.style.display = "block";
+    const patternTypeField = document.getElementById("patternType")?.closest(".field");
+    if (patternTypeField) patternTypeField.style.display = "none";
+  } else if (shape === "rhombus") {
+    if (tileHField) tileHField.style.display = "";
+    if (hexHint) hexHint.style.display = "none";
+    const patternTypeField = document.getElementById("patternType")?.closest(".field");
+    if (patternTypeField) patternTypeField.style.display = "none";
   } else {
     if (tileHField) tileHField.style.display = "";
     if (hexHint) hexHint.style.display = "none";
+    const patternTypeField = document.getElementById("patternType")?.closest(".field");
+    if (patternTypeField) patternTypeField.style.display = "";
+
+    // Update applicable patterns
+    const patternTypeSelect = document.getElementById("patternType");
+    if (patternTypeSelect) {
+      const tw = currentRoom?.tile?.widthCm || 0;
+      const th = currentRoom?.tile?.heightCm || 0;
+      const isSquare = Math.abs(tw - th) < 1e-6;
+
+      Array.from(patternTypeSelect.options).forEach(opt => {
+        if (isSquare) {
+          const squareInapplicable = ["runningBond", "herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+          opt.hidden = squareInapplicable.includes(opt.value);
+          opt.disabled = opt.hidden;
+        } else {
+          opt.hidden = false;
+          opt.disabled = false;
+        }
+      });
+    }
   }
 
   // Pricing
