@@ -846,7 +846,17 @@ hr{
   transition:all 0.2s ease;
   white-space:nowrap;
   flex: 1;
-  min-width: 70px;
+  min-width: 40px; /* Reduced from 70px */
+}
+
+@media (max-width: 1200px) {
+  .tab span:not(.tab-icon) {
+    display: none;
+  }
+  .tab {
+    padding: 8px;
+    min-width: 40px;
+  }
 }
 
 .tab:hover{
