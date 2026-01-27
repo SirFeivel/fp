@@ -73,6 +73,8 @@ The project uses **Vitest** for unit and integration testing.
 
 #### Topic Management
 - **Branching**: When starting a new topic, always create a new branch and switch to it before making any changes.
+- **Session Tracking**: Maintain and update a `SESSION.md` file in the project root. This file should document the current goals, progress, and next steps. Each update MUST include a ISO 8601 timestamp.
+- **Start from Scratch**: If starting without previous context, first recall the whole content of `.junie/guidelines.md`, then load `SESSION.md`. Do not proceed with changes immediately; instead, ask the user for instructions.
 
 #### Post-Development Workflow
 - **Verification**: When coding is finished, always:
