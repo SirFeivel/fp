@@ -30,8 +30,8 @@ const translations = {
       none: "– keine –"
     },
     removal: {
-      mode: "Ausschlüsse bearbeiten",
-      modeToggled: "Bearbeitungsmodus gewechselt",
+      mode: "Entfernen-Modus",
+      modeToggled: "Entfernen-Modus gewechselt",
       tileToggled: "Fliesen-Ausschluss geändert",
       skirtToggled: "Sockelleisten-Ausschluss geändert"
     },
@@ -318,8 +318,8 @@ const translations = {
       none: "– none –"
     },
     removal: {
-      mode: "Edit Exclusions",
-      modeToggled: "Edit mode toggled",
+      mode: "Removal Mode",
+      modeToggled: "Removal mode toggled",
       tileToggled: "Tile exclusion toggled",
       skirtToggled: "Skirting exclusion toggled"
     },

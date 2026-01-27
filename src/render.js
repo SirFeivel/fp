@@ -787,17 +787,18 @@ export function renderPlanSvg({
           d: tile.d,
           // Tile fill stays white - only grout (stroke) gets the color
           fill: isExcluded 
-            ? "rgba(239,68,68,0.05)" 
-            : (tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)"),
+            ? "rgba(239,68,68,0.25)" 
+            : (tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)"),
           stroke: isExcluded
-            ? "rgba(239,68,68,0.4)"
+            ? "rgba(239,68,68,0.8)"
             : (tile.isFull
                 ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
                 : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`),
-          "stroke-width": isExcluded ? 1.0 : (tile.isFull ? 0.5 : 1.2)
+          "stroke-width": isExcluded ? 2.0 : (tile.isFull ? 0.5 : 1.2)
         };
         if (isExcluded) {
-          attrs["stroke-dasharray"] = "2 2";
+          attrs["stroke-dasharray"] = "4 2";
+          attrs["class"] = "tile-excluded";
         }
         if (tile.id) attrs["data-tileid"] = tile.id;
         g.appendChild(svgEl("path", attrs));
@@ -900,8 +901,9 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         };
         if (id) attrs["data-skirtid"] = id;
         if (excluded) {
-          attrs.stroke = "rgba(239,68,68,0.5)";
-          attrs.opacity = 0.4;
+          attrs.stroke = "rgba(239,68,68,0.8)";
+          attrs["stroke-width"] = 8;
+          attrs["class"] = "skirt-excluded";
         }
 
         // Pieces (dashed line) - show gaps to background for better recognition

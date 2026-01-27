@@ -704,25 +704,43 @@ hr{
 #planSvgFullscreen.removal-mode [data-skirtid] {
   cursor: pointer;
   pointer-events: auto !important;
-  transition: opacity 0.2s, filter 0.2s;
+  transition: opacity 0.2s, filter 0.2s, stroke 0.2s, fill 0.2s;
 }
 
 #planSvg.removal-mode [data-tileid]:hover,
-#planSvgFullscreen.removal-mode [data-tileid]:hover,
-#planSvg.removal-mode [data-skirtid]:hover,
-#planSvgFullscreen.removal-mode [data-skirtid]:hover {
-  filter: brightness(1.5) saturate(1.5);
+#planSvgFullscreen.removal-mode [data-tileid]:hover {
+  filter: brightness(1.3);
   stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: none !important;
   opacity: 1 !important;
 }
 
-#planSvg.removal-mode [data-tileid],
-#planSvgFullscreen.removal-mode [data-tileid] {
-  fill: rgba(255, 255, 255, 0.2) !important;
+#planSvg.removal-mode [data-skirtid]:hover,
+#planSvgFullscreen.removal-mode [data-skirtid]:hover {
+  stroke: var(--accent) !important;
+  stroke-width: 12px !important;
+  opacity: 1 !important;
+  filter: brightness(1.3);
 }
 
-#planSvg.removal-mode [data-skirtid],
-#planSvgFullscreen.removal-mode [data-skirtid] {
+#planSvg.removal-mode .tile-excluded,
+#planSvgFullscreen.removal-mode .tile-excluded {
+  opacity: 0.6;
+}
+
+#planSvg.removal-mode .skirt-excluded,
+#planSvgFullscreen.removal-mode .skirt-excluded {
+  opacity: 0.6;
+}
+
+#planSvg.removal-mode [data-tileid]:not(.tile-excluded),
+#planSvgFullscreen.removal-mode [data-tileid]:not(.tile-excluded) {
+  fill: rgba(255, 255, 255, 0.25) !important;
+}
+
+#planSvg.removal-mode [data-skirtid]:not(.skirt-excluded),
+#planSvgFullscreen.removal-mode [data-skirtid]:not(.skirt-excluded) {
   stroke-width: 8px !important;
 }
 

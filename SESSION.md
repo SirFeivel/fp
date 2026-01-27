@@ -406,38 +406,30 @@
 - Default open cards: Structure (Nav), Room, Tiles & Grout. Others closed by default.
 - All 355 tests pass.
 
-## Notes
-- Topic "UI Improvements" completed and ready for submission.
-- All guidelines followed.
-- Grand total visibility issue resolved.
-- Language picker and Autosave indicator refined.
-
-## Session: Finalize Removal Mode (2026-01-27)
+## Session: Removal Mode UI & Consistency (2026-01-27)
 ### Goal
-- Finalize "Removal Mode" feature and merge into main.
-- Ensure all tests pass and build is successful.
-- Add visual tests for the new feature.
+- Improve visual recognition of selected tiles/skirts in Removal Mode.
+- Ensure UI and UX consistency between tiles and skirts.
 
 ### Plan
-1. Run full test suite ✓
-2. Verify production build ✓
-3. Add visual test case for Removal Mode in `visual-test.html` ✓
-4. Merge `feature/removal-mode` and `bugfix/skirting-exclusion` into main ✓
+1. Create branch `feature/removal-mode-ui` ✓
+2. Unify exclusion styles (red tint/border/dashed) for tiles and skirts ✓
+3. Improve hover states and transitions ✓
+4. Rename "Edit Exclusions" to "Removal Mode" for better clarity ✓
+5. Verify with tests and build ✓
 
 ### Status
-- "Removal Mode" is now a core feature, stable and fully tested.
+- Unified selection style: both elements use red tint and 8px/dashed red borders when excluded.
+- Improved UX: bright accent hover states and smooth transitions.
+- Label updated to "Removal Mode" (EN) / "Entfernen-Modus" (DE).
 - All 361 tests pass.
-- Production build is successful.
-- Visual test coverage extended to include removal mode styling.
 
 ## Commands Run
 - npm run test
 - npm run build
+- git checkout -b feature/removal-mode-ui
+- git commit -am "Improve Removal Mode UI/UX and consistency"
 - git checkout main
-- git merge feature/removal-mode
-- git branch -d feature/removal-mode
-- git branch -d bugfix/skirting-exclusion
-- git branch -d feature/integrate-logo-favicon
-- git branch -d feature/remove-elements
-- git branch -d feature/deployment-setup
+- git merge feature/removal-mode-ui
+- git branch -d feature/removal-mode-ui
 - git push origin main
