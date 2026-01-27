@@ -13,7 +13,17 @@ function pointerToSvgXY(svg, clientX, clientY) {
 }
 
 /**
+ * Find all SVG elements for a given exclusion ID across all SVG containers
+ */
+function findExclElements(id) {
+  return document.querySelectorAll(`[data-exid="${id}"]`);
+}
+
+/**
  * Wire drag handlers for exclusions inside the planSvg.
+ *
+ * Uses CSS transforms during drag for optimal performance - no DOM rebuilding.
+ * Full render only happens on drag end.
  *
  * Required callbacks are passed in so drag.js stays framework-free.
  */
@@ -25,13 +35,16 @@ export function createExclusionDragController({
   render, // (label?) => void
   getSelectedExcl, // () => excl or null
   setSelectedExcl, // (id|null) => void
+  setSelectedIdOnly, // (id|null) => void - sets ID without triggering render
   getSelectedId, // () => id|null
   getMoveLabel // () => translated label for "moved" action
 }) {
   let drag = null;
   let dragStartState = null;
+  let pendingFrame = false;
+  let lastMoveEvent = null;
 
-  function onSvgPointerMove(e) {
+  function applyDragMove(e) {
     if (!drag) return;
 
     const svg = getSvg();
@@ -39,34 +52,32 @@ export function createExclusionDragController({
     const dx = curMouse.x - drag.startMouse.x;
     const dy = curMouse.y - drag.startMouse.y;
 
-    const state = getState();
-    const temp = deepClone(state);
-    const currentRoom = getCurrentRoom(temp);
-    if (!currentRoom || !currentRoom.exclusions) return;
+    // Store current delta for final state computation
+    drag.currentDx = dx;
+    drag.currentDy = dy;
 
-    const idx = currentRoom.exclusions.findIndex((x) => x.id === drag.id);
-    if (idx < 0) return;
+    // Apply CSS transform to all matching elements (main SVG + fullscreen SVG)
+    const elements = findExclElements(drag.id);
+    elements.forEach(el => {
+      el.setAttribute("transform", `translate(${dx}, ${dy})`);
+    });
+  }
 
-    const start = drag.startShape;
-    const cur = currentRoom.exclusions[idx];
+  function scheduleDragMove(e) {
+    lastMoveEvent = e;
+    if (pendingFrame) return;
+    pendingFrame = true;
+    requestAnimationFrame(() => {
+      pendingFrame = false;
+      const evt = lastMoveEvent;
+      lastMoveEvent = null;
+      if (evt) applyDragMove(evt);
+    });
+  }
 
-    if (cur.type === "rect") {
-      cur.x = start.x + dx;
-      cur.y = start.y + dy;
-    } else if (cur.type === "circle") {
-      cur.cx = start.cx + dx;
-      cur.cy = start.cy + dy;
-    } else {
-      cur.p1.x = start.p1.x + dx;
-      cur.p1.y = start.p1.y + dy;
-      cur.p2.x = start.p2.x + dx;
-      cur.p2.y = start.p2.y + dy;
-      cur.p3.x = start.p3.x + dx;
-      cur.p3.y = start.p3.y + dy;
-    }
-
-    setStateDirect(temp);
-    render("…");
+  function onSvgPointerMove(e) {
+    if (!drag) return;
+    scheduleDragMove(e);
   }
 
   function onSvgPointerUp(e) {
@@ -75,17 +86,45 @@ export function createExclusionDragController({
 
     if (!drag || !dragStartState) return;
 
-    const finalState = deepClone(getState());
-    const startState = dragStartState;
+    const dx = drag.currentDx || 0;
+    const dy = drag.currentDy || 0;
+    const hasMoved = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
+
+    if (hasMoved) {
+      // Build final state with updated exclusion position
+      const finalState = deepClone(dragStartState);
+      const finalRoom = getCurrentRoom(finalState);
+      const excl = finalRoom?.exclusions?.find(x => x.id === drag.id);
+
+      if (excl) {
+        if (excl.type === "rect") {
+          excl.x += dx;
+          excl.y += dy;
+        } else if (excl.type === "circle") {
+          excl.cx += dx;
+          excl.cy += dy;
+        } else if (excl.type === "tri") {
+          excl.p1.x += dx;
+          excl.p1.y += dy;
+          excl.p2.x += dx;
+          excl.p2.y += dy;
+          excl.p3.x += dx;
+          excl.p3.y += dy;
+        }
+      }
+
+      // Commit triggers full render with correct tile calculations
+      commit(getMoveLabel(), finalState);
+    } else {
+      // No movement - clear transforms and trigger render to show selection properly
+      const elements = findExclElements(drag.id);
+      elements.forEach(el => el.removeAttribute("transform"));
+      // Use setSelectedExcl to trigger proper render with selection styling
+      setSelectedExcl(drag.id);
+    }
 
     drag = null;
     dragStartState = null;
-
-    const hasMoved = JSON.stringify(startState) !== JSON.stringify(finalState);
-    if (hasMoved) {
-      setStateDirect(startState);
-      commit(getMoveLabel(), finalState);
-    }
   }
 
   function onExclPointerDown(e) {
@@ -95,17 +134,38 @@ export function createExclusionDragController({
     const id = e.currentTarget.getAttribute("data-exid");
     if (!id) return;
 
-    setSelectedExcl(id);
+    // Set selection ID without triggering full render
+    if (setSelectedIdOnly) {
+      setSelectedIdOnly(id);
+    }
 
-    const ex = getSelectedExcl();
+    // Apply visual selection styling directly to avoid re-render
+    const elements = findExclElements(id);
+    elements.forEach(el => {
+      el.setAttribute("stroke", "rgba(239,68,68,0.95)");
+      el.setAttribute("stroke-width", "2");
+      el.setAttribute("fill", "rgba(239,68,68,0.25)");
+    });
+
+    // Find exclusion from state directly
+    const state = getState();
+    const room = getCurrentRoom(state);
+    const ex = room?.exclusions?.find(x => x.id === id);
     if (!ex) return;
 
     const svg = getSvg();
     svg.setPointerCapture(e.pointerId);
 
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    dragStartState = deepClone(getState());
-    drag = { id, startMouse, startShape: deepClone(ex) };
+    dragStartState = deepClone(state);
+
+    drag = {
+      id,
+      startMouse,
+      startShape: deepClone(ex),
+      currentDx: 0,
+      currentDy: 0
+    };
 
     svg.addEventListener("pointermove", onSvgPointerMove);
     svg.addEventListener("pointerup", onSvgPointerUp, { once: true });

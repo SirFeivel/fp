@@ -85,9 +85,34 @@ function setSelectedSectionId(id) {
   selectedSectionId = id || null;
 }
 
-function renderAll(lastLabel) {
+function renderAll(lastLabel, options) {
+  let opts = options || {};
+  let label = lastLabel;
+  if (lastLabel && typeof lastLabel === "object") {
+    opts = lastLabel;
+    label = undefined;
+  }
+  const isDrag = opts.mode === "drag";
+
   try {
     const state = store.getState();
+
+    if (isDrag) {
+      renderPlanSvg({
+        state,
+        selectedExclId,
+        setSelectedExcl,
+        onExclPointerDown: dragController.onExclPointerDown,
+        lastUnionError,
+        lastTileError,
+        setLastUnionError: (v) => (lastUnionError = v),
+        setLastTileError: (v) => (lastTileError = v),
+        metrics: null,
+        skipTiles: true,
+        skipUnion: true
+      });
+      return;
+    }
 
     structure.renderFloorSelect();
     structure.renderFloorName();
@@ -112,10 +137,10 @@ function renderAll(lastLabel) {
     });
 
     renderWarnings(state, validateState);
-    renderMetrics(state);
+    if (!isDrag) renderMetrics(state);
 
-    const metrics = computePlanMetrics(state);
-    console.log("metrics", metrics);
+    const metrics = isDrag ? null : computePlanMetrics(state);
+    if (metrics) console.log("metrics", metrics);
 
     renderPlanSvg({
       state,
@@ -126,11 +151,12 @@ function renderAll(lastLabel) {
       lastTileError,
       setLastUnionError: (v) => (lastUnionError = v),
       setLastTileError: (v) => (lastTileError = v),
-      metrics
+      metrics,
+      skipTiles: isDrag
     });
 
     renderStateView(state);
-    renderCounts(store.getUndoStack(), store.getRedoStack(), lastLabel);
+    renderCounts(store.getUndoStack(), store.getRedoStack(), label);
 
     refreshProjectSelect();
     updateMeta();
@@ -180,6 +206,7 @@ const dragController = createExclusionDragController({
   render: (label) => renderAll(label),
   getSelectedExcl: () => excl.getSelectedExcl(),
   setSelectedExcl,
+  setSelectedIdOnly: setSelectedId, // Set ID without triggering render (for drag start)
   getSelectedId: () => selectedExclId,
   getMoveLabel: () => t("exclusions.moved")
 });
