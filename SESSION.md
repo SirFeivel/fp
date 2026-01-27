@@ -159,27 +159,89 @@
 - Metrics panel values are larger and easier to read.
 - All 354 tests pass and production build is successful.
 
-## Session: Fix Plan Toggles (2026-01-27)
+## Session: Fix Removal Mode (2026-01-27)
 ### Goal
-- Consolidate "Show Grid" and "Show Skirting" toggles.
-- Remove duplicate toggles from the Room section and make Plan toolbar toggles functional.
+- Fix crash in Removal Mode.
+- Enable toggling tiles back (currently they disappear).
 
 ### Plan
-1. Create feature branch `feature/fix-plan-toggles` ✓
-2. Remove duplicate toggles from `index.html` ✓
-3. Update `src/ui.js` to bind Plan toolbar toggles to state ✓
-4. Update `src/render.js` to sync all toggle instances with state ✓
-5. Verify with tests and build ✓
+1. RCA: Found that `renderPlanSvg` was adding multiple click listeners to `planSvg`, causing exponential re-renders (crash). ✓
+2. RCA: Found that `tilesForPreview` filtered out excluded tiles by default, making them unclickable. ✓
+3. Move `planSvg` background click listener from `render.js` to `main.js`. ✓
+4. Update `render.js` to pass `includeExcluded: true` and style excluded tiles (red dashed). ✓
+5. Fix outdated `skirting_removal.test.js`. ✓
+6. Add `removal_tiles.test.js` to verify tile removal logic. ✓
 
 ### Status
-- Duplicate toggles removed from the Room tab.
-- Plan toolbar toggles are now fully functional and tied to the global state.
-- All 354 tests pass.
+- Removal mode is now stable and fully functional for both tiles and skirts.
+- Excluded elements are rendered with a distinct "deleted" style in removal mode.
+- All 361 tests pass.
+
+## Session: Removal Mode (2026-01-27)
+### Goal
+- Implement "Removal Mode" to allow users to mark specific tiles or skirting segments as excluded.
+- Ensure stable IDs for all generated geometry to support persistent exclusions.
+- Provide a simple UI toggle in the plan toolbar.
+
+### Plan
+1. Create branch `feature/removal-mode` ✓
+2. Update room schema to include `excludedTiles` and `excludedSkirts` ✓
+3. Update geometry generators to assign stable IDs and respect exclusions ✓
+4. Implement interactive selection in `src/removal.js` and `src/render.js` ✓
+5. Add "Edit Exclusions" toggle to plan toolbar ✓
+6. Verify with tests and build ✓
+
+### Status
+- "Removal Mode" fully functional for both tiles and skirting.
+- Stable ID generation implemented for all 8 pattern types.
+- UI integrated into the plan toolbar with hover highlighting.
+- All 358 tests pass and production build successful.
+
+## Notes
+- Topic "Removal Mode" completed, merged, and pushed to main.
+- Local feature branch `feature/removal-mode` deleted.
+
+## Session: Fix Skirting Exclusion (2026-01-27)
+### Goal
+- Fix the issue where skirting segments could not be excluded as requested.
+- Improve UX by allowing toggling excluded segments back ON.
+- Ensure stable skirting IDs and better hit areas for interaction.
+
+### Plan
+1. Create branch `bugfix/skirting-exclusion` ✓
+2. Normalize skirting segment IDs by sorting points (direction independence) ✓
+3. Implement `includeExcluded` option in `computeSkirtingSegments` ✓
+4. Update `renderPlanSvg` to show excluded segments in removal mode ✓
+5. Add transparent hit-area paths for skirting to improve clickability ✓
+6. Fix CSS hover behavior for skirting in removal mode ✓
+7. Verify with tests and build ✓
+
+### Status
+- Skirting exclusion is now fully functional and stable.
+- Excluded segments are now visible (in red) during "Removal Mode", allowing users to undo exclusions.
+- Clicking skirting is much easier due to invisible hit-areas that bridge the gaps in dashed lines.
+- All 360 tests pass and production build is successful.
+
+## Session: Deployment Setup (2026-01-27)
+### Goal
+- Deploy the application to GitHub Pages for external testing.
+- Automate the deployment process via GitHub Actions.
+
+### Plan
+1. Create branch `feature/deployment-setup` ✓
+2. Configure GitHub Actions workflow for CI/CD ✓
+3. Update `README.md` with live link and build status ✓
+4. Verify local production build ✓
+
+### Status
+- GitHub Actions workflow `.github/workflows/deploy.yml` created.
+- Application configured to deploy from `main` branch.
+- Live demo link added to README.
+- Local build `npm run build` is successful.
 
 ## Commands Run
-- npm run test
+- git checkout -b feature/deployment-setup
 - npm run build
-- git checkout -b feature/ui-consistency-v2
 
 ## Session: Dynamic Plan Title (2026-01-27)
 ### Goal
@@ -317,3 +379,29 @@
 - All guidelines followed.
 - Grand total visibility issue resolved.
 - Language picker and Autosave indicator refined.
+
+## Session: Finalize Removal Mode (2026-01-27)
+### Goal
+- Finalize "Removal Mode" feature and merge into main.
+- Ensure all tests pass and build is successful.
+- Add visual tests for the new feature.
+
+### Plan
+1. Run full test suite ✓
+2. Verify production build ✓
+3. Add visual test case for Removal Mode in `visual-test.html` ✓
+4. Merge `feature/removal-mode` and `bugfix/skirting-exclusion` into main ✓
+
+### Status
+- "Removal Mode" is now a core feature, stable and fully tested.
+- All 361 tests pass.
+- Production build is successful.
+- Visual test coverage extended to include removal mode styling.
+
+## Commands Run
+- npm run test
+- npm run build
+- git checkout main
+- git merge feature/removal-mode
+- git branch -d feature/removal-mode
+- git branch -d bugfix/skirting-exclusion
