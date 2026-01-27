@@ -79,6 +79,8 @@ export function bindUI({
     if (shape === "hex") {
       const sideLength = widthCm / Math.sqrt(3);
       currentRoom.tile.heightCm = sideLength * 2;
+    } else if (shape === "square") {
+      currentRoom.tile.heightCm = widthCm;
     } else if (shape === "rhombus") {
       // For rhombus, we can also use width for height if they are meant to be equal-sided,
       // but let's allow custom height for now to define the other diagonal.
@@ -162,6 +164,31 @@ export function bindUI({
         const sideLength = widthCm / Math.sqrt(3);
         tileHInput.value = (sideLength * 2).toFixed(2);
       }
+    } else if (shape === "square") {
+      if (tileHField) tileHField.style.display = "none";
+      if (hexHint) hexHint.style.display = "none";
+      if (patternTypeField) patternTypeField.style.display = "";
+
+      const widthCm = Number(document.getElementById("tileW")?.value) || 0;
+      if (widthCm > 0 && tileHInput) {
+        tileHInput.value = widthCm;
+      }
+
+      // Filter patterns for square
+      const patternTypeSelect = document.getElementById("patternType");
+      if (patternTypeSelect) {
+        Array.from(patternTypeSelect.options).forEach(opt => {
+          const squareInapplicable = ["herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+          opt.hidden = squareInapplicable.includes(opt.value);
+          opt.disabled = opt.hidden;
+        });
+
+        // Reset if current selection is now hidden
+        const currentOpt = patternTypeSelect.options[patternTypeSelect.selectedIndex];
+        if (currentOpt && (currentOpt.hidden || currentOpt.disabled)) {
+          patternTypeSelect.value = "grid";
+        }
+      }
     } else if (shape === "rhombus") {
       if (tileHField) tileHField.style.display = "";
       if (hexHint) hexHint.style.display = "none";
@@ -179,9 +206,9 @@ export function bindUI({
         const isSquare = Math.abs(tw - th) < 1e-6;
 
         Array.from(patternTypeSelect.options).forEach(opt => {
-          if (isSquare) {
-            // Patterns that don't make sense for square tiles
-            const squareInapplicable = ["runningBond", "herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+          if (isSquare && tw > 0) {
+            // Patterns that don't make sense for square tiles (even if they are shape="rect")
+            const squareInapplicable = ["herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
             opt.hidden = squareInapplicable.includes(opt.value);
             opt.disabled = opt.hidden;
           } else {

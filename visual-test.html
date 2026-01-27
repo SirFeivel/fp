@@ -138,6 +138,22 @@
       }
     });
 
+    // Add Square test
+    const squareState = createMockState('grid');
+    squareState.floors[0].rooms[0].tile = { widthCm: 50, heightCm: 50, shape: 'square' };
+    const squareResult = tilesForPreview(squareState, availableMP);
+    
+    const sqDiv = document.createElement('div');
+    sqDiv.className = 'pattern-container';
+    sqDiv.innerHTML = `<h2>Square Grid</h2><svg id="square-svg" width="400" height="400"></svg><div class="stats" id="square-stats"></div>`;
+    document.body.appendChild(sqDiv);
+    
+    if (squareResult.error) {
+        console.error(`square error:`, squareResult.error);
+    } else {
+        renderPattern('square-svg', 'square-stats', squareResult.tiles);
+    }
+
     // Add Rhombus test
     const rhombusState = createMockState('grid');
     rhombusState.floors[0].rooms[0].tile = { widthCm: 60, heightCm: 30, shape: 'rhombus' };

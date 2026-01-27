@@ -20,6 +20,9 @@ function calculateTileArea(tw, th, shape) {
   if (shape === "rhombus") {
     return (tw * th) / 2;
   }
+  if (shape === "square") {
+    return tw * tw;
+  }
   return tw * th;
 }
 

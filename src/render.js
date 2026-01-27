@@ -272,6 +272,21 @@ export function renderTilePatternForm(state) {
     if (hexHint) hexHint.style.display = "block";
     const patternTypeField = document.getElementById("patternType")?.closest(".field");
     if (patternTypeField) patternTypeField.style.display = "none";
+  } else if (shape === "square") {
+    if (tileHField) tileHField.style.display = "none";
+    if (hexHint) hexHint.style.display = "none";
+    const patternTypeField = document.getElementById("patternType")?.closest(".field");
+    if (patternTypeField) patternTypeField.style.display = "";
+
+    // Update applicable patterns for square
+    const patternTypeSelect = document.getElementById("patternType");
+    if (patternTypeSelect) {
+      Array.from(patternTypeSelect.options).forEach(opt => {
+        const squareInapplicable = ["herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+        opt.hidden = squareInapplicable.includes(opt.value);
+        opt.disabled = opt.hidden;
+      });
+    }
   } else if (shape === "rhombus") {
     if (tileHField) tileHField.style.display = "";
     if (hexHint) hexHint.style.display = "none";
@@ -291,8 +306,8 @@ export function renderTilePatternForm(state) {
       const isSquare = Math.abs(tw - th) < 1e-6;
 
       Array.from(patternTypeSelect.options).forEach(opt => {
-        if (isSquare) {
-          const squareInapplicable = ["runningBond", "herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
+        if (isSquare && tw > 0) {
+          const squareInapplicable = ["herringbone", "doubleHerringbone", "basketweave", "verticalStackAlternating"];
           opt.hidden = squareInapplicable.includes(opt.value);
           opt.disabled = opt.hidden;
         } else {

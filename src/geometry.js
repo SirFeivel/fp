@@ -300,6 +300,11 @@ export function tilesForPreview(state, availableMP) {
     return tilesForPreviewRhombus(state, availableMP, tw, th, grout);
   }
 
+  if (tileShape === "square") {
+    // For square tiles, we force width = height using the width value
+    return tilesForPreviewSquare(state, availableMP, tw, grout);
+  }
+
   const type = currentRoom.pattern?.type || "grid";
 
   if (type === "herringbone") {
@@ -482,6 +487,94 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout) {
 
       const gotArea = multiPolyArea(clipped);
       const isFull = gotArea >= hexFullArea * TILE_AREA_TOLERANCE;
+
+      tiles.push({ d, isFull });
+    }
+  }
+
+  return { tiles, error: null };
+}
+
+function tilesForPreviewSquare(state, availableMP, tw, grout) {
+  const currentRoom = getCurrentRoom(state);
+  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
+  const rotRad = degToRad(rotDeg);
+
+  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
+
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const preset = currentRoom.pattern?.origin?.preset || "tl";
+
+  const type = currentRoom.pattern?.type || "grid";
+  const frac = Number(currentRoom.pattern?.bondFraction) || 0.5;
+  const rowShiftCm = type === "runningBond" ? tw * frac : 0;
+  const bondPeriod = type === "runningBond" ? detectBondPeriod(frac) : 0;
+
+  const stepX = tw + grout;
+  const stepY = tw + grout;
+
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
+
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+
+  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
+  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
+
+  const minX = b.minX - marginX;
+  const maxX = b.maxX + marginX;
+  const minY = b.minY - marginY;
+  const maxY = b.maxY + marginY;
+
+  let anchorX = origin.x + offX;
+  let anchorY = origin.y + offY;
+  if (preset === "center") {
+    anchorX -= tw / 2;
+    anchorY -= tw / 2;
+  }
+
+  const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
+  const startY = anchorY + floorDiv(minY - anchorY, stepY) * stepY;
+
+  const estCols = Math.ceil((maxX - startX) / stepX) + 1;
+  const estRows = Math.ceil((maxY - startY) / stepY) + 1;
+
+  const estTiles = estCols * estRows;
+  if (estTiles > MAX_PREVIEW_TILES) {
+    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
+  }
+
+  const tiles = [];
+  const fullArea = tw * tw;
+
+  for (let r = 0; r < estRows; r++) {
+    const y = startY + r * stepY;
+
+    let shift = 0;
+    if (rowShiftCm) {
+      if (bondPeriod > 0) shift = (r % bondPeriod) * rowShiftCm;
+      else shift = (r % 2) * rowShiftCm;
+    }
+
+    for (let c = 0; c < estCols; c++) {
+      const x = startX + c * stepX + shift;
+      const tileP = tileRectPolygon(x, y, tw, tw, origin.x, origin.y, rotRad);
+
+      let clipped;
+      try {
+        clipped = polygonClipping.intersection(availableMP, tileP);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (!clipped || !clipped.length) continue;
+
+      const d = multiPolygonToPathD(clipped);
+      if (!d) continue;
+
+      const gotArea = multiPolyArea(clipped);
+      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
 
       tiles.push({ d, isFull });
     }
