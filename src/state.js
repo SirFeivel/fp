@@ -20,7 +20,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     if (s.tile || s.grout || s.pattern) {
-      const globalTile = s.tile || { widthCm: 60, heightCm: 60, shape: "rect" };
+      const globalTile = s.tile || { widthCm: 40, heightCm: 20, shape: "rect" };
       const globalGrout = s.grout || { widthCm: 0.2 };
       const globalPattern = s.pattern || {
         type: "grid",
@@ -74,7 +74,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               widthCm: oldState.room?.widthCm || 600,
               heightCm: oldState.room?.heightCm || 400,
               exclusions: oldState.exclusions || [],
-              tile: oldState.tile || { widthCm: 60, heightCm: 60, shape: "rect" },
+              tile: oldState.tile || { widthCm: 40, heightCm: 20, shape: "rect" },
               grout: oldState.grout || { widthCm: 0.2, colorHex: "#ffffff" },
               pattern: oldState.pattern || {
                 type: "grid",

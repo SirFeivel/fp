@@ -181,11 +181,11 @@ const translations = {
       copyFailed: "Copy fehlgeschlagen (Clipboard nicht verfügbar)."
     },
     warnings: {
-      title: "Warnungen",
-      none: "Keine Warnungen",
+      title: "Hinweise",
+      none: "Keine Hinweise",
       validationOk: "Validierung ok.",
-      error: "Error",
-      warn: "Warn"
+      error: "Muster kann nicht angezeigt werden",
+      warn: "Hinweis"
     },
     validation: {
       noRoomSelected: "Kein Raum ausgewählt",
@@ -201,11 +201,11 @@ const translations = {
       groutInvalid: "Fuge ungültig",
       groutText: "Muss eine Zahl ≥ 0 sein.",
       herringboneRatioTitle: "Herringbone Verhältnis ungültig",
-      herringboneRatioText: "Für Herringbone muss die lange Seite ein ganzzahliges Vielfaches der kurzen Seite sein (z. B. 2:1, 3:1). Aktuelles Verhältnis:",
+      herringboneRatioText: "Für Fischgrätmuster muss die lange Seite genau in die kurze Seite passen (z. B. 2:1, 3:1). Aktuelles Verhältnis:",
       doubleHerringboneRatioTitle: "Double Herringbone Verhältnis ungültig",
-      doubleHerringboneRatioText: "Für Double Herringbone muss die lange Seite ein ganzzahliges Vielfaches von 2× kurzer Seite sein (z. B. 4:1, 6:1). Aktuelles Verhältnis:",
+      doubleHerringboneRatioText: "Für Double Herringbone muss die lange Seite genau in das Doppelte der kurzen Seite passen (z. B. 4:1, 6:1). Aktuelles Verhältnis:",
       basketweaveRatioTitle: "Basketweave Verhältnis ungültig",
-      basketweaveRatioText: "Für Basketweave muss die lange Seite ein ganzzahliges Vielfaches der kurzen Seite sein (z. B. 2:1, 3:1). Aktuelles Verhältnis:",
+      basketweaveRatioText: "Für Basketweave muss die lange Seite genau in die kurze Seite passen (z. B. 2:1, 3:1). Aktuelles Verhältnis:",
       rotationWarning: "Rotation außerhalb 45° Raster",
       rotationText: "MVP: 0..315 in 45°-Schritten.",
       exclOutside: "liegt teilweise außerhalb.",
@@ -438,11 +438,11 @@ const translations = {
       copyFailed: "Copy failed (Clipboard not available)."
     },
     warnings: {
-      title: "Warnings",
-      none: "No Warnings",
+      title: "Hints",
+      none: "No Hints",
       validationOk: "Validation OK.",
-      error: "Error",
-      warn: "Warn"
+      error: "Can't display pattern",
+      warn: "Hint"
     },
     validation: {
       noRoomSelected: "No room selected",
@@ -458,11 +458,11 @@ const translations = {
       groutInvalid: "Grout invalid",
       groutText: "Must be a number ≥ 0.",
       herringboneRatioTitle: "Herringbone ratio invalid",
-      herringboneRatioText: "For herringbone, the long side must be an integer multiple of the short side (e.g., 2:1, 3:1). Current ratio:",
+      herringboneRatioText: "For herringbone, the long side must fit perfectly into the short side (e.g., 2:1, 3:1). Current ratio:",
       doubleHerringboneRatioTitle: "Double herringbone ratio invalid",
-      doubleHerringboneRatioText: "For double herringbone, the long side must be an integer multiple of 2× the short side (e.g., 4:1, 6:1). Current ratio:",
+      doubleHerringboneRatioText: "For double herringbone, the long side must fit perfectly into 2× the short side (e.g., 4:1, 6:1). Current ratio:",
       basketweaveRatioTitle: "Basketweave ratio invalid",
-      basketweaveRatioText: "For basketweave, the long side must be an integer multiple of the short side (e.g., 2:1, 3:1). Current ratio:",
+      basketweaveRatioText: "For basketweave, the long side must fit perfectly into the short side (e.g., 2:1, 3:1). Current ratio:",
       rotationWarning: "Rotation outside 45° grid",
       rotationText: "MVP: 0..315 in 45° steps.",
       exclOutside: "is partially outside.",

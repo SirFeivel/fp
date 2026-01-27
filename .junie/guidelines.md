@@ -73,8 +73,7 @@ The project uses **Vitest** for unit and integration testing.
 
 #### Topic Management
 - **Branching**: When starting a new topic, always create a new branch and switch to it before making any changes.
-- **Session Tracking**: Maintain and update a `SESSION.md` file in the project root. This file should document the current goals, progress, and next steps. Each update MUST include a ISO 8601 timestamp.
-- **Start from Scratch**: If starting without previous context, first recall the whole content of `.junie/guidelines.md`, then load `SESSION.md`. Do not proceed with changes immediately; instead, ask the user for instructions.
+- **Session Tracking**: Update `SESSION.md` every time a Plan is created and when a Plan is successfully completed (merge to main).
 
 #### Post-Development Workflow
 - **Verification**: When coding is finished, always:
@@ -86,6 +85,7 @@ The project uses **Vitest** for unit and integration testing.
 #### Acceptance & Integration
 - **User Acceptance**: When coding and internal verification are finished, inform the user that the task is complete and ready for their testing. **Acceptance is not implicit.**
 - **Post-Acceptance Workflow**: Only after the user explicitly accepts the changes:
+  - Ensure that tests are extended or created to cover the new functionalities.
   - Check the existing test suite for relevance.
   - Extend **unit tests** and/or **visual tests** (e.g., `visual-test.html`) to cover the new code or bug fix.
   - Ensure all tests pass.

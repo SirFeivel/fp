@@ -138,6 +138,50 @@
       }
     });
 
+    // Invalid Ratio Test
+    const invalidDiv = document.createElement('div');
+    invalidDiv.className = 'pattern-container';
+    invalidDiv.innerHTML = `<h2>Invalid Herringbone (Ratio 2.5:1)</h2><svg id="invalid-svg" width="400" height="400"></svg><div class="stats" id="invalid-stats"></div>`;
+    document.body.appendChild(invalidDiv);
+
+    // Mocking the full renderPlanSvg logic here would be complex because it depends on validateState
+    // and the DOM structure. For visual-test.html, we can just manually draw the yellow box to see how it looks.
+    const svg = document.getElementById('invalid-svg');
+    svg.style.background = '#081022';
+    const boxW = 300;
+    const boxH = 100;
+    const boxX = 50;
+    const boxY = 150;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', boxX);
+    rect.setAttribute('y', boxY);
+    rect.setAttribute('width', boxW);
+    rect.setAttribute('height', boxH);
+    rect.setAttribute('rx', '8');
+    rect.setAttribute('fill', 'rgba(255, 193, 7, 0.1)');
+    rect.setAttribute('stroke', 'rgba(255, 193, 7, 0.6)');
+    rect.setAttribute('stroke-width', '2');
+    svg.appendChild(rect);
+
+    const title = document.createElementNS(ns, 'text');
+    title.setAttribute('x', boxX + boxW / 2);
+    title.setAttribute('y', boxY + 35);
+    title.setAttribute('fill', '#ffc107');
+    title.setAttribute('font-size', '14');
+    title.setAttribute('font-weight', 'bold');
+    title.setAttribute('text-anchor', 'middle');
+    title.setAttribute('font-family', 'system-ui, -apple-system, Segoe UI, Roboto, Arial');
+    title.textContent = "Can't display pattern: Herringbone ratio invalid";
+    svg.appendChild(title);
+
+    // No desc text in current version as requested
+    /*
+    const desc = document.createElementNS(ns, 'text');
+    ...
+    */
+
     // Add Square test
     const squareState = createMockState('grid');
     squareState.floors[0].rooms[0].tile = { widthCm: 50, heightCm: 50, shape: 'square' };

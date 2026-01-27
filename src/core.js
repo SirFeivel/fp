@@ -60,7 +60,7 @@ export function defaultState() {
   const roomId = uuid();
 
   return {
-    meta: { version: 2, updatedAt: nowISO() },
+    meta: { version: 3, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
@@ -75,7 +75,7 @@ export function defaultState() {
             widthCm: 600,
             heightCm: 400,
             exclusions: [],
-            tile: { widthCm: 60, heightCm: 60, shape: "rect" },
+            tile: { widthCm: 40, heightCm: 20, shape: "rect" },
             grout: { widthCm: 0.2, colorHex: "#ffffff" },
             pattern: {
               type: "grid",
@@ -84,6 +84,13 @@ export function defaultState() {
               offsetXcm: 0,
               offsetYcm: 0,
               origin: { preset: "tl", xCm: 0, yCm: 0 }
+            },
+            baseBoard: {
+              enabled: false,
+              type: "cutout", // "cutout" | "bought"
+              heightCm: 6,
+              boughtWidthCm: 60,
+              boughtPricePerPiece: 5.0
             }
           }
         ]
@@ -101,7 +108,8 @@ export function defaultState() {
 
     view: {
       showGrid: true,
-      showNeeds: false
+      showNeeds: false,
+      showBaseBoards: true
     }
   };
 }

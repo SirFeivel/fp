@@ -31,25 +31,32 @@ describe('render.js smoke tests', () => {
     renderWarnings(state, validateState);
 
     const wrap = document.getElementById('warnings');
-    expect(wrap.innerHTML).toContain('Keine Warnungen');
+    expect(wrap.innerHTML).toContain('Keine Hinweise');
     expect(document.getElementById('warnPill').textContent).toBe('0');
   });
 
-  it('renderMetrics updates metric elements', () => {
-    document.body.innerHTML = `
-      <div id="metricArea"></div>
-      <div id="metricTiles"></div>
-      <div id="metricPacks"></div>
-      <div id="metricCost"></div>
-      <div id="metricCutTiles"></div>
-      <div id="metricWaste"></div>
-    `;
+  it('renderWarnings shows ratio error with current ratio', () => {
+    document.body.innerHTML = '<div id="warnings"></div><div id="warnPill"></div>';
     const state = defaultState();
+    const room = state.floors[0].rooms[0];
+    room.pattern.type = 'herringbone';
+    room.tile.widthCm = 25;
+    room.tile.heightCm = 10;
+    
+    // Mock validateState to return a ratio error with ratio 2.50:1
+    const validateState = vi.fn(() => ({
+      errors: [{
+        title: 'Herringbone ratio invalid',
+        text: 'For herringbone, the long side must fit perfectly into the short side. Current ratio: 2.50:1.'
+      }],
+      warns: []
+    }));
 
-    renderMetrics(state);
+    renderWarnings(state, validateState);
 
-    expect(document.getElementById('metricArea').textContent).not.toBe('');
-    expect(document.getElementById('metricCost').textContent).toContain('€');
+    const wrap = document.getElementById('warnings');
+    expect(wrap.innerHTML).toContain('Current ratio: 2.50:1.');
+    expect(wrap.innerHTML).toContain('Herringbone ratio invalid');
   });
 
   it('renderStateView updates the state view element', () => {

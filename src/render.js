@@ -1,5 +1,6 @@
 // src/render.js
 import { computePlanMetrics } from "./calc.js";
+import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
 import {
@@ -31,15 +32,51 @@ export function renderWarnings(state, validateState) {
 
   wrap.innerHTML = "";
 
-  const all = [
-    ...errors.map((x) => ({ ...x, level: t("warnings.error") })),
+  const currentRoom = getCurrentRoom(state);
+  const patternType = currentRoom?.pattern?.type;
+  const isComplexPattern = patternType === "herringbone" || patternType === "doubleHerringbone" || patternType === "basketweave";
+
+  // Find ratio error if any
+  const ratioError = errors.find(x => 
+    x.title.includes(t("validation.herringboneRatioTitle")) || 
+    x.title.includes(t("validation.doubleHerringboneRatioTitle")) || 
+    x.title.includes(t("validation.basketweaveRatioTitle"))
+  );
+
+  // Other warnings/errors
+  const otherMessages = [
+    ...errors.filter(x => x !== ratioError).map((x) => ({ ...x, level: t("warnings.warn") })),
     ...warns.map((x) => ({ ...x, level: t("warnings.warn") }))
   ];
 
   const pill = document.getElementById("warnPill");
-  if (pill) pill.textContent = String(all.length);
+  if (pill) {
+    let count = otherMessages.length;
+    if (ratioError) count++;
+    pill.textContent = String(count);
+  }
 
-  if (all.length === 0) {
+  // Handle the special Hint/Error box for complex patterns
+  if (isComplexPattern) {
+    let hintKey = "";
+    if (patternType === "herringbone") hintKey = "validation.herringboneRatioText";
+    if (patternType === "doubleHerringbone") hintKey = "validation.doubleHerringboneRatioText";
+    if (patternType === "basketweave") hintKey = "validation.basketweaveRatioText";
+
+    const div = document.createElement("div");
+    if (ratioError) {
+      div.className = "warnItem ratio-error"; // We'll assume CSS handles the yellow hue
+      div.style.backgroundColor = "rgba(255, 193, 7, 0.2)";
+      div.style.borderLeft = "4px solid #ffc107";
+      div.innerHTML = `<div class="wTitle">${t("warnings.error")}: ${ratioError.title}</div><div class="wText">${escapeHTML(ratioError.text)}</div>`;
+    } else {
+      div.className = "warnItem info";
+      div.innerHTML = `<div class="wTitle">${t("warnings.warn")}:</div><div class="wText">${t(hintKey)}</div>`;
+    }
+    wrap.appendChild(div);
+  }
+
+  if (otherMessages.length === 0 && !isComplexPattern) {
     const div = document.createElement("div");
     div.className = "warnItem";
     div.innerHTML = `<div class="wTitle">${t("warnings.none")}</div><div class="wText">${t("warnings.validationOk")}</div>`;
@@ -47,10 +84,10 @@ export function renderWarnings(state, validateState) {
     return;
   }
 
-  for (const w of all) {
+  for (const w of otherMessages) {
     const div = document.createElement("div");
     div.className = "warnItem";
-    div.innerHTML = `<div class="wTitle">${w.level}: ${escapeHTML(
+    div.innerHTML = `<div class="wTitle">${escapeHTML(w.level)}: ${escapeHTML(
       w.title
     )}</div><div class="wText">${escapeHTML(w.text)}</div>`;
     wrap.appendChild(div);
@@ -67,12 +104,19 @@ export function renderMetrics(state) {
 
   if (!areaEl || !tilesEl || !packsEl || !costEl) return;
 
+  const { errors } = validateState(state);
+  const ratioError = errors.find(e => 
+    e.title.includes(t("validation.herringboneRatioTitle")) || 
+    e.title.includes(t("validation.doubleHerringboneRatioTitle")) || 
+    e.title.includes(t("validation.basketweaveRatioTitle"))
+  );
+
   const m = computePlanMetrics(state);
-  if (!m.ok) {
+  if (!m.ok || ratioError) {
     areaEl.textContent = "–";
     tilesEl.textContent = "–";
     packsEl.textContent = "–";
-    costEl.textContent = m.error;
+    costEl.textContent = ratioError ? `${t("warnings.error")}: ${ratioError.title}` : m.error;
     if (cutTilesEl) cutTilesEl.textContent = "–";
     if (wasteEl) wasteEl.textContent = "–";
     return;
@@ -544,7 +588,72 @@ export function renderPlanSvg({
 
   // tiles
   let previewTiles = [];
-  if (!skipTiles) {
+  const { errors } = validateState(state);
+  const ratioError = errors.find(e => 
+    e.title.includes(t("validation.herringboneRatioTitle")) || 
+    e.title.includes(t("validation.doubleHerringboneRatioTitle")) || 
+    e.title.includes(t("validation.basketweaveRatioTitle"))
+  );
+
+  if (!skipTiles && ratioError) {
+    const boxG = svgEl("g");
+    const boxW = Math.min(w * 0.8, 300);
+    const boxH = 100;
+    const boxX = minX + w / 2 - boxW / 2;
+    const boxY = minY + h / 2 - boxH / 2;
+
+    boxG.appendChild(svgEl("rect", {
+      x: boxX,
+      y: boxY,
+      width: boxW,
+      height: boxH,
+      rx: 8,
+      fill: "rgba(255, 193, 7, 0.1)",
+      stroke: "rgba(255, 193, 7, 0.6)",
+      "stroke-width": 2
+    }));
+
+    const textX = boxX + boxW / 2;
+    const textY = boxY + 35;
+    const titleText = `${t("warnings.error")}: ${ratioError.title}`;
+    
+    const title = svgEl("text", {
+      x: textX,
+      y: textY,
+      fill: "#ffc107",
+      "font-size": 14,
+      "font-weight": "bold",
+      "text-anchor": "middle",
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
+    });
+
+    // Simple word wrapping for the title if it's too long
+    const words = titleText.split(" ");
+    let line = "";
+    const maxCharsPerLine = Math.floor(boxW / 7); // Rough estimate
+    let tspanCount = 0;
+
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line + words[i] + " ";
+      if (testLine.length > maxCharsPerLine && i > 0) {
+        const tspan = svgEl("tspan", { x: textX, dy: tspanCount === 0 ? 0 : 18 });
+        tspan.textContent = line.trim();
+        title.appendChild(tspan);
+        line = words[i] + " ";
+        tspanCount++;
+      } else {
+        line = testLine;
+      }
+    }
+    const tspanFinal = svgEl("tspan", { x: textX, dy: tspanCount === 0 ? 0 : 18 });
+    tspanFinal.textContent = line.trim();
+    title.appendChild(tspanFinal);
+
+    boxG.appendChild(title);
+    svg.appendChild(boxG);
+  }
+
+  if (!skipTiles && !ratioError) {
     const avail = computeAvailableArea(currentRoom, exclusions);
     if (avail.error) setLastTileError(avail.error);
     else setLastTileError(null);
