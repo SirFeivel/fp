@@ -31,7 +31,8 @@ export function hexToRgb(hex) {
 export function renderWarnings(state, validateState) {
   const { errors, warns } = validateState(state);
   const wrap = document.getElementById("warnings");
-  if (!wrap) return;
+  const wrapper = document.getElementById("warningsWrapper");
+  if (!wrap || !wrapper) return;
 
   wrap.innerHTML = "";
 
@@ -79,14 +80,6 @@ export function renderWarnings(state, validateState) {
     wrap.appendChild(div);
   }
 
-  if (otherMessages.length === 0 && !isComplexPattern) {
-    const div = document.createElement("div");
-    div.className = "warnItem";
-    div.innerHTML = `<div class="wTitle">${t("warnings.none")}</div><div class="wText">${t("warnings.validationOk")}</div>`;
-    wrap.appendChild(div);
-    return;
-  }
-
   for (const w of otherMessages) {
     const div = document.createElement("div");
     div.className = "warnItem";
@@ -95,6 +88,10 @@ export function renderWarnings(state, validateState) {
     )}</div><div class="wText">${escapeHTML(w.text)}</div>`;
     wrap.appendChild(div);
   }
+
+  // Hide wrapper if there are no messages
+  const hasMessages = otherMessages.length > 0 || isComplexPattern;
+  wrapper.style.display = hasMessages ? "block" : "none";
 }
 
 export function renderMetrics(state) {

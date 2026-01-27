@@ -251,7 +251,8 @@ const translations = {
     },
     plan: {
       title: "Plan (SVG)",
-      hint: "Tipp: Klick wählt aus • Drag verschiebt • Tiles kommen aus Fliesen & Muster"
+      hintTitle: "Tipp",
+      hint: "Klick wählt aus • Drag verschiebt • Tiles kommen aus Fliesen & Muster"
     },
     state: {
       title: "Live State (read-only)"
@@ -530,6 +531,7 @@ const translations = {
     },
     plan: {
       title: "Plan (SVG)",
+      hintTitle: "Tip",
       hint: "Tip: Click selects • Drag moves • Tiles come from Tiles & Pattern"
     },
     state: {

@@ -509,11 +509,13 @@
       <div class="resize-handle"></div>
 
       <section class="viewer">
-        <div class="viewerHead">
-          <h2 data-i18n="warnings.title">Warnungen</h2>
-          <div class="pill" id="warnPill">0</div>
+        <div id="warningsWrapper" style="display: none;">
+          <div class="viewerHead">
+            <h2 data-i18n="warnings.title">Warnungen</h2>
+            <div class="pill" id="warnPill">0</div>
+          </div>
+          <div id="warnings" class="warnings"></div>
         </div>
-        <div id="warnings" class="warnings"></div>
 
         <div class="viewerHead">
           <h2 id="planTitle" data-i18n="plan.title">Plan (SVG)</h2>
@@ -536,8 +538,15 @@
             </label>
           </div>
           <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
-          <div class="hintline" data-i18n="plan.hint">
-            Tipp: Klick wählt aus • Drag verschiebt
+        </div>
+
+        <div class="tip-section">
+          <div class="tip-header">
+            <span class="tip-icon">💡</span>
+            <span class="tip-title" data-i18n="plan.hintTitle">Tipp</span>
+          </div>
+          <div class="tip-content" data-i18n="plan.hint">
+            Klick wählt aus • Drag verschiebt
           </div>
         </div>
       </section>

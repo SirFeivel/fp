@@ -201,10 +201,32 @@
 - Long names are gracefully truncated with ellipses to prevent layout breaking.
 - All 354 tests pass and production build is successful.
 
+## Session: Hints and Tips (2026-01-27)
+### Goal
+- Move hint section below the plan.
+- Merge functionality with a new 'Tip' section.
+- Reserve the Warnings box for potential warnings and errors only, hiding it when empty.
+
+### Plan
+1. Create feature branch `feature/hints-and-tips` ✓
+2. Refactor `index.html` to relocate and merge hint/tip sections ✓
+3. Update `src/render.js` logic to hide empty warnings box ✓
+4. Update `src/style.css` for the new layout ✓
+5. Update `src/i18n.js` for new translations ✓
+6. Verify with tests and build ✓
+
+### Status
+- Hint line removed from SVG wrap and integrated into a new standardized "Tip" section below the plan.
+- Warnings section is now dynamic and hidden if there are no warnings or pattern-specific hints to show.
+- All tests pass and production build is successful.
+
 ## Commands Run
 - npm run test
 - npm run build
-- git checkout -b feature/dynamic-plan-title
+- git checkout -b feature/hints-and-tips
+- git checkout main
+- git merge feature/hints-and-tips
+- git branch -d feature/hints-and-tips
 
 ## Notes
 - Topic "UI Improvements" completed and ready for submission.

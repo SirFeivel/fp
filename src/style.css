@@ -458,6 +458,42 @@ hr{
   flex-direction:column;
   min-height:0;
   position: relative;
+  margin-bottom: 12px;
+}
+
+/* ---------------- Tip Section ---------------- */
+.tip-section {
+  background: rgba(122, 162, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tip-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tip-icon {
+  font-size: 16px;
+}
+
+.tip-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.tip-content {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 /* ---------------- Toggle Switches ---------------- */
@@ -613,13 +649,6 @@ hr{
   min-height:0;
 }
 
-.hintline{
-  padding:8px 10px;
-  font-size:var(--fs-sm);
-  color:var(--muted);
-  border-top:1px solid var(--line);
-  background:rgba(0,0,0,.12);
-}
 
 /* ---------------- Metrics ---------------- */
 .metrics-panel{

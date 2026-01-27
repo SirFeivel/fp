@@ -27,19 +27,21 @@ describe('render.js smoke tests', () => {
   });
 
   it('renderWarnings updates the warnings container', () => {
-    document.body.innerHTML = '<div id="warnings"></div><div id="warnPill"></div>';
+    document.body.innerHTML = '<div id="warningsWrapper"><div id="warnings"></div><div id="warnPill"></div></div>';
     const state = defaultState();
     const validateState = vi.fn(() => ({ errors: [], warns: [] }));
 
     renderWarnings(state, validateState);
 
     const wrap = document.getElementById('warnings');
-    expect(wrap.innerHTML).toContain('Keine Hinweise');
+    const wrapper = document.getElementById('warningsWrapper');
+    expect(wrap.innerHTML).toBe('');
+    expect(wrapper.style.display).toBe('none');
     expect(document.getElementById('warnPill').textContent).toBe('0');
   });
 
   it('renderWarnings shows ratio error with current ratio', () => {
-    document.body.innerHTML = '<div id="warnings"></div><div id="warnPill"></div>';
+    document.body.innerHTML = '<div id="warningsWrapper"><div id="warnings"></div><div id="warnPill"></div></div>';
     const state = defaultState();
     const room = state.floors[0].rooms[0];
     room.pattern.type = 'herringbone';
@@ -58,8 +60,10 @@ describe('render.js smoke tests', () => {
     renderWarnings(state, validateState);
 
     const wrap = document.getElementById('warnings');
+    const wrapper = document.getElementById('warningsWrapper');
     expect(wrap.innerHTML).toContain('Current ratio: 2.50:1.');
     expect(wrap.innerHTML).toContain('Herringbone ratio invalid');
+    expect(wrapper.style.display).toBe('block');
   });
 
   it('renderStateView updates the state view element', () => {
