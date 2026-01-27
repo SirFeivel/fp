@@ -88,7 +88,6 @@ describe('render.js smoke tests', () => {
     `;
     const state = defaultState();
     const room = state.floors[0].rooms[0];
-    room.skirting.enabled = true;
     room.skirting.type = 'bought';
     room.skirting.boughtWidthCm = 100;
     room.skirting.boughtPricePerPiece = 10;
@@ -115,8 +114,6 @@ describe('render.js smoke tests', () => {
       <input id="roomH" />
       <input id="showGrid" type="checkbox" />
       <input id="showSkirting" type="checkbox" />
-      <div id="skirtingContent" class="hidden"></div>
-      <input id="skirtingEnabled" type="checkbox" />
       <select id="skirtingType"><option value="cutout">C</option><option value="bought">B</option></select>
       <input id="skirtingHeight" />
       <input id="skirtingBoughtWidth" />
@@ -126,13 +123,11 @@ describe('render.js smoke tests', () => {
     `;
     const state = defaultState();
     const room = state.floors[0].rooms[0];
-    room.skirting.enabled = true;
     room.skirting.type = 'bought';
     room.skirting.heightCm = 8;
 
     renderRoomForm(state);
 
-    expect(document.getElementById('skirtingEnabled').checked).toBe(true);
     expect(document.getElementById('skirtingType').value).toBe('bought');
     expect(document.getElementById('skirtingHeight').value).toBe('8');
     expect(document.getElementById('boughtWidthWrap').style.display).toBe('block');
@@ -200,7 +195,6 @@ describe('render.js smoke tests', () => {
     const state = defaultState();
     state.view.showSkirting = true;
     const room = state.floors[0].rooms[0];
-    room.skirting.enabled = true;
     if (room.sections && room.sections[0]) {
       room.sections[0].widthCm = 100;
       room.sections[0].heightCm = 100;

@@ -59,7 +59,6 @@ export function bindUI({
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
 
       nextRoom.skirting = nextRoom.skirting || {};
-      nextRoom.skirting.enabled = Boolean(document.getElementById("skirtingEnabled")?.checked);
       nextRoom.skirting.type = document.getElementById("skirtingType")?.value;
       nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
       nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
@@ -416,6 +415,24 @@ export function bindUI({
     commitFromTilePatternInputs(t("tile.offsetChanged"));
   });
 
+  document.getElementById("skirtingType")?.addEventListener("change", () => commitFromRoomInputs(t("skirting.changed")));
+  wireInputCommit(document.getElementById("skirtingHeight"), {
+    markDirty: () => {},
+    commitLabel: t("skirting.changed"),
+    commitFn: commitFromRoomInputs,
+  });
+  wireInputCommit(document.getElementById("skirtingBoughtWidth"), {
+    markDirty: () => {},
+    commitLabel: t("skirting.changed"),
+    commitFn: commitFromRoomInputs,
+  });
+  wireInputCommit(document.getElementById("skirtingPricePerPiece"), {
+    markDirty: () => {},
+    commitLabel: t("skirting.changed"),
+    commitFn: commitFromRoomInputs,
+  });
+
+
   // Sections
   document.getElementById("btnAddSection")?.addEventListener("click", () => {
     if (sections) sections.addSection("right");
@@ -486,4 +503,8 @@ export function bindUI({
 
   refreshProjectSelect();
   updateMeta();
+
+  document.getElementById("btnRoomBack")?.addEventListener("click", () => {
+    document.querySelector('[data-tab="room"]').click();
+  });
 }

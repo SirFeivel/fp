@@ -191,10 +191,10 @@ export function validateSections(sections) {
   return { errors, warnings };
 }
 
-export function createDefaultSection(x = 0, y = 0, widthCm = 300, heightCm = 300) {
+export function createDefaultSection(x = 0, y = 0, widthCm = 300, heightCm = 300, label = "") {
   return {
     id: uuid(),
-    label: "",
+    label,
     x,
     y,
     widthCm,
@@ -203,8 +203,11 @@ export function createDefaultSection(x = 0, y = 0, widthCm = 300, heightCm = 300
 }
 
 export function suggestConnectedSection(existingSections, direction = "right") {
+  const nextNumber = (existingSections?.length || 0) + 1;
+  const label = `${t("room.sectionTitle")} ${nextNumber}`;
+
   if (!existingSections || existingSections.length === 0) {
-    return createDefaultSection();
+    return createDefaultSection(0, 0, 300, 300, label);
   }
 
   const lastSection = existingSections[existingSections.length - 1];
@@ -250,5 +253,5 @@ export function suggestConnectedSection(existingSections, direction = "right") {
       newH = h;
   }
 
-  return createDefaultSection(newX, newY, newW, newH);
+  return createDefaultSection(newX, newY, newW, newH, label);
 }

@@ -43,7 +43,8 @@ const translations = {
       roomDeleted: "Raum gelöscht"
     },
     room: {
-      title: "Raum Details",
+      title: "Raum",
+      sectionTitle: "Raum",
       sectionDisplay: "Anzeige",
       name: "Raumname",
       width: "Breite (cm)",
@@ -65,7 +66,6 @@ const translations = {
     },
     skirting: {
       title: "Sockelleisten Konfiguration",
-      enabled: "Sockelleisten aktivieren",
       type: "Art der Sockelleiste",
       typeCutout: "Selbst geschnitten (aus Fliesen)",
       typeBought: "Fertig gekauft (Stück)",
@@ -321,7 +321,8 @@ const translations = {
       roomDeleted: "Room deleted"
     },
     room: {
-      title: "Room Details",
+      title: "Room",
+      sectionTitle: "Room",
       sectionDisplay: "Display",
       name: "Room Name",
       width: "Width (cm)",
@@ -343,7 +344,6 @@ const translations = {
     },
     skirting: {
       title: "Skirting Configuration",
-      enabled: "Enable skirting",
       type: "Type of skirting",
       typeCutout: "Self-made (cut from tiles)",
       typeBought: "Ready-made (per piece)",

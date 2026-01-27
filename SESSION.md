@@ -26,6 +26,28 @@
 - Backward compatibility is maintained via robust migration logic and a temporary fallback in the sections retriever.
 - All 354 tests pass and the production build is successful.
 
+## Session: Unified Room UI (2026-01-27)
+### Goal
+- Merge "Room Details" and "Sections" visually into a single common place.
+- Implement default naming for sections (Room 1, Room 2, etc.).
+- Move Skirting Configuration to Tiles tab.
+
+### Plan
+1. Create feature branch `feature/merge-sections-ui` ✓
+2. Refactor `index.html` to unify Room and Sections cards ✓
+3. Implement automated naming in `src/composite.js` ✓
+4. Relocate Skirting configuration to Tiles tab in `index.html` ✓
+5. Remove redundant "Enable Skirting" toggle ✓
+6. Update `render.js` and `ui.js` to sync with the new UI structure ✓
+7. Verify with tests and build ✓
+
+### Status
+- Room UI is now cleaner with a single "Room" card.
+- Sections are automatically named upon creation.
+- Skirting configuration is now logically placed in the Tiles tab.
+- Redundant global skirting toggle removed.
+- All 354 tests pass.
+
 ## Session: Skirting Corner Handling (2026-01-27)
 ### Goal
 - Prevent skirting pieces from wrapping around corners visually and in calculations.
@@ -64,14 +86,32 @@
 - Visualization and calculations are synced via `computeSkirtingSegments`.
 - All tests pass, including new boundary-aware test cases.
 
+## Session: V4 Schema Cleanup (2026-01-27)
+### Goal
+- Perform final cleanup of legacy room dimensions logic.
+- Ensure all tests are strictly V4-compliant.
+
+### Plan
+1. Create branch `feature/v4-cleanup` ✓
+2. Remove fallback logic in `src/composite.js` ✓
+3. Update all test suites to strictly use `sections` array ✓
+4. Verify with full test suite and build ✓
+5. Merge to main after user acceptance ✓
+
+### Status
+- Codebase is now strictly V4-compliant.
+- Legacy properties `widthCm`/`heightCm` removed from core logic and tests.
+- All 353 tests pass.
+
 ## Commands Run
 - npm run test
 - npm run build
-- git checkout -b feature/skirting-inner-borders
 - git checkout main
-- git merge feature/skirting-inner-borders
-- git branch -d feature/skirting-inner-borders
+- git merge feature/v4-cleanup
+- git branch -d feature/v4-cleanup
+- git branch -D cleanup/unified-sections-legacy
 
 ## Notes
 - Topic "Unified Room Sections" completed, merged, and pushed to main.
+- Topic "V4 Schema Cleanup" completed, merged, and pushed to main.
 - Local feature branches deleted.

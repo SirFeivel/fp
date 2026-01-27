@@ -392,6 +392,16 @@ describe("suggestConnectedSection", () => {
     expect(suggested.y).toBe(0);
     expect(suggested.widthCm).toBe(300);
     expect(suggested.heightCm).toBe(300);
+    expect(suggested.label).toBe(`${t("room.sectionTitle")} 1`);
+  });
+
+  it("suggests incremented room labels", () => {
+    const existing = [
+      { id: "s1", x: 0, y: 0, widthCm: 300, heightCm: 300 },
+      { id: "s2", x: 300, y: 0, widthCm: 300, heightCm: 300 },
+    ];
+    const suggested = suggestConnectedSection(existing, "right");
+    expect(suggested.label).toBe(`${t("room.sectionTitle")} 3`);
   });
 
   it("limits suggested dimension to 300cm max", () => {

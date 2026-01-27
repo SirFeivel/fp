@@ -228,7 +228,6 @@ export function renderRoomForm(state) {
 
   const skirting = currentRoom?.skirting;
   if (skirting) {
-    document.getElementById("skirtingEnabled").checked = Boolean(skirting.enabled);
     document.getElementById("skirtingType").value = skirting.type || "cutout";
     document.getElementById("skirtingHeight").value = skirting.heightCm || "";
     document.getElementById("skirtingBoughtWidth").value = skirting.boughtWidthCm || "";
@@ -237,17 +236,10 @@ export function renderRoomForm(state) {
     const isBought = skirting.type === "bought";
     document.getElementById("boughtWidthWrap").style.display = isBought ? "block" : "none";
     document.getElementById("boughtPriceWrap").style.display = isBought ? "block" : "none";
-
-    const content = document.getElementById("skirtingContent");
-    const toggle = document.querySelector("#skirtingContent")?.previousElementSibling?.querySelector(".collapse-toggle");
-    if (content && toggle) {
-      const isHidden = content.classList.contains("hidden");
-      toggle.style.transform = isHidden ? "rotate(0deg)" : "rotate(180deg)";
-    }
   }
 
   // Update other collapsible sections' arrows
-  ["structureContent", "roomDetailsContent", "roomSectionsContent", "skirtingContent"].forEach(id => {
+  ["structureContent", "roomDetailsContent"].forEach(id => {
     const content = document.getElementById(id);
     const header = content?.previousElementSibling;
     const toggle = header?.querySelector(".collapse-toggle");
@@ -349,7 +341,7 @@ export function renderSectionProps({
   div.className = "field span2";
   div.innerHTML = `
     <label class="toggle-switch">
-      <span class="toggle-label">${t("skirting.enabled")}</span>
+      <span class="toggle-label">${t("skirting.showSkirting")}</span>
       <input id="secSkirtingEnabled" type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""}>
       <div class="toggle-slider"></div>
     </label>
