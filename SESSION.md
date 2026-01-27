@@ -73,5 +73,5 @@
 - git branch -d feature/skirting-inner-borders
 
 ## Notes
-- Topic "Skirting" completed, merged, and pushed to main.
+- Topic "Unified Room Sections" completed, merged, and pushed to main.
 - Local feature branches deleted.
