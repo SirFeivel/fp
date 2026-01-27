@@ -82,14 +82,15 @@ The project uses **Vitest** for unit and integration testing.
   - Run the development server to check the UI: `npm run dev`
 
 #### Acceptance & Integration
-- **Test Coverage**: When changes are accepted or ready for integration, always:
+- **User Acceptance**: When coding and internal verification are finished, inform the user that the task is complete and ready for their testing. **Acceptance is not implicit.**
+- **Post-Acceptance Workflow**: Only after the user explicitly accepts the changes:
   - Check the existing test suite for relevance.
   - Extend **unit tests** and/or **visual tests** (e.g., `visual-test.html`) to cover the new code or bug fix.
   - Ensure all tests pass.
 - **Persistence & Merging**:
-  - Run `npm run test` and `npm run build`.
+  - Run `npm run test` and `npm run build` on the topic branch.
   - Push the topic branch to the remote repository.
-  - If everything works, merge the branch into `main`.
+  - Merge the branch into `main`.
   - Resolve any potential merge issues.
   - Delete the topic branch locally and remotely.
   - Push the updated `main` branch to the remote repository.
