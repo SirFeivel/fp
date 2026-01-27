@@ -107,14 +107,14 @@
 - npm run test
 - npm run build
 - git checkout main
-- git merge feature/v4-cleanup
-- git branch -d feature/v4-cleanup
-- git branch -D cleanup/unified-sections-legacy
+- git merge fix/ui-title-header
+- git branch -d fix/ui-labels fix/ui-title-header
+- git push origin main
 
 ## Notes
-- Topic "Unified Room Sections" completed, merged, and pushed to main.
-- Topic "V4 Schema Cleanup" completed, merged, and pushed to main.
-- Local feature branches deleted.
+- Topic "UI Relabeling" and "UI Refinement" completed, merged, and pushed to main.
+- All 361 tests pass.
+- App title updated to "TilePerfect [ALPHA]".
 
 ## Session: UI & UX Improvements (2026-01-27)
 ### Goal
