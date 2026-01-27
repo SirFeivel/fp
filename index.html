@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FloorPlanner</title>
+    <title>TilePerfect [ALPHA]</title>
   </head>
   <body>
     <header class="topbar">
       <div>
-        <div class="title" data-i18n="app.title">FloorPlanner – Phase 3 (Tiles + Muster)</div>
+        <div class="title" data-i18n="app.title">TilePerfect [ALPHA]</div>
         <div class="subtitle" data-i18n="app.subtitle">
           SVG-Vorschau • Drag&Drop Ausschlüsse • Tiles: Grid + Running Bond
         </div>
@@ -47,7 +47,7 @@
     <main class="layout">
       <section class="panel panel-nav">
         <div class="panel-header">
-          <h3 class="section-title" data-i18n="tabs.title">Tabs</h3>
+          <h3 class="section-title" data-i18n="tabs.title">Building</h3>
           <button class="btn-collapse" id="collapseNav" title="Toggle Navigation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
@@ -57,7 +57,7 @@
         <nav class="tabs">
           <button class="tab" data-tab="room">
             <span class="tab-icon">📐</span>
-            <span data-i18n="room.title">Raum</span>
+            <span data-i18n="room.title">Your Project</span>
           </button>
           <button class="tab" data-tab="tiles">
             <span class="tab-icon">🔲</span>
@@ -82,7 +82,7 @@
           <div class="tab-panel" data-tab-panel="room">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="tabs.title">Tabs</h3>
+                <h3 class="section-title" data-i18n="tabs.title">Building</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div id="structureContent" class="card-content hidden">
@@ -115,7 +115,7 @@
 
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="room.title">Raum</h3>
+                <h3 class="section-title" data-i18n="room.sectionTitle">Fläche</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div id="roomDetailsContent" class="card-content">

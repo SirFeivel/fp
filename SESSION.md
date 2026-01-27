@@ -159,6 +159,38 @@
 - Metrics panel values are larger and easier to read.
 - All 354 tests pass and production build is successful.
 
+## Session: UI Relabeling (2026-01-27)
+### Goal
+- Relabel specific UI elements as per user request.
+
+### Plan
+1. Create feature branch `fix/ui-labels` ✓
+2. Update `src/i18n.js` with new labels: ✓
+   - Room -> Your Project / Ihr Projekt
+   - Project -> Settings / Einstellungen
+   - Tabs -> Building / Gebäude
+3. Update `index.html` static fallbacks ✓
+4. Verify with tests and build ✓
+
+### Status
+- UI relabeled successfully.
+- All 361 tests pass and production build is successful.
+
+## Session: UI Refinement & App Title (2026-01-27)
+### Goal
+- Update app title and specific section labels for better clarity.
+
+### Plan
+1. Create feature branch `fix/ui-title-header` ✓
+2. Rename the 2nd section header in 'Your Project' tab to 'Fläche' (Area) in `src/i18n.js` and `index.html` ✓
+3. Update the browser tab title in `index.html` to 'TilePerfect [ALPHA]' ✓
+4. Verify with tests and build ✓
+
+### Status
+- App title updated to "TilePerfect [ALPHA]".
+- 'Raum' section in 'Your Project' tab renamed to 'Fläche' (Area).
+- All 361 tests pass and production build is successful.
+
 ## Session: Fix Removal Mode (2026-01-27)
 ### Goal
 - Fix crash in Removal Mode.

@@ -1,7 +1,7 @@
 const translations = {
   de: {
     app: {
-      title: "TilePerfect 0.1",
+      title: "TilePerfect [ALPHA]",
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
     },
@@ -15,7 +15,7 @@ const translations = {
       present: "vorhanden"
     },
     project: {
-      tabTitle: "Projekt",
+      tabTitle: "Einstellungen",
       title: "Projekt speichern",
       namePlaceholder: "z.B. Bad EG",
       nameLabel: "Name für lokales Speichern",
@@ -36,7 +36,7 @@ const translations = {
       skirtToggled: "Sockelleisten-Ausschluss geändert"
     },
     tabs: {
-      title: "Tabs",
+      title: "Gebäude",
       floor: "Etage",
       room: "Raum",
       addFloor: "Etage hinzufügen",
@@ -51,8 +51,8 @@ const translations = {
       roomDeleted: "Raum gelöscht"
     },
     room: {
-      title: "Raum",
-      sectionTitle: "Raum",
+      title: "Ihr Projekt",
+      sectionTitle: "Fläche",
       sectionDisplay: "Anzeige",
       name: "Raumname",
       width: "Breite (cm)",
@@ -289,7 +289,7 @@ const translations = {
   },
   en: {
     app: {
-      title: "TilePerfect 0.1",
+      title: "TilePerfect [ALPHA]",
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
     },
@@ -303,7 +303,7 @@ const translations = {
       present: "present"
     },
     project: {
-      tabTitle: "Project",
+      tabTitle: "Settings",
       title: "Save Project",
       namePlaceholder: "e.g. Bathroom Ground Floor",
       nameLabel: "Project Name",
@@ -324,7 +324,7 @@ const translations = {
       skirtToggled: "Skirting exclusion toggled"
     },
     tabs: {
-      title: "Tabs",
+      title: "Building",
       floor: "Floor",
       room: "Room",
       addFloor: "Add Floor",
@@ -339,8 +339,8 @@ const translations = {
       roomDeleted: "Room deleted"
     },
     room: {
-      title: "Room",
-      sectionTitle: "Room",
+      title: "Your Project",
+      sectionTitle: "Area",
       sectionDisplay: "Display",
       name: "Room Name",
       width: "Width (cm)",
