@@ -28,6 +28,7 @@ import {
   renderSectionProps
 } from "./render.js";
 import { createStructureController } from "./structure.js";
+import { createRemovalController } from "./removal.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -181,6 +182,8 @@ const structure = createStructureController({
   resetSelectedExcl: () => setSelectedExcl(null)
 });
 
+const removal = createRemovalController(store, renderAll);
+
 const dragController = createExclusionDragController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getState: () => store.getState(),
@@ -219,7 +222,7 @@ function updateAllTranslations() {
   initTabs();
   initResize();
   initCollapse();
-  initFullscreen(dragController);
+  initFullscreen(dragController, renderAll);
 
   bindUI({
     store,
@@ -264,6 +267,20 @@ function updateAllTranslations() {
 
   document.getElementById("btnDeleteRoom")?.addEventListener("click", () => {
     structure.deleteRoom();
+  });
+
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "removalMode") {
+      const val = e.target.checked;
+      document.querySelectorAll("#removalMode").forEach(el => el.checked = val);
+      removal.toggleRemovalMode();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "planSvg" || e.target.id === "planSvgFullscreen") {
+      setSelectedExcl(null);
+    }
   });
 
   const langSelect = document.getElementById("langSelect");

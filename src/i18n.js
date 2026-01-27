@@ -29,6 +29,12 @@ const translations = {
       notFound: "Projekt nicht gefunden.",
       none: "– keine –"
     },
+    removal: {
+      mode: "Ausschlüsse bearbeiten",
+      modeToggled: "Bearbeitungsmodus gewechselt",
+      tileToggled: "Fliesen-Ausschluss geändert",
+      skirtToggled: "Sockelleisten-Ausschluss geändert"
+    },
     tabs: {
       title: "Tabs",
       floor: "Etage",
@@ -310,6 +316,12 @@ const translations = {
       deleted: "Project deleted",
       notFound: "Project not found.",
       none: "– none –"
+    },
+    removal: {
+      mode: "Edit Exclusions",
+      modeToggled: "Edit mode toggled",
+      tileToggled: "Tile exclusion toggled",
+      skirtToggled: "Skirting exclusion toggled"
     },
     tabs: {
       title: "Tabs",

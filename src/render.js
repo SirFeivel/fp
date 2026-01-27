@@ -226,6 +226,7 @@ export function renderRoomForm(state) {
   document.getElementById("roomName").value = currentRoom?.name ?? "";
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
+  document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));
 
   const skirting = currentRoom?.skirting;
   if (skirting) {
@@ -760,12 +761,13 @@ export function renderPlanSvg({
   }
 
   if (!skipTiles && !ratioError) {
+    const isRemovalMode = Boolean(state.view?.removalMode);
     const avail = computeAvailableArea(currentRoom, exclusions);
     if (avail.error) setLastTileError(avail.error);
     else setLastTileError(null);
 
     if (avail.mp) {
-      const t = tilesForPreview(state, avail.mp);
+      const t = tilesForPreview(state, avail.mp, isRemovalMode);
       if (t.error) setLastTileError(t.error);
       else setLastTileError(null);
 
@@ -780,15 +782,25 @@ export function renderPlanSvg({
       const groutRgb = hexToRgb(groutHex);
 
       for (const tile of t.tiles) {
-        g.appendChild(svgEl("path", {
+        const isExcluded = tile.excluded;
+        const attrs = {
           d: tile.d,
           // Tile fill stays white - only grout (stroke) gets the color
-          fill: tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-          stroke: tile.isFull
-            ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
-            : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`,
-          "stroke-width": tile.isFull ? 0.5 : 1.2
-        }));
+          fill: isExcluded 
+            ? "rgba(239,68,68,0.05)" 
+            : (tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)"),
+          stroke: isExcluded
+            ? "rgba(239,68,68,0.4)"
+            : (tile.isFull
+                ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
+                : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`),
+          "stroke-width": isExcluded ? 1.0 : (tile.isFull ? 0.5 : 1.2)
+        };
+        if (isExcluded) {
+          attrs["stroke-dasharray"] = "2 2";
+        }
+        if (tile.id) attrs["data-tileid"] = tile.id;
+        g.appendChild(svgEl("path", attrs));
       }
     }
   }
@@ -837,14 +849,17 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         d: unionPath,
         fill: "rgba(239,68,68,0.15)",
         stroke: "rgba(239,68,68,0.55)",
-        "stroke-width": 1.5
+        "stroke-width": 1.5,
+        "pointer-events": "none"
       }));
     }
   }
 
   // Skirting Visualization
   if (state.view?.showSkirting) {
-    const segments = computeSkirtingSegments(currentRoom);
+    const isRemovalMode = Boolean(state.view?.removalMode);
+    const segments = computeSkirtingSegments(currentRoom, isRemovalMode);
+
     if (segments.length > 0) {
       const gSkirting = svgEl("g", { 
         fill: "none", 
@@ -852,7 +867,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         "stroke-width": 4, 
         opacity: 0.6,
         "stroke-linejoin": "round",
-        "pointer-events": "none"
+        "pointer-events": isRemovalMode ? "auto" : "none"
       });
       
       const skirting = currentRoom.skirting || {};
@@ -863,18 +878,44 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       const gap = 2.5; // visible gap in cm
 
       for (const seg of segments) {
-        const { p1, p2 } = seg;
+        const { p1, p2, id, excluded } = seg;
         const d = `M ${p1[0]} ${p1[1]} L ${p2[0]} ${p2[1]}`;
         
-        // Pieces (dashed line) - show gaps to background for better recognition
-        gSkirting.appendChild(svgEl("path", {
+        if (isRemovalMode) {
+          // Transparent hit area for easier clicking in removal mode
+          const hitArea = svgEl("path", {
+            d,
+            stroke: "transparent",
+            "stroke-width": 20,
+            "data-skirtid": id,
+            cursor: "pointer"
+          });
+          gSkirting.appendChild(hitArea);
+        }
+
+        const attrs = {
           d,
-          "stroke-dasharray": `${pieceLength - gap} ${gap}`,
+          "stroke-dasharray": excluded ? "none" : `${pieceLength - gap} ${gap}`,
           "stroke-linecap": "butt"
-        }));
+        };
+        if (id) attrs["data-skirtid"] = id;
+        if (excluded) {
+          attrs.stroke = "rgba(239,68,68,0.5)";
+          attrs.opacity = 0.4;
+        }
+
+        // Pieces (dashed line) - show gaps to background for better recognition
+        gSkirting.appendChild(svgEl("path", attrs));
       }
       svg.appendChild(gSkirting);
     }
+  }
+
+  // Removal mode class
+  if (state.view?.removalMode) {
+    svg.classList.add("removal-mode");
+  } else {
+    svg.classList.remove("removal-mode");
   }
 
   // exclusion shapes
@@ -907,7 +948,6 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     gEx.appendChild(shapeEl);
   }
   svg.appendChild(gEx);
-  svg.addEventListener("click", () => setSelectedExcl(null));
 
   // errors overlay
   if (lastUnionError) {
@@ -936,6 +976,12 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     svgFullscreen.innerHTML = svg.innerHTML;
     svgFullscreen.setAttribute('viewBox', svg.getAttribute('viewBox'));
     svgFullscreen.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio'));
+    
+    if (state.view?.removalMode) {
+      svgFullscreen.classList.add("removal-mode");
+    } else {
+      svgFullscreen.classList.remove("removal-mode");
+    }
 
     if (onExclPointerDown) {
       const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]');

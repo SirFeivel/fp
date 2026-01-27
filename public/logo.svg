@@ -1,0 +1,10 @@
+<svg width="200" height="40" viewBox="0 0 200 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon Part -->
+  <rect x="4" y="4" width="15" height="15" fill="#2D5A9E"/>
+  <path d="M21 4H32V15L21 4Z" fill="#3D7BD1"/>
+  <path d="M4 21L15 32V21H4Z" fill="#1E3E6E"/>
+  <rect x="21" y="21" width="11" height="11" fill="#2D5A9E"/>
+  
+  <!-- Text Part -->
+  <text x="45" y="28" fill="white" style="font-family: sans-serif; font-weight: 500; font-size: 24px;">TilePerfect</text>
+</svg>

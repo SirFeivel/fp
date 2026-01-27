@@ -126,6 +126,8 @@ export function createStructureController({
       name: `Raum ${currentFloor.rooms.length + 1}`,
       sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
       exclusions: [],
+      excludedTiles: [],
+      excludedSkirts: [],
       tile: { widthCm: 60, heightCm: 60, shape: "rect" },
       grout: { widthCm: 0.2, colorHex: "#ffffff" },
       pattern: {

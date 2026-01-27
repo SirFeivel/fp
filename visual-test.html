@@ -213,6 +213,44 @@
     } else {
         renderPattern('rhombus-svg', 'rhombus-stats', rhombusResult.tiles);
     }
+
+    // Removal Mode Visual Test
+    const remDiv = document.createElement('div');
+    remDiv.className = 'pattern-container';
+    remDiv.innerHTML = `<h2>Removal Mode (Excluded Tiles: Red Dashed)</h2><svg id="removal-svg" width="400" height="400"></svg><div class="stats" id="removal-stats"></div>`;
+    document.body.appendChild(remDiv);
+
+    const removalState = createMockState('grid');
+    removalState.floors[0].rooms[0].tile = { widthCm: 100, heightCm: 100, shape: 'rect' };
+    removalState.floors[0].rooms[0].excludedTiles = ['r0c0', 'r1c1', 'r2c2', 'r3c3'];
+    
+    // Request tiles with includeExcluded = true
+    const removalResult = tilesForPreview(removalState, availableMP, true);
+    
+    if (removalResult.error) {
+        console.error(`removal error:`, removalResult.error);
+    } else {
+        const svg = document.getElementById('removal-svg');
+        svg.style.background = '#081022';
+        
+        removalResult.tiles.forEach(tile => {
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', tile.d);
+            
+            const isExcluded = tile.excluded;
+            path.setAttribute('fill', isExcluded ? 'rgba(239,68,68,0.05)' : 'rgba(255,255,255,0.10)');
+            path.setAttribute('stroke', isExcluded ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.5)');
+            path.setAttribute('stroke-width', isExcluded ? '1' : '0.5');
+            if (isExcluded) {
+                path.setAttribute('stroke-dasharray', '2 2');
+            }
+            svg.appendChild(path);
+        });
+        
+        const stats = document.getElementById('removal-stats');
+        const excludedCount = removalResult.tiles.filter(t => t.excluded).length;
+        stats.innerHTML = `Total: ${removalResult.tiles.length} tiles<br>Excluded: ${excludedCount}`;
+    }
   </script>
 </body>
 </html>

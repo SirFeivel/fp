@@ -63,6 +63,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
                 boughtPricePerPiece: 5.0
               };
             }
+            if (!room.excludedTiles) room.excludedTiles = [];
+            if (!room.excludedSkirts) room.excludedSkirts = [];
             if (room.exclusions && Array.isArray(room.exclusions)) {
               for (const ex of room.exclusions) {
                 if (ex.skirtingEnabled === undefined) {

@@ -51,8 +51,13 @@ export function bindUI({
     const next = structuredClone(state);
 
     next.view = next.view || {};
-    next.view.showGrid = Boolean(document.querySelector('.plan-toolbar #showGrid')?.checked);
-    next.view.showSkirting = Boolean(document.querySelector('.plan-toolbar #showSkirting')?.checked);
+    const showGridEl = document.querySelector('.plan-toolbar #showGrid');
+    const showSkirtingEl = document.querySelector('.plan-toolbar #showSkirting');
+    const removalModeEl = document.querySelector('.plan-toolbar #removalMode');
+
+    if (showGridEl) next.view.showGrid = Boolean(showGridEl.checked);
+    if (showSkirtingEl) next.view.showSkirting = Boolean(showSkirtingEl.checked);
+    if (removalModeEl) next.view.removalMode = Boolean(removalModeEl.checked);
 
     const nextRoom = getCurrentRoom(next);
     if (nextRoom) {
@@ -294,15 +299,12 @@ export function bindUI({
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
-  document.querySelectorAll('#showGrid').forEach(el => {
-    el.addEventListener("change", () =>
-      commitFromRoomInputs(t("room.viewChanged"))
-    );
-  });
-  document.querySelectorAll('#showSkirting').forEach(el => {
-    el.addEventListener("change", () =>
-      commitFromRoomInputs(t("room.viewChanged"))
-    );
+  document.addEventListener("change", (e) => {
+    if (e.target.id === 'showGrid' || e.target.id === 'showSkirting') {
+      const val = e.target.checked;
+      document.querySelectorAll('#' + e.target.id).forEach(el => el.checked = val);
+      commitFromRoomInputs(t("room.viewChanged"));
+    }
   });
 
   // Skirting inputs

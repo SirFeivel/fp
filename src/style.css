@@ -697,6 +697,35 @@ hr{
   min-height:0;
 }
 
+/* ---------------- Removal Mode Styles ---------------- */
+#planSvg.removal-mode [data-tileid],
+#planSvgFullscreen.removal-mode [data-tileid],
+#planSvg.removal-mode [data-skirtid],
+#planSvgFullscreen.removal-mode [data-skirtid] {
+  cursor: pointer;
+  pointer-events: auto !important;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+#planSvg.removal-mode [data-tileid]:hover,
+#planSvgFullscreen.removal-mode [data-tileid]:hover,
+#planSvg.removal-mode [data-skirtid]:hover,
+#planSvgFullscreen.removal-mode [data-skirtid]:hover {
+  filter: brightness(1.5) saturate(1.5);
+  stroke: var(--accent) !important;
+  opacity: 1 !important;
+}
+
+#planSvg.removal-mode [data-tileid],
+#planSvgFullscreen.removal-mode [data-tileid] {
+  fill: rgba(255, 255, 255, 0.2) !important;
+}
+
+#planSvg.removal-mode [data-skirtid],
+#planSvgFullscreen.removal-mode [data-skirtid] {
+  stroke-width: 8px !important;
+}
+
 
 /* ---------------- Metrics ---------------- */
 .metrics-panel{

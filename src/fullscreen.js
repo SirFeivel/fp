@@ -1,4 +1,4 @@
-export function initFullscreen(dragController) {
+export function initFullscreen(dragController, onShow) {
   const btnFullscreen = document.getElementById('btnFullscreen');
 
   if (!btnFullscreen) return;
@@ -10,30 +10,22 @@ export function initFullscreen(dragController) {
   function showFullscreen() {
     const overlay = document.createElement('div');
     overlay.className = 'fullscreen-overlay';
+    const toolbarOriginal = document.querySelector('.plan-toolbar');
+    const toolbarHtml = toolbarOriginal ? toolbarOriginal.innerHTML : '';
+
     overlay.innerHTML = `
       <div class="fullscreen-header">
         <button id="btnExitFullscreen" class="btn small" title="Exit Fullscreen">✕</button>
       </div>
       <div class="fullscreen-content">
+        <div class="plan-toolbar">${toolbarHtml}</div>
         <svg id="planSvgFullscreen" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     `;
 
     document.body.appendChild(overlay);
 
-    const svgOriginal = document.getElementById('planSvg');
-    const svgFullscreen = document.getElementById('planSvgFullscreen');
-
-    svgFullscreen.innerHTML = svgOriginal.innerHTML;
-    svgFullscreen.setAttribute('viewBox', svgOriginal.getAttribute('viewBox'));
-    svgFullscreen.setAttribute('preserveAspectRatio', svgOriginal.getAttribute('preserveAspectRatio'));
-
-    if (dragController) {
-      const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]');
-      exclusionShapes.forEach(shape => {
-        shape.addEventListener('pointerdown', dragController.onExclPointerDown);
-      });
-    }
+    if (onShow) onShow();
 
     const btnExit = document.getElementById('btnExitFullscreen');
     const closeFullscreen = () => {
