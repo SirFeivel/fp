@@ -17,6 +17,9 @@ function calculateTileArea(tw, th, shape) {
     const radius = tw / Math.sqrt(3);
     return (3 * Math.sqrt(3) / 2) * radius * radius;
   }
+  if (shape === "rhombus") {
+    return (tw * th) / 2;
+  }
   return tw * th;
 }
 

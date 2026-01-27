@@ -137,6 +137,23 @@
         renderPattern(p.id, `${p.id}-stats`, result.tiles);
       }
     });
+
+    // Add Rhombus test
+    const rhombusState = createMockState('grid');
+    rhombusState.floors[0].rooms[0].tile = { widthCm: 60, heightCm: 30, shape: 'rhombus' };
+    const rhombusResult = tilesForPreview(rhombusState, availableMP);
+    
+    // Create container for rhombus if not exists (manually add to body in this test script)
+    const rhDiv = document.createElement('div');
+    rhDiv.className = 'pattern-container';
+    rhDiv.innerHTML = `<h2>Rhombus Staggered</h2><svg id="rhombus-svg" width="400" height="400"></svg><div class="stats" id="rhombus-stats"></div>`;
+    document.body.appendChild(rhDiv);
+    
+    if (rhombusResult.error) {
+        console.error(`rhombus error:`, rhombusResult.error);
+    } else {
+        renderPattern('rhombus-svg', 'rhombus-stats', rhombusResult.tiles);
+    }
   </script>
 </body>
 </html>

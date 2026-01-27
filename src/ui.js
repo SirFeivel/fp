@@ -79,6 +79,10 @@ export function bindUI({
     if (shape === "hex") {
       const sideLength = widthCm / Math.sqrt(3);
       currentRoom.tile.heightCm = sideLength * 2;
+    } else if (shape === "rhombus") {
+      // For rhombus, we can also use width for height if they are meant to be equal-sided,
+      // but let's allow custom height for now to define the other diagonal.
+      currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
     } else {
       currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
     }
@@ -146,19 +150,26 @@ export function bindUI({
     const tileHField = document.getElementById("tileHeightField");
     const hexHint = document.getElementById("hexHint");
     const tileHInput = document.getElementById("tileH");
+    const patternTypeField = document.getElementById("patternTypeField");
 
     if (shape === "hex") {
       if (tileHField) tileHField.style.display = "none";
       if (hexHint) hexHint.style.display = "block";
+      if (patternTypeField) patternTypeField.style.display = "none";
 
       const widthCm = Number(document.getElementById("tileW")?.value) || 0;
       if (widthCm > 0 && tileHInput) {
         const sideLength = widthCm / Math.sqrt(3);
         tileHInput.value = (sideLength * 2).toFixed(2);
       }
+    } else if (shape === "rhombus") {
+      if (tileHField) tileHField.style.display = "";
+      if (hexHint) hexHint.style.display = "none";
+      if (patternTypeField) patternTypeField.style.display = "none";
     } else {
       if (tileHField) tileHField.style.display = "";
       if (hexHint) hexHint.style.display = "none";
+      if (patternTypeField) patternTypeField.style.display = "";
     }
   }
 
