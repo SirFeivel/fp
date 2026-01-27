@@ -47,7 +47,7 @@
     <main class="layout">
       <section class="panel panel-nav">
         <div class="panel-header">
-          <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
+          <h3 class="section-title" data-i18n="tabs.title">Tabs</h3>
           <button class="btn-collapse" id="collapseNav" title="Toggle Navigation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
@@ -82,33 +82,33 @@
           <div class="tab-panel" data-tab-panel="room">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
+                <h3 class="section-title" data-i18n="tabs.title">Tabs</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div id="structureContent" class="card-content hidden">
                 <div class="grid2">
                   <div class="field span2">
-                    <label data-i18n="structure.floor">Etage</label>
+                    <label data-i18n="tabs.floor">Etage</label>
                     <select id="floorSelect"></select>
                   </div>
                   <div class="field span2">
-                    <label data-i18n="structure.floorName">Etagenname</label>
+                    <label data-i18n="tabs.floorName">Etagenname</label>
                     <input id="floorName" type="text" />
                   </div>
                 </div>
                 <div class="btnrow">
-                  <button id="btnAddFloor" class="btn" data-i18n="structure.addFloor">Etage hinzufügen</button>
-                  <button id="btnDeleteFloor" class="btn" data-i18n="structure.deleteFloor">Etage löschen</button>
+                  <button id="btnAddFloor" class="btn" data-i18n="tabs.addFloor">Etage hinzufügen</button>
+                  <button id="btnDeleteFloor" class="btn" data-i18n="tabs.deleteFloor">Etage löschen</button>
                 </div>
                 <div class="grid2" style="margin-top: 1rem;">
                   <div class="field span2">
-                    <label data-i18n="structure.room">Raum</label>
+                    <label data-i18n="tabs.room">Raum</label>
                     <select id="roomSelect"></select>
                   </div>
                 </div>
                 <div class="btnrow">
-                  <button id="btnAddRoom" class="btn" data-i18n="structure.addRoom">Raum hinzufügen</button>
-                  <button id="btnDeleteRoom" class="btn" data-i18n="structure.deleteRoom">Raum löschen</button>
+                  <button id="btnAddRoom" class="btn" data-i18n="tabs.addRoom">Raum hinzufügen</button>
+                  <button id="btnDeleteRoom" class="btn" data-i18n="tabs.deleteRoom">Raum löschen</button>
                 </div>
               </div>
             </div>

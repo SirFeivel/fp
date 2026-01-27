@@ -29,8 +29,8 @@ const translations = {
       notFound: "Projekt nicht gefunden.",
       none: "– keine –"
     },
-    structure: {
-      title: "Struktur",
+    tabs: {
+      title: "Tabs",
       floor: "Etage",
       room: "Raum",
       addFloor: "Etage hinzufügen",
@@ -311,8 +311,8 @@ const translations = {
       notFound: "Project not found.",
       none: "– none –"
     },
-    structure: {
-      title: "Structure",
+    tabs: {
+      title: "Tabs",
       floor: "Floor",
       room: "Room",
       addFloor: "Add Floor",

@@ -201,6 +201,24 @@
 - Long names are gracefully truncated with ellipses to prevent layout breaking.
 - All 354 tests pass and production build is successful.
 
+## Session: Rename Tabs and Improve UI (2026-01-27)
+### Goal
+- Rename 'Structure' to 'Tabs' for better clarity.
+- Improve tab visual recognition and active state.
+
+### Plan
+1. Create feature branch `feature/rename-tabs-ui` ✓
+2. Rename 'Structure' to 'Tabs' in `src/i18n.js` and update related keys ✓
+3. Update `index.html` to reflect the name change ✓
+4. Enhance tab styling in `src/style.css` (segment control style, active state contrast) ✓
+5. Verify with tests and build ✓
+
+### Status
+- 'Structure' renamed to 'Tabs' across the application (left panel header and room section).
+- Navigation tabs now use a "Segment Control" look with a subtle background and clear active state styling.
+- Active tabs are visually prominent with a contrasting background and border.
+- All 355 tests pass and production build is successful.
+
 ## Session: Hints and Tips (2026-01-27)
 ### Goal
 - Move hint section below the plan.
