@@ -1,7 +1,7 @@
 // src/render.js
 import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals } from "./calc.js";
 import { validateState } from "./validation.js";
-import { escapeHTML, getCurrentRoom } from "./core.js";
+import { escapeHTML, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { t } from "./i18n.js";
 import {
   svgEl,
@@ -680,17 +680,16 @@ export function renderPlanSvg({
     }
   }
 
-  const label = svgEl("text", {
-    x: minX + 8,
-    y: minY + 18,
-    fill: "rgba(231,238,252,0.95)",
-    "font-size": 14,
-    "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
-  });
-  const totalArea = (w * h / 10000).toFixed(2);
-  const sectionInfo = sections.length > 1 ? ` (${sections.length} sections)` : "";
-  label.textContent = `${currentRoom.name} — ${totalArea} m²${sectionInfo}`;
-  svg.appendChild(label);
+  // Update dynamic plan title in header
+  const planTitleEl = document.getElementById("planTitle");
+  if (planTitleEl) {
+    const currentFloor = getCurrentFloor(state);
+    const floorName = currentFloor?.name || "–";
+    const roomName = currentRoom?.name || "–";
+    const totalArea = (w * h / 10000).toFixed(2);
+    const sectionInfo = sections.length > 1 ? ` (${sections.length} ${t("room.sectionsList")})` : "";
+    planTitleEl.textContent = `${floorName} / ${roomName} — ${totalArea} m²${sectionInfo}`;
+  }
 
   // tiles
   let previewTiles = [];

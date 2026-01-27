@@ -405,6 +405,16 @@ hr{
   justify-content:space-between;
   align-items:center;
   margin-top:4px;
+  gap: 16px;
+  min-height: 40px;
+}
+
+#planTitle {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
 }
 
 .pill{

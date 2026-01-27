@@ -181,6 +181,31 @@
 - npm run build
 - git checkout -b feature/ui-consistency-v2
 
+## Session: Dynamic Plan Title (2026-01-27)
+### Goal
+- Move room name from SVG to the Plan header.
+- Make the title dynamic (Floor / Room — Area).
+- Ensure readability with long names.
+
+### Plan
+1. Create feature branch `feature/dynamic-plan-title` ✓
+2. Remove static room label from SVG in `src/render.js` ✓
+3. Update `index.html` with target ID for dynamic title ✓
+4. Implement dynamic title update in `src/render.js` ✓
+5. Add CSS for title truncation and layout stability ✓
+6. Verify with tests and build ✓
+
+### Status
+- Room label no longer clutters the SVG preview.
+- Plan header now displays "Floor / Room — X.XX m²" dynamically.
+- Long names are gracefully truncated with ellipses to prevent layout breaking.
+- All 354 tests pass and production build is successful.
+
+## Commands Run
+- npm run test
+- npm run build
+- git checkout -b feature/dynamic-plan-title
+
 ## Notes
 - Topic "UI Improvements" completed and ready for submission.
 - All guidelines followed.
