@@ -200,7 +200,7 @@ body{
   box-shadow:var(--shadow);
 }
 
-.panel-nav{ margin-right:12px; }
+.panel-nav{ margin-right:12px; container-type: inline-size; }
 .panel-info{ margin-left:12px; }
 .panel{ background:var(--panel); position:relative; }
 
@@ -849,7 +849,7 @@ hr{
   min-width: 40px; /* Reduced from 70px */
 }
 
-@media (max-width: 1400px) {
+@container (max-width: 350px) {
   .tab span:not(.tab-icon) {
     display: none !important;
   }
