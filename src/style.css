@@ -849,7 +849,7 @@ hr{
   min-width: 40px; /* Reduced from 70px */
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
   .tab span:not(.tab-icon) {
     display: none !important;
   }
