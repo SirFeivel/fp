@@ -201,23 +201,23 @@
 - Long names are gracefully truncated with ellipses to prevent layout breaking.
 - All 354 tests pass and production build is successful.
 
-## Session: Rename Tabs and Improve UI (2026-01-27)
+## Session: Responsive Tabs (2026-01-27)
 ### Goal
-- Rename 'Structure' to 'Tabs' for better clarity.
-- Improve tab visual recognition and active state.
+- Improve tab navigation responsiveness.
+- Hide labels and show only icons when the viewport is narrow to prevent overlapping.
 
 ### Plan
-1. Create feature branch `feature/rename-tabs-ui` ✓
-2. Rename 'Structure' to 'Tabs' in `src/i18n.js` and update related keys ✓
-3. Update `index.html` to reflect the name change ✓
-4. Enhance tab styling in `src/style.css` (segment control style, active state contrast) ✓
-5. Verify with tests and build ✓
+1. Create feature branch `feature/responsive-tabs` ✓
+2. Update `src/style.css` with a media query to hide tab text at narrow widths ✓
+3. Reduce `min-width` of tabs to allow more compact layout ✓
+4. Verify with tests and build ✓
+5. Fix issues where text was still visible on some screen sizes (force hide with !important and increase breakpoint) ✓
 
 ### Status
-- 'Structure' renamed to 'Tabs' across the application (left panel header and room section).
-- Navigation tabs now use a "Segment Control" look with a subtle background and clear active state styling.
-- Active tabs are visually prominent with a contrasting background and border.
-- All 355 tests pass and production build is successful.
+- Navigation tabs now automatically switch to an icon-only mode when the screen width is below 1400px.
+- Use of `!important` ensures labels are reliably hidden.
+- This prevents labels from overlapping and ensures the UI remains usable on smaller screens or when panels are wide.
+- All 355 tests pass.
 
 ## Session: Hints and Tips (2026-01-27)
 ### Goal
