@@ -228,6 +228,31 @@
 - git merge feature/hints-and-tips
 - git branch -d feature/hints-and-tips
 
+## Session: Fix Grand Total with Invalid Pattern (2026-01-27)
+### Goal
+- Hide Grand Total metrics when the tile pattern is invalid (e.g., wrong ratio for Herringbone).
+- Ensure consistency between individual tile metrics and the grand total display.
+
+### Plan
+1. Create feature branch `feature/fix-grand-total-invalid-pattern` ✓
+2. Update `renderMetrics` in `src/render.js` to hide Grand Total when `ratioError` is present ✓
+3. Add reproduction test case in `src/render_smoke.test.js` ✓
+4. Verify with full test suite and build ✓
+
+### Status
+- Grand Total section is now correctly hidden when an invalid pattern ratio prevents tile calculation.
+- Added automated test to verify the fix and prevent regressions.
+- All 355 tests pass and production build is successful.
+
+## Commands Run
+- npm run test
+- npm run build
+- git checkout -b feature/fix-grand-total-invalid-pattern
+- git checkout main
+- git merge feature/fix-grand-total-invalid-pattern
+- git branch -d feature/fix-grand-total-invalid-pattern
+
 ## Notes
 - Topic "UI Improvements" completed and ready for submission.
 - All guidelines followed.
+- Grand total visibility issue resolved.

@@ -13,6 +13,8 @@ import {
   renderPlanSvg
 } from './render.js';
 import { defaultState } from './core.js';
+import { validateState } from './validation.js';
+import { t } from './i18n.js';
 
 describe('render.js smoke tests', () => {
   beforeEach(() => {
@@ -215,5 +217,34 @@ describe('render.js smoke tests', () => {
     const skirtingGroup = Array.from(svg.querySelectorAll('g')).find(g => g.getAttribute('stroke') === 'var(--accent)');
     expect(skirtingGroup).not.toBeNull();
     expect(skirtingGroup.querySelectorAll('path').length).toBeGreaterThan(0);
+  });
+
+  it('renderMetrics hides grand total when ratio error exists', () => {
+    document.body.innerHTML = `
+      <div id="metricArea"></div>
+      <div id="metricTiles"></div>
+      <div id="metricPacks"></div>
+      <div id="metricCost"></div>
+      <div id="grandTotalBox" style="display:block"></div>
+      <div id="skirtingMetricsBox" style="display:none"></div>
+    `;
+    const state = defaultState();
+    const room = state.floors[0].rooms[0];
+    room.pattern.type = 'herringbone';
+    room.tile.widthCm = 25;
+    room.tile.heightCm = 10;
+    room.skirting.enabled = true; // Grand total usually shows if skirting is enabled
+    
+    // Explicitly check ratioError in the test to ensure we know why it fails
+    const { errors } = validateState(state);
+    const ratioError = errors.find(e => 
+      e.title.includes(t("validation.herringboneRatioTitle"))
+    );
+    expect(ratioError).toBeDefined();
+
+    renderMetrics(state);
+
+    const grandBox = document.getElementById('grandTotalBox');
+    expect(grandBox.style.display).toBe('none');
   });
 });

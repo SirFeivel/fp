@@ -119,6 +119,10 @@ export function renderMetrics(state) {
     costEl.textContent = ratioError ? `${t("warnings.error")}: ${ratioError.title}` : m.error;
     if (cutTilesEl) cutTilesEl.textContent = "–";
     if (wasteEl) wasteEl.textContent = "–";
+
+    const grandBox = document.getElementById("grandTotalBox");
+    if (grandBox) grandBox.style.display = "none";
+    
     return;
   }
 
@@ -176,7 +180,7 @@ export function renderMetrics(state) {
   const grand = computeGrandTotals(state);
   const grandBox = document.getElementById("grandTotalBox");
   if (grandBox) {
-    if (grand.ok && grand.skirtingEnabled) {
+    if (grand.ok && grand.skirtingEnabled && !ratioError) {
       grandBox.style.display = "block";
       document.getElementById("metricGrandTotalTiles").textContent = grand.totalTiles;
       
