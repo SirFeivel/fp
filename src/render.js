@@ -223,8 +223,6 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
-  document.getElementById("roomW").value = currentRoom?.widthCm ?? "";
-  document.getElementById("roomH").value = currentRoom?.heightCm ?? "";
   document.getElementById("showGrid").checked = Boolean(state.view?.showGrid);
   document.getElementById("showSkirting").checked = Boolean(state.view?.showSkirting);
 

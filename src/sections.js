@@ -34,17 +34,6 @@ export function createSectionsController({
       nextRoom.sections = [];
     }
 
-    if (nextRoom.sections.length === 0 && nextRoom.widthCm && nextRoom.heightCm) {
-      nextRoom.sections.push({
-        id: "main",
-        label: "Main Area",
-        x: 0,
-        y: 0,
-        widthCm: nextRoom.widthCm,
-        heightCm: nextRoom.heightCm,
-      });
-    }
-
     nextRoom.sections.push(newSection);
     setSelectedId(newSection.id);
     commit(t('room.sectionAdded') || 'Section added', next);

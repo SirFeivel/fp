@@ -92,8 +92,12 @@ describe('render.js smoke tests', () => {
     room.skirting.type = 'bought';
     room.skirting.boughtWidthCm = 100;
     room.skirting.boughtPricePerPiece = 10;
-    room.widthCm = 100;
-    room.heightCm = 100; // 400cm perimeter
+    
+    // In V4, we must update the section dimensions
+    if (room.sections && room.sections[0]) {
+      room.sections[0].widthCm = 100;
+      room.sections[0].heightCm = 100;
+    }
 
     renderMetrics(state);
 
@@ -197,8 +201,10 @@ describe('render.js smoke tests', () => {
     state.view.showSkirting = true;
     const room = state.floors[0].rooms[0];
     room.skirting.enabled = true;
-    room.widthCm = 100;
-    room.heightCm = 100;
+    if (room.sections && room.sections[0]) {
+      room.sections[0].widthCm = 100;
+      room.sections[0].heightCm = 100;
+    }
 
     renderPlanSvg({
       state,

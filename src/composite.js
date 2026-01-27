@@ -1,5 +1,6 @@
 import polygonClipping from "polygon-clipping";
 import { uuid } from "./core.js";
+import { t } from "./i18n.js";
 
 export function rectToPolygon(x, y, w, h) {
   const x1 = x;
@@ -23,7 +24,6 @@ export function getRoomSections(room) {
   if (!room) return [];
 
   if (room.sections && Array.isArray(room.sections) && room.sections.length > 0) {
-    // Return all sections, regardless of properties like skirtingEnabled
     return room.sections.map(s => ({
       ...s,
       id: s.id || uuid(),
@@ -35,6 +35,7 @@ export function getRoomSections(room) {
     }));
   }
 
+  // Temporary fallback for legacy rooms or simple test objects while transitioning
   const w = Number(room.widthCm);
   const h = Number(room.heightCm);
   if (w > 0 && h > 0) {
@@ -46,7 +47,7 @@ export function getRoomSections(room) {
         y: 0,
         widthCm: w,
         heightCm: h,
-        skirtingEnabled: !!room.skirting?.enabled,
+        skirtingEnabled: room.skirting ? !!room.skirting.enabled : true,
       },
     ];
   }
@@ -152,8 +153,8 @@ export function validateSections(sections) {
 
   if (!sections || sections.length === 0) {
     errors.push({
-      title: "No room sections",
-      text: "At least one room section is required",
+      title: t("validation.roomWidthInvalid"),
+      text: t("validation.roomWidthText"),
     });
     return { errors, warnings };
   }
@@ -165,15 +166,15 @@ export function validateSections(sections) {
 
     if (!(s.widthCm > 0)) {
       errors.push({
-        title: `Invalid width in ${label}`,
-        text: `Section width must be positive (got ${s.widthCm})`,
+        title: t("validation.roomWidthInvalid") + ` (${label})`,
+        text: t("validation.roomWidthText"),
       });
     }
 
     if (!(s.heightCm > 0)) {
       errors.push({
-        title: `Invalid height in ${label}`,
-        text: `Section height must be positive (got ${s.heightCm})`,
+        title: t("validation.roomHeightInvalid") + ` (${label})`,
+        text: t("validation.roomHeightText"),
       });
     }
 
@@ -184,8 +185,8 @@ export function validateSections(sections) {
 
   if (validCount === 0) {
     errors.push({
-      title: "No valid sections",
-      text: "At least one section must have positive width and height",
+      title: t("validation.roomWidthInvalid"),
+      text: t("validation.roomWidthText"),
     });
   }
 

@@ -7,8 +7,24 @@
 - Started new topic "base boards".
 - Created branch `feature/base-boards`.
 
-## Next Steps
-- Wait for briefing.
+## Session: Unified Room Sections (2026-01-27)
+### Goal
+- Integrate legacy room dimensions (widthCm/heightCm) into the existing sections functionality.
+- Consolidate UI and ensure a single source of truth for room geometry.
+
+### Plan
+1. Create feature branch `feature/unified-sections` ✓
+2. Implement V4 schema migration in `src/state.js` and update `core.js` ✓
+3. Refactor logic in `geometry.js`, `calc.js`, and `validation.js` to prioritize sections ✓
+4. Consolidate UI by removing legacy dimension inputs from `index.html` and `ui.js` ✓
+5. Update test suites and `visual-test.html` to align with the V4 schema ✓
+6. Final verification with full test suite and production build ✓
+
+### Status
+- Room geometry is now managed exclusively via the `sections` array in the V4 schema.
+- Legacy property inputs have been removed from the sidebar, centralizing control in the sections panel.
+- Backward compatibility is maintained via robust migration logic and a temporary fallback in the sections retriever.
+- All 354 tests pass and the production build is successful.
 
 ## Session: Skirting Corner Handling (2026-01-27)
 ### Goal
@@ -57,4 +73,5 @@
 - git branch -d feature/skirting-inner-borders
 
 ## Notes
-- Topic "Skirting Inner Borders" completed and merged.
+- Topic "Skirting" completed, merged, and pushed to main.
+- Local feature branches deleted.

@@ -37,6 +37,9 @@ describe('renderPlanSvg pattern validation', () => {
     currentRoom.pattern.type = 'herringbone';
     currentRoom.tile.widthCm = 10;
     currentRoom.tile.heightCm = 25; // 2.5:1 ratio, invalid (must be integer)
+    
+    // Disable skirting to avoid counting its paths
+    state.view.showSkirting = false;
 
     const validation = validateState(state);
     const hasRatioError = validation.errors.some(e => e.title.includes('Herringbone'));

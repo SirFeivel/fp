@@ -7,8 +7,7 @@ describe('computeSkirtingNeeds', () => {
       id: 'f1',
       rooms: [{
         id: 'r1',
-        widthCm: 100,
-        heightCm: 100, // 400cm perimeter
+        sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
         tile: { widthCm: 60, heightCm: 30 },
         skirting: {
           enabled: true,
@@ -92,8 +91,7 @@ describe('computeSkirtingNeeds', () => {
         ...baseState.floors[0],
         rooms: [{
           ...baseState.floors[0].rooms[0],
-          widthCm: 100,
-          heightCm: 10, // Perimeter: 100, 10, 100, 10. Total 220.
+          sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 10, skirtingEnabled: true }],
           skirting: {
             enabled: true,
             type: 'bought',
@@ -143,8 +141,7 @@ describe('computeGrandTotals', () => {
       id: 'f1',
       rooms: [{
         id: 'r1',
-        widthCm: 100,
-        heightCm: 100,
+        sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: false }],
         tile: { widthCm: 50, heightCm: 50 },
         grout: { widthCm: 0 },
         pattern: { type: 'grid' },
@@ -172,6 +169,7 @@ describe('computeGrandTotals', () => {
         ...baseState.floors[0],
         rooms: [{
           ...baseState.floors[0].rooms[0],
+          sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
           skirting: { enabled: true, type: 'cutout', heightCm: 10 }
         }]
       }]
@@ -195,6 +193,7 @@ describe('computeGrandTotals', () => {
         ...baseState.floors[0],
         rooms: [{
           ...baseState.floors[0].rooms[0],
+          sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
           skirting: { enabled: true, type: 'bought', boughtWidthCm: 100, boughtPricePerPiece: 10 }
         }]
       }]

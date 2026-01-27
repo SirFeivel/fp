@@ -4,8 +4,7 @@ import { computeSkirtingPerimeter } from './geometry.js';
 describe('computeSkirtingPerimeter', () => {
   it('calculates perimeter for a simple rectangular room', () => {
     const room = {
-      widthCm: 100,
-      heightCm: 200,
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200, skirtingEnabled: true }],
       exclusions: [],
       skirting: { enabled: true }
     };
@@ -34,8 +33,7 @@ describe('computeSkirtingPerimeter', () => {
 
   it('calculates perimeter including an internal exclusion', () => {
     const room = {
-      widthCm: 500,
-      heightCm: 500,
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 500, heightCm: 500, skirtingEnabled: true }],
       skirting: { enabled: true },
       exclusions: [
         { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true }
@@ -49,8 +47,7 @@ describe('computeSkirtingPerimeter', () => {
 
   it('calculates perimeter for an exclusion on the edge (cutout)', () => {
     const room = {
-      widthCm: 500,
-      heightCm: 500,
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 500, heightCm: 500, skirtingEnabled: true }],
       skirting: { enabled: true },
       exclusions: [
         { id: 'ex1', type: 'rect', x: 0, y: 100, w: 50, h: 50, skirtingEnabled: true }
@@ -78,8 +75,7 @@ describe('computeSkirtingPerimeter', () => {
 
   it('ignores exclusions that have skirting disabled', () => {
     const room = {
-      widthCm: 500,
-      heightCm: 500,
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 500, heightCm: 500, skirtingEnabled: true }],
       skirting: { enabled: true },
       exclusions: [
         { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: false }
@@ -108,8 +104,7 @@ describe('computeSkirtingPerimeter', () => {
 
   it('allows skirting on exclusions even if room/sections are disabled', () => {
     const room = {
-      widthCm: 500,
-      heightCm: 500,
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 500, heightCm: 500, skirtingEnabled: false }],
       skirting: { enabled: false }, // Room walls OFF
       exclusions: [
         { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true } // Pillar ON

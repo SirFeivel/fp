@@ -9,6 +9,7 @@ import {
   createDefaultSection,
   suggestConnectedSection,
 } from "./composite.js";
+import { t } from "./i18n.js";
 
 describe("rectToPolygon", () => {
   it("converts rectangle to polygon format", () => {
@@ -313,21 +314,21 @@ describe("validateSections", () => {
   it("errors for empty sections array", () => {
     const { errors } = validateSections([]);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.title.includes("No room sections"))).toBe(true);
+    expect(errors.some((e) => e.title.includes(t("validation.roomWidthInvalid")))).toBe(true);
   });
 
   it("errors for invalid width", () => {
     const sections = [{ id: "s1", x: 0, y: 0, widthCm: 0, heightCm: 300 }];
     const { errors } = validateSections(sections);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.title.includes("width"))).toBe(true);
+    expect(errors.some((e) => e.title.includes(t("validation.roomWidthInvalid")))).toBe(true);
   });
 
   it("errors for invalid height", () => {
     const sections = [{ id: "s1", x: 0, y: 0, widthCm: 400, heightCm: 0 }];
     const { errors } = validateSections(sections);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors.some((e) => e.title.includes("height"))).toBe(true);
+    expect(errors.some((e) => e.title.includes(t("validation.roomHeightInvalid")))).toBe(true);
   });
 
   it("errors when all sections are invalid", () => {
@@ -336,7 +337,7 @@ describe("validateSections", () => {
       { id: "s2", x: 0, y: 0, widthCm: -100, heightCm: 200 },
     ];
     const { errors } = validateSections(sections);
-    expect(errors.some((e) => e.title.includes("No valid sections"))).toBe(true);
+    expect(errors.some((e) => e.title.includes(t("validation.roomWidthInvalid")))).toBe(true);
   });
 });
 

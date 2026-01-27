@@ -18,6 +18,13 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (version === 1) {
       s = migrateV1ToV2(s);
     }
+    if (s.meta?.version === 2) {
+      // V2 to V3 was mostly implicit property additions, but let's ensure version is 3
+      s.meta.version = 3;
+    }
+    if (s.meta?.version === 3) {
+      s = migrateV3ToV4(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || { widthCm: 40, heightCm: 20, shape: "rect" };
@@ -126,6 +133,38 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     };
 
     return newState;
+  }
+
+  function migrateV3ToV4(s) {
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        if (floor.rooms && Array.isArray(floor.rooms)) {
+          for (const room of floor.rooms) {
+            if (!room.sections || room.sections.length === 0) {
+              const w = Number(room.widthCm);
+              const h = Number(room.heightCm);
+              if (w > 0 && h > 0) {
+                room.sections = [
+                  {
+                    id: uuid(),
+                    label: "Hauptbereich",
+                    x: 0,
+                    y: 0,
+                    widthCm: w,
+                    heightCm: h,
+                    skirtingEnabled: room.skirting ? !!room.skirting.enabled : true
+                  }
+                ];
+              }
+            }
+            delete room.widthCm;
+            delete room.heightCm;
+          }
+        }
+      }
+    }
+    s.meta.version = 4;
+    return s;
   }
 
   let state = normalizeState(defaultStateFn());

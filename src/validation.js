@@ -55,26 +55,15 @@ export function validateState(s) {
     });
   } else {
     const sections = getRoomSections(currentRoom);
-    if (sections.length > 0) {
+    if (sections.length === 0) {
+      errors.push({
+        title: t("validation.roomWidthInvalid"),
+        text: t("validation.roomWidthText")
+      });
+    } else {
       const sectionsValidation = validateSectionsGeometry(sections);
       errors.push(...sectionsValidation.errors);
       warns.push(...sectionsValidation.warnings);
-    } else {
-      const roomW = currentRoom?.widthCm;
-      const roomH = currentRoom?.heightCm;
-
-      if (!n(roomW) || roomW <= 0) {
-        errors.push({
-          title: t("validation.roomWidthInvalid"),
-          text: `${t("validation.currentValue")} "${roomW}". ${t("validation.roomWidthText")}`
-        });
-      }
-      if (!n(roomH) || roomH <= 0) {
-        errors.push({
-          title: t("validation.roomHeightInvalid"),
-          text: `${t("validation.currentValue")} "${roomH}". ${t("validation.roomHeightText")}`
-        });
-      }
     }
   }
 

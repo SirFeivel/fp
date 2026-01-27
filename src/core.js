@@ -60,7 +60,7 @@ export function defaultState() {
   const roomId = uuid();
 
   return {
-    meta: { version: 3, updatedAt: nowISO() },
+    meta: { version: 4, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
@@ -72,8 +72,17 @@ export function defaultState() {
           {
             id: roomId,
             name: "Raum",
-            widthCm: 600,
-            heightCm: 400,
+            sections: [
+              {
+                id: uuid(),
+                label: "Hauptbereich",
+                x: 0,
+                y: 0,
+                widthCm: 600,
+                heightCm: 400,
+                skirtingEnabled: true
+              }
+            ],
             exclusions: [],
             tile: { widthCm: 40, heightCm: 20, shape: "rect" },
             grout: { widthCm: 0.2, colorHex: "#ffffff" },

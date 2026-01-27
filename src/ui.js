@@ -57,8 +57,6 @@ export function bindUI({
     const nextRoom = getCurrentRoom(next);
     if (nextRoom) {
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
-      nextRoom.widthCm = Number(document.getElementById("roomW")?.value);
-      nextRoom.heightCm = Number(document.getElementById("roomH")?.value);
 
       nextRoom.skirting = nextRoom.skirting || {};
       nextRoom.skirting.enabled = Boolean(document.getElementById("skirtingEnabled")?.checked);
@@ -290,16 +288,6 @@ export function bindUI({
 
   // Room inputs
   wireInputCommit(document.getElementById("roomName"), {
-    markDirty: () => store.markDirty(),
-    commitLabel: t("room.changed"),
-    commitFn: commitFromRoomInputs
-  });
-  wireInputCommit(document.getElementById("roomW"), {
-    markDirty: () => store.markDirty(),
-    commitLabel: t("room.changed"),
-    commitFn: commitFromRoomInputs
-  });
-  wireInputCommit(document.getElementById("roomH"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs

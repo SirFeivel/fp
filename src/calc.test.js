@@ -5,77 +5,50 @@ function createTestState(oldOrNew = {}) {
   const floorId = 'test-floor';
   const roomId = 'test-room';
 
+  const baseRoom = {
+    id: roomId,
+    name: (oldOrNew.room && oldOrNew.room.name) || 'Test Room',
+    exclusions: oldOrNew.exclusions || [],
+    tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
+    grout: oldOrNew.grout || { widthCm: 1 },
+    pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
+  };
+
   if (oldOrNew.room) {
-    const newState = {
-      meta: { version: 2 },
-      project: { name: oldOrNew.room.name || 'Test' },
-      floors: [{
-        id: floorId,
-        name: 'Test Floor',
-        rooms: [{
-          id: roomId,
-          name: oldOrNew.room.name || 'Test Room',
-          widthCm: oldOrNew.room.widthCm || 400,
-          heightCm: oldOrNew.room.heightCm || 500,
-          exclusions: oldOrNew.exclusions || [],
-          tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
-          grout: oldOrNew.grout || { widthCm: 1 },
-          pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
-        }]
-      }],
-      selectedFloorId: floorId,
-      selectedRoomId: roomId,
-      pricing: oldOrNew.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
-      waste: oldOrNew.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
-      view: oldOrNew.view || { showGrid: true, showNeeds: false }
-    };
-    return newState;
+    baseRoom.sections = [
+      { id: 'sec1', x: 0, y: 0, widthCm: oldOrNew.room.widthCm || 400, heightCm: oldOrNew.room.heightCm || 500 }
+    ];
+  } else if (oldOrNew.roomOverrides) {
+    const widthCm = oldOrNew.roomOverrides.hasOwnProperty('widthCm') ? oldOrNew.roomOverrides.widthCm : 400;
+    const heightCm = oldOrNew.roomOverrides.hasOwnProperty('heightCm') ? oldOrNew.roomOverrides.heightCm : 500;
+    baseRoom.sections = [
+      { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
+    ];
+    Object.assign(baseRoom, oldOrNew.roomOverrides);
+    delete baseRoom.widthCm;
+    delete baseRoom.heightCm;
+  } else {
+    baseRoom.sections = [
+      { id: 'sec1', x: 0, y: 0, widthCm: 400, heightCm: 500 }
+    ];
   }
 
-  const defaults = {
-    meta: { version: 2 },
-    project: { name: 'Test' },
+  const newState = {
+    meta: { version: 4 },
+    project: { name: (oldOrNew.room && oldOrNew.room.name) || 'Test' },
     floors: [{
       id: floorId,
       name: 'Test Floor',
-      rooms: [{
-        id: roomId,
-        name: 'Test Room',
-        widthCm: 400,
-        heightCm: 500,
-        exclusions: [],
-        tile: { widthCm: 30, heightCm: 60 },
-        grout: { widthCm: 1 },
-        pattern: { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
-      }]
+      rooms: [baseRoom]
     }],
     selectedFloorId: floorId,
     selectedRoomId: roomId,
-    pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
-    waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
-    view: { showGrid: true, showNeeds: false }
+    pricing: oldOrNew.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
+    waste: oldOrNew.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+    view: oldOrNew.view || { showGrid: true, showNeeds: false }
   };
 
-  const state = { ...defaults, ...oldOrNew };
-
-  if (oldOrNew.roomOverrides) {
-    state.floors[0].rooms[0] = { ...state.floors[0].rooms[0], ...oldOrNew.roomOverrides };
-  }
-
-  if (oldOrNew.tile) {
-    state.floors[0].rooms[0].tile = oldOrNew.tile;
-  }
-  if (oldOrNew.grout) {
-    state.floors[0].rooms[0].grout = oldOrNew.grout;
-  }
-  if (oldOrNew.pattern) {
-    state.floors[0].rooms[0].pattern = oldOrNew.pattern;
-  }
-  if (oldOrNew.exclusions) {
-    state.floors[0].rooms[0].exclusions = oldOrNew.exclusions;
-  }
-
-  return state;
+  return newState;
 }
 
 describe('computePlanMetrics', () => {

@@ -3,6 +3,9 @@ import { validateState } from './validation.js';
 
 describe('validateState', () => {
   function createTestState(roomOverrides = {}, tileOverrides = {}, groutOverrides = {}, patternOverrides = {}) {
+    const widthCm = roomOverrides.hasOwnProperty('widthCm') ? roomOverrides.widthCm : 400;
+    const heightCm = roomOverrides.hasOwnProperty('heightCm') ? roomOverrides.heightCm : 500;
+    const { widthCm: _w, heightCm: _h, ...restRoomOverrides } = roomOverrides;
     return {
       floors: [{
         id: 'floor1',
@@ -10,8 +13,9 @@ describe('validateState', () => {
         rooms: [{
           id: 'room1',
           name: 'Test Room',
-          widthCm: 400,
-          heightCm: 500,
+          sections: [
+            { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
+          ],
           exclusions: [],
           tile: { widthCm: 30, heightCm: 60, ...tileOverrides },
           grout: { widthCm: 1, ...groutOverrides },
@@ -24,7 +28,7 @@ describe('validateState', () => {
             origin: { preset: "tl", xCm: 0, yCm: 0 },
             ...patternOverrides
           },
-          ...roomOverrides
+          ...restRoomOverrides
         }]
       }],
       selectedFloorId: 'floor1',
@@ -45,7 +49,7 @@ describe('validateState', () => {
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].title).toContain('Raumbreite');
+    expect(result.errors.some(e => e.title.includes('Raumbreite'))).toBe(true);
   });
 
   it('detects negative room width', () => {
@@ -61,7 +65,7 @@ describe('validateState', () => {
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].title).toContain('Raumlänge');
+    expect(result.errors.some(e => e.title.includes('Raumlänge'))).toBe(true);
   });
 
   it('detects invalid tile width', () => {

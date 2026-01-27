@@ -32,9 +32,8 @@ export function roomPolygon(room) {
 
   const { mp, error } = computeCompositePolygon(sections);
   if (error || !mp) {
-    const w = Number(room.widthCm) || 0;
-    const h = Number(room.heightCm) || 0;
-    return [[[[[0, 0], [w, 0], [w, h], [0, h], [0, 0]]]]];
+    // Return empty if there's an error, as migration should have handled valid legacy dimensions
+    return [[[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]]];
   }
 
   return mp;

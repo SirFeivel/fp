@@ -48,8 +48,7 @@ function herringboneState({ roomW = 100, roomH = 200, tileW = 10, tileH = 20, gr
       id: 'floor-1',
       rooms: [{
         id: 'room-1',
-        widthCm: roomW,
-        heightCm: roomH,
+        sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomW, heightCm: roomH }],
         tile: { widthCm: tileW, heightCm: tileH },
         grout: { widthCm: grout },
         pattern: {
@@ -79,8 +78,7 @@ function createPatternState({
       id: 'floor-1',
       rooms: [{
         id: 'room-1',
-        widthCm: roomW,
-        heightCm: roomH,
+        sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomW, heightCm: roomH }],
         tile: { widthCm: tileW, heightCm: tileH, shape: 'rect' },
         grout: { widthCm: grout },
         pattern: {
