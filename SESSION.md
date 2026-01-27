@@ -1,36 +1,60 @@
 # Session Notes
 
 ## Goal
-- Fix herringbone/double-herringbone bugs and ensure coverage with unit + visual tests.
+- Implement base boards functionality.
 
 ## Current State
-- Herringbone supports non-2:1 ratios with corrected shear and dynamic preview cap.
-- Double herringbone uses double-width band and shear = (L - 2W) + grout to support 1:8, etc.
-- Validation enforces integer ratio for herringbone and integer multiple of 2×W for double herringbone.
-- Added tests for sectioned room + 45° rotation rendering and new ratio validations.
+- Started new topic "base boards".
+- Created branch `feature/base-boards`.
 
 ## Next Steps
-- Recheck double-herringbone visuals for 1:4 and 1:8 ratios.
-- Consider adding a visual snapshot for sectioned + rotated herringbone.
+- Wait for briefing.
 
-## Session: Guidelines Update (2026-01-27)
+## Session: Skirting Corner Handling (2026-01-27)
 ### Goal
-- Update development guidelines with session tracking and testing rules.
+- Prevent skirting pieces from wrapping around corners visually and in calculations.
 
 ### Plan
-1. Update `.junie/guidelines.md` with:
-    - Session tracking rule (update `SESSION.md` on plan creation and completion).
-    - Post-acceptance testing rule (ensure tests are extended/created).
-2. Update `SESSION.md` with current session details.
-3. Verify all tests pass.
+1. Create branch `feature/skirting-corners` ✓
+2. Implement `computeSkirtingSegments` in `src/geometry.js` ✓
+3. Update `computeSkirtingNeeds` in `src/calc.js` to use per-segment calculation ✓
+4. Update `renderPlanSvg` in `src/render.js` to render individual wall segments ✓
+5. Verify with tests and build ✓
 
 ### Status
-- Guidelines updated in `.junie/guidelines.md`.
-- `SESSION.md` updated.
+- Skirting pieces now correctly break at corners.
+- Material calculation accounts for per-wall segment cutting.
+- Visualization resets dash pattern at every vertex.
 
 ## Commands Run
-- npm test
+- npm run test
 - npm run build
+- git checkout -b feature/skirting-corners
+
+## Session: Skirting Inner Borders (2026-01-27)
+### Goal
+- Fix skirting appearing on shared borders between room sections.
+
+### Plan
+1. Create branch `feature/skirting-inner-borders` ✓
+2. Create reproduction test `src/skirting_inner_borders.test.js` ✓
+3. Implement `isSegmentOnBoundary` in `src/geometry.js` ✓
+4. Refactor `computeSkirtingSegments` to filter segments against physical boundaries ✓
+5. Update `render.js` and `calc.js` to use the new segment data structure ✓
+6. Verify with tests and build ✓
+
+### Status
+- Skirting now correctly ignores inner borders between sections.
+- Visualization and calculations are synced via `computeSkirtingSegments`.
+- All tests pass, including new boundary-aware test cases.
+
+## Commands Run
+- npm run test
+- npm run build
+- git checkout -b feature/skirting-inner-borders
+- git checkout main
+- git merge feature/skirting-inner-borders
+- git branch -d feature/skirting-inner-borders
 
 ## Notes
-- Herringbone 45° + sections bug was caused by MAX_PREVIEW_TILES guard; dynamic cap fixes render abort.
+- Topic "Skirting Inner Borders" completed and merged.

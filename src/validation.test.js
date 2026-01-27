@@ -287,4 +287,23 @@ describe('validateState', () => {
     const result = validateState(state);
     expect(() => validateState(state)).not.toThrow();
   });
+  it('validates skirting with invalid height', () => {
+    const state = createTestState({ 
+      skirting: { enabled: true, heightCm: 0, type: 'cutout' }
+    });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].text).toContain('Höhe');
+  });
+
+  it('validates bought skirting with invalid length', () => {
+    const state = createTestState({ 
+      skirting: { enabled: true, heightCm: 6, type: 'bought', boughtWidthCm: 0 }
+    });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].text).toContain('Länge');
+  });
 });

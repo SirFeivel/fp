@@ -85,7 +85,7 @@ export function defaultState() {
               offsetYcm: 0,
               origin: { preset: "tl", xCm: 0, yCm: 0 }
             },
-            baseBoard: {
+            skirting: {
               enabled: false,
               type: "cutout", // "cutout" | "bought"
               heightCm: 6,
@@ -109,7 +109,7 @@ export function defaultState() {
     view: {
       showGrid: true,
       showNeeds: false,
-      showBaseBoards: true
+      showSkirting: true
     }
   };
 }

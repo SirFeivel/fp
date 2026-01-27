@@ -31,19 +31,49 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         origin: { preset: "tl", xCm: 0, yCm: 0 }
       };
 
-      if (s.floors && Array.isArray(s.floors)) {
-        for (const floor of s.floors) {
-          if (floor.rooms && Array.isArray(floor.rooms)) {
-            for (const room of floor.rooms) {
-              if (!room.tile) room.tile = deepClone(globalTile);
-              if (!room.tile.shape) room.tile.shape = "rect";
-              if (!room.grout) room.grout = deepClone(globalGrout);
-              if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
-              if (!room.pattern) room.pattern = deepClone(globalPattern);
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        if (floor.rooms && Array.isArray(floor.rooms)) {
+          for (const room of floor.rooms) {
+            if (room.sections && Array.isArray(room.sections)) {
+              for (const sec of room.sections) {
+                if (sec.skirtingEnabled === undefined) {
+                  sec.skirtingEnabled = true;
+                }
+              }
+            }
+            if (!room.tile) room.tile = deepClone(globalTile);
+            if (!room.tile.shape) room.tile.shape = "rect";
+            if (!room.grout) room.grout = deepClone(globalGrout);
+            if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
+            if (!room.pattern) room.pattern = deepClone(globalPattern);
+            if (!room.skirting) {
+              room.skirting = {
+                enabled: false,
+                type: "cutout",
+                heightCm: 6,
+                boughtWidthCm: 60,
+                boughtPricePerPiece: 5.0
+              };
+            }
+            if (room.exclusions && Array.isArray(room.exclusions)) {
+              for (const ex of room.exclusions) {
+                if (ex.skirtingEnabled === undefined) {
+                  ex.skirtingEnabled = true;
+                }
+              }
             }
           }
         }
       }
+    }
+
+    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true };
+    if (s.view.showSkirting === undefined) s.view.showSkirting = true;
+    if (s.view.showBaseBoards !== undefined) {
+      s.view.showSkirting = s.view.showBaseBoards;
+      delete s.view.showBaseBoards;
+    }
 
       delete s.tile;
       delete s.grout;

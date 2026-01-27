@@ -1,5 +1,5 @@
 // src/render.js
-import { computePlanMetrics } from "./calc.js";
+import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals } from "./calc.js";
 import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
@@ -8,8 +8,11 @@ import {
   multiPolygonToPathD,
   computeExclusionsUnion,
   computeAvailableArea,
+  roomPolygon,
   tilesForPreview,
-  getRoomBounds
+  getRoomBounds,
+  computeMultiPolygonPerimeter,
+  computeSkirtingSegments
 } from "./geometry.js";
 import { getRoomSections } from "./composite.js";
 
@@ -145,6 +148,53 @@ export function renderMetrics(state) {
   if (wasteEl) {
     wasteEl.textContent = `${f2(d.material.wasteAreaM2)} m² (${f1(d.material.wastePct)}%, ~${d.material.wasteTiles_est} tiles)`;
   }
+
+  // Skirting Metrics
+  const skirting = computeSkirtingNeeds(state);
+  const skirtingBox = document.getElementById("skirtingMetricsBox");
+  if (skirtingBox) {
+    if (skirting.enabled) {
+      skirtingBox.style.display = "block";
+      document.getElementById("metricSkirtingLength").textContent = skirting.totalLengthCm.toFixed(1);
+      document.getElementById("metricSkirtingCount").textContent = skirting.count;
+      document.getElementById("metricSkirtingCost").textContent = skirting.totalCost.toFixed(2) + " €";
+      
+      const labelCount = document.getElementById("labelSkirtingPieces");
+      const stripsWrap = document.getElementById("stripsPerTileWrap");
+      
+      if (skirting.type === "bought") {
+        labelCount.textContent = t("skirting.pieces");
+        stripsWrap.style.display = "none";
+      } else {
+        labelCount.textContent = t("skirting.additionalTiles");
+        stripsWrap.style.display = "block";
+        document.getElementById("metricSkirtingStripsPerTile").textContent = skirting.stripsPerTile;
+      }
+    } else {
+      skirtingBox.style.display = "none";
+    }
+  }
+
+  // Grand Total Metrics
+  const grand = computeGrandTotals(state);
+  const grandBox = document.getElementById("grandTotalBox");
+  if (grandBox) {
+    if (grand.ok && grand.skirtingEnabled) {
+      grandBox.style.display = "block";
+      document.getElementById("metricGrandTotalTiles").textContent = grand.totalTiles;
+      
+      const packsEl = document.getElementById("metricGrandTotalPacks");
+      if (grand.totalPacks !== null) {
+        packsEl.textContent = `${grand.totalPacks} (${f2(grand.purchasedAreaM2)} m²)`;
+      } else {
+        packsEl.textContent = `${f2(grand.purchasedAreaM2)} m²`;
+      }
+
+      document.getElementById("metricGrandTotalCost").textContent = grand.totalCost.toFixed(2) + " €";
+    } else {
+      grandBox.style.display = "none";
+    }
+  }
 }
 
 export function renderStateView(state) {
@@ -176,6 +226,38 @@ export function renderRoomForm(state) {
   document.getElementById("roomW").value = currentRoom?.widthCm ?? "";
   document.getElementById("roomH").value = currentRoom?.heightCm ?? "";
   document.getElementById("showGrid").checked = Boolean(state.view?.showGrid);
+  document.getElementById("showSkirting").checked = Boolean(state.view?.showSkirting);
+
+  const skirting = currentRoom?.skirting;
+  if (skirting) {
+    document.getElementById("skirtingEnabled").checked = Boolean(skirting.enabled);
+    document.getElementById("skirtingType").value = skirting.type || "cutout";
+    document.getElementById("skirtingHeight").value = skirting.heightCm || "";
+    document.getElementById("skirtingBoughtWidth").value = skirting.boughtWidthCm || "";
+    document.getElementById("skirtingPricePerPiece").value = skirting.boughtPricePerPiece || "";
+
+    const isBought = skirting.type === "bought";
+    document.getElementById("boughtWidthWrap").style.display = isBought ? "block" : "none";
+    document.getElementById("boughtPriceWrap").style.display = isBought ? "block" : "none";
+
+    const content = document.getElementById("skirtingContent");
+    const toggle = document.querySelector("#skirtingContent")?.previousElementSibling?.querySelector(".collapse-toggle");
+    if (content && toggle) {
+      const isHidden = content.classList.contains("hidden");
+      toggle.style.transform = isHidden ? "rotate(0deg)" : "rotate(180deg)";
+    }
+  }
+
+  // Update other collapsible sections' arrows
+  ["structureContent", "roomDetailsContent", "roomSectionsContent", "skirtingContent"].forEach(id => {
+    const content = document.getElementById(id);
+    const header = content?.previousElementSibling;
+    const toggle = header?.querySelector(".collapse-toggle");
+    if (content && toggle) {
+      const isHidden = content.classList.contains("hidden");
+      toggle.style.transform = isHidden ? "rotate(0deg)" : "rotate(180deg)";
+    }
+  });
 }
 
 export function renderSectionsList(state, selectedSectionId) {
@@ -263,6 +345,23 @@ export function renderSectionProps({
   field(t("secProps.y"), "secY", sec.y, "1");
   field(t("secProps.width"), "secW", sec.widthCm, "0.1");
   field(t("secProps.height"), "secH", sec.heightCm, "0.1");
+
+  // Add Skirting Toggle for Section
+  const div = document.createElement("div");
+  div.className = "field span2";
+  div.innerHTML = `
+    <label class="toggle-switch">
+      <span class="toggle-label">${t("skirting.enabled")}</span>
+      <input id="secSkirtingEnabled" type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""}>
+      <div class="toggle-slider"></div>
+    </label>
+  `;
+  wrap.appendChild(div);
+
+  const inp = div.querySelector("#secSkirtingEnabled");
+  inp.addEventListener("change", () => {
+    commitSectionProps(t("room.sectionChanged"));
+  });
 }
 
 export function renderTilePatternForm(state) {
@@ -477,6 +576,23 @@ export function renderExclProps({
     field(t("exclProps.p3x"), "exP3X", ex.p3.x);
     field(t("exclProps.p3y"), "exP3Y", ex.p3.y);
   }
+
+  // Add Skirting Toggle for Exclusion
+  const div = document.createElement("div");
+  div.className = "field span2";
+  div.innerHTML = `
+    <label class="toggle-switch">
+      <span class="toggle-label">${t("skirting.enabled")}</span>
+      <input id="exSkirtingEnabled" type="checkbox" ${ex.skirtingEnabled !== false ? "checked" : ""}>
+      <div class="toggle-slider"></div>
+    </label>
+  `;
+  wrap.appendChild(div);
+
+  const inp = div.querySelector("#exSkirtingEnabled");
+  inp.addEventListener("change", () => {
+    commitExclProps(t("exclusions.changed"));
+  });
 }
 
 export function renderPlanSvg({
@@ -733,6 +849,41 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         stroke: "rgba(239,68,68,0.55)",
         "stroke-width": 1.5
       }));
+    }
+  }
+
+  // Skirting Visualization
+  if (state.view?.showSkirting) {
+    const segments = computeSkirtingSegments(currentRoom);
+    if (segments.length > 0) {
+      const gSkirting = svgEl("g", { 
+        fill: "none", 
+        stroke: "var(--accent)", 
+        "stroke-width": 4, 
+        opacity: 0.6,
+        "stroke-linejoin": "round",
+        "pointer-events": "none"
+      });
+      
+      const skirting = currentRoom.skirting || {};
+      const pieceLength = skirting.type === "bought" 
+        ? (Number(skirting.boughtWidthCm) || 60)
+        : (Number(currentRoom.tile?.widthCm) || 60);
+
+      const gap = 2.5; // visible gap in cm
+
+      for (const seg of segments) {
+        const { p1, p2 } = seg;
+        const d = `M ${p1[0]} ${p1[1]} L ${p2[0]} ${p2[1]}`;
+        
+        // Pieces (dashed line) - show gaps to background for better recognition
+        gSkirting.appendChild(svgEl("path", {
+          d,
+          "stroke-dasharray": `${pieceLength - gap} ${gap}`,
+          "stroke-linecap": "butt"
+        }));
+      }
+      svg.appendChild(gSkirting);
     }
   }
 

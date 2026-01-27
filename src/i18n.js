@@ -63,6 +63,22 @@ const translations = {
       sectionDeleted: "Abschnitt gelöscht",
       sectionChanged: "Abschnitt geändert"
     },
+    skirting: {
+      title: "Sockelleisten Konfiguration",
+      enabled: "Sockelleisten aktivieren",
+      type: "Art der Sockelleiste",
+      typeCutout: "Selbst geschnitten (aus Fliesen)",
+      typeBought: "Fertig gekauft (Stück)",
+      height: "Höhe Sockelleiste (cm)",
+      boughtWidth: "Länge pro Stück (cm)",
+      pricePerPiece: "Preis pro Stück (€)",
+      showSkirting: "Sockelleisten in Vorschau anzeigen",
+      changed: "Sockelleisten geändert",
+      totalLength: "Gesamtlänge (cm)",
+      pieces: "Stückzahl",
+      additionalTiles: "Zusätzliche Fliesen",
+      stripsPerTile: "Streifen / Fliese"
+    },
     secProps: {
       label: "Bezeichnung",
       x: "X (cm)",
@@ -208,6 +224,7 @@ const translations = {
       basketweaveRatioText: "Für Basketweave muss die lange Seite genau in die kurze Seite passen (z. B. 2:1, 3:1). Aktuelles Verhältnis:",
       rotationWarning: "Rotation außerhalb 45° Raster",
       rotationText: "MVP: 0..315 in 45°-Schritten.",
+      invalid: "ist ungültig.",
       exclOutside: "liegt teilweise außerhalb.",
       currentValue: "Aktueller Wert:"
     },
@@ -225,7 +242,11 @@ const translations = {
       price: "Preis:",
       cutWork: "Beschnitt (Aufwand):",
       yes: "Ja",
-      no: "Nein"
+      no: "Nein",
+      grandTotal: "Gesamtsumme (Inkl. Sockelleisten)",
+      totalTilesToOrder: "Fliesen gesamt:",
+      totalPacksToOrder: "Packungen gesamt:",
+      totalCostToOrder: "Gesamtkosten:"
     },
     plan: {
       title: "Plan (SVG)",
@@ -319,6 +340,22 @@ const translations = {
       sectionAdded: "Section added",
       sectionDeleted: "Section deleted",
       sectionChanged: "Section changed"
+    },
+    skirting: {
+      title: "Skirting Configuration",
+      enabled: "Enable skirting",
+      type: "Type of skirting",
+      typeCutout: "Self-made (cut from tiles)",
+      typeBought: "Ready-made (per piece)",
+      height: "Skirting height (cm)",
+      boughtWidth: "Length per piece (cm)",
+      pricePerPiece: "Price per piece (€)",
+      showSkirting: "Show skirting in preview",
+      changed: "Skirting changed",
+      totalLength: "Total length (cm)",
+      pieces: "Pieces (qty)",
+      additionalTiles: "Sacrificed tiles (qty)",
+      stripsPerTile: "Strips / Tile"
     },
     secProps: {
       label: "Label",
@@ -465,6 +502,7 @@ const translations = {
       basketweaveRatioText: "For basketweave, the long side must fit perfectly into the short side (e.g., 2:1, 3:1). Current ratio:",
       rotationWarning: "Rotation outside 45° grid",
       rotationText: "MVP: 0..315 in 45° steps.",
+      invalid: "is invalid.",
       exclOutside: "is partially outside.",
       currentValue: "Current value:"
     },
@@ -482,7 +520,11 @@ const translations = {
       price: "Price:",
       cutWork: "Cut work:",
       yes: "Yes",
-      no: "No"
+      no: "No",
+      grandTotal: "Grand Total (incl. Skirting)",
+      totalTilesToOrder: "Total tiles:",
+      totalPacksToOrder: "Total packs:",
+      totalCostToOrder: "Total cost:"
     },
     plan: {
       title: "Plan (SVG)",

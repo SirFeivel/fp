@@ -23,7 +23,9 @@ export function getRoomSections(room) {
   if (!room) return [];
 
   if (room.sections && Array.isArray(room.sections) && room.sections.length > 0) {
+    // Return all sections, regardless of properties like skirtingEnabled
     return room.sections.map(s => ({
+      ...s,
       id: s.id || uuid(),
       label: s.label || "",
       x: Number(s.x) || 0,
@@ -44,6 +46,7 @@ export function getRoomSections(room) {
         y: 0,
         widthCm: w,
         heightCm: h,
+        skirtingEnabled: !!room.skirting?.enabled,
       },
     ];
   }

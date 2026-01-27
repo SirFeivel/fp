@@ -9,7 +9,12 @@ import {
   BOND_PERIOD_MAX,
   BOND_PERIOD_EPSILON
 } from "./constants.js";
-import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
+import {
+  getRoomSections,
+  computeCompositePolygon,
+  computeCompositeBounds,
+  rectToPolygon
+} from "./composite.js";
 
 export { getRoomSections } from "./composite.js";
 
@@ -27,8 +32,8 @@ export function roomPolygon(room) {
 
   const { mp, error } = computeCompositePolygon(sections);
   if (error || !mp) {
-    const w = room.widthCm || 0;
-    const h = room.heightCm || 0;
+    const w = Number(room.widthCm) || 0;
+    const h = Number(room.heightCm) || 0;
     return [[[[[0, 0], [w, 0], [w, h], [0, h], [0, 0]]]]];
   }
 
@@ -55,6 +60,169 @@ export function multiPolygonToPathD(mp) {
     }
   }
   return d.trim();
+}
+
+/**
+ * Calculates the total perimeter of a MultiPolygon.
+ * This includes outer rings and any inner rings (holes).
+ */
+export function computeMultiPolygonPerimeter(mp) {
+  if (!mp || !Array.isArray(mp)) return 0;
+  let total = 0;
+  for (const poly of mp) {
+    for (const ring of poly) {
+      if (ring.length < 2) continue;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const p1 = ring[i];
+        const p2 = ring[i + 1];
+        const dx = p2[0] - p1[0];
+        const dy = p2[1] - p1[1];
+        total += Math.sqrt(dx * dx + dy * dy);
+      }
+    }
+  }
+  return total;
+}
+
+export function computeSkirtingArea(room, exclusions) {
+  if (!room) return { mp: null, error: "No room" };
+
+  const allSections = getRoomSections(room);
+  const activeSections = allSections.filter(s => s.skirtingEnabled !== false);
+  const skirtingExclusions = (exclusions || []).filter(ex => ex.skirtingEnabled !== false);
+
+  if (activeSections.length === 0 && skirtingExclusions.length === 0) {
+    return { mp: null, error: null };
+  }
+
+  const { mp: totalRoomMP } = computeCompositePolygon(allSections);
+  const { mp: activeSectionsMP } = computeCompositePolygon(activeSections);
+  const { mp: activeExclusionsMP } = computeExclusionsUnion(skirtingExclusions);
+
+  try {
+    let resultMP;
+    if (!activeSectionsMP) {
+      resultMP = activeExclusionsMP;
+    } else if (!activeExclusionsMP) {
+      resultMP = activeSectionsMP;
+    } else {
+      // XOR for independent toggles: (Sections - Exclusions) + (Exclusions - Sections)
+      resultMP = polygonClipping.xor(activeSectionsMP, activeExclusionsMP);
+    }
+
+    if (!resultMP) return { mp: null, error: null };
+
+    // Intersect with total room footprint to avoid skirting outside
+    if (totalRoomMP) {
+      resultMP = polygonClipping.intersection(resultMP, totalRoomMP);
+    }
+
+    return { mp: resultMP, error: null };
+  } catch (e) {
+    return { mp: activeSectionsMP || activeExclusionsMP, error: String(e?.message || e) };
+  }
+}
+
+/**
+ * Calculates the lengths of all segments where skirting should be applied.
+ * Returns an array of segment objects: { p1, p2, length }
+ */
+export function computeSkirtingSegments(room) {
+  if (!room) return [];
+  const area = computeSkirtingArea(room, room.exclusions);
+  if (!area.mp) return [];
+
+  // Source of truth for physical walls
+  const avail = computeAvailableArea(room, room.exclusions);
+  if (!avail.mp) return [];
+
+  const segments = [];
+  for (const poly of area.mp) {
+    for (const ring of poly) {
+      if (ring.length < 2) continue;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const p1 = ring[i];
+        const p2 = ring[i + 1];
+
+        // Only keep segments that are part of the actual physical room/exclusion boundaries
+        if (isSegmentOnBoundary(p1, p2, avail.mp)) {
+          const dx = p2[0] - p1[0];
+          const dy = p2[1] - p1[1];
+          segments.push({
+            p1,
+            p2,
+            length: Math.sqrt(dx * dx + dy * dy)
+          });
+        }
+      }
+    }
+  }
+  return segments;
+}
+
+/**
+ * Checks if a segment [p1, p2] lies on the boundary of a MultiPolygon.
+ */
+function isSegmentOnBoundary(p1, p2, mp) {
+  const eps = 1e-6;
+  for (const poly of mp) {
+    for (const ring of poly) {
+      if (ring.length < 2) continue;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const q1 = ring[i];
+        const q2 = ring[i + 1];
+        if (isSubSegment(p1, p2, q1, q2, eps)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if segment [p1, p2] is a subset of [q1, q2].
+ */
+function isSubSegment(p1, p2, q1, q2, eps) {
+  // Check if p1 and p2 lie on the line passing through q1 and q2
+  if (!isPointOnLine(p1, q1, q2, eps)) return false;
+  if (!isPointOnLine(p2, q1, q2, eps)) return false;
+
+  // Check if they are within the bounds of q1, q2
+  const minX = Math.min(q1[0], q2[0]) - eps;
+  const maxX = Math.max(q1[0], q2[0]) + eps;
+  const minY = Math.min(q1[1], q2[1]) - eps;
+  const maxY = Math.max(q1[1], q2[1]) + eps;
+
+  return p1[0] >= minX && p1[0] <= maxX &&
+         p1[1] >= minY && p1[1] <= maxY &&
+         p2[0] >= minX && p2[0] <= maxX &&
+         p2[1] >= minY && p2[1] <= maxY;
+}
+
+function isPointOnLine(p, q1, q2, eps) {
+  const dx = q2[0] - q1[0];
+  const dy = q2[1] - q1[1];
+
+  // Vertical line
+  if (Math.abs(dx) < eps) {
+    return Math.abs(p[0] - q1[0]) < eps;
+  }
+  // Horizontal line
+  if (Math.abs(dy) < eps) {
+    return Math.abs(p[1] - q1[1]) < eps;
+  }
+
+  // General case: collinearity via cross product
+  // (p.y - q1.y) / (q2.y - q1.y) == (p.x - q1.x) / (q2.x - q1.x)
+  const cross = (p[1] - q1[1]) * dx - (p[0] - q1[0]) * dy;
+  return Math.abs(cross) < eps * Math.max(Math.abs(dx), Math.abs(dy));
+}
+
+/**
+ * Calculates the total length where skirting should be applied.
+ */
+export function computeSkirtingPerimeter(room) {
+  const segments = computeSkirtingSegments(room);
+  return segments.reduce((sum, s) => sum + s.length, 0);
 }
 
 export function rotatePoint2(x, y, ox, oy, rad) {

@@ -76,87 +76,129 @@
         <div class="tab-content">
           <!-- Room Tab -->
           <div class="tab-panel" data-tab-panel="room">
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="structure.floor">Etage</label>
-                  <select id="floorSelect"></select>
-                </div>
-                <div class="field span2">
-                  <label data-i18n="structure.floorName">Etagenname</label>
-                  <input id="floorName" type="text" />
-                </div>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="const c = document.getElementById('structureContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+                <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="btnrow">
-                <button id="btnAddFloor" class="btn" data-i18n="structure.addFloor">Etage hinzufügen</button>
-                <button id="btnDeleteFloor" class="btn" data-i18n="structure.deleteFloor">Etage löschen</button>
-              </div>
-              <div class="grid2" style="margin-top: 1rem;">
-                <div class="field span2">
-                  <label data-i18n="structure.room">Raum</label>
-                  <select id="roomSelect"></select>
+              <div id="structureContent" class="hidden">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="structure.floor">Etage</label>
+                    <select id="floorSelect"></select>
+                  </div>
+                  <div class="field span2">
+                    <label data-i18n="structure.floorName">Etagenname</label>
+                    <input id="floorName" type="text" />
+                  </div>
                 </div>
-              </div>
-              <div class="btnrow">
-                <button id="btnAddRoom" class="btn" data-i18n="structure.addRoom">Raum hinzufügen</button>
-                <button id="btnDeleteRoom" class="btn" data-i18n="structure.deleteRoom">Raum löschen</button>
+                <div class="btnrow">
+                  <button id="btnAddFloor" class="btn" data-i18n="structure.addFloor">Etage hinzufügen</button>
+                  <button id="btnDeleteFloor" class="btn" data-i18n="structure.deleteFloor">Etage löschen</button>
+                </div>
+                <div class="grid2" style="margin-top: 1rem;">
+                  <div class="field span2">
+                    <label data-i18n="structure.room">Raum</label>
+                    <select id="roomSelect"></select>
+                  </div>
+                </div>
+                <div class="btnrow">
+                  <button id="btnAddRoom" class="btn" data-i18n="structure.addRoom">Raum hinzufügen</button>
+                  <button id="btnDeleteRoom" class="btn" data-i18n="structure.deleteRoom">Raum löschen</button>
+                </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="room.title">Raum Details</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="room.name">Raumname</label>
-                  <input id="roomName" type="text" />
-                </div>
-                <div class="field">
-                  <label data-i18n="room.width">Breite (cm)</label>
-                  <input id="roomW" type="number" min="0" step="0.1" />
-                </div>
-                <div class="field">
-                  <label data-i18n="room.height">Länge (cm)</label>
-                  <input id="roomH" type="number" min="0" step="0.1" />
-                </div>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="const c = document.getElementById('roomDetailsContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+                <h3 class="section-title" data-i18n="room.title">Raum Details</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="meta subtle" style="margin-top: 8px;">
-                <span data-i18n="room.legacyHint">Legacy: Single rectangle. Use sections below for complex shapes.</span>
+              <div id="roomDetailsContent">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="room.name">Raumname</label>
+                    <input id="roomName" type="text" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="room.width">Breite (cm)</label>
+                    <input id="roomW" type="number" min="0" step="0.1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="room.height">Länge (cm)</label>
+                    <input id="roomH" type="number" min="0" step="0.1" />
+                  </div>
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="skirting.enabled">Sockelleisten aktivieren</span>
+                      <input id="skirtingEnabled" type="checkbox" />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
+                </div>
+                <div class="meta subtle" style="margin-top: 8px;">
+                  <span data-i18n="room.legacyHint">Legacy: Single rectangle. Use sections below for complex shapes.</span>
+                </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="room.sections">Room Sections (L/T/U shapes)</h3>
-              <div class="meta subtle" style="margin-bottom: 10px;">
-                <span data-i18n="room.sectionsHint">Add multiple sections to create non-rectangular rooms</span>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="const c = document.getElementById('roomSectionsContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+                <h3 class="section-title" data-i18n="room.sections">Abschnitte</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="btnrow">
-                <button id="btnAddSection" class="btn" data-i18n="room.addSection">+ Add Section</button>
-              </div>
-              <div class="grid2" style="margin-top: 10px">
-                <div class="field span2">
-                  <label data-i18n="room.sectionsList">Sections</label>
-                  <select id="sectionsList" size="4"></select>
+              <div id="roomSectionsContent" class="hidden">
+                <div class="meta subtle" style="margin-bottom: 10px;">
+                  <span data-i18n="room.sectionsHint">Add multiple sections to create non-rectangular rooms</span>
+                </div>
+                <div class="btnrow">
+                  <button id="btnAddSection" class="btn" data-i18n="room.addSection">+ Add Section</button>
+                </div>
+                <div class="grid2" style="margin-top: 10px">
+                  <div class="field span2">
+                    <label data-i18n="room.sectionsList">Sections</label>
+                    <select id="sectionsList" size="4"></select>
+                  </div>
+                </div>
+                <div class="btnrow" style="margin-top: 10px">
+                  <button id="btnDeleteSection" class="btn danger" data-i18n="room.deleteSection">Delete Section</button>
+                </div>
+                <hr style="margin: 16px 0; border: 0; border-top: 1px solid var(--line);" />
+                <h4 style="font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px;" data-i18n="room.sectionProps">Section Properties</h4>
+                <div id="sectionProps" class="grid2">
+                  <div class="meta subtle span2" data-i18n="room.noSectionSelected">– no section selected –</div>
                 </div>
               </div>
-              <div class="btnrow" style="margin-top: 10px">
-                <button id="btnDeleteSection" class="btn danger" data-i18n="room.deleteSection">Delete Section</button>
-              </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="room.sectionProps">Section Properties</h3>
-              <div id="sectionProps" class="grid2">
-                <div class="meta subtle span2" data-i18n="room.noSectionSelected">– no section selected –</div>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="const c = document.getElementById('skirtingContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+                <h3 class="section-title" data-i18n="skirting.title">Sockelleisten</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-            </div>
-
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="room.sectionDisplay">Anzeige</h3>
-              <label class="inline">
-                <input id="showGrid" type="checkbox" />
-                <span data-i18n="room.showGrid">Hilfsraster anzeigen</span>
-              </label>
+              <div id="skirtingContent" class="hidden">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="skirting.type">Art der Sockelleiste</label>
+                    <select id="skirtingType">
+                      <option value="cutout" data-i18n="skirting.typeCutout">Selbst geschnitten (aus Fliesen)</option>
+                      <option value="bought" data-i18n="skirting.typeBought">Fertig gekauft (Stück)</option>
+                    </select>
+                  </div>
+                  <div class="field span2">
+                    <label data-i18n="skirting.height">Höhe Sockelleiste (cm)</label>
+                    <input id="skirtingHeight" type="number" step="0.1" />
+                  </div>
+                  <div class="field" id="boughtWidthWrap">
+                    <label data-i18n="skirting.boughtWidth">Länge pro Stück (cm)</label>
+                    <input id="skirtingBoughtWidth" type="number" step="0.1" />
+                  </div>
+                  <div class="field" id="boughtPriceWrap">
+                    <label data-i18n="skirting.pricePerPiece">Preis pro Stück (€)</label>
+                    <input id="skirtingPricePerPiece" type="number" step="0.01" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -301,14 +343,20 @@
                   <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
                   <input id="reserveTiles" type="number" step="1" min="0" />
                 </div>
-                <label class="chk span2">
-                  <input id="wasteAllowRotate" type="checkbox" checked />
-                  <span data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
-                </label>
-                <label class="chk span2">
-                  <input id="wasteOptimizeCuts" type="checkbox" />
-                  <span data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
-                </label>
+                <div class="field span2">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
+                    <input id="wasteAllowRotate" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
+                <div class="field span2">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
+                    <input id="wasteOptimizeCuts" type="checkbox" />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -413,10 +461,13 @@
           <div class="tab-panel" data-tab-panel="debug">
             <div class="section-card">
               <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
-              <label class="chk">
-                <input id="debugShowNeeds" type="checkbox" />
-                <span data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
-              </label>
+              <div class="field">
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
+                  <input id="debugShowNeeds" type="checkbox" />
+                  <div class="toggle-slider"></div>
+                </label>
+              </div>
             </div>
 
             <div class="section-card">
@@ -445,6 +496,18 @@
         </div>
 
         <div class="svgWrap">
+          <div class="plan-toolbar">
+            <label class="toolbar-toggle">
+              <input id="showGrid" type="checkbox" />
+              <div class="toggle-icon"></div>
+              <span class="toolbar-text" data-i18n="room.showGrid">Grid</span>
+            </label>
+            <label class="toolbar-toggle">
+              <input id="showSkirting" type="checkbox" />
+              <div class="toggle-icon"></div>
+              <span class="toolbar-text" data-i18n="skirting.showSkirting">Skirting</span>
+            </label>
+          </div>
           <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
           <div class="hintline" data-i18n="plan.hint">
             Tipp: Klick wählt aus • Drag verschiebt
@@ -488,6 +551,52 @@
             <div class="metric-item">
               <div class="metric-label" data-i18n="metrics.waste">Waste (purchase):</div>
               <div class="metric-value" id="metricWaste">–</div>
+            </div>
+          </div>
+
+          <!-- Skirting Metrics -->
+          <div id="skirtingMetricsBox" style="margin-top: 1.5rem; border-top: 1px solid var(--line2); padding-top: 1.5rem; display: none;">
+            <div class="metric-grid">
+              <div class="metric-item" style="grid-column: span 2;">
+                <div class="metric-label" style="color: var(--accent); font-weight: 700; text-transform: uppercase;" data-i18n="skirting.title">Skirting</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="skirting.totalLength">Total length:</div>
+                <div class="metric-value" id="metricSkirtingLength">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" id="labelSkirtingPieces" data-i18n="skirting.pieces">Pieces:</div>
+                <div class="metric-value" id="metricSkirtingCount">–</div>
+              </div>
+              <div class="metric-item" id="stripsPerTileWrap">
+                <div class="metric-label" data-i18n="skirting.stripsPerTile">Strips / Tile:</div>
+                <div class="metric-value" id="metricSkirtingStripsPerTile">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.price">Price:</div>
+                <div class="metric-value" id="metricSkirtingCost">–</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grand Total -->
+          <div id="grandTotalBox" style="margin-top: 1.5rem; border-top: 2px solid var(--accent); padding-top: 1.5rem; display: none;">
+            <div class="metric-grid">
+              <div class="metric-item" style="grid-column: span 2;">
+                <div class="metric-label" style="color: var(--accent); font-weight: 700; text-transform: uppercase;" data-i18n="metrics.grandTotal">Grand Total</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.totalTilesToOrder">Total tiles:</div>
+                <div class="metric-value" id="metricGrandTotalTiles">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.totalPacksToOrder">Total packs:</div>
+                <div class="metric-value" id="metricGrandTotalPacks">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.totalCostToOrder">Total cost:</div>
+                <div class="metric-value" style="font-size: 1.1rem; color: var(--accent); font-weight: 700;" id="metricGrandTotalCost">–</div>
+              </div>
             </div>
           </div>
         </div>

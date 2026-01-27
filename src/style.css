@@ -432,6 +432,148 @@ hr{
   display:flex;
   flex-direction:column;
   min-height:0;
+  position: relative;
+}
+
+/* ---------------- Toggle Switches ---------------- */
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  background-color: var(--btn);
+  border: 1px solid var(--line2);
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--muted);
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accentSoft);
+  border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background-color: var(--accent);
+}
+
+.toggle-label {
+  font-size: var(--fs-md);
+  color: var(--text);
+  line-height: 20px;
+}
+
+/* ---------------- Alignment fixes ---------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.span2 {
+  grid-column: span 2;
+}
+
+/* Plan Toolbar Toggles */
+.plan-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 12px;
+  z-index: 10;
+}
+
+.toolbar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line2);
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text);
+}
+
+.toolbar-toggle:hover {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: var(--accent);
+}
+
+.toolbar-toggle input {
+  display: none;
+}
+
+.toggle-icon {
+  width: 32px;
+  height: 18px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 9px;
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: .3s;
+}
+
+.toggle-icon:after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #aaa;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: .3s;
+}
+
+.toolbar-toggle input:checked + .toggle-icon {
+  background: var(--accentSoft);
+  border-color: var(--accent);
+}
+
+.toolbar-toggle input:checked + .toggle-icon:after {
+  left: 16px;
+  background: var(--accent);
+}
+
+.toolbar-text {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 #planSvg{
@@ -614,6 +756,79 @@ hr{
   padding:16px;
   background:rgba(0,0,0,.08);
   margin-bottom:12px;
+}
+
+.section-card.collapsible-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.section-card.collapsible-card .grid2,
+.section-card.collapsible-card .btnrow,
+.section-card.collapsible-card .section-content-padding {
+  padding: 0 16px 16px 16px;
+}
+
+.section-header-collapsible {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 16px;
+}
+
+.section-header-collapsible:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.section-header-collapsible .section-title {
+  margin: 0;
+}
+
+.field label {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  user-select: none;
+  min-height: 24px;
+}
+
+.toggle-switch .toggle-label {
+  flex: 1;
+  font-size: var(--fs-md);
+  color: var(--text);
+  margin: 0;
+}
+
+.collapse-toggle {
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.field.checkbox-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.field.checkbox-field input[type="checkbox"] {
+  margin: 0;
 }
 
 .section-card:last-child{

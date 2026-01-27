@@ -101,6 +101,9 @@ export function createSectionsController({
     cur.widthCm = Math.max(1, readNum('secW', cur.widthCm));
     cur.heightCm = Math.max(1, readNum('secH', cur.heightCm));
 
+    const skirtInp = document.getElementById('secSkirtingEnabled');
+    if (skirtInp) cur.skirtingEnabled = !!skirtInp.checked;
+
     commit(label, next);
   }
 

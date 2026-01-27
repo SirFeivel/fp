@@ -147,6 +147,25 @@ export function validateState(s) {
     });
   }
 
+  // Skirting validation
+  const skirting = currentRoom?.skirting;
+  if (skirting?.enabled) {
+    if (!n(skirting.heightCm) || skirting.heightCm <= 0) {
+      errors.push({
+        title: t("skirting.changed"),
+        text: t("skirting.height") + " " + t("validation.invalid")
+      });
+    }
+    if (skirting.type === "bought") {
+      if (!n(skirting.boughtWidthCm) || skirting.boughtWidthCm <= 0) {
+        errors.push({
+          title: t("skirting.changed"),
+          text: t("skirting.boughtWidth") + " " + t("validation.invalid")
+        });
+      }
+    }
+  }
+
   if (currentRoom && Array.isArray(currentRoom.exclusions)) {
     for (const ex of currentRoom.exclusions) {
       if (!ex?.id || !ex?.type) continue;

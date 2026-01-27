@@ -7,7 +7,10 @@ import {
   renderWarnings, 
   renderMetrics, 
   renderStateView,
-  renderExclProps
+  renderExclProps,
+  renderSectionProps,
+  renderRoomForm,
+  renderPlanSvg
 } from './render.js';
 import { defaultState } from './core.js';
 
@@ -68,6 +71,69 @@ describe('render.js smoke tests', () => {
     expect(document.getElementById('stateView').textContent).toContain('"test": 123');
   });
 
+  it('renderMetrics updates skirting metrics when enabled', () => {
+    document.body.innerHTML = `
+      <div id="metricArea"></div>
+      <div id="metricTiles"></div>
+      <div id="metricPacks"></div>
+      <div id="metricCost"></div>
+      <div id="skirtingMetricsBox" style="display:none">
+        <div id="metricSkirtingLength"></div>
+        <div id="metricSkirtingCount"></div>
+        <div id="metricSkirtingCost"></div>
+        <div id="labelSkirtingPieces"></div>
+        <div id="stripsPerTileWrap"></div>
+        <div id="metricSkirtingStripsPerTile"></div>
+      </div>
+    `;
+    const state = defaultState();
+    const room = state.floors[0].rooms[0];
+    room.skirting.enabled = true;
+    room.skirting.type = 'bought';
+    room.skirting.boughtWidthCm = 100;
+    room.skirting.boughtPricePerPiece = 10;
+    room.widthCm = 100;
+    room.heightCm = 100; // 400cm perimeter
+
+    renderMetrics(state);
+
+    const box = document.getElementById('skirtingMetricsBox');
+    expect(box.style.display).toBe('block');
+    expect(document.getElementById('metricSkirtingLength').textContent).toBe('400.0');
+    expect(document.getElementById('metricSkirtingCount').textContent).toBe('4');
+    expect(document.getElementById('metricSkirtingCost').textContent).toBe('40.00 €');
+  });
+
+  it('renderRoomForm updates skirting fields', () => {
+    document.body.innerHTML = `
+      <input id="roomName" />
+      <input id="roomW" />
+      <input id="roomH" />
+      <input id="showGrid" type="checkbox" />
+      <input id="showSkirting" type="checkbox" />
+      <div id="skirtingContent" class="hidden"></div>
+      <input id="skirtingEnabled" type="checkbox" />
+      <select id="skirtingType"><option value="cutout">C</option><option value="bought">B</option></select>
+      <input id="skirtingHeight" />
+      <input id="skirtingBoughtWidth" />
+      <input id="skirtingPricePerPiece" />
+      <div id="boughtWidthWrap"></div>
+      <div id="boughtPriceWrap"></div>
+    `;
+    const state = defaultState();
+    const room = state.floors[0].rooms[0];
+    room.skirting.enabled = true;
+    room.skirting.type = 'bought';
+    room.skirting.heightCm = 8;
+
+    renderRoomForm(state);
+
+    expect(document.getElementById('skirtingEnabled').checked).toBe(true);
+    expect(document.getElementById('skirtingType').value).toBe('bought');
+    expect(document.getElementById('skirtingHeight').value).toBe('8');
+    expect(document.getElementById('boughtWidthWrap').style.display).toBe('block');
+  });
+
   it('renderExclProps renders properties for different exclusion types', () => {
     document.body.innerHTML = '<div id="exclProps"></div>';
     
@@ -90,5 +156,60 @@ describe('render.js smoke tests', () => {
     currentEx = { id: '3', type: 'tri', label: 'T1', p1: {x:0, y:0}, p2: {x:10, y:0}, p3: {x:5, y:10} };
     renderExclProps(args);
     expect(document.body.innerHTML).toContain('exP1X');
+  });
+
+  it('renderExclProps renders skirting toggle for exclusion', () => {
+    document.body.innerHTML = '<div id="exclProps"></div>';
+    const currentEx = { id: '1', type: 'rect', label: 'R1', x: 10, y: 10, w: 20, h: 20, skirtingEnabled: false };
+    const args = {
+      state: {},
+      selectedExclId: '1',
+      getSelectedExcl: () => currentEx,
+      commitExclProps: vi.fn()
+    };
+
+    renderExclProps(args);
+
+    const toggle = document.getElementById('exSkirtingEnabled');
+    expect(toggle).not.toBeNull();
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('renderSectionProps renders skirting toggle for section', () => {
+    document.body.innerHTML = '<div id="sectionProps"></div>';
+    const currentSec = { id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true };
+    const args = {
+      state: {},
+      selectedSectionId: 's1',
+      getSelectedSection: () => currentSec,
+      commitSectionProps: vi.fn()
+    };
+
+    renderSectionProps(args);
+    const toggle = document.getElementById('secSkirtingEnabled');
+    expect(toggle).not.toBeNull();
+    expect(toggle.checked).toBe(true);
+  });
+
+  it('renderPlanSvg renders skirting paths when enabled', () => {
+    document.body.innerHTML = '<svg id="planSvg"></svg>';
+    const state = defaultState();
+    state.view.showSkirting = true;
+    const room = state.floors[0].rooms[0];
+    room.skirting.enabled = true;
+    room.widthCm = 100;
+    room.heightCm = 100;
+
+    renderPlanSvg({
+      state,
+      setSelectedExcl: vi.fn(),
+      setLastUnionError: vi.fn(),
+      setLastTileError: vi.fn()
+    });
+
+    const svg = document.getElementById('planSvg');
+    const skirtingGroup = Array.from(svg.querySelectorAll('g')).find(g => g.getAttribute('stroke') === 'var(--accent)');
+    expect(skirtingGroup).not.toBeNull();
+    expect(skirtingGroup.querySelectorAll('path').length).toBeGreaterThan(0);
   });
 });

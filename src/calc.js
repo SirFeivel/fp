@@ -1,6 +1,98 @@
 // src/calc.js
-import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds } from "./geometry.js";
+import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments } from "./geometry.js";
 import { getCurrentRoom } from "./core.js";
+
+/**
+ * Calculates material requirements for skirting.
+ */
+export function computeSkirtingNeeds(state) {
+  const room = getCurrentRoom(state);
+  if (!room) {
+    return {
+      enabled: false,
+      totalLengthCm: 0,
+      count: 0,
+      additionalTiles: 0,
+      stripsPerTile: 0,
+      totalCost: 0
+    };
+  }
+
+  const skirting = room.skirting || {};
+  const segments = computeSkirtingSegments(room);
+  const totalLengthCm = segments.reduce((sum, s) => sum + s.length, 0);
+
+  if (segments.length === 0 || totalLengthCm <= 0) {
+    return {
+      enabled: false,
+      totalLengthCm: 0,
+      count: 0,
+      additionalTiles: 0,
+      stripsPerTile: 0,
+      totalCost: 0
+    };
+  }
+  
+  // Ready-made (bought per piece)
+  if (skirting.type === "bought") {
+    const pieceLength = Number(skirting.boughtWidthCm) || 1;
+    let totalPieces = 0;
+    for (const seg of segments) {
+      totalPieces += Math.ceil(seg.length / pieceLength);
+    }
+    const totalCost = totalPieces * (Number(skirting.boughtPricePerPiece) || 0);
+
+    return {
+      enabled: true,
+      type: "bought",
+      totalLengthCm,
+      count: totalPieces,
+      additionalTiles: 0,
+      stripsPerTile: 0,
+      totalCost
+    };
+  }
+
+  // Self-made (cut from tiles)
+  // Logic: 
+  // - Tile long side is used for the strip length (tw).
+  // - How many strips of height 'skirting.heightCm' fit into 'th' (tile height)?
+  const tw = Number(room.tile?.widthCm) || 1;
+  const th = Number(room.tile?.heightCm) || 1;
+  const h = Number(skirting.heightCm) || 1;
+
+  // Requirement: "long side, practical max of 2 strips (only outer stripes)"
+  // 0 when configured skirt height is higher than tile height, 1 if not sufficient for 2, or 2 max.
+  let stripsPerTile = 0;
+  if (h <= th) {
+    stripsPerTile = Math.min(2, Math.floor(th / h));
+  }
+
+  let totalStripsNeeded = 0;
+  if (stripsPerTile > 0) {
+    for (const seg of segments) {
+      totalStripsNeeded += Math.ceil(seg.length / tw);
+    }
+  }
+
+  const additionalTiles = stripsPerTile > 0 ? Math.ceil(totalStripsNeeded / stripsPerTile) : 0;
+  
+  // Cost: additionalTiles * price per tile
+  const pricePerM2 = Number(state.pricing?.pricePerM2) || 0;
+  const tileAreaM2 = (tw * th) / 10000;
+  const pricePerTile = tileAreaM2 * pricePerM2;
+  const totalCost = additionalTiles * pricePerTile;
+
+  return {
+    enabled: true,
+    type: "cutout",
+    totalLengthCm,
+    count: additionalTiles, // Tiles sacrificed
+    additionalTiles,
+    stripsPerTile,
+    totalCost
+  };
+}
 
 // cm² -> m²
 function cm2ToM2(aCm2) {
@@ -609,5 +701,45 @@ export function computePlanMetrics(state) {
         offcutPoolFinal: pool.snapshot(),
       },
     },
+  };
+}
+
+/**
+ * Calculates the combined total requirements for both floor and skirting.
+ */
+export function computeGrandTotals(state) {
+  const metrics = computePlanMetrics(state);
+  const skirting = computeSkirtingNeeds(state);
+
+  if (!metrics.ok) {
+    return { ok: false, error: metrics.error };
+  }
+
+  const d = metrics.data;
+  const tileAreaM2 = (d.material.tileAreaCm2) / 10000;
+  
+  let totalTiles = d.tiles.purchasedTilesWithReserve;
+  let totalCost = d.pricing.priceTotal;
+
+  if (skirting.enabled) {
+    totalCost += skirting.totalCost;
+    if (skirting.type === "cutout") {
+      totalTiles += skirting.additionalTiles;
+    }
+  }
+
+  // Recalculate area and packs based on total tiles needed (floor + cutout skirting)
+  const totalAreaM2 = totalTiles * tileAreaM2;
+  const totalPacks = d.pricing.packM2 > 0 ? Math.ceil(totalAreaM2 / d.pricing.packM2) : null;
+
+  return {
+    ok: true,
+    totalTiles,
+    totalAreaM2,
+    totalPacks,
+    totalCost,
+    skirtingEnabled: skirting.enabled,
+    skirtingType: skirting.type,
+    purchasedAreaM2: totalAreaM2 // consistency with computePlanMetrics terminology
   };
 }

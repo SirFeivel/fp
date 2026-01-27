@@ -50,15 +50,23 @@ export function bindUI({
     const state = store.getState();
     const next = structuredClone(state);
 
+    next.view = next.view || {};
+    next.view.showGrid = Boolean(document.getElementById("showGrid")?.checked);
+    next.view.showSkirting = Boolean(document.getElementById("showSkirting")?.checked);
+
     const nextRoom = getCurrentRoom(next);
     if (nextRoom) {
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
       nextRoom.widthCm = Number(document.getElementById("roomW")?.value);
       nextRoom.heightCm = Number(document.getElementById("roomH")?.value);
-    }
 
-    next.view = next.view || {};
-    next.view.showGrid = Boolean(document.getElementById("showGrid")?.checked);
+      nextRoom.skirting = nextRoom.skirting || {};
+      nextRoom.skirting.enabled = Boolean(document.getElementById("skirtingEnabled")?.checked);
+      nextRoom.skirting.type = document.getElementById("skirtingType")?.value;
+      nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
+      nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
+      nextRoom.skirting.boughtPricePerPiece = Number(document.getElementById("skirtingPricePerPiece")?.value);
+    }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
@@ -299,6 +307,28 @@ export function bindUI({
   document.getElementById("showGrid")?.addEventListener("change", () =>
     commitFromRoomInputs(t("room.viewChanged"))
   );
+  document.getElementById("showSkirting")?.addEventListener("change", () =>
+    commitFromRoomInputs(t("room.viewChanged"))
+  );
+
+  // Skirting inputs
+  document.getElementById("skirtingEnabled")?.addEventListener("change", () =>
+    commitFromRoomInputs(t("skirting.changed"))
+  );
+  document.getElementById("skirtingType")?.addEventListener("change", () =>
+    commitFromRoomInputs(t("skirting.changed"))
+  );
+  [
+    "skirtingHeight",
+    "skirtingBoughtWidth",
+    "skirtingPricePerPiece"
+  ].forEach(id => {
+    wireInputCommit(document.getElementById(id), {
+      markDirty: () => store.markDirty(),
+      commitLabel: t("skirting.changed"),
+      commitFn: commitFromRoomInputs
+    });
+  });
 
   // Tile + Pattern + Pricing
   [

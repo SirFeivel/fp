@@ -159,6 +159,9 @@ export function createExclusionsController({
       cur.p3.y = readNum('exP3Y', cur.p3.y);
     }
 
+    const skirtInp = document.getElementById('exSkirtingEnabled');
+    if (skirtInp) cur.skirtingEnabled = !!skirtInp.checked;
+
     commit(label, next);
   }
 
