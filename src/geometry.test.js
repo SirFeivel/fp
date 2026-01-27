@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import polygonClipping from 'polygon-clipping';
 import {
   roomPolygon,
   multiPolygonToPathD,
@@ -11,7 +12,107 @@ import {
   computeAvailableArea,
   computeOriginPoint,
   tilesForPreviewHerringbone,
+  tilesForPreview,
 } from './geometry.js';
+
+function pathDToPolygon(d) {
+  const commands = d.match(/[MLZ][^MLZ]*/g) || [];
+  const points = [];
+
+  for (const cmd of commands) {
+    const type = cmd[0];
+    if (type === 'M' || type === 'L') {
+      const nums = cmd
+        .slice(1)
+        .trim()
+        .split(/[\s,]+/)
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x));
+      if (nums.length >= 2) points.push([nums[0], nums[1]]);
+    }
+  }
+
+  if (points.length < 3) return null;
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    points.push([first[0], first[1]]);
+  }
+
+  return [[points]];
+}
+
+function herringboneState({ roomW = 100, roomH = 200, tileW = 10, tileH = 20, grout = 0.2 } = {}) {
+  return {
+    floors: [{
+      id: 'floor-1',
+      rooms: [{
+        id: 'room-1',
+        widthCm: roomW,
+        heightCm: roomH,
+        tile: { widthCm: tileW, heightCm: tileH },
+        grout: { widthCm: grout },
+        pattern: {
+          type: 'herringbone',
+          rotationDeg: 0,
+          offsetXcm: 0,
+          offsetYcm: 0,
+          origin: { preset: 'tl' }
+        }
+      }]
+    }],
+    selectedFloorId: 'floor-1',
+    selectedRoomId: 'room-1'
+  };
+}
+
+function createPatternState({
+  patternType = 'grid',
+  roomW = 120,
+  roomH = 120,
+  tileW = 30,
+  tileH = 10,
+  grout = 0.2
+} = {}) {
+  return {
+    floors: [{
+      id: 'floor-1',
+      rooms: [{
+        id: 'room-1',
+        widthCm: roomW,
+        heightCm: roomH,
+        tile: { widthCm: tileW, heightCm: tileH, shape: 'rect' },
+        grout: { widthCm: grout },
+        pattern: {
+          type: patternType,
+          rotationDeg: 0,
+          offsetXcm: 0,
+          offsetYcm: 0,
+          origin: { preset: 'tl' }
+        }
+      }]
+    }],
+    selectedFloorId: 'floor-1',
+    selectedRoomId: 'room-1'
+  };
+}
+
+function overlapArea(polys) {
+  let area = 0;
+  for (let i = 0; i < polys.length; i++) {
+    for (let j = i + 1; j < polys.length; j++) {
+      const inter = polygonClipping.intersection(polys[i], polys[j]);
+      if (inter && inter.length) {
+        area += multiPolyArea(inter);
+      }
+    }
+  }
+  return area;
+}
+
+function createRoomPolygon(width, height) {
+  return [[[[0, 0], [width, 0], [width, height], [0, height], [0, 0]]]];
+}
 
 describe('roomPolygon', () => {
   it('creates correct polygon for room dimensions', () => {
@@ -558,4 +659,138 @@ describe('tilesForPreviewHerringbone', () => {
       expect(tile.d.includes('Z')).toBe(true);
     }
   });
+
+  it('keeps overlap bounded for generic herringbone', () => {
+    const state = createTestState(120, 120, 30, 10, 0);
+    const availableMP = createRoomPolygon(120, 120);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 30, 10, 0);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+
+    const polys = result.tiles
+      .map((tile) => pathDToPolygon(tile.d))
+      .filter(Boolean);
+
+    let overlapArea = 0;
+    for (let i = 0; i < polys.length; i++) {
+      for (let j = i + 1; j < polys.length; j++) {
+        const inter = polygonClipping.intersection(polys[i], polys[j]);
+        if (inter && inter.length) {
+          overlapArea += multiPolyArea(inter);
+        }
+      }
+    }
+
+    const roomArea = 120 * 120;
+    expect(overlapArea / roomArea).toBeLessThan(0.2);
+  });
+
+  it('covers the reported state within expected bounds', () => {
+    const state = herringboneState({ roomW: 100, roomH: 200, tileW: 10, tileH: 20, grout: 0.2 });
+    const availableMP = createRoomPolygon(100, 200);
+
+    const result = tilesForPreviewHerringbone(state, availableMP, 10, 20, 0.2);
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+
+    const polys = result.tiles.map((tile) => pathDToPolygon(tile.d)).filter(Boolean);
+
+    let overlapArea = 0;
+    for (let i = 0; i < polys.length; i++) {
+      for (let j = i + 1; j < polys.length; j++) {
+        const inter = polygonClipping.intersection(polys[i], polys[j]);
+        if (inter && inter.length) {
+          overlapArea += multiPolyArea(inter);
+        }
+      }
+    }
+    const roomArea = 100 * 200;
+    expect(overlapArea / roomArea).toBeLessThan(0.2);
+
+    const covered = polygonClipping.union(...polys);
+    const coveredArea = multiPolyArea(covered);
+    const coverageRatio = coveredArea / roomArea;
+    expect(coverageRatio).toBeGreaterThan(0.95);
+  });
+
+  it('renders herringbone with sections and 45° rotation', () => {
+    const state = {
+      floors: [{
+        id: 'floor-1',
+        rooms: [{
+          id: 'room-1',
+          name: 'Room',
+          widthCm: 600,
+          heightCm: 400,
+          sections: [
+            { id: 'main', x: 0, y: 0, widthCm: 600, heightCm: 400 },
+            { id: 'ext', x: 600, y: 0, widthCm: 300, heightCm: 400 }
+          ],
+          exclusions: [],
+          tile: { widthCm: 10, heightCm: 40, shape: 'rect' },
+          grout: { widthCm: 0 },
+          pattern: {
+            type: 'herringbone',
+            rotationDeg: 45,
+            offsetXcm: 0,
+            offsetYcm: 0,
+            origin: { preset: 'tl' }
+          }
+        }]
+      }],
+      selectedFloorId: 'floor-1',
+      selectedRoomId: 'room-1'
+    };
+
+    const room = state.floors[0].rooms[0];
+    const available = computeAvailableArea(room, room.exclusions);
+    const result = tilesForPreview(state, available.mp);
+
+    expect(result.error).toBeNull();
+    expect(result.tiles.length).toBeGreaterThan(0);
+  });
+});
+
+describe('tilesForPreview patterns (sanity)', () => {
+  const roomW = 120;
+  const roomH = 120;
+  const tileW = 30;
+  const tileH = 10;
+  const grout = 0.2;
+  const availableMP = createRoomPolygon(roomW, roomH);
+
+  const patterns = ['grid', 'runningBond', 'herringbone', 'doubleHerringbone', 'basketweave', 'verticalStackAlternating'];
+  const overlapLimits = {
+    grid: 0.02,
+    runningBond: 0.02,
+    basketweave: 0.02,
+    herringbone: 0.2,
+    doubleHerringbone: 0.2,
+    verticalStackAlternating: 0.02,
+  };
+
+  for (const patternType of patterns) {
+    it(`generates non-empty tiles for ${patternType}`, () => {
+      const state = createPatternState({ patternType, roomW, roomH, tileW, tileH, grout });
+      const result = tilesForPreview(state, availableMP);
+
+      expect(result.error).toBeNull();
+      expect(result.tiles.length).toBeGreaterThan(0);
+    });
+
+    it(`keeps overlap low for ${patternType}`, () => {
+      const state = createPatternState({ patternType, roomW, roomH, tileW, tileH, grout });
+      const result = tilesForPreview(state, availableMP);
+
+      expect(result.error).toBeNull();
+      const polys = result.tiles.map((tile) => pathDToPolygon(tile.d)).filter(Boolean);
+      const area = overlapArea(polys);
+      const roomArea = roomW * roomH;
+
+      // Allow tiny numerical intersections but no significant overlap.
+      expect(area / roomArea).toBeLessThan(overlapLimits[patternType]);
+    });
+  }
 });

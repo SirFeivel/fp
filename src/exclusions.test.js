@@ -410,25 +410,28 @@ describe('createExclusionsController', () => {
       controller.addCircle();
       controller.addTri();
 
-      const room = state.floors[0].rooms[0];
-      expect(room.exclusions).toHaveLength(3);
+      const roomAfterAdd = state.floors[0].rooms[0];
+      expect(roomAfterAdd.exclusions).toHaveLength(3);
 
       controller.deleteSelectedExcl();
-      expect(room.exclusions).toHaveLength(2);
+      const roomAfterDelete = state.floors[0].rooms[0];
+      expect(roomAfterDelete.exclusions).toHaveLength(2);
     });
 
     it('maintains separate ids for different shapes', () => {
       const { controller, state } = createMockController();
 
       controller.addRect();
-      const room = state.floors[0].rooms[0];
-      const rectId = room.exclusions[0].id;
+      const roomAfterRect = state.floors[0].rooms[0];
+      const rectId = roomAfterRect.exclusions[0].id;
 
       controller.addCircle();
-      const circleId = room.exclusions[1].id;
+      const roomAfterCircle = state.floors[0].rooms[0];
+      const circleId = roomAfterCircle.exclusions[1].id;
 
       controller.addTri();
-      const triId = room.exclusions[2].id;
+      const roomAfterTri = state.floors[0].rooms[0];
+      const triId = roomAfterTri.exclusions[2].id;
 
       expect(rectId).not.toBe(circleId);
       expect(circleId).not.toBe(triId);

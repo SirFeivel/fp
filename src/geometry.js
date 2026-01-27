@@ -286,6 +286,14 @@ export function tilesForPreview(state, availableMP) {
     return tilesForPreviewBasketweave(state, availableMP, tw, th, grout);
   }
 
+  if (type === "doubleHerringbone") {
+    return tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout);
+  }
+
+  if (type === "verticalStackAlternating") {
+    return tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout);
+  }
+
   const stepX = tw + grout;
   const stepY = th + grout;
 
@@ -469,30 +477,302 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
   const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
-  // L = long edge, W = short edge
   const L = Math.max(tw, th);
   const W = Math.min(tw, th);
+  const stepX = L + grout;
+  const stepY = W + grout;
+  const shear = Math.max(L - W, 0) + grout;
 
-  // 90° Herringbone pattern:
-  // The pattern places tiles row by row where:
-  // - Each row alternates between H-columns and V-columns
-  // - H tile: L wide × W tall
-  // - V tile: W wide × L tall
-  // - Rows are offset to create the stepped herringbone effect
-  //
-  // Row structure (simplified for L=2W):
-  // Row 0: [H][H][V V][H][H][V V]...
-  // Row 1:    [H][H][V V][H][H]...  (offset by L)
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
 
-  // The herringbone repeating unit for 2:1 tiles is 4W×2W:
-  // [H1 H1][V1 V2]    H tiles: L×W = 2W×W
-  // [H2 H2][V1 V2]    V tiles: W×L = W×2W
-  //
-  // For general L:W ratio, the unit is 2L × L (when L = n*W for integer n)
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
 
-  // Unit dimensions
-  const unitW = 2 * L + 2 * grout;  // 2 H tiles side by side = 2L, or 2L V tiles
-  const unitH = L + grout;          // Height = L (one V tile height)
+  const margin = TILE_MARGIN_MULTIPLIER * (L + W + grout);
+  const minX = b.minX - margin;
+  const maxX = b.maxX + margin;
+  const minY = b.minY - margin;
+  const maxY = b.maxY + margin;
+
+  let anchorX = origin.x + offX;
+  let anchorY = origin.y + offY;
+  if (preset === "center") {
+    anchorX -= L / 2;
+    anchorY -= W / 2;
+  }
+
+  const startRow = Math.floor((minY - anchorY) / stepY) - 2;
+  const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
+
+  const minRowShift = Math.min(startRow, endRow) * shear;
+  const maxRowShift = Math.max(startRow, endRow) * shear;
+
+  const startCol = Math.floor((minX - anchorX - maxRowShift) / stepX) - 2;
+  const endCol = Math.ceil((maxX - anchorX - minRowShift) / stepX) + 2;
+
+  const estRows = endRow - startRow + 1;
+  const estCols = endCol - startCol + 1;
+  const estTiles = estRows * estCols;
+  const areaEst = (w * h) / (W * L);
+  const maxTiles = Math.min(
+    MAX_PREVIEW_TILES * 4,
+    Math.max(MAX_PREVIEW_TILES, Math.ceil(areaEst * 20))
+  );
+  if (estTiles > maxTiles) {
+    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
+  }
+
+  const tiles = [];
+  const fullArea = W * L;
+
+  for (let row = startRow; row <= endRow; row++) {
+    const baseY = anchorY + row * stepY;
+    for (let col = startCol; col <= endCol; col++) {
+      const baseX = anchorX + col * stepX + row * shear;
+      const isHorizontal = (row + col) % 2 === 0;
+
+      const tileX = isHorizontal ? baseX : baseX + (L - W);
+      const tileY = isHorizontal ? baseY : baseY - (L - W);
+      const tileW = isHorizontal ? L : W;
+      const tileH = isHorizontal ? W : L;
+
+      const tileP = tileRectPolygon(tileX, tileY, tileW, tileH, origin.x, origin.y, rotRad);
+
+      let clipped;
+      try {
+        clipped = polygonClipping.intersection(availableMP, tileP);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (!clipped || !clipped.length) continue;
+
+      const d = multiPolygonToPathD(clipped);
+      if (!d) continue;
+
+      const gotArea = multiPolyArea(clipped);
+      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+      tiles.push({ d, isFull });
+    }
+  }
+
+  return { tiles, error: null };
+}
+
+// Export for testing
+export { tilesForPreviewHerringbone };
+
+function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout) {
+  const currentRoom = getCurrentRoom(state);
+  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
+  const rotRad = degToRad(rotDeg);
+
+  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
+
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const preset = currentRoom.pattern?.origin?.preset || "tl";
+
+  const L = Math.max(tw, th);
+  const W = Math.min(tw, th);
+  const W2 = 2 * W + grout;
+
+  const stepX = L + grout;
+  const stepY = W2 + grout;
+  const shear = Math.max(L - W2, 0) + grout;
+
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
+
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+
+  const margin = TILE_MARGIN_MULTIPLIER * (L + W2 + grout);
+  const minX = b.minX - margin;
+  const maxX = b.maxX + margin;
+  const minY = b.minY - margin;
+  const maxY = b.maxY + margin;
+
+  let anchorX = origin.x + offX;
+  let anchorY = origin.y + offY;
+  if (preset === "center") {
+    anchorX -= L / 2;
+    anchorY -= W2 / 2;
+  }
+
+  const startRow = Math.floor((minY - anchorY) / stepY) - 2;
+  const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
+
+  const minRowShift = Math.min(startRow, endRow) * shear;
+  const maxRowShift = Math.max(startRow, endRow) * shear;
+
+  const startCol = Math.floor((minX - anchorX - maxRowShift) / stepX) - 2;
+  const endCol = Math.ceil((maxX - anchorX - minRowShift) / stepX) + 2;
+
+  const estRows = endRow - startRow + 1;
+  const estCols = endCol - startCol + 1;
+  const estTiles = estRows * estCols * 2;
+  if (estTiles > MAX_PREVIEW_TILES) {
+    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
+  }
+
+  const tiles = [];
+  const fullArea = W * L;
+
+  for (let row = startRow; row <= endRow; row++) {
+    const baseY = anchorY + row * stepY;
+    for (let col = startCol; col <= endCol; col++) {
+      const baseX = anchorX + col * stepX + row * shear;
+      const isHorizontal = (row + col) % 2 === 0;
+
+      if (isHorizontal) {
+        const hx = baseX;
+        const hy = baseY;
+        const placements = [
+          { x: hx, y: hy, w: L, h: W },
+          { x: hx, y: hy + W + grout, w: L, h: W },
+        ];
+        for (const t of placements) {
+          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
+          let clipped;
+          try {
+            clipped = polygonClipping.intersection(availableMP, tileP);
+          } catch (e) {
+            return { tiles: [], error: String(e?.message || e) };
+          }
+          if (!clipped || !clipped.length) continue;
+          const d = multiPolygonToPathD(clipped);
+          if (!d) continue;
+          const gotArea = multiPolyArea(clipped);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      } else {
+        const vx = baseX + (L - W2);
+        const vy = baseY - (L - W2);
+        const placements = [
+          { x: vx, y: vy, w: W, h: L },
+          { x: vx + W + grout, y: vy, w: W, h: L },
+        ];
+        for (const t of placements) {
+          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
+          let clipped;
+          try {
+            clipped = polygonClipping.intersection(availableMP, tileP);
+          } catch (e) {
+            return { tiles: [], error: String(e?.message || e) };
+          }
+          if (!clipped || !clipped.length) continue;
+          const d = multiPolygonToPathD(clipped);
+          if (!d) continue;
+          const gotArea = multiPolyArea(clipped);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+          tiles.push({ d, isFull });
+        }
+      }
+    }
+  }
+
+  return { tiles, error: null };
+}
+
+function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout) {
+  const currentRoom = getCurrentRoom(state);
+  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
+  const rotRad = degToRad(rotDeg);
+
+  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
+
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const preset = currentRoom.pattern?.origin?.preset || "tl";
+
+  const L = Math.max(tw, th);
+  const W = Math.min(tw, th);
+  const stepX = W + grout;
+  const stepY = L + grout;
+
+  const bounds = getRoomBounds(currentRoom);
+  const w = bounds.width;
+  const h = bounds.height;
+
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+
+  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
+  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
+
+  const minX = b.minX - marginX;
+  const maxX = b.maxX + marginX;
+  const minY = b.minY - marginY;
+  const maxY = b.maxY + marginY;
+
+  let anchorX = origin.x + offX;
+  let anchorY = origin.y + offY;
+  if (preset === "center") {
+    anchorX -= W / 2;
+    anchorY -= L / 2;
+  }
+
+  const startCol = Math.floor((minX - anchorX) / stepX) - 2;
+  const endCol = Math.ceil((maxX - anchorX) / stepX) + 2;
+
+  const startRow = Math.floor((minY - anchorY) / stepY) - 2;
+  const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
+
+  const estCols = endCol - startCol + 1;
+  const estRows = endRow - startRow + 1;
+  const estTiles = estCols * estRows;
+  if (estTiles > MAX_PREVIEW_TILES) {
+    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
+  }
+
+  const tiles = [];
+  const fullArea = W * L;
+  const colShift = stepY / 2;
+
+  for (let col = startCol; col <= endCol; col++) {
+    const baseX = anchorX + col * stepX;
+    const shiftY = (col % 2) * colShift;
+    for (let row = startRow; row <= endRow; row++) {
+      const baseY = anchorY + row * stepY + shiftY;
+      const tileP = tileRectPolygon(baseX, baseY, W, L, origin.x, origin.y, rotRad);
+
+      let clipped;
+      try {
+        clipped = polygonClipping.intersection(availableMP, tileP);
+      } catch (e) {
+        return { tiles: [], error: String(e?.message || e) };
+      }
+      if (!clipped || !clipped.length) continue;
+
+      const d = multiPolygonToPathD(clipped);
+      if (!d) continue;
+
+      const gotArea = multiPolyArea(clipped);
+      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+      tiles.push({ d, isFull });
+    }
+  }
+
+  return { tiles, error: null };
+}
+
+function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
+  const currentRoom = getCurrentRoom(state);
+  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
+  const rotRad = degToRad(rotDeg);
+
+  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
+
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const preset = currentRoom.pattern?.origin?.preset || "tl";
+
+  const L = Math.max(tw, th);
+  const W = Math.min(tw, th);
+  const tilesPerStack = Math.max(1, Math.round(L / W));
+  const unitW = 2 * L + 2 * grout;
+  const unitH = L + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
@@ -515,125 +795,15 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout) {
     anchorY -= unitH / 2;
   }
 
-  const startCol = Math.floor((minX - anchorX) / unitW) - 1;
-  const endCol = Math.ceil((maxX - anchorX) / unitW) + 1;
-  const startRow = Math.floor((minY - anchorY) / unitH) - 1;
-  const endRow = Math.ceil((maxY - anchorY) / unitH) + 1;
+  const startCol = Math.floor((minX - anchorX) / unitW) - 2;
+  const endCol = Math.ceil((maxX - anchorX) / unitW) + 2;
+  const startRow = Math.floor((minY - anchorY) / unitH) - 2;
+  const endRow = Math.ceil((maxY - anchorY) / unitH) + 2;
 
-  // Calculate how many H tiles stack to match one V tile height
-  const tilesPerStack = Math.max(1, Math.round(L / W));
-  const estTiles = (endCol - startCol) * (endRow - startRow) * (tilesPerStack + 2) * 2;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
+  const estCols = endCol - startCol + 1;
+  const estRows = endRow - startRow + 1;
 
-  const tiles = [];
-  const fullArea = W * L;
-
-  // Generate herringbone pattern
-  for (let row = startRow; row <= endRow; row++) {
-    for (let col = startCol; col <= endCol; col++) {
-      // Odd rows are offset by L to create the stepped pattern
-      const rowOffset = (row % 2 === 0) ? 0 : L + grout;
-
-      const unitX = anchorX + col * unitW + rowOffset;
-      const unitY = anchorY + row * unitH;
-
-      // Left half of unit: stack of H tiles (tilesPerStack tiles stacked vertically)
-      for (let i = 0; i < tilesPerStack; i++) {
-        const hx = unitX;
-        const hy = unitY + i * (W + grout);
-        const hPoly = tileRectPolygon(hx, hy, L, W, origin.x, origin.y, rotRad);
-
-        let clipped;
-        try {
-          clipped = polygonClipping.intersection(availableMP, hPoly);
-        } catch (e) {
-          return { tiles: [], error: String(e?.message || e) };
-        }
-        if (clipped && clipped.length) {
-          const d = multiPolygonToPathD(clipped);
-          if (d) {
-            const gotArea = multiPolyArea(clipped);
-            const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-            tiles.push({ d, isFull });
-          }
-        }
-      }
-
-      // Right half of unit: V tiles side by side (tilesPerStack tiles)
-      for (let i = 0; i < tilesPerStack; i++) {
-        const vx = unitX + L + grout + i * (W + grout);
-        const vy = unitY;
-        const vPoly = tileRectPolygon(vx, vy, W, L, origin.x, origin.y, rotRad);
-
-        let clipped;
-        try {
-          clipped = polygonClipping.intersection(availableMP, vPoly);
-        } catch (e) {
-          return { tiles: [], error: String(e?.message || e) };
-        }
-        if (clipped && clipped.length) {
-          const d = multiPolygonToPathD(clipped);
-          if (d) {
-            const gotArea = multiPolyArea(clipped);
-            const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-            tiles.push({ d, isFull });
-          }
-        }
-      }
-    }
-  }
-
-  return { tiles, error: null };
-}
-
-// Export for testing
-export { tilesForPreviewHerringbone };
-
-function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
-  const currentRoom = getCurrentRoom(state);
-  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
-  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
-
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
-  const preset = currentRoom.pattern?.origin?.preset || "tl";
-
-  const pairSize = Math.max(tw, th);
-  const stepX = pairSize + grout;
-  const stepY = pairSize + grout;
-
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
-
-  const marginX = TILE_MARGIN_MULTIPLIER * stepX;
-  const marginY = TILE_MARGIN_MULTIPLIER * stepY;
-
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
-  let anchorX = origin.x + offX;
-  let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= pairSize / 2;
-    anchorY -= pairSize / 2;
-  }
-
-  const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
-  const startY = anchorY + floorDiv(minY - anchorY, stepY) * stepY;
-
-  const estCols = Math.ceil((maxX - startX) / stepX) + 2;
-  const estRows = Math.ceil((maxY - startY) / stepY) + 2;
-
-  const estTiles = estCols * estRows * 2;
+  const estTiles = estCols * estRows * tilesPerStack * 2;
   if (estTiles > MAX_PREVIEW_TILES) {
     return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
   }
@@ -641,49 +811,42 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
   const tiles = [];
   const fullArea = tw * th;
 
-  for (let r = 0; r < estRows; r++) {
-    for (let c = 0; c < estCols; c++) {
-      const baseX = startX + c * stepX;
-      const baseY = startY + r * stepY;
+  for (let row = startRow; row <= endRow; row++) {
+    const rowOffset = row % 2 === 0 ? 0 : (L + grout);
+    const baseY = anchorY + row * unitH;
+    for (let col = startCol; col <= endCol; col++) {
+      const baseX = anchorX + col * unitW + rowOffset;
 
-      const isHorizontal = (r + c) % 2 === 0;
+      for (let i = 0; i < tilesPerStack; i++) {
+        const hx = baseX;
+        const hy = baseY + i * (W + grout);
+        const vx = baseX + L + grout + i * (W + grout);
+        const vy = baseY;
 
-      const basketweaveTiles = isHorizontal
-        ? [
-            { x: baseX, y: baseY, w: tw, h: th },
-            { x: baseX, y: baseY + th + grout, w: tw, h: th },
-          ]
-        : [
-            { x: baseX, y: baseY, w: th, h: tw },
-            { x: baseX + th + grout, y: baseY, w: th, h: tw },
-          ];
+        const placements = [
+          { x: hx, y: hy, w: L, h: W },
+          { x: vx, y: vy, w: W, h: L },
+        ];
 
-      for (const tile of basketweaveTiles) {
-        const tileP = tileRectPolygon(
-          tile.x,
-          tile.y,
-          tile.w,
-          tile.h,
-          origin.x,
-          origin.y,
-          rotRad
-        );
+        for (const t of placements) {
+          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
 
-        let clipped;
-        try {
-          clipped = polygonClipping.intersection(availableMP, tileP);
-        } catch (e) {
-          return { tiles: [], error: String(e?.message || e) };
+          let clipped;
+          try {
+            clipped = polygonClipping.intersection(availableMP, tileP);
+          } catch (e) {
+            return { tiles: [], error: String(e?.message || e) };
+          }
+          if (!clipped || !clipped.length) continue;
+
+          const d = multiPolygonToPathD(clipped);
+          if (!d) continue;
+
+          const gotArea = multiPolyArea(clipped);
+          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+
+          tiles.push({ d, isFull });
         }
-        if (!clipped || !clipped.length) continue;
-
-        const d = multiPolygonToPathD(clipped);
-        if (!d) continue;
-
-        const gotArea = multiPolyArea(clipped);
-        const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-
-        tiles.push({ d, isFull });
       }
     }
   }

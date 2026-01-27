@@ -88,6 +88,36 @@ describe('validateState', () => {
     expect(result.errors[0].title).toContain('Fuge');
   });
 
+  it('rejects non-integer herringbone ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 35 }, {}, { type: 'herringbone' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.title.includes('Herringbone'))).toBe(true);
+  });
+
+  it('accepts integer herringbone ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'herringbone' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBe(0);
+  });
+
+  it('rejects invalid double herringbone ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'doubleHerringbone' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.title.includes('Double'))).toBe(true);
+  });
+
+  it('accepts valid double herringbone ratio', () => {
+    const state = createTestState({}, { widthCm: 10, heightCm: 40 }, {}, { type: 'doubleHerringbone' });
+
+    const result = validateState(state);
+    expect(result.errors.length).toBe(0);
+  });
+
   it('allows zero grout width', () => {
     const state = createTestState({}, {}, { widthCm: 0 });
 
@@ -215,7 +245,7 @@ describe('validateState', () => {
   });
 
   it('detects string values in dimensions', () => {
-    const state = createTestState({ widthCm: '400' });
+    const state = createTestState({ widthCm: 'invalid' });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);

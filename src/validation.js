@@ -102,6 +102,35 @@ export function validateState(s) {
       text: `${t("validation.currentValue")} "${grout}". ${t("validation.groutText")}`
     });
 
+  const patternType = currentRoom?.pattern?.type;
+  if (patternType === "herringbone" || patternType === "doubleHerringbone") {
+    if (n(tileW) && n(tileH) && tileW > 0 && tileH > 0) {
+      const L = Math.max(tileW, tileH);
+      const W = Math.min(tileW, tileH);
+      const ratio = L / W;
+      const nearest = Math.round(ratio);
+      const ratioEps = 1e-6;
+
+      if (patternType === "doubleHerringbone") {
+        const doubleRatio = L / (2 * W);
+        const nearestDouble = Math.round(doubleRatio);
+        if (Math.abs(doubleRatio - nearestDouble) > ratioEps) {
+          const ratioText = `${ratio.toFixed(2)}:1`;
+          errors.push({
+            title: t("validation.doubleHerringboneRatioTitle"),
+            text: `${t("validation.doubleHerringboneRatioText")} ${ratioText}.`
+          });
+        }
+      } else if (Math.abs(ratio - nearest) > ratioEps) {
+        const ratioText = `${ratio.toFixed(2)}:1`;
+        errors.push({
+          title: t("validation.herringboneRatioTitle"),
+          text: `${t("validation.herringboneRatioText")} ${ratioText}.`
+        });
+      }
+    }
+  }
+
   const rot = currentRoom?.pattern?.rotationDeg;
   if (n(rot) && (rot % 45 !== 0 || rot < 0 || rot >= 360)) {
     warns.push({

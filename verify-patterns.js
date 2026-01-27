@@ -68,5 +68,30 @@ function testPattern(patternType) {
 
 console.log('Testing pattern generation...');
 testPattern('herringbone');
+testPattern('doubleHerringbone');
 testPattern('basketweave');
+testPattern('verticalStackAlternating');
+
+console.log('\n=== HERRINGBONE REPORTED STATE ===');
+const reportedState = JSON.parse(JSON.stringify(baseState));
+reportedState.floors[0].rooms[0].widthCm = 100;
+reportedState.floors[0].rooms[0].heightCm = 200;
+reportedState.floors[0].rooms[0].tile.widthCm = 10;
+reportedState.floors[0].rooms[0].tile.heightCm = 20;
+reportedState.floors[0].rooms[0].grout.widthCm = 0.2;
+reportedState.floors[0].rooms[0].pattern.type = 'herringbone';
+const reportedAvail = computeAvailableArea(
+  reportedState.floors[0].rooms[0],
+  reportedState.floors[0].rooms[0].exclusions
+);
+if (!reportedAvail.mp) {
+  console.log('Error: No available area');
+} else {
+  const reportedResult = tilesForPreview(reportedState, reportedAvail.mp);
+  if (reportedResult.error) {
+    console.log(`Error: ${reportedResult.error}`);
+  } else {
+    console.log(`✓ Generated ${reportedResult.tiles.length} tiles (reported state)`);
+  }
+}
 console.log('\n✓ All patterns generated successfully');
