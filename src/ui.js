@@ -51,8 +51,8 @@ export function bindUI({
     const next = structuredClone(state);
 
     next.view = next.view || {};
-    next.view.showGrid = Boolean(document.getElementById("showGrid")?.checked);
-    next.view.showSkirting = Boolean(document.getElementById("showSkirting")?.checked);
+    next.view.showGrid = Boolean(document.querySelector('.plan-toolbar #showGrid')?.checked);
+    next.view.showSkirting = Boolean(document.querySelector('.plan-toolbar #showSkirting')?.checked);
 
     const nextRoom = getCurrentRoom(next);
     if (nextRoom) {
@@ -291,12 +291,16 @@ export function bindUI({
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
-  document.getElementById("showGrid")?.addEventListener("change", () =>
-    commitFromRoomInputs(t("room.viewChanged"))
-  );
-  document.getElementById("showSkirting")?.addEventListener("change", () =>
-    commitFromRoomInputs(t("room.viewChanged"))
-  );
+  document.querySelectorAll('#showGrid').forEach(el => {
+    el.addEventListener("change", () =>
+      commitFromRoomInputs(t("room.viewChanged"))
+    );
+  });
+  document.querySelectorAll('#showSkirting').forEach(el => {
+    el.addEventListener("change", () =>
+      commitFromRoomInputs(t("room.viewChanged"))
+    );
+  });
 
   // Skirting inputs
   document.getElementById("skirtingEnabled")?.addEventListener("change", () =>

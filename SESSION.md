@@ -159,6 +159,23 @@
 - Metrics panel values are larger and easier to read.
 - All 354 tests pass and production build is successful.
 
+## Session: Fix Plan Toggles (2026-01-27)
+### Goal
+- Consolidate "Show Grid" and "Show Skirting" toggles.
+- Remove duplicate toggles from the Room section and make Plan toolbar toggles functional.
+
+### Plan
+1. Create feature branch `feature/fix-plan-toggles` ✓
+2. Remove duplicate toggles from `index.html` ✓
+3. Update `src/ui.js` to bind Plan toolbar toggles to state ✓
+4. Update `src/render.js` to sync all toggle instances with state ✓
+5. Verify with tests and build ✓
+
+### Status
+- Duplicate toggles removed from the Room tab.
+- Plan toolbar toggles are now fully functional and tied to the global state.
+- All 354 tests pass.
+
 ## Commands Run
 - npm run test
 - npm run build

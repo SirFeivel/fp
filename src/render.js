@@ -223,8 +223,8 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
-  document.getElementById("showGrid").checked = Boolean(state.view?.showGrid);
-  document.getElementById("showSkirting").checked = Boolean(state.view?.showSkirting);
+  document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
+  document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
 
   const skirting = currentRoom?.skirting;
   if (skirting) {
