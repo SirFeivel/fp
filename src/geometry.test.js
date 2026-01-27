@@ -114,7 +114,7 @@ function createRoomPolygon(width, height) {
 
 describe('roomPolygon', () => {
   it('creates correct polygon for room dimensions', () => {
-    const room = { widthCm: 100, heightCm: 200 };
+    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }] };
     const result = roomPolygon(room);
 
     expect(result).toEqual([
@@ -131,7 +131,7 @@ describe('roomPolygon', () => {
   });
 
   it('handles zero dimensions', () => {
-    const room = { widthCm: 0, heightCm: 0 };
+    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 0, heightCm: 0 }] };
     const result = roomPolygon(room);
 
     expect(result).toBeDefined();
@@ -433,7 +433,7 @@ describe('computeExclusionsUnion', () => {
 
 describe('computeAvailableArea', () => {
   it('returns full room when no exclusions', () => {
-    const room = { widthCm: 100, heightCm: 100 };
+    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
     const result = computeAvailableArea(room, []);
 
     expect(result.error).toBeNull();
@@ -444,7 +444,7 @@ describe('computeAvailableArea', () => {
   });
 
   it('subtracts exclusion from room', () => {
-    const room = { widthCm: 100, heightCm: 100 };
+    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
     const exclusions = [{ type: 'rect', x: 0, y: 0, w: 50, h: 50 }];
     const result = computeAvailableArea(room, exclusions);
 
@@ -456,7 +456,7 @@ describe('computeAvailableArea', () => {
   });
 
   it('handles exclusion covering entire room', () => {
-    const room = { widthCm: 100, heightCm: 100 };
+    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
     const exclusions = [{ type: 'rect', x: 0, y: 0, w: 100, h: 100 }];
     const result = computeAvailableArea(room, exclusions);
 
@@ -467,7 +467,7 @@ describe('computeAvailableArea', () => {
 });
 
 describe('computeOriginPoint', () => {
-  const room = { widthCm: 100, heightCm: 200 };
+  const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }] };
 
   it('computes top-left origin', () => {
     const pattern = { origin: { preset: 'tl' } };
@@ -525,8 +525,7 @@ describe('tilesForPreviewHerringbone', () => {
         id: 'floor-1',
         rooms: [{
           id: 'room-1',
-          widthCm: roomWidth,
-          heightCm: roomHeight,
+          sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomWidth, heightCm: roomHeight }],
           tile: { widthCm: tileWidth, heightCm: tileHeight },
           grout: { widthCm: grout },
           pattern: {

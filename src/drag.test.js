@@ -54,8 +54,7 @@ describe('createExclusionDragController', () => {
         rooms: [{
           id: 'room1',
           name: 'Test Room',
-          widthCm: 600,
-          heightCm: 400,
+          sections: [{ id: 's1', x: 0, y: 0, widthCm: 600, heightCm: 400 }],
           exclusions: initialExclusions,
           tile: { widthCm: 60, heightCm: 60 },
           grout: { widthCm: 0.2 },

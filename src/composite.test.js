@@ -48,25 +48,12 @@ describe("getRoomSections", () => {
     expect(sections[1].widthCm).toBe(200);
   });
 
-  it("creates single section from legacy widthCm/heightCm", () => {
-    const room = {
-      widthCm: 600,
-      heightCm: 400,
-    };
-    const sections = getRoomSections(room);
-    expect(sections).toHaveLength(1);
-    expect(sections[0].x).toBe(0);
-    expect(sections[0].y).toBe(0);
-    expect(sections[0].widthCm).toBe(600);
-    expect(sections[0].heightCm).toBe(400);
-  });
-
   it("returns empty array for null room", () => {
     expect(getRoomSections(null)).toEqual([]);
   });
 
-  it("returns empty array for room with invalid dimensions", () => {
-    const room = { widthCm: 0, heightCm: 0 };
+  it("returns empty array for room with no sections", () => {
+    const room = { widthCm: 600, heightCm: 400 };
     expect(getRoomSections(room)).toEqual([]);
   });
 

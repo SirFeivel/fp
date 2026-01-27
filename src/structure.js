@@ -70,8 +70,7 @@ export function createStructureController({
       rooms: [{
         id: uuid(),
         name: "Raum",
-        widthCm: 600,
-        heightCm: 400,
+        sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
         exclusions: [],
         tile: { widthCm: 60, heightCm: 60, shape: "rect" },
         grout: { widthCm: 0.2, colorHex: "#ffffff" },
@@ -125,8 +124,7 @@ export function createStructureController({
     const newRoom = {
       id: uuid(),
       name: `Raum ${currentFloor.rooms.length + 1}`,
-      widthCm: 600,
-      heightCm: 400,
+      sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
       exclusions: [],
       tile: { widthCm: 60, heightCm: 60, shape: "rect" },
       grout: { widthCm: 0.2, colorHex: "#ffffff" },

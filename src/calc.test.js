@@ -1,41 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { computePlanMetrics } from './calc.js';
 
-function createTestState(oldOrNew = {}) {
+function createTestState(opts = {}) {
   const floorId = 'test-floor';
   const roomId = 'test-room';
 
+  const sections = opts.sections || [
+    { id: 'sec1', x: 0, y: 0, widthCm: opts.roomW || 400, heightCm: opts.roomH || 500 }
+  ];
+
   const baseRoom = {
     id: roomId,
-    name: (oldOrNew.room && oldOrNew.room.name) || 'Test Room',
-    exclusions: oldOrNew.exclusions || [],
-    tile: oldOrNew.tile || { widthCm: 30, heightCm: 60 },
-    grout: oldOrNew.grout || { widthCm: 1 },
-    pattern: oldOrNew.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } }
+    name: opts.roomName || 'Test Room',
+    sections,
+    exclusions: opts.exclusions || [],
+    tile: opts.tile || { widthCm: 30, heightCm: 60 },
+    grout: opts.grout || { widthCm: 1 },
+    pattern: opts.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+    skirting: opts.skirting || { enabled: false, heightCm: 6, type: 'cutout' }
   };
-
-  if (oldOrNew.room) {
-    baseRoom.sections = [
-      { id: 'sec1', x: 0, y: 0, widthCm: oldOrNew.room.widthCm || 400, heightCm: oldOrNew.room.heightCm || 500 }
-    ];
-  } else if (oldOrNew.roomOverrides) {
-    const widthCm = oldOrNew.roomOverrides.hasOwnProperty('widthCm') ? oldOrNew.roomOverrides.widthCm : 400;
-    const heightCm = oldOrNew.roomOverrides.hasOwnProperty('heightCm') ? oldOrNew.roomOverrides.heightCm : 500;
-    baseRoom.sections = [
-      { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
-    ];
-    Object.assign(baseRoom, oldOrNew.roomOverrides);
-    delete baseRoom.widthCm;
-    delete baseRoom.heightCm;
-  } else {
-    baseRoom.sections = [
-      { id: 'sec1', x: 0, y: 0, widthCm: 400, heightCm: 500 }
-    ];
-  }
 
   const newState = {
     meta: { version: 4 },
-    project: { name: (oldOrNew.room && oldOrNew.room.name) || 'Test' },
+    project: { name: 'Test Project' },
     floors: [{
       id: floorId,
       name: 'Test Floor',
@@ -43,9 +30,9 @@ function createTestState(oldOrNew = {}) {
     }],
     selectedFloorId: floorId,
     selectedRoomId: roomId,
-    pricing: oldOrNew.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
-    waste: oldOrNew.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
-    view: oldOrNew.view || { showGrid: true, showNeeds: false }
+    pricing: opts.pricing || { pricePerM2: 50, packM2: 1, reserveTiles: 5 },
+    waste: opts.waste || { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+    view: opts.view || { showGrid: true, showNeeds: false }
   };
 
   return newState;
@@ -83,7 +70,7 @@ describe('computePlanMetrics', () => {
 
   it('counts full and cut tiles correctly', () => {
     const state = createTestState({
-      roomOverrides: { widthCm: 100, heightCm: 100 },
+      roomW: 100, roomH: 100,
       tile: { widthCm: 30, heightCm: 30 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -102,7 +89,7 @@ describe('computePlanMetrics', () => {
 
   it('calculates installed area correctly', () => {
     const state = createTestState({
-      room: { widthCm: 200, heightCm: 200 },
+      roomW: 200, roomH: 200,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -120,7 +107,7 @@ describe('computePlanMetrics', () => {
 
   it('handles room with exclusions', () => {
     const state = createTestState({
-      room: { widthCm: 200, heightCm: 200 },
+      roomW: 200, roomH: 200,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [{ type: 'rect', x: 0, y: 0, w: 50, h: 50 }],
@@ -138,7 +125,7 @@ describe('computePlanMetrics', () => {
 
   it('includes reserve tiles in purchase calculation', () => {
     const state = createTestState({
-      room: { widthCm: 100, heightCm: 100 },
+      roomW: 100, roomH: 100,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -157,7 +144,7 @@ describe('computePlanMetrics', () => {
 
   it('calculates waste percentage correctly', () => {
     const state = createTestState({
-      room: { widthCm: 100, heightCm: 100 },
+      roomW: 100, roomH: 100,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -174,7 +161,7 @@ describe('computePlanMetrics', () => {
 
   it('calculates pricing correctly', () => {
     const state = createTestState({
-      room: { widthCm: 200, heightCm: 200 },
+      roomW: 200, roomH: 200,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -196,7 +183,7 @@ describe('computePlanMetrics', () => {
 
   it('handles optimizeCuts option', () => {
     const state = createTestState({
-      room: { widthCm: 150, heightCm: 150 },
+      roomW: 150, roomH: 150,
       tile: { widthCm: 60, heightCm: 60 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -213,7 +200,7 @@ describe('computePlanMetrics', () => {
 
   it('handles allowRotate option', () => {
     const stateWithRotate = createTestState({
-      room: { widthCm: 150, heightCm: 150 },
+      roomW: 150, roomH: 150,
       tile: { widthCm: 40, heightCm: 60 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -227,7 +214,7 @@ describe('computePlanMetrics', () => {
     expect(resultWithRotate.data.waste.allowRotate).toBe(true);
 
     const stateNoRotate = createTestState({
-      room: { widthCm: 150, heightCm: 150 },
+      roomW: 150, roomH: 150,
       tile: { widthCm: 40, heightCm: 60 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -243,7 +230,7 @@ describe('computePlanMetrics', () => {
 
   it('calculates cut tiles percentage', () => {
     const state = createTestState({
-      room: { widthCm: 100, heightCm: 100 },
+      roomW: 100, roomH: 100,
       tile: { widthCm: 40, heightCm: 40 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -260,7 +247,7 @@ describe('computePlanMetrics', () => {
 
   it('tracks reused cuts when optimizing', () => {
     const state = createTestState({
-      room: { widthCm: 150, heightCm: 150 },
+      roomW: 150, roomH: 150,
       tile: { widthCm: 60, heightCm: 60 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -277,7 +264,7 @@ describe('computePlanMetrics', () => {
 
   it('provides debug information', () => {
     const state = createTestState({
-      room: { widthCm: 100, heightCm: 100 },
+      roomW: 100, roomH: 100,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -296,7 +283,7 @@ describe('computePlanMetrics', () => {
 
   it('handles running bond pattern', () => {
     const state = createTestState({
-      room: { widthCm: 200, heightCm: 200 },
+      roomW: 200, roomH: 200,
       tile: { widthCm: 60, heightCm: 30 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -311,7 +298,7 @@ describe('computePlanMetrics', () => {
 
   it('calculates gross room area', () => {
     const state = createTestState({
-      room: { widthCm: 300, heightCm: 400 },
+      roomW: 300, roomH: 400,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -329,7 +316,7 @@ describe('computePlanMetrics', () => {
 
   it('reuses diagonally cut tiles in 45° angled pattern', () => {
     const state = createTestState({
-      room: { widthCm: 200, heightCm: 200 },
+      roomW: 200, roomH: 200,
       tile: { widthCm: 60, heightCm: 60 },
       grout: { widthCm: 1 },
       exclusions: [],
@@ -359,7 +346,7 @@ describe('computePlanMetrics', () => {
 
   it('creates reusable offcuts from diagonal cuts', () => {
     const state = createTestState({
-      room: { widthCm: 150, heightCm: 150 },
+      roomW: 150, roomH: 150,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0.5 },
       exclusions: [],
@@ -386,7 +373,7 @@ describe('computePlanMetrics', () => {
 
   it('handles exact diagonal fit scenario from user bug report', () => {
     const stateWithoutOptimize = createTestState({
-      room: { widthCm: 70.71, heightCm: 70.71 },
+      roomW: 70.71, roomH: 70.71,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -399,7 +386,7 @@ describe('computePlanMetrics', () => {
     expect(resultWithout.ok).toBe(true);
 
     const stateWithOptimize = createTestState({
-      room: { widthCm: 70.71, heightCm: 70.71 },
+      roomW: 70.71, roomH: 70.71,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],
@@ -443,7 +430,7 @@ describe('computePlanMetrics', () => {
 
   it('handles larger diagonal room with minimal waste', () => {
     const state = createTestState({
-      room: { widthCm: 282.84272, heightCm: 282.84272 },
+      roomW: 282.84272, roomH: 282.84272,
       tile: { widthCm: 50, heightCm: 50 },
       grout: { widthCm: 0 },
       exclusions: [],

@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { validateState } from './validation.js';
 
 describe('validateState', () => {
-  function createTestState(roomOverrides = {}, tileOverrides = {}, groutOverrides = {}, patternOverrides = {}) {
-    const widthCm = roomOverrides.hasOwnProperty('widthCm') ? roomOverrides.widthCm : 400;
-    const heightCm = roomOverrides.hasOwnProperty('heightCm') ? roomOverrides.heightCm : 500;
-    const { widthCm: _w, heightCm: _h, ...restRoomOverrides } = roomOverrides;
+  function createTestState(opts = {}) {
+    const widthCm = opts.hasOwnProperty('roomW') ? opts.roomW : 400;
+    const heightCm = opts.hasOwnProperty('roomH') ? opts.roomH : 500;
+    const sections = opts.sections || [
+      { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
+    ];
     return {
       floors: [{
         id: 'floor1',
@@ -13,12 +15,10 @@ describe('validateState', () => {
         rooms: [{
           id: 'room1',
           name: 'Test Room',
-          sections: [
-            { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
-          ],
-          exclusions: [],
-          tile: { widthCm: 30, heightCm: 60, ...tileOverrides },
-          grout: { widthCm: 1, ...groutOverrides },
+          sections,
+          exclusions: opts.exclusions || [],
+          tile: { widthCm: 30, heightCm: 60, ...opts.tile },
+          grout: { widthCm: 1, ...opts.grout },
           pattern: {
             type: "grid",
             bondFraction: 0.5,
@@ -26,9 +26,9 @@ describe('validateState', () => {
             offsetXcm: 0,
             offsetYcm: 0,
             origin: { preset: "tl", xCm: 0, yCm: 0 },
-            ...patternOverrides
+            ...opts.pattern
           },
-          ...restRoomOverrides
+          skirting: opts.skirting || { enabled: false, heightCm: 6, type: 'cutout' }
         }]
       }],
       selectedFloorId: 'floor1',
@@ -45,7 +45,7 @@ describe('validateState', () => {
   });
 
   it('detects invalid room width', () => {
-    const state = createTestState({ widthCm: 0 });
+    const state = createTestState({ roomW: 0 });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -53,7 +53,7 @@ describe('validateState', () => {
   });
 
   it('detects negative room width', () => {
-    const state = createTestState({ widthCm: -100 });
+    const state = createTestState({ roomW: -100 });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -61,7 +61,7 @@ describe('validateState', () => {
   });
 
   it('detects invalid room height', () => {
-    const state = createTestState({ heightCm: 0 });
+    const state = createTestState({ roomH: 0 });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -69,7 +69,7 @@ describe('validateState', () => {
   });
 
   it('detects invalid tile width', () => {
-    const state = createTestState({}, { widthCm: 0 });
+    const state = createTestState({ tile: { widthCm: 0 } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -77,7 +77,7 @@ describe('validateState', () => {
   });
 
   it('detects invalid tile height', () => {
-    const state = createTestState({}, { heightCm: -10 });
+    const state = createTestState({ tile: { heightCm: -10 } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -85,7 +85,7 @@ describe('validateState', () => {
   });
 
   it('detects negative grout width', () => {
-    const state = createTestState({}, {}, { widthCm: -1 });
+    const state = createTestState({ grout: { widthCm: -1 } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe('validateState', () => {
   });
 
   it('rejects non-integer herringbone ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 35 }, {}, { type: 'herringbone' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 35 }, pattern: { type: 'herringbone' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -101,14 +101,14 @@ describe('validateState', () => {
   });
 
   it('accepts integer herringbone ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'herringbone' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 30 }, pattern: { type: 'herringbone' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBe(0);
   });
 
   it('rejects invalid double herringbone ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'doubleHerringbone' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 30 }, pattern: { type: 'doubleHerringbone' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -116,14 +116,14 @@ describe('validateState', () => {
   });
 
   it('accepts valid double herringbone ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 40 }, {}, { type: 'doubleHerringbone' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 40 }, pattern: { type: 'doubleHerringbone' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBe(0);
   });
 
   it('rejects non-integer basketweave ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 25 }, {}, { type: 'basketweave' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 25 }, pattern: { type: 'basketweave' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -131,21 +131,21 @@ describe('validateState', () => {
   });
 
   it('accepts integer basketweave ratio', () => {
-    const state = createTestState({}, { widthCm: 10, heightCm: 30 }, {}, { type: 'basketweave' });
+    const state = createTestState({ tile: { widthCm: 10, heightCm: 30 }, pattern: { type: 'basketweave' } });
 
     const result = validateState(state);
     expect(result.errors.length).toBe(0);
   });
 
   it('allows zero grout width', () => {
-    const state = createTestState({}, {}, { widthCm: 0 });
+    const state = createTestState({ grout: { widthCm: 0 } });
 
     const result = validateState(state);
     expect(result.errors).toHaveLength(0);
   });
 
   it('warns about rotation outside 45 degree grid', () => {
-    const state = createTestState({}, {}, {}, { rotationDeg: 30 });
+    const state = createTestState({ pattern: { rotationDeg: 30 } });
 
     const result = validateState(state);
     expect(result.warns.length).toBeGreaterThan(0);
@@ -153,14 +153,14 @@ describe('validateState', () => {
   });
 
   it('accepts valid 45 degree rotation', () => {
-    const state = createTestState({}, {}, {}, { rotationDeg: 45 });
+    const state = createTestState({ pattern: { rotationDeg: 45 } });
 
     const result = validateState(state);
     expect(result.warns).toHaveLength(0);
   });
 
   it('accepts 90 degree rotation', () => {
-    const state = createTestState({}, {}, {}, { rotationDeg: 90 });
+    const state = createTestState({ pattern: { rotationDeg: 90 } });
 
     const result = validateState(state);
     expect(result.warns).toHaveLength(0);
@@ -168,8 +168,8 @@ describe('validateState', () => {
 
   it('warns about exclusion outside room bounds', () => {
     const state = createTestState({
-      widthCm: 100,
-      heightCm: 100,
+      roomW: 100,
+      roomH: 100,
       exclusions: [
         {
           id: '1',
@@ -190,8 +190,8 @@ describe('validateState', () => {
 
   it('accepts exclusion within room bounds', () => {
     const state = createTestState({
-      widthCm: 100,
-      heightCm: 100,
+      roomW: 100,
+      roomH: 100,
       exclusions: [
         {
           id: '1',
@@ -211,8 +211,8 @@ describe('validateState', () => {
 
   it('warns about circle exclusion outside room bounds', () => {
     const state = createTestState({
-      widthCm: 100,
-      heightCm: 100,
+      roomW: 100,
+      roomH: 100,
       exclusions: [
         {
           id: '1',
@@ -231,8 +231,8 @@ describe('validateState', () => {
 
   it('warns about triangle exclusion outside room bounds', () => {
     const state = createTestState({
-      widthCm: 100,
-      heightCm: 100,
+      roomW: 100,
+      roomH: 100,
       exclusions: [
         {
           id: '1',
@@ -250,28 +250,28 @@ describe('validateState', () => {
   });
 
   it('handles NaN values in room dimensions', () => {
-    const state = createTestState({ widthCm: NaN });
+    const state = createTestState({ roomW: NaN });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it('handles undefined room dimensions', () => {
-    const state = createTestState({ widthCm: undefined, heightCm: undefined });
+    const state = createTestState({ roomW: undefined, roomH: undefined });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it('detects string values in dimensions', () => {
-    const state = createTestState({ widthCm: 'invalid' });
+    const state = createTestState({ roomW: 'invalid' });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it('handles multiple validation errors', () => {
-    const state = createTestState({ widthCm: 0, heightCm: 0 }, { widthCm: 0, heightCm: 0 }, { widthCm: -1 });
+    const state = createTestState({ roomW: 0, roomH: 0, tile: { widthCm: 0, heightCm: 0 }, grout: { widthCm: -1 } });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(4);

@@ -10,8 +10,7 @@ describe('createExclusionsController', () => {
         rooms: [{
           id: 'room1',
           name: 'Test Room',
-          widthCm: 200,
-          heightCm: 300,
+          sections: [{ id: 's1', x: 0, y: 0, widthCm: 200, heightCm: 300 }],
           exclusions: [],
           tile: { widthCm: 60, heightCm: 60 },
           grout: { widthCm: 0.2 },

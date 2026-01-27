@@ -35,23 +35,6 @@ export function getRoomSections(room) {
     }));
   }
 
-  // Temporary fallback for legacy rooms or simple test objects while transitioning
-  const w = Number(room.widthCm);
-  const h = Number(room.heightCm);
-  if (w > 0 && h > 0) {
-    return [
-      {
-        id: "main",
-        label: "Main Area",
-        x: 0,
-        y: 0,
-        widthCm: w,
-        heightCm: h,
-        skirtingEnabled: room.skirting ? !!room.skirting.enabled : true,
-      },
-    ];
-  }
-
   return [];
 }
 
