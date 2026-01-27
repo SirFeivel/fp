@@ -1,5 +1,7 @@
 # TilePerfect (fp)
 
+![Deploy to GitHub Pages](https://github.com/SirFeivel/fp/actions/workflows/deploy.yml/badge.svg)
+
 FloorPlanner is a browser-based tile layout planning tool built with Vite.
 
 ## Live Demo
