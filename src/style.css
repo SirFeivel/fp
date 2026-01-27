@@ -209,14 +209,15 @@ body{
   justify-content:space-between;
   align-items:center;
   margin-bottom:12px;
+  min-height: 40px;
 }
 
 .panel-nav .panel-header{
-  justify-content:flex-end;
+  justify-content: space-between;
 }
 
-.panel-info .panel-header{
-  justify-content:space-between;
+.panel-header .section-title {
+  margin: 0;
 }
 
 .btn-collapse{

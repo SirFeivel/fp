@@ -47,6 +47,7 @@
     <main class="layout">
       <section class="panel panel-nav">
         <div class="panel-header">
+          <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
           <button class="btn-collapse" id="collapseNav" title="Toggle Navigation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
@@ -157,7 +158,7 @@
                 <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content hidden">
+              <div class="card-content">
                 <div class="grid2">
                   <div class="field span2">
                     <label data-i18n="tile.shape">Tile Shape</label>
@@ -209,7 +210,7 @@
                 <h3 class="section-title" data-i18n="tile.sectionLayout">Fliesen Layout</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="grid2">
                   <div class="field" id="patternTypeField">
                     <label data-i18n="tile.pattern">Muster</label>
@@ -355,7 +356,7 @@
                 <h3 class="section-title" data-i18n="exclusions.title">Ausschlussbereiche</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="btnrow">
                   <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
                   <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
@@ -381,7 +382,7 @@
                 <h3 class="section-title" data-i18n="exclusions.properties">Eigenschaften</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div id="exclProps" class="card-content grid2">
+              <div id="exclProps" class="card-content grid2 hidden">
                 <div class="meta subtle span2" data-i18n="exclusions.noneSelected">– nichts ausgewählt –</div>
               </div>
             </div>
@@ -412,7 +413,7 @@
                 <h3 class="section-title" data-i18n="project.savedProjects">Gespeicherte Projekte</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="grid2">
                   <div class="field span2">
                     <label data-i18n="project.savedProjects">Projekte</label>
@@ -431,7 +432,7 @@
                 <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="btnrow">
                   <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
                   <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
@@ -443,28 +444,12 @@
               </div>
             </div>
 
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="undo.history">History</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content">
-                <div class="meta">
-                  <div><span class="k" data-i18n="undo.lastAction">Aktion:</span> <span id="lastAction">–</span></div>
-                  <div>
-                    <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
-                    <span class="k" data-i18n="undo.redoCount">Redo:</span> <span id="redoCount">0</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <div class="section-card collapsible-card danger-zone">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="session.title">Gefahrenzone</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="btnrow">
                   <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
                   <button id="btnReset" class="btn danger" data-i18n="session.reset">Alles zurücksetzen (Reset)</button>
@@ -484,7 +469,7 @@
                 <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <div class="field">
                   <label class="toggle-switch">
                     <span class="toggle-label" data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
@@ -500,7 +485,7 @@
                 <h3 class="section-title" data-i18n="state.title">Live State</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content">
+              <div class="card-content hidden">
                 <button id="btnCopy" class="btn small" data-i18n="importExport.copy" style="margin-bottom: 8px;">Copy State</button>
                 <pre id="stateView" class="code">–</pre>
               </div>

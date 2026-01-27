@@ -252,21 +252,47 @@
 - git merge feature/fix-grand-total-invalid-pattern
 - git branch -d feature/fix-grand-total-invalid-pattern
 
-## Session: UI Cleanup (2026-01-27)
+## Session: Project Tab Refactoring (2026-01-27)
 ### Goal
-- Fix language picker layout issues.
-- Replace obsolete Autosave text with a visual state indicator.
+- Reorganize the Project tab for better usability and clarity.
+- Move "Reset" functionality to the bottom and add a confirmation dialog.
+- Enhance visual hierarchy with a "Danger Zone".
 
 ### Plan
-1. Create branch `feature/ui-cleanup-v3` ✓
-2. Fix language picker layout in `index.html` and `src/style.css` ✓
-3. Update Autosave indicator with a visual dot in `index.html`, `src/style.css`, and `src/i18n.js` ✓
-4. Verify with tests and build ✓
+1. Create feature branch `feature/project-tab-refactoring` ✓
+2. Refactor Project Tab in `index.html` (Save -> Saved Projects -> Import/Export -> History -> Danger Zone) ✓
+3. Implement `confirm()` dialog for Reset in `src/ui.js` ✓
+4. Update `src/i18n.js` with clearer labels and descriptions ✓
+5. Add danger-zone styling in `src/style.css` ✓
+6. Verify with tests and build ✓
 
 ### Status
-- Language picker label and dropdown are now properly aligned.
-- Autosave "AN/ON" text replaced with a modern visual green dot indicator.
+- Project tab is now logically structured with the most common actions at the top.
+- "Reset All" is protected by a confirmation dialog and placed in a visually distinct "Danger Zone" at the bottom.
+- Labels in German and English have been improved for better context.
 - All 355 tests pass and production build is successful.
+
+## Session: UI Refinement v4 (2026-01-27)
+### Goal
+- Fix panel header alignment and missing titles.
+- Fix Project tab label and re-arrange sections.
+- Set default open/closed states for collapsible cards.
+
+### Plan
+1. Create feature branch `feature/ui-refinement-v4` ✓
+2. Fix Project tab label and panel header alignment ✓
+3. Re-arrange Project tab sections and remove History ✓
+4. Implement default open/closed states for collapsible cards ✓
+5. Verify with tests and build ✓
+
+### Status
+- Left panel now has a "Struktur" header for consistency.
+- Panel headers standardized with 40px height and centered titles/buttons.
+- Project tab sections re-ordered: Save, Load, Import/Export, Danger Zone.
+- History section removed as requested.
+- "Project" tab label fixed in English.
+- Default open cards: Structure (Nav), Room, Tiles & Grout. Others closed by default.
+- All 355 tests pass.
 
 ## Notes
 - Topic "UI Improvements" completed and ready for submission.

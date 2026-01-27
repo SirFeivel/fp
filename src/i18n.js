@@ -20,7 +20,7 @@ const translations = {
       namePlaceholder: "z.B. Bad EG",
       nameLabel: "Name für lokales Speichern",
       save: "Lokal Speichern",
-      savedProjects: "Gespeicherte Projekte",
+      savedProjects: "Laden",
       load: "Projekt laden",
       delete: "Projekt löschen",
       saved: "Projekt gespeichert",
@@ -297,11 +297,12 @@ const translations = {
       present: "present"
     },
     project: {
+      tabTitle: "Project",
       title: "Save Project",
       namePlaceholder: "e.g. Bathroom Ground Floor",
       nameLabel: "Project Name",
       save: "Save Locally",
-      savedProjects: "Saved Projects",
+      savedProjects: "Load",
       load: "Load Project",
       delete: "Delete Project",
       saved: "Project saved",
