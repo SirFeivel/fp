@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHTML, safeParseJSON } from './core.js';
+import { escapeHTML, safeParseJSON, defaultState, getCurrentRoom } from './core.js';
 
 describe('escapeHTML', () => {
   it('should escape ampersands', () => {
@@ -85,5 +85,35 @@ describe('safeParseJSON', () => {
     const result = safeParseJSON('');
     expect(result.ok).toBe(false);
     expect(result.error).toBeInstanceOf(SyntaxError);
+  });
+});
+
+describe('defaultState', () => {
+  it('should create state with valid structure', () => {
+    const state = defaultState();
+    expect(state.meta.version).toBe(2);
+    expect(state.floors).toHaveLength(1);
+    expect(state.floors[0].rooms).toHaveLength(1);
+  });
+
+  it('should include grout with colorHex', () => {
+    const state = defaultState();
+    const room = getCurrentRoom(state);
+    expect(room.grout).toBeDefined();
+    expect(room.grout.widthCm).toBe(0.2);
+    expect(room.grout.colorHex).toBe('#ffffff');
+  });
+
+  it('should include tile with shape', () => {
+    const state = defaultState();
+    const room = getCurrentRoom(state);
+    expect(room.tile).toBeDefined();
+    expect(room.tile.shape).toBe('rect');
+  });
+
+  it('should have selected floor and room matching created ids', () => {
+    const state = defaultState();
+    expect(state.selectedFloorId).toBe(state.floors[0].id);
+    expect(state.selectedRoomId).toBe(state.floors[0].rooms[0].id);
   });
 });

@@ -38,6 +38,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               if (!room.tile) room.tile = deepClone(globalTile);
               if (!room.tile.shape) room.tile.shape = "rect";
               if (!room.grout) room.grout = deepClone(globalGrout);
+              if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
               if (!room.pattern) room.pattern = deepClone(globalPattern);
             }
           }
@@ -74,7 +75,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               heightCm: oldState.room?.heightCm || 400,
               exclusions: oldState.exclusions || [],
               tile: oldState.tile || { widthCm: 60, heightCm: 60, shape: "rect" },
-              grout: oldState.grout || { widthCm: 0.2 },
+              grout: oldState.grout || { widthCm: 0.2, colorHex: "#ffffff" },
               pattern: oldState.pattern || {
                 type: "grid",
                 bondFraction: 0.5,

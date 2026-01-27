@@ -697,3 +697,43 @@ hr{
   .metrics-panel{ margin-top:12px; }
   #planSvg{ height:420px; }
 }
+
+/* Color picker with presets */
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.color-swatch.selected {
+  border: 2px solid var(--accent);
+}
+
+#groutColor {
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  cursor: pointer;
+}

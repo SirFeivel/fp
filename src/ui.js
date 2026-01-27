@@ -84,6 +84,7 @@ export function bindUI({
     }
 
     currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value);
+    currentRoom.grout.colorHex = document.getElementById("groutColor")?.value || "#ffffff";
 
     currentRoom.pattern.type = document.getElementById("patternType")?.value;
     currentRoom.pattern.bondFraction = Number(
@@ -240,6 +241,7 @@ export function bindUI({
     "tileW",
     "tileH",
     "groutW",
+    "groutColor",
     "offsetX",
     "offsetY",
     "originX",
@@ -269,6 +271,25 @@ export function bindUI({
         commitFn: commitFromTilePatternInputs
       });
     }
+  });
+
+  // Grout color preset swatches
+  document.getElementById("groutColorPresets")?.addEventListener("click", (e) => {
+    const swatch = e.target.closest(".color-swatch");
+    if (!swatch) return;
+    const color = swatch.dataset.color;
+    if (!color) return;
+
+    // Update color picker value
+    const colorInput = document.getElementById("groutColor");
+    if (colorInput) colorInput.value = color;
+
+    // Update selected state
+    document.querySelectorAll("#groutColorPresets .color-swatch").forEach(s => s.classList.remove("selected"));
+    swatch.classList.add("selected");
+
+    // Commit the change
+    commitFromTilePatternInputs(t("tile.changed"));
   });
 
   ["tileShape", "patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {

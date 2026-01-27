@@ -74,7 +74,7 @@ export function createStructureController({
         heightCm: 400,
         exclusions: [],
         tile: { widthCm: 60, heightCm: 60, shape: "rect" },
-        grout: { widthCm: 0.2 },
+        grout: { widthCm: 0.2, colorHex: "#ffffff" },
         pattern: {
           type: "grid",
           bondFraction: 0.5,
@@ -129,7 +129,7 @@ export function createStructureController({
       heightCm: 400,
       exclusions: [],
       tile: { widthCm: 60, heightCm: 60, shape: "rect" },
-      grout: { widthCm: 0.2 },
+      grout: { widthCm: 0.2, colorHex: "#ffffff" },
       pattern: {
         type: "grid",
         bondFraction: 0.5,

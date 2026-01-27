@@ -12,6 +12,18 @@ import {
 } from "./geometry.js";
 import { getRoomSections } from "./composite.js";
 
+/**
+ * Convert hex color to RGB components
+ */
+export function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : { r: 255, g: 255, b: 255 };
+}
+
 export function renderWarnings(state, validateState) {
   const { errors, warns } = validateState(state);
   const wrap = document.getElementById("warnings");
@@ -216,6 +228,17 @@ export function renderTilePatternForm(state) {
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
   document.getElementById("tileH").value = currentRoom?.tile?.heightCm ?? "";
   document.getElementById("groutW").value = currentRoom?.grout?.widthCm ?? "";
+  const groutColorValue = currentRoom?.grout?.colorHex ?? "#ffffff";
+  document.getElementById("groutColor").value = groutColorValue;
+
+  // Update preset swatch selection
+  document.querySelectorAll("#groutColorPresets .color-swatch").forEach(swatch => {
+    if (swatch.dataset.color?.toLowerCase() === groutColorValue.toLowerCase()) {
+      swatch.classList.add("selected");
+    } else {
+      swatch.classList.remove("selected");
+    }
+  });
 
   document.getElementById("patternType").value = currentRoom?.pattern?.type ?? "grid";
   document.getElementById("bondFraction").value = String(
@@ -486,11 +509,19 @@ export function renderPlanSvg({
     const g = svgEl("g", { opacity: 1 });
     svg.appendChild(g);
 
+    // Get grout color from state - use default white if grout width is 0
+    const groutWidth = currentRoom?.grout?.widthCm || 0;
+    const groutHex = groutWidth > 0 ? (currentRoom?.grout?.colorHex || "#ffffff") : "#ffffff";
+    const groutRgb = hexToRgb(groutHex);
+
     for (const tile of t.tiles) {
       g.appendChild(svgEl("path", {
         d: tile.d,
+        // Tile fill stays white - only grout (stroke) gets the color
         fill: tile.isFull ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-        stroke: tile.isFull ? "rgba(255,255,255,0.30)" : "rgba(255,255,255,0.80)",
+        stroke: tile.isFull
+          ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
+          : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`,
         "stroke-width": tile.isFull ? 0.5 : 1.2
       }));
     }

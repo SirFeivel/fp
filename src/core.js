@@ -75,8 +75,8 @@ export function defaultState() {
             widthCm: 600,
             heightCm: 400,
             exclusions: [],
-            tile: { widthCm: 60, heightCm: 60 },
-            grout: { widthCm: 0.2 },
+            tile: { widthCm: 60, heightCm: 60, shape: "rect" },
+            grout: { widthCm: 0.2, colorHex: "#ffffff" },
             pattern: {
               type: "grid",
               bondFraction: 0.5,
