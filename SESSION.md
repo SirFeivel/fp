@@ -424,12 +424,31 @@
 - Label updated to "Removal Mode" (EN) / "Entfernen-Modus" (DE).
 - All 361 tests pass.
 
+## Session: Fix Herringbone Removal Animation (2026-01-27)
+### Goal
+- Fix missing removal animation (CSS transitions) for herringbone patterns.
+- Ensure UI/UX consistency for Removal Mode across all pattern types.
+
+### Plan
+1. Create feature branch `fix/herringbone-removal-animation` ✓
+2. Audit pattern generators in `src/geometry.js` for `excluded` flag support ✓
+3. Fix `herringbone`, `doubleHerringbone`, `basketweave`, and `vsa` generators ✓
+4. Verify `renderPlanSvg` correctly applies styling based on `excluded` flag ✓
+5. Add automated tests for removal mode consistency across patterns ✓
+6. Verify with full test suite and build ✓
+
+### Status
+- All pattern generators now properly return `excluded: true` and include `data-tileid` in Removal Mode.
+- Fixed a bug where herringbone and other advanced patterns would not show removal styling or transitions.
+- Added `src/removal_patterns.test.js` to prevent future regressions.
+- All 369 tests pass and build is successful.
+
 ## Commands Run
 - npm run test
 - npm run build
-- git checkout -b feature/removal-mode-ui
-- git commit -am "Improve Removal Mode UI/UX and consistency"
+- git checkout -b fix/herringbone-removal-animation
+- git commit -am "Fix herringbone removal animation and pattern consistency"
 - git checkout main
-- git merge feature/removal-mode-ui
-- git branch -d feature/removal-mode-ui
+- git merge fix/herringbone-removal-animation
+- git branch -d fix/herringbone-removal-animation
 - git push origin main

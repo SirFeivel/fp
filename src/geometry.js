@@ -966,7 +966,7 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
 
       const gotArea = multiPolyArea(clipped);
       const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-      tiles.push({ d, isFull, id: tileId });
+      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -1047,7 +1047,9 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
           { x: hx, y: hy + W + grout, w: L, h: W, id: `dhb-r${row}c${col}-h1` },
         ];
         for (const t of placements) {
-          if (currentRoom.excludedTiles?.includes(t.id)) continue;
+          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
+          if (!includeExcluded && isExcluded) continue;
+
           const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
           let clipped;
           try {
@@ -1060,7 +1062,7 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
           if (!d) continue;
           const gotArea = multiPolyArea(clipped);
           const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-          tiles.push({ d, isFull, id: t.id });
+          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
         }
       } else {
         const vx = baseX + (L - W2);
@@ -1070,7 +1072,9 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
           { x: vx + W + grout, y: vy, w: W, h: L, id: `dhb-r${row}c${col}-v1` },
         ];
         for (const t of placements) {
-          if (currentRoom.excludedTiles?.includes(t.id)) continue;
+          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
+          if (!includeExcluded && isExcluded) continue;
+
           const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
           let clipped;
           try {
@@ -1083,7 +1087,7 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
           if (!d) continue;
           const gotArea = multiPolyArea(clipped);
           const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-          tiles.push({ d, isFull, id: t.id });
+          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
         }
       }
     }
@@ -1092,7 +1096,7 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
   return { tiles, error: null };
 }
 
-function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout) {
+function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false) {
   const currentRoom = getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
@@ -1152,7 +1156,8 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
     for (let row = startRow; row <= endRow; row++) {
       const baseY = anchorY + row * stepY + shiftY;
       const tileId = `vsa-r${row}c${col}`;
-      if (currentRoom.excludedTiles?.includes(tileId)) continue;
+      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      if (!includeExcluded && isExcluded) continue;
 
       const tileP = tileRectPolygon(baseX, baseY, W, L, origin.x, origin.y, rotRad);
 
@@ -1169,14 +1174,14 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
 
       const gotArea = multiPolyArea(clipped);
       const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-      tiles.push({ d, isFull, id: tileId });
+      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
     }
   }
 
   return { tiles, error: null };
 }
 
-function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
+function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false) {
   const currentRoom = getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
@@ -1248,7 +1253,9 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
         ];
 
         for (const t of placements) {
-          if (currentRoom.excludedTiles?.includes(t.id)) continue;
+          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
+          if (!includeExcluded && isExcluded) continue;
+
           const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
 
           let clipped;
@@ -1265,7 +1272,7 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout) {
           const gotArea = multiPolyArea(clipped);
           const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
 
-          tiles.push({ d, isFull, id: t.id });
+          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
         }
       }
     }
