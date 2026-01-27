@@ -405,3 +405,7 @@
 - git merge feature/removal-mode
 - git branch -d feature/removal-mode
 - git branch -d bugfix/skirting-exclusion
+- git branch -d feature/integrate-logo-favicon
+- git branch -d feature/remove-elements
+- git branch -d feature/deployment-setup
+- git push origin main
