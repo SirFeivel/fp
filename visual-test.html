@@ -67,38 +67,40 @@
   </div>
 
   <script type="module">
-    import { tilesForPreviewGrid, tilesForPreviewRunningBond, tilesForPreviewHerringbone, tilesForPreviewBasketweave } from './src/geometry.js';
+    import { tilesForPreview } from './src/geometry.js';
 
-    const room = {
-      walls: [
-        { x1: 0, y1: 0, x2: 400, y2: 0 },
-        { x1: 400, y1: 0, x2: 400, y2: 400 },
-        { x1: 400, y1: 400, x2: 0, y2: 400 },
-        { x1: 0, y1: 400, x2: 0, y2: 0 }
-      ],
-      exclusions: [],
-      pattern: {
-        rotationDeg: 0,
-        offsetXcm: 0,
-        offsetYcm: 0,
-        origin: { preset: 'tl' }
-      }
-    };
-
-    const state = {
-      rooms: [room],
-      currentRoomIdx: 0
-    };
+    function createMockState(patternType) {
+      const roomId = 'room-1';
+      const floorId = 'floor-1';
+      return {
+        floors: [{
+          id: floorId,
+          rooms: [{
+            id: roomId,
+            widthCm: 400,
+            heightCm: 400,
+            tile: { widthCm: 60, heightCm: 20, shape: 'rect' },
+            grout: { widthCm: 2 },
+            pattern: {
+              type: patternType,
+              rotationDeg: 0,
+              offsetXcm: 0,
+              offsetYcm: 0,
+              origin: { preset: 'tl' },
+              bondFraction: 0.5
+            }
+          }]
+        }],
+        selectedFloorId: floorId,
+        selectedRoomId: roomId
+      };
+    }
 
     const availableMP = [[
       [[0, 0], [400, 0], [400, 400], [0, 400], [0, 0]]
     ]];
 
-    const tw = 60;
-    const th = 20;
-    const grout = 2;
-
-    function renderPattern(svgId, statsId, tiles, patternName) {
+    function renderPattern(svgId, statsId, tiles) {
       const svg = document.getElementById(svgId);
       const stats = document.getElementById(statsId);
 
@@ -119,33 +121,22 @@
       stats.innerHTML = `Total: ${tiles.length} tiles<br>Full: ${fullCount}<br>Cut: ${cutCount}`;
     }
 
-    const gridResult = tilesForPreviewGrid(state, availableMP, tw, th, grout);
-    if (gridResult.error) {
-      console.error('Grid error:', gridResult.error);
-    } else {
-      renderPattern('grid', 'grid-stats', gridResult.tiles, 'Grid');
-    }
+    const patterns = [
+      { id: 'grid', type: 'grid' },
+      { id: 'runningbond', type: 'runningBond' },
+      { id: 'herringbone', type: 'herringbone' },
+      { id: 'basketweave', type: 'basketweave' }
+    ];
 
-    const runningbondResult = tilesForPreviewRunningBond(state, availableMP, tw, th, grout);
-    if (runningbondResult.error) {
-      console.error('Running Bond error:', runningbondResult.error);
-    } else {
-      renderPattern('runningbond', 'runningbond-stats', runningbondResult.tiles, 'Running Bond');
-    }
-
-    const herringboneResult = tilesForPreviewHerringbone(state, availableMP, tw, th, grout);
-    if (herringboneResult.error) {
-      console.error('Herringbone error:', herringboneResult.error);
-    } else {
-      renderPattern('herringbone', 'herringbone-stats', herringboneResult.tiles, 'Herringbone');
-    }
-
-    const basketweaveResult = tilesForPreviewBasketweave(state, availableMP, tw, th, grout);
-    if (basketweaveResult.error) {
-      console.error('Basketweave error:', basketweaveResult.error);
-    } else {
-      renderPattern('basketweave', 'basketweave-stats', basketweaveResult.tiles, 'Basketweave');
-    }
+    patterns.forEach(p => {
+      const state = createMockState(p.type);
+      const result = tilesForPreview(state, availableMP);
+      if (result.error) {
+        console.error(`${p.type} error:`, result.error);
+      } else {
+        renderPattern(p.id, `${p.id}-stats`, result.tiles);
+      }
+    });
   </script>
 </body>
 </html>
