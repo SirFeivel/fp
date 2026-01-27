@@ -3,7 +3,7 @@ const translations = {
     app: {
       title: "TilePerfect 0.1",
       subtitle: "Professional Tile Layout Planner",
-      autosave: "Autosave: ON"
+      autosave: "Autosave"
     },
     session: {
       title: "Session",
@@ -283,7 +283,7 @@ const translations = {
     app: {
       title: "TilePerfect 0.1",
       subtitle: "Professional Tile Layout Planner",
-      autosave: "Autosave: ON"
+      autosave: "Autosave"
     },
     session: {
       title: "Session",

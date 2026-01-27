@@ -75,6 +75,53 @@ body{
   background:rgba(231,238,252,.03);
 }
 
+.lang-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lang-picker label {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lang-picker select {
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,.18);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  outline: none;
+}
+
+.lang-picker select:focus {
+  border-color: var(--accent);
+}
+
+.autosave-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(231,238,252,.03);
+  border: 1px solid var(--line);
+}
+
+.autosave-indicator .dot {
+  width: 8px;
+  height: 8px;
+  background-color: #4ade80; /* bright green */
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
 /* Undo Controls in Header */
 .undo-controls{
   display:flex;

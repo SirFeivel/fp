@@ -252,7 +252,24 @@
 - git merge feature/fix-grand-total-invalid-pattern
 - git branch -d feature/fix-grand-total-invalid-pattern
 
+## Session: UI Cleanup (2026-01-27)
+### Goal
+- Fix language picker layout issues.
+- Replace obsolete Autosave text with a visual state indicator.
+
+### Plan
+1. Create branch `feature/ui-cleanup-v3` ✓
+2. Fix language picker layout in `index.html` and `src/style.css` ✓
+3. Update Autosave indicator with a visual dot in `index.html`, `src/style.css`, and `src/i18n.js` ✓
+4. Verify with tests and build ✓
+
+### Status
+- Language picker label and dropdown are now properly aligned.
+- Autosave "AN/ON" text replaced with a modern visual green dot indicator.
+- All 355 tests pass and production build is successful.
+
 ## Notes
 - Topic "UI Improvements" completed and ready for submission.
 - All guidelines followed.
 - Grand total visibility issue resolved.
+- Language picker and Autosave indicator refined.
