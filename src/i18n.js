@@ -1,9 +1,9 @@
 const translations = {
   de: {
     app: {
-      title: "FloorPlanner – Phase 3 (Tiles + Muster)",
-      subtitle: "SVG-Vorschau • Drag&Drop Ausschlüsse • Tiles: Grid + Running Bond",
-      autosave: "Autosave: AN"
+      title: "TilePerfect 0.1",
+      subtitle: "Professional Tile Layout Planner",
+      autosave: "Autosave: ON"
     },
     session: {
       title: "Session",
@@ -92,6 +92,7 @@ const translations = {
       sectionPattern: "Muster",
       sectionPosition: "Position & Offset",
       sectionPricing: "Preis & Verschnitt",
+      sectionLayout: "Fliesen Layout",
       shape: "Fliesenform",
       shapeRect: "Rechteckig",
       shapeSquare: "Quadratisch",
@@ -279,8 +280,8 @@ const translations = {
   },
   en: {
     app: {
-      title: "FloorPlanner – Phase 3 (Tiles + Pattern)",
-      subtitle: "SVG Preview • Drag&Drop Exclusions • Tiles: Grid + Running Bond",
+      title: "TilePerfect 0.1",
+      subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave: ON"
     },
     session: {
@@ -370,6 +371,7 @@ const translations = {
       sectionPattern: "Pattern",
       sectionPosition: "Position & Offset",
       sectionPricing: "Pricing & Waste",
+      sectionLayout: "Tile Layout",
       shape: "Tile Shape",
       shapeRect: "Rectangular",
       shapeSquare: "Square",

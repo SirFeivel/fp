@@ -57,7 +57,8 @@ body{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  padding:12px 16px;
+  padding:12px 20px;
+  height: 64px;
   border-bottom:1px solid var(--line);
   background:linear-gradient(180deg, rgba(15,26,46,.9), rgba(11,18,32,.9));
 }
@@ -83,6 +84,7 @@ body{
   border-radius:var(--r-sm);
   background:rgba(0,0,0,.18);
   border:1px solid var(--line);
+  height: 40px;
 }
 
 .btn-icon{
@@ -287,12 +289,16 @@ hr{
 .field input,
 .field select{
   width:100%;
-  padding:9px 10px;
+  padding:10px 12px;
   border-radius:var(--r-sm);
   border:1px solid var(--line);
   background:rgba(0,0,0,.18);
   color:var(--text);
   outline:none;
+  font-family:inherit;
+  font-size:var(--fs-md);
+  transition:all 0.2s ease;
+  min-height:40px;
 }
 
 .field input::placeholder{ color:rgba(231,238,252,.35); }
@@ -328,18 +334,26 @@ hr{
 /* ---------------- Buttons ---------------- */
 .btnrow{
   display:flex;
-  gap:8px;
+  gap:10px;
   flex-wrap:wrap;
   align-items:center;
+  margin-top: 4px;
 }
 
 .btn{
-  padding:9px 10px;
+  padding:9px 12px;
   border-radius:var(--r-sm);
   border:1px solid var(--line);
   background:var(--btn);
   color:var(--text);
   cursor:pointer;
+  font-family:inherit;
+  font-size:var(--fs-md);
+  transition:all 0.2s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
 }
 
 .btn:hover{ background:var(--btn2); border-color:var(--line2); }
@@ -355,8 +369,9 @@ hr{
 }
 
 .btn.small{
-  padding:7px 9px;
+  padding:6px 10px;
   font-size:var(--fs-sm);
+  min-height:28px;
 }
 
 .filebtn{
@@ -437,11 +452,14 @@ hr{
 
 /* ---------------- Toggle Switches ---------------- */
 .toggle-switch {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  width: 100%;
   cursor: pointer;
   user-select: none;
+  min-height: 32px;
+  padding: 4px 0;
 }
 
 .toggle-switch input {
@@ -450,12 +468,13 @@ hr{
 
 .toggle-slider {
   position: relative;
-  width: 40px;
+  width: 36px;
   height: 20px;
   background-color: var(--btn);
   border: 1px solid var(--line2);
   border-radius: 20px;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 .toggle-slider:before {
@@ -476,7 +495,7 @@ hr{
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-  transform: translateX(20px);
+  transform: translateX(16px);
   background-color: var(--accent);
 }
 
@@ -594,44 +613,67 @@ hr{
 
 /* ---------------- Metrics ---------------- */
 .metrics-panel{
-  padding:12px;
+  padding:16px;
   border:1px solid var(--line);
   border-radius:var(--r-md);
-  background:rgba(0,0,0,.08);
+  background:var(--panel2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metrics-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
 }
 
 .metric-grid{
   display:grid;
-  gap:8px;
+  gap:4px;
 }
 
 .metric-item{
   display:flex;
   justify-content:space-between;
   align-items:baseline;
-  padding:8px 0;
-  border-bottom:1px solid rgba(231,238,252,.05);
-}
-
-.metric-item:last-child{
-  border-bottom:none;
-  padding-bottom:0;
+  padding:4px 0;
 }
 
 .metric-label{
-  font-size:var(--fs-md);
-  color:rgba(231,238,252,.72);
-  font-weight:500;
+  font-size:var(--fs-sm);
+  color:var(--muted);
 }
 
 .metric-value{
   font-size:var(--fs-md);
-  color:rgba(231,238,252,.95);
-  font-weight:500;
+  color:var(--text);
+  font-weight:600;
   text-align:right;
   flex:1;
   margin-left:12px;
   font-variant-numeric:tabular-nums;
+}
+
+.metric-total {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+}
+
+.metric-total .metric-label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.metric-total .metric-value {
+  color: var(--accent);
+  font-size: var(--fs-lg);
 }
 
 /* ---------------- Code block ---------------- */
@@ -763,9 +805,7 @@ hr{
   overflow: hidden;
 }
 
-.section-card.collapsible-card .grid2,
-.section-card.collapsible-card .btnrow,
-.section-card.collapsible-card .section-content-padding {
+.section-card.collapsible-card .card-content {
   padding: 0 16px 16px 16px;
 }
 
@@ -776,6 +816,7 @@ hr{
   cursor: pointer;
   user-select: none;
   padding: 16px;
+  min-height: 56px;
 }
 
 .section-header-collapsible:hover {

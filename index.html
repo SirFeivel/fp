@@ -77,11 +77,11 @@
           <!-- Room Tab -->
           <div class="tab-panel" data-tab-panel="room">
             <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="const c = document.getElementById('structureContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="structure.title">Struktur</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div id="structureContent" class="hidden">
+              <div id="structureContent" class="card-content hidden">
                 <div class="grid2">
                   <div class="field span2">
                     <label data-i18n="structure.floor">Etage</label>
@@ -110,11 +110,11 @@
             </div>
 
             <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="const c = document.getElementById('roomDetailsContent'); c.classList.toggle('hidden'); this.querySelector('.collapse-toggle').style.transform = c.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="room.title">Raum</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div id="roomDetailsContent">
+              <div id="roomDetailsContent" class="card-content">
                 <div class="grid2">
                   <div class="field span2">
                     <label data-i18n="room.name">Raumname</label>
@@ -142,6 +142,22 @@
                 <div id="sectionProps" class="grid2">
                   <div class="meta subtle span2" data-i18n="room.noSectionSelected">– no section selected –</div>
                 </div>
+                <div class="grid2" style="margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px;">
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="room.showGrid">Raster anzeigen</span>
+                      <input id="showGrid" type="checkbox" checked />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="skirting.showSkirting">Sockelleisten anzeigen</span>
+                      <input id="showSkirting" type="checkbox" checked />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -149,182 +165,197 @@
 
           <!-- Tiles & Pattern Tab -->
           <div class="tab-panel" data-tab-panel="tiles">
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="tile.shape">Tile Shape</label>
-                  <select id="tileShape">
-                    <option value="rect" data-i18n="tile.shapeRect">Rectangular</option>
-                    <option value="square" data-i18n="tile.shapeSquare">Square</option>
-                    <option value="hex" data-i18n="tile.shapeHex">Hexagonal</option>
-                    <option value="rhombus" data-i18n="tile.shapeRhombus">Rhombus</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.width">Fliese Breite (cm)</label>
-                  <input id="tileW" type="number" min="0" step="0.1" />
-                </div>
-                <div class="field" id="tileHeightField">
-                  <label data-i18n="tile.height">Fliese Länge (cm)</label>
-                  <input id="tileH" type="number" min="0" step="0.1" />
-                </div>
-                <div class="meta subtle span2" id="hexHint" style="display: none; margin-top: -8px;">
-                  <span data-i18n="tile.hexHint">For hexagonal tiles, width = flat-to-flat distance. Height is auto-calculated.</span>
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.grout">Fuge (cm)</label>
-                  <input id="groutW" type="number" min="0" step="0.1" />
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.groutColor">Fugenfarbe</label>
-                  <div class="color-picker-row">
-                    <div class="color-presets" id="groutColorPresets">
-                      <button type="button" class="color-swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
-                      <button type="button" class="color-swatch" data-color="#cccccc" style="background:#cccccc" title="Light Grey"></button>
-                      <button type="button" class="color-swatch" data-color="#808080" style="background:#808080" title="Grey"></button>
-                      <button type="button" class="color-swatch" data-color="#404040" style="background:#404040" title="Dark Grey"></button>
-                      <button type="button" class="color-swatch" data-color="#000000" style="background:#000000" title="Black"></button>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content hidden">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="tile.shape">Tile Shape</label>
+                    <select id="tileShape">
+                      <option value="rect" data-i18n="tile.shapeRect">Rectangular</option>
+                      <option value="square" data-i18n="tile.shapeSquare">Square</option>
+                      <option value="hex" data-i18n="tile.shapeHex">Hexagonal</option>
+                      <option value="rhombus" data-i18n="tile.shapeRhombus">Rhombus</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.width">Fliese Breite (cm)</label>
+                    <input id="tileW" type="number" min="0" step="0.1" />
+                  </div>
+                  <div class="field" id="tileHeightField">
+                    <label data-i18n="tile.height">Fliese Länge (cm)</label>
+                    <input id="tileH" type="number" min="0" step="0.1" />
+                  </div>
+                  <div class="meta subtle span2" id="hexHint" style="display: none; margin-top: -8px;">
+                    <span data-i18n="tile.hexHint">For hexagonal tiles, width = flat-to-flat distance. Height is auto-calculated.</span>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.grout">Fuge (cm)</label>
+                    <input id="groutW" type="number" min="0" step="0.1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.groutColor">Fugenfarbe</label>
+                    <div class="color-picker-row">
+                      <div class="color-presets" id="groutColorPresets">
+                        <button type="button" class="color-swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
+                        <button type="button" class="color-swatch" data-color="#cccccc" style="background:#cccccc" title="Light Grey"></button>
+                        <button type="button" class="color-swatch" data-color="#808080" style="background:#808080" title="Grey"></button>
+                        <button type="button" class="color-swatch" data-color="#404040" style="background:#404040" title="Dark Grey"></button>
+                        <button type="button" class="color-swatch" data-color="#000000" style="background:#000000" title="Black"></button>
+                      </div>
+                      <input id="groutColor" type="color" value="#ffffff" />
                     </div>
-                    <input id="groutColor" type="color" value="#ffffff" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="waste.kerfWidth">Schnittbreite (cm)</label>
+                    <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
                   </div>
                 </div>
-                <div class="field">
-                  <label data-i18n="waste.kerfWidth">Schnittbreite (cm)</label>
-                  <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
+              </div>
+            </div>
+
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="tile.sectionLayout">Fliesen Layout</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <div class="grid2">
+                  <div class="field" id="patternTypeField">
+                    <label data-i18n="tile.pattern">Muster</label>
+                    <select id="patternType">
+                      <option value="grid" data-i18n="tile.patternGrid">Grid</option>
+                      <option value="runningBond" data-i18n="tile.patternRunningBond">Running Bond</option>
+                      <option value="herringbone" data-i18n="tile.patternHerringbone">Herringbone</option>
+                      <option value="doubleHerringbone" data-i18n="tile.patternDoubleHerringbone">Double Herringbone</option>
+                      <option value="basketweave" data-i18n="tile.patternBasketweave">Basketweave</option>
+                      <option value="verticalStackAlternating" data-i18n="tile.patternVerticalStackAlternating">Vertical Stack Alternating</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.bondFraction">Running Bond Anteil</label>
+                    <select id="bondFraction">
+                      <option value="0.5">1/2</option>
+                      <option value="0.3333333333">1/3</option>
+                      <option value="0.25">1/4</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.rotation">Rotation (°)</label>
+                    <select id="rotationDeg">
+                      <option value="0">0</option>
+                      <option value="45">45</option>
+                      <option value="90">90</option>
+                      <option value="135">135</option>
+                      <option value="180">180</option>
+                      <option value="225">225</option>
+                      <option value="270">270</option>
+                      <option value="315">315</option>
+                    </select>
+                  </div>
+
+                  <div class="field span2" style="margin-top: 8px; border-top: 1px solid var(--line); padding-top: 12px;">
+                    <label data-i18n="origin.preset">Startpunkt Preset</label>
+                    <select id="originPreset">
+                      <option value="tl" data-i18n="origin.presetTL">oben links</option>
+                      <option value="tr" data-i18n="origin.presetTR">oben rechts</option>
+                      <option value="bl" data-i18n="origin.presetBL">unten links</option>
+                      <option value="br" data-i18n="origin.presetBR">unten rechts</option>
+                      <option value="center" data-i18n="origin.presetCenter">Mitte</option>
+                      <option value="free" data-i18n="origin.presetFree">frei</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="origin.x">Startpunkt X (cm)</label>
+                    <input id="originX" type="number" step="1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="origin.y">Startpunkt Y (cm)</label>
+                    <input id="originY" type="number" step="1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.offsetX">Offset X (cm)</label>
+                    <input id="offsetX" type="number" step="1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.offsetY">Offset Y (cm)</label>
+                    <input id="offsetY" type="number" step="1" />
+                  </div>
+                  <div class="btnrow span2">
+                    <button id="btnOffLeft" class="btn small">← 1cm</button>
+                    <button id="btnOffRight" class="btn small">→ 1cm</button>
+                    <button id="btnOffUp" class="btn small">↑ 1cm</button>
+                    <button id="btnOffDown" class="btn small">↓ 1cm</button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="tile.sectionPattern">Muster</h3>
-              <div class="grid2">
-                <div class="field" id="patternTypeField">
-                  <label data-i18n="tile.pattern">Muster</label>
-                  <select id="patternType">
-                    <option value="grid" data-i18n="tile.patternGrid">Grid</option>
-                    <option value="runningBond" data-i18n="tile.patternRunningBond">Running Bond</option>
-                    <option value="herringbone" data-i18n="tile.patternHerringbone">Herringbone</option>
-                    <option value="doubleHerringbone" data-i18n="tile.patternDoubleHerringbone">Double Herringbone</option>
-                    <option value="basketweave" data-i18n="tile.patternBasketweave">Basketweave</option>
-                    <option value="verticalStackAlternating" data-i18n="tile.patternVerticalStackAlternating">Vertical Stack Alternating</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.bondFraction">Running Bond Anteil</label>
-                  <select id="bondFraction">
-                    <option value="0.5">1/2</option>
-                    <option value="0.3333333333">1/3</option>
-                    <option value="0.25">1/4</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.rotation">Rotation (°)</label>
-                  <select id="rotationDeg">
-                    <option value="0">0</option>
-                    <option value="45">45</option>
-                    <option value="90">90</option>
-                    <option value="135">135</option>
-                    <option value="180">180</option>
-                    <option value="225">225</option>
-                    <option value="270">270</option>
-                    <option value="315">315</option>
-                  </select>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="tile.sectionPricing">Preis & Verschnitt</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content hidden">
+                <div class="grid2">
+                  <div class="field">
+                    <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
+                    <input id="pricePerM2" type="number" step="0.01" min="0" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="pricing.packSize">Packungsgröße (m²)</label>
+                    <input id="packM2" type="number" step="0.01" min="0" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
+                    <input id="reserveTiles" type="number" step="1" min="0" />
+                  </div>
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
+                      <input id="wasteAllowRotate" type="checkbox" checked />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
+                      <input id="wasteOptimizeCuts" type="checkbox" />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="tile.sectionPosition">Position & Offset</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="origin.preset">Startpunkt Preset</label>
-                  <select id="originPreset">
-                    <option value="tl" data-i18n="origin.presetTL">oben links</option>
-                    <option value="tr" data-i18n="origin.presetTR">oben rechts</option>
-                    <option value="bl" data-i18n="origin.presetBL">unten links</option>
-                    <option value="br" data-i18n="origin.presetBR">unten rechts</option>
-                    <option value="center" data-i18n="origin.presetCenter">Mitte</option>
-                    <option value="free" data-i18n="origin.presetFree">frei</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label data-i18n="origin.x">Startpunkt X (cm)</label>
-                  <input id="originX" type="number" step="1" />
-                </div>
-                <div class="field">
-                  <label data-i18n="origin.y">Startpunkt Y (cm)</label>
-                  <input id="originY" type="number" step="1" />
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.offsetX">Offset X (cm)</label>
-                  <input id="offsetX" type="number" step="1" />
-                </div>
-                <div class="field">
-                  <label data-i18n="tile.offsetY">Offset Y (cm)</label>
-                  <input id="offsetY" type="number" step="1" />
-                </div>
-                <div class="btnrow span2">
-                  <button id="btnOffLeft" class="btn small">← 1cm</button>
-                  <button id="btnOffRight" class="btn small">→ 1cm</button>
-                  <button id="btnOffUp" class="btn small">↑ 1cm</button>
-                  <button id="btnOffDown" class="btn small">↓ 1cm</button>
-                </div>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="skirting.title">Sockelleisten</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-            </div>
-
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="tile.sectionPricing">Preis & Verschnitt</h3>
-              <div class="grid2">
-                <div class="field">
-                  <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
-                  <input id="pricePerM2" type="number" step="0.01" min="0" />
-                </div>
-                <div class="field">
-                  <label data-i18n="pricing.packSize">Packungsgröße (m²)</label>
-                  <input id="packM2" type="number" step="0.01" min="0" />
-                </div>
-                <div class="field">
-                  <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
-                  <input id="reserveTiles" type="number" step="1" min="0" />
-                </div>
-                <div class="field span2">
-                  <label class="toggle-switch">
-                    <span class="toggle-label" data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
-                    <input id="wasteAllowRotate" type="checkbox" checked />
-                    <div class="toggle-slider"></div>
-                  </label>
-                </div>
-                <div class="field span2">
-                  <label class="toggle-switch">
-                    <span class="toggle-label" data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
-                    <input id="wasteOptimizeCuts" type="checkbox" />
-                    <div class="toggle-slider"></div>
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="skirting.title">Sockelleisten</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="skirting.type">Art der Sockelleiste</label>
-                  <select id="skirtingType">
-                    <option value="cutout" data-i18n="skirting.typeCutout">Selbst geschnitten (aus Fliesen)</option>
-                    <option value="bought" data-i18n="skirting.typeBought">Fertig gekauft (Stück)</option>
-                  </select>
-                </div>
-                <div class="field span2">
-                  <label data-i18n="skirting.height">Höhe Sockelleiste (cm)</label>
-                  <input id="skirtingHeight" type="number" step="0.1" />
-                </div>
-                <div class="field" id="boughtWidthWrap">
-                  <label data-i18n="skirting.boughtWidth">Länge pro Stück (cm)</label>
-                  <input id="skirtingBoughtWidth" type="number" step="0.1" />
-                </div>
-                <div class="field" id="boughtPriceWrap">
-                  <label data-i18n="skirting.pricePerPiece">Preis pro Stück (€)</label>
-                  <input id="skirtingPricePerPiece" type="number" step="0.01" />
+              <div class="card-content hidden">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="skirting.type">Art der Sockelleiste</label>
+                    <select id="skirtingType">
+                      <option value="cutout" data-i18n="skirting.typeCutout">Selbst geschnitten (aus Fliesen)</option>
+                      <option value="bought" data-i18n="skirting.typeBought">Fertig gekauft (Stück)</option>
+                    </select>
+                  </div>
+                  <div class="field span2">
+                    <label data-i18n="skirting.height">Höhe Sockelleiste (cm)</label>
+                    <input id="skirtingHeight" type="number" step="0.1" />
+                  </div>
+                  <div class="field" id="boughtWidthWrap">
+                    <label data-i18n="skirting.boughtWidth">Länge pro Stück (cm)</label>
+                    <input id="skirtingBoughtWidth" type="number" step="0.1" />
+                  </div>
+                  <div class="field" id="boughtPriceWrap">
+                    <label data-i18n="skirting.pricePerPiece">Preis pro Stück (€)</label>
+                    <input id="skirtingPricePerPiece" type="number" step="0.01" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -332,30 +363,38 @@
 
           <!-- Exclusions Tab -->
           <div class="tab-panel" data-tab-panel="exclusions">
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="exclusions.title">Ausschlussbereiche</h3>
-              <div class="btnrow">
-                <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
-                <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
-                <button id="btnAddTri" class="btn" data-i18n="exclusions.addTriangle">+ Dreieck</button>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="exclusions.title">Ausschlussbereiche</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="grid2" style="margin-top: 10px">
-                <div class="field span2">
-                  <label data-i18n="exclusions.list">Liste</label>
-                  <select id="exclList" size="6"></select>
+              <div class="card-content">
+                <div class="btnrow">
+                  <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
+                  <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
+                  <button id="btnAddTri" class="btn" data-i18n="exclusions.addTriangle">+ Dreieck</button>
                 </div>
-              </div>
-              <div class="btnrow" style="margin-top: 10px">
-                <button id="btnDeleteExcl" class="btn danger" data-i18n="exclusions.delete">Löschen</button>
-              </div>
-              <div class="meta subtle" style="margin-top: 10px" data-i18n="exclusions.dragHint">
-                Drag im Plan verschiebt die Auswahl
+                <div class="grid2" style="margin-top: 10px">
+                  <div class="field span2">
+                    <label data-i18n="exclusions.list">Liste</label>
+                    <select id="exclList" size="6"></select>
+                  </div>
+                </div>
+                <div class="btnrow" style="margin-top: 10px">
+                  <button id="btnDeleteExcl" class="btn danger" data-i18n="exclusions.delete">Löschen</button>
+                </div>
+                <div class="meta subtle" style="margin-top: 10px" data-i18n="exclusions.dragHint">
+                  Drag im Plan verschiebt die Auswahl
+                </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="exclusions.properties">Eigenschaften</h3>
-              <div id="exclProps" class="grid2">
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="exclusions.properties">Eigenschaften</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div id="exclProps" class="card-content grid2">
                 <div class="meta subtle span2" data-i18n="exclusions.noneSelected">– nichts ausgewählt –</div>
               </div>
             </div>
@@ -363,86 +402,121 @@
 
           <!-- Project Tab -->
           <div class="tab-panel" data-tab-panel="project">
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="session.title">Session</h3>
-              <div class="btnrow">
-                <button id="btnReset" class="btn" data-i18n="session.reset">Reset</button>
-                <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="session.title">Session</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="meta" style="margin-top: 10px">
-                <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
-                <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
-              </div>
-            </div>
-
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="project.title">Projekt speichern</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="project.nameLabel">Projektname</label>
-                  <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="z.B. Bad EG" />
+              <div class="card-content">
+                <div class="btnrow">
+                  <button id="btnReset" class="btn" data-i18n="session.reset">Reset</button>
+                  <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
                 </div>
-                <div class="field span2">
-                  <button id="btnSaveProject" class="btn primary" data-i18n="project.save">Projekt speichern</button>
+                <div class="meta" style="margin-top: 10px">
+                  <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
+                  <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
                 </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="project.savedProjects">Gespeicherte Projekte</h3>
-              <div class="grid2">
-                <div class="field span2">
-                  <label data-i18n="project.savedProjects">Projekte</label>
-                  <select id="projectSelect"></select>
-                </div>
-                <div class="btnrow span2">
-                  <button id="btnLoadProject" class="btn" data-i18n="project.load">Laden</button>
-                  <button id="btnDeleteProject" class="btn danger" data-i18n="project.delete">Löschen</button>
-                </div>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="project.title">Projekt speichern</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-            </div>
-
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="undo.history">History</h3>
-              <div class="meta">
-                <div><span class="k" data-i18n="undo.lastAction">Aktion:</span> <span id="lastAction">–</span></div>
-                <div>
-                  <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
-                  <span class="k" data-i18n="undo.redoCount">Redo:</span> <span id="redoCount">0</span>
+              <div class="card-content">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="project.nameLabel">Projektname</label>
+                    <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="z.B. Bad EG" />
+                  </div>
+                  <div class="field span2">
+                    <button id="btnSaveProject" class="btn primary" data-i18n="project.save">Projekt speichern</button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
-              <div class="btnrow">
-                <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
-                <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
-                <input id="fileImport" type="file" accept="application/json" style="display: none;" />
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="project.savedProjects">Gespeicherte Projekte</h3>
+                <span class="collapse-toggle">▼</span>
               </div>
-              <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
-                Import ist undo-bar
+              <div class="card-content">
+                <div class="grid2">
+                  <div class="field span2">
+                    <label data-i18n="project.savedProjects">Projekte</label>
+                    <select id="projectSelect"></select>
+                  </div>
+                  <div class="btnrow span2">
+                    <button id="btnLoadProject" class="btn" data-i18n="project.load">Laden</button>
+                    <button id="btnDeleteProject" class="btn danger" data-i18n="project.delete">Löschen</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="undo.history">History</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <div class="meta">
+                  <div><span class="k" data-i18n="undo.lastAction">Aktion:</span> <span id="lastAction">–</span></div>
+                  <div>
+                    <span class="k" data-i18n="undo.undoCount">Undo:</span> <span id="undoCount">0</span> •
+                    <span class="k" data-i18n="undo.redoCount">Redo:</span> <span id="redoCount">0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <div class="btnrow">
+                  <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
+                  <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
+                  <input id="fileImport" type="file" accept="application/json" style="display: none;" />
+                </div>
+                <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
+                  Import ist undo-bar
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Debug Tab -->
           <div class="tab-panel" data-tab-panel="debug">
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
-              <div class="field">
-                <label class="toggle-switch">
-                  <span class="toggle-label" data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
-                  <input id="debugShowNeeds" type="checkbox" />
-                  <div class="toggle-slider"></div>
-                </label>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <div class="field">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
+                    <input id="debugShowNeeds" type="checkbox" />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div class="section-card">
-              <h3 class="section-title" data-i18n="state.title">Live State</h3>
-              <button id="btnCopy" class="btn small" data-i18n="importExport.copy" style="margin-bottom: 8px;">Copy State</button>
-              <pre id="stateView" class="code">–</pre>
+            <div class="section-card collapsible-card">
+              <div class="section-header-collapsible" onclick="toggleCard(this)">
+                <h3 class="section-title" data-i18n="state.title">Live State</h3>
+                <span class="collapse-toggle">▼</span>
+              </div>
+              <div class="card-content">
+                <button id="btnCopy" class="btn small" data-i18n="importExport.copy" style="margin-bottom: 8px;">Copy State</button>
+                <pre id="stateView" class="code">–</pre>
+              </div>
             </div>
           </div>
         </div>
@@ -496,39 +570,40 @@
           </button>
         </div>
         <div id="metrics" class="metrics-panel">
-          <div class="metric-grid">
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.netArea">Fläche:</div>
-              <div class="metric-value" id="metricArea">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.totalTiles">Fliesen:</div>
-              <div class="metric-value" id="metricTiles">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.tilePacks">Tile Packs:</div>
-              <div class="metric-value" id="metricPacks">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.price">Kosten:</div>
-              <div class="metric-value" id="metricCost">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.cutTiles">Cut tiles:</div>
-              <div class="metric-value" id="metricCutTiles">–</div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-label" data-i18n="metrics.waste">Waste (purchase):</div>
-              <div class="metric-value" id="metricWaste">–</div>
+          <div>
+            <div class="metrics-section-title" data-i18n="metrics.title">Calculation</div>
+            <div class="metric-grid">
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.netArea">Fläche:</div>
+                <div class="metric-value" id="metricArea">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.totalTiles">Fliesen:</div>
+                <div class="metric-value" id="metricTiles">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.tilePacks">Tile Packs:</div>
+                <div class="metric-value" id="metricPacks">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.price">Kosten:</div>
+                <div class="metric-value" id="metricCost">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.cutTiles">Cut tiles:</div>
+                <div class="metric-value" id="metricCutTiles">–</div>
+              </div>
+              <div class="metric-item">
+                <div class="metric-label" data-i18n="metrics.waste">Waste (purchase):</div>
+                <div class="metric-value" id="metricWaste">–</div>
+              </div>
             </div>
           </div>
 
           <!-- Skirting Metrics -->
-          <div id="skirtingMetricsBox" style="margin-top: 1.5rem; border-top: 1px solid var(--line2); padding-top: 1.5rem; display: none;">
+          <div id="skirtingMetricsBox" style="display: none;">
+            <div class="metrics-section-title" data-i18n="skirting.title">Skirting</div>
             <div class="metric-grid">
-              <div class="metric-item" style="grid-column: span 2;">
-                <div class="metric-label" style="color: var(--accent); font-weight: 700; text-transform: uppercase;" data-i18n="skirting.title">Skirting</div>
-              </div>
               <div class="metric-item">
                 <div class="metric-label" data-i18n="skirting.totalLength">Total length:</div>
                 <div class="metric-value" id="metricSkirtingLength">–</div>
@@ -549,11 +624,9 @@
           </div>
 
           <!-- Grand Total -->
-          <div id="grandTotalBox" style="margin-top: 1.5rem; border-top: 2px solid var(--accent); padding-top: 1.5rem; display: none;">
+          <div id="grandTotalBox" class="metric-total" style="display: none;">
+            <div class="metrics-section-title" data-i18n="metrics.grandTotal">Grand Total</div>
             <div class="metric-grid">
-              <div class="metric-item" style="grid-column: span 2;">
-                <div class="metric-label" style="color: var(--accent); font-weight: 700; text-transform: uppercase;" data-i18n="metrics.grandTotal">Grand Total</div>
-              </div>
               <div class="metric-item">
                 <div class="metric-label" data-i18n="metrics.totalTilesToOrder">Total tiles:</div>
                 <div class="metric-value" id="metricGrandTotalTiles">–</div>
@@ -564,7 +637,7 @@
               </div>
               <div class="metric-item">
                 <div class="metric-label" data-i18n="metrics.totalCostToOrder">Total cost:</div>
-                <div class="metric-value" style="font-size: 1.1rem; color: var(--accent); font-weight: 700;" id="metricGrandTotalCost">–</div>
+                <div class="metric-value" id="metricGrandTotalCost">–</div>
               </div>
             </div>
           </div>
@@ -572,6 +645,17 @@
       </section>
     </main>
 
+    <script>
+      function toggleCard(header) {
+        const card = header.closest('.collapsible-card');
+        const content = card.querySelector('.card-content');
+        const toggle = header.querySelector('.collapse-toggle');
+        const isHidden = content.classList.toggle('hidden');
+        if (toggle) {
+          toggle.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+      }
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

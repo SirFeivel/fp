@@ -115,3 +115,55 @@
 - Topic "Unified Room Sections" completed, merged, and pushed to main.
 - Topic "V4 Schema Cleanup" completed, merged, and pushed to main.
 - Local feature branches deleted.
+
+## Session: UI & UX Improvements (2026-01-27)
+### Goal
+- Address UI inconsistencies and improve overall UX.
+- Consolidate Tile Layout controls.
+- Standardize collapsibility of UI sections.
+- Redesign Calculation panel for better readability.
+
+### Plan
+1. Create branch `feature/ui-improvements` ✓
+2. Update App Header to "TilePerfect 0.1" and align elements ✓
+3. Consolidate Tile Layout (Pattern + Position) in one card ✓
+4. Implement consistent `collapsible-card` pattern across all tabs ✓
+5. Redesign Right Menu (Metrics) with sections and totals ✓
+6. Verify with tests and build ✓
+
+### Status
+- App renamed to TilePerfect 0.1.
+- Left menu is more compact with consolidated Tile Layout section.
+- All major UI panels are now collapsible with a consistent toggle animation.
+- Metrics panel (right) is now structured into logical sections (Calculation, Skirting, Grand Total) with improved styling.
+- All 354 tests pass and production build is successful.
+
+## Session: UI Consistency & Spacing (2026-01-27)
+### Goal
+- Fix padding issues, cut-off text, and misaligned toggles.
+- Standardize UI patterns for cards, fields, and buttons.
+
+### Plan
+1. Create feature branch `feature/ui-consistency-v2` ✓
+2. Audit CSS for spacing and alignment flaws ✓
+3. Standardize `.toggle-switch` layout with `justify-content: space-between` ✓
+4. Implement unified card content padding via `.card-content` ✓
+5. Improve button and input sizing (min-height, padding, font-size) ✓
+6. Enhance Metrics panel readability ✓
+7. Verify with tests and build ✓
+
+### Status
+- Toggles now use the full width of their container with labels left and sliders right.
+- Card padding is consistent across all tabs.
+- Inputs and buttons have better touch targets and consistent sizing.
+- Metrics panel values are larger and easier to read.
+- All 354 tests pass and production build is successful.
+
+## Commands Run
+- npm run test
+- npm run build
+- git checkout -b feature/ui-consistency-v2
+
+## Notes
+- Topic "UI Improvements" completed and ready for submission.
+- All guidelines followed.
