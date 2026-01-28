@@ -1,5 +1,5 @@
 // src/render.js
-import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals } from "./calc.js";
+import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals } from "./calc.js";
 import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { t } from "./i18n.js";
@@ -224,6 +224,7 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
+  document.getElementById("tileReference").value = currentRoom?.tile?.reference ?? "";
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
   document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));
@@ -356,8 +357,39 @@ export function renderSectionProps({
   });
 }
 
+export function renderReferencePicker(state) {
+  const dl = document.getElementById("tileReferences");
+  if (!dl) return;
+
+  const refs = new Set();
+  if (state.materials) {
+    Object.keys(state.materials).forEach((r) => {
+      if (r) refs.add(r);
+    });
+  }
+  if (state.floors) {
+    state.floors.forEach((f) => {
+      if (f.rooms) {
+        f.rooms.forEach((rm) => {
+          if (rm.tile?.reference) refs.add(rm.tile.reference);
+        });
+      }
+    });
+  }
+
+  dl.innerHTML = "";
+  Array.from(refs)
+    .sort()
+    .forEach((r) => {
+      const opt = document.createElement("option");
+      opt.value = r;
+      dl.appendChild(opt);
+    });
+}
+
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
+  renderReferencePicker(state);
 
   document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
@@ -454,11 +486,7 @@ export function renderTilePatternForm(state) {
   }
 
   // Pricing
-  const pricePerM2 = document.getElementById("pricePerM2");
-  const packM2 = document.getElementById("packM2");
   const reserveTiles = document.getElementById("reserveTiles");
-  if (pricePerM2) pricePerM2.value = state.pricing?.pricePerM2 ?? 0;
-  if (packM2) packM2.value = state.pricing?.packM2 ?? 0;
   if (reserveTiles) reserveTiles.value = state.pricing?.reserveTiles ?? 0;
 
   // Waste options
@@ -992,4 +1020,92 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       });
     }
   }
+}
+export function renderCommercialTab(state) {
+  const roomsListEl = document.getElementById("commercialRoomsList");
+  const materialsListEl = document.getElementById("commercialMaterialsList");
+  if (!roomsListEl || !materialsListEl) return;
+
+  const proj = computeProjectTotals(state);
+
+  // 1. Render Rooms Table
+  let roomsHtml = `<table class="commercial-table">
+    <thead>
+      <tr>
+        <th>${t("tabs.floor")}</th>
+        <th>${t("tabs.room")}</th>
+        <th>${t("tile.reference")}</th>
+        <th style="text-align:right">${t("metrics.netArea")}</th>
+        <th style="text-align:right">${t("metrics.totalTiles")}</th>
+        <th style="text-align:right">${t("metrics.price")}</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  for (const r of proj.rooms) {
+    roomsHtml += `<tr>
+      <td class="subtle">${escapeHTML(r.floorName)}</td>
+      <td class="room-name">${escapeHTML(r.name)}</td>
+      <td class="material-ref">${escapeHTML(r.reference || "-")}</td>
+      <td style="text-align:right">${r.netAreaM2.toFixed(2)} m²</td>
+      <td style="text-align:right">${r.totalTiles}</td>
+      <td style="text-align:right">${r.totalCost.toFixed(2)} €</td>
+    </tr>`;
+  }
+  roomsHtml += `</tbody></table>`;
+  roomsListEl.innerHTML = roomsHtml;
+
+  // 2. Render Consolidated Materials Table
+  let matsHtml = `<table class="commercial-table">
+    <thead>
+      <tr>
+        <th>${t("tile.reference")}</th>
+        <th style="text-align:right">${t("commercial.totalM2")}</th>
+        <th style="text-align:right">${t("commercial.totalTiles")}</th>
+        <th style="text-align:right">${t("commercial.totalPacks")}</th>
+        <th style="text-align:right">${t("commercial.amountOverride")}</th>
+        <th style="text-align:right">${t("commercial.pricePerM2")}</th>
+        <th style="text-align:right">${t("commercial.pricePerPack")}</th>
+        <th style="text-align:right">${t("commercial.packSize")}</th>
+        <th style="text-align:right">${t("commercial.totalCost")}</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  for (const m of proj.materials) {
+    const ref = m.reference || "";
+    const pricePerPack = (m.pricePerM2 * m.packM2).toFixed(2);
+    matsHtml += `<tr>
+      <td class="material-ref">${escapeHTML(ref || t("commercial.defaultMaterial"))}</td>
+      <td style="text-align:right">${m.netAreaM2.toFixed(2)} m²</td>
+      <td style="text-align:right">${m.totalTiles}</td>
+      <td style="text-align:right"><strong>${m.totalPacks || 0}</strong></td>
+      <td style="text-align:right">
+        <input type="number" step="1" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="extraPacks" value="${m.extraPacks}" style="width:40px" />
+      </td>
+      <td style="text-align:right">
+        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="pricePerM2" value="${m.pricePerM2.toFixed(2)}" style="width:60px" /> €
+      </td>
+      <td style="text-align:right">
+        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="pricePerPack" value="${pricePerPack}" style="width:60px" /> €
+      </td>
+      <td style="text-align:right">
+        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="packM2" value="${m.packM2}" /> m²
+      </td>
+      <td style="text-align:right"><strong>${m.adjustedCost.toFixed(2)} €</strong></td>
+    </tr>`;
+  }
+  
+  // Grand Total Row
+  matsHtml += `<tr style="border-top: 2px solid var(--line2); font-weight:bold;">
+    <td>${t("commercial.grandTotal")}</td>
+    <td style="text-align:right">${proj.totalNetAreaM2.toFixed(2)} m²</td>
+    <td style="text-align:right">${proj.totalTiles}</td>
+    <td style="text-align:right">${proj.totalPacks}</td>
+    <td colspan="4"></td>
+    <td style="text-align:right; color:var(--accent);">${proj.totalCost.toFixed(2)} €</td>
+  </tr>`;
+
+  matsHtml += `</tbody></table>`;
+  materialsListEl.innerHTML = matsHtml;
 }

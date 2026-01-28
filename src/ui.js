@@ -2,6 +2,7 @@
 import { downloadText, safeParseJSON, getCurrentRoom } from "./core.js";
 import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
+import { computeProjectTotals } from "./calc.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
   if (!el) return;
@@ -85,6 +86,7 @@ export function bindUI({
 
     currentRoom.tile.shape = shape;
     currentRoom.tile.widthCm = widthCm;
+    currentRoom.tile.reference = document.getElementById("tileReference")?.value ?? "";
 
     if (shape === "hex") {
       const sideLength = widthCm / Math.sqrt(3);
@@ -118,11 +120,7 @@ export function bindUI({
 
     // Pricing
     next.pricing = next.pricing || {};
-    const pricePerM2 = document.getElementById("pricePerM2");
-    const packM2 = document.getElementById("packM2");
     const reserveTiles = document.getElementById("reserveTiles");
-    if (pricePerM2) next.pricing.pricePerM2 = Number(pricePerM2.value);
-    if (packM2) next.pricing.packM2 = Number(packM2.value);
     if (reserveTiles) next.pricing.reserveTiles = Number(reserveTiles.value);
 
     // Waste options
@@ -141,6 +139,22 @@ export function bindUI({
     next.view = next.view || {};
     const dbg = document.getElementById("debugShowNeeds");
     if (dbg) next.view.showNeeds = Boolean(dbg.checked);
+
+    // Sync other rooms with same reference to maintain consistency
+    const ref = currentRoom.tile.reference;
+    if (ref) {
+      next.floors.forEach((f) => {
+        if (f.rooms) {
+          f.rooms.forEach((rm) => {
+            if (rm.id !== currentRoom.id && rm.tile?.reference === ref) {
+              rm.tile.widthCm = currentRoom.tile.widthCm;
+              rm.tile.heightCm = currentRoom.tile.heightCm;
+              rm.tile.shape = currentRoom.tile.shape;
+            }
+          });
+        }
+      });
+    }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
@@ -299,6 +313,49 @@ export function bindUI({
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
+  wireInputCommit(document.getElementById("tileReference"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("tile.changed"),
+    commitFn: commitFromTilePatternInputs
+  });
+
+  document.getElementById("tileReference")?.addEventListener("change", (e) => {
+    const newRef = e.target.value;
+    if (!newRef) return;
+
+    const state = store.getState();
+    const currentRoom = getCurrentRoom(state);
+    if (!currentRoom) return;
+
+    // Check if this reference is already used elsewhere to sync settings
+    let sourceTile = null;
+    if (state.floors) {
+      for (const floor of state.floors) {
+        if (floor.rooms) {
+          for (const room of floor.rooms) {
+            if (room.id !== currentRoom.id && room.tile?.reference === newRef) {
+              sourceTile = room.tile;
+              break;
+            }
+          }
+        }
+        if (sourceTile) break;
+      }
+    }
+
+    if (sourceTile) {
+      const next = structuredClone(state);
+      const nextRoom = getCurrentRoom(next);
+      if (nextRoom) {
+        nextRoom.tile.reference = newRef;
+        nextRoom.tile.widthCm = sourceTile.widthCm;
+        nextRoom.tile.heightCm = sourceTile.heightCm;
+        nextRoom.tile.shape = sourceTile.shape;
+        // Pricing is already handled by reference in getRoomPricing
+        store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      }
+    }
+  });
   document.addEventListener("change", (e) => {
     if (e.target.id === 'showGrid' || e.target.id === 'showSkirting') {
       const val = e.target.checked;
@@ -336,8 +393,6 @@ export function bindUI({
     "offsetY",
     "originX",
     "originY",
-    "pricePerM2",
-    "packM2",
     'reserveTiles',
     'wasteKerfCm',
   ].forEach((id) => {
@@ -474,6 +529,68 @@ export function bindUI({
       "_"
     )}.json`;
     downloadText(fname, JSON.stringify(state, null, 2));
+  });
+
+  document.getElementById("btnExportCommercial")?.addEventListener("click", () => {
+    const state = store.getState();
+    const proj = computeProjectTotals(state);
+    
+    let text = `PROJECT: ${state.project?.name || "Untitled"}\n`;
+    text += `DATE: ${new Date().toLocaleString()}\n\n`;
+    
+    text += `ROOM OVERVIEW:\n`;
+    text += `--------------------------------------------------------------------------------\n`;
+    text += `Floor       | Room        | Material    | Area (m2) | Tiles | Cost (€)\n`;
+    text += `--------------------------------------------------------------------------------\n`;
+    for (const r of proj.rooms) {
+      text += `${(r.floorName || "").padEnd(11)} | ${(r.name || "").padEnd(11)} | ${(r.reference || "-").padEnd(11)} | ${r.netAreaM2.toFixed(2).padStart(9)} | ${String(r.totalTiles).padStart(5)} | ${r.totalCost.toFixed(2).padStart(8)}\n`;
+    }
+    
+    text += `\nCONSOLIDATED MATERIALS:\n`;
+    text += `----------------------------------------------------------------------------------------------------\n`;
+    text += `Material    | Total Area | Total Tiles | Packs | Adjust | Price/m2 | Total Cost\n`;
+    text += `----------------------------------------------------------------------------------------------------\n`;
+    for (const m of proj.materials) {
+      text += `${(m.reference || "Default").padEnd(11)} | ${m.netAreaM2.toFixed(2).padStart(10)} | ${String(m.totalTiles).padStart(11)} | ${String(m.totalPacks || 0).padStart(5)} | ${String(m.extraPacks || 0).padStart(6)} | ${m.pricePerM2.toFixed(2).padStart(8)} | ${m.adjustedCost.toFixed(2).padStart(10)}\n`;
+    }
+    
+    text += `\n----------------------------------------------------------------------------------------------------\n`;
+    text += `GRAND TOTAL | ${proj.totalNetAreaM2.toFixed(2).padStart(10)} | ${String(proj.totalTiles).padStart(11)} | ${String(proj.totalPacks).padStart(5)} |        |          | ${proj.totalCost.toFixed(2).padStart(10)}\n`;
+
+    const fname = `fp-summary-${(state.project?.name || "export").replace(/\s+/g, "_")}.txt`;
+    downloadText(fname, text);
+  });
+
+  // Commercial Tab Inline Edits (Event Delegation)
+  document.getElementById("commercialMaterialsList")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("commercial-edit")) {
+      const ref = e.target.dataset.ref;
+      const prop = e.target.dataset.prop;
+      const val = Number(e.target.value);
+
+      const state = store.getState();
+      const next = structuredClone(state);
+      next.materials = next.materials || {};
+      next.materials[ref] = next.materials[ref] || { 
+        pricePerM2: state.pricing?.pricePerM2 || 0, 
+        packM2: state.pricing?.packM2 || 0 
+      };
+
+      if (prop === "pricePerPack") {
+        // user entered price per pack, we need price per m2
+        const packM2 = next.materials[ref].packM2 || state.pricing?.packM2 || 1;
+        next.materials[ref].pricePerM2 = val / packM2;
+      } else if (prop === "pricePerM2") {
+        next.materials[ref].pricePerM2 = val;
+      } else if (prop === "packM2") {
+        // user changed pack size, we might want to keep price per m2 but update pack size
+        next.materials[ref].packM2 = val;
+      } else if (prop === "extraPacks") {
+        next.materials[ref].extraPacks = val;
+      }
+
+      store.commit(`Update Material: ${ref}`, next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
   });
 
   // Import

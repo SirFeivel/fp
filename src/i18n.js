@@ -48,7 +48,8 @@ const translations = {
       floorDeleted: "Etage gelöscht",
       floorChanged: "Etage geändert",
       roomAdded: "Raum hinzugefügt",
-      roomDeleted: "Raum gelöscht"
+      roomDeleted: "Raum gelöscht",
+      commercial: "Kommerziell"
     },
     room: {
       title: "Ihr Projekt",
@@ -106,6 +107,7 @@ const translations = {
       shapeSquare: "Quadratisch",
       shapeHex: "Sechseckig",
       shapeRhombus: "Raute",
+      reference: "Referenz / Name",
       width: "Fliese Breite (cm)",
       height: "Fliese Länge (cm)",
       hexHint: "Bei Sechsecken: Breite = Flach-zu-Flach-Abstand. Höhe wird automatisch berechnet.",
@@ -255,7 +257,26 @@ const translations = {
       grandTotal: "Gesamtsumme (Inkl. Sockelleisten)",
       totalTilesToOrder: "Fliesen gesamt:",
       totalPacksToOrder: "Packungen gesamt:",
-      totalCostToOrder: "Gesamtkosten:"
+      totalCostToOrder: "Gesamtkosten:",
+      projectSummary: "Projekt-Zusammenfassung",
+      rooms: "Räume",
+      totalArea: "Fläche gesamt:"
+    },
+    commercial: {
+      title: "Kaufmännische Übersicht",
+      rooms: "Raumübersicht",
+      materials: "Zusammengefasste Materialien",
+      export: "Export Übersicht",
+      pricePerM2: "Preis / m²",
+      pricePerPack: "Preis / Paket",
+      packSize: "Paket (m²)",
+      totalM2: "Fläche m²",
+      totalPacks: "Pakete",
+      totalCost: "Kosten",
+      amountOverride: "Menge +/-",
+      totalTiles: "Fliesen gesamt",
+      grandTotal: "GESAMT",
+      defaultMaterial: "Standard",
     },
     plan: {
       title: "Plan (SVG)",
@@ -336,7 +357,8 @@ const translations = {
       floorDeleted: "Floor deleted",
       floorChanged: "Floor changed",
       roomAdded: "Room added",
-      roomDeleted: "Room deleted"
+      roomDeleted: "Room deleted",
+      commercial: "Commercial"
     },
     room: {
       title: "Your Project",
@@ -394,6 +416,7 @@ const translations = {
       shapeSquare: "Square",
       shapeHex: "Hexagonal",
       shapeRhombus: "Rhombus",
+      reference: "Reference / Name",
       width: "Tile Width (cm)",
       height: "Tile Height (cm)",
       hexHint: "For hexagons: width = flat-to-flat distance. Height is auto-calculated.",
@@ -543,7 +566,26 @@ const translations = {
       grandTotal: "Grand Total (incl. Skirting)",
       totalTilesToOrder: "Total tiles:",
       totalPacksToOrder: "Total packs:",
-      totalCostToOrder: "Total cost:"
+      totalCostToOrder: "Total cost:",
+      projectSummary: "Project Summary",
+      rooms: "Rooms",
+      totalArea: "Total Area:"
+    },
+    commercial: {
+      title: "Commercial Overview",
+      rooms: "Rooms Overview",
+      materials: "Consolidated Materials",
+      export: "Export Overview",
+      pricePerM2: "Price / m²",
+      pricePerPack: "Price / Pack",
+      packSize: "Pack Size (m²)",
+      totalM2: "Total Area (m²)",
+      totalPacks: "Total Packs",
+      totalCost: "Total Cost",
+      amountOverride: "Amount +/-",
+      totalTiles: "Total Tiles",
+      grandTotal: "TOTAL",
+      defaultMaterial: "Default",
     },
     plan: {
       title: "Plan (SVG)",

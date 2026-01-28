@@ -116,10 +116,10 @@ describe('render.js smoke tests', () => {
   it('renderRoomForm updates skirting fields', () => {
     document.body.innerHTML = `
       <input id="roomName" />
-      <input id="roomW" />
-      <input id="roomH" />
+      <input id="tileReference" />
       <input id="showGrid" type="checkbox" />
       <input id="showSkirting" type="checkbox" />
+      <input id="removalMode" type="checkbox" />
       <select id="skirtingType"><option value="cutout">C</option><option value="bought">B</option></select>
       <input id="skirtingHeight" />
       <input id="skirtingBoughtWidth" />
@@ -246,5 +246,26 @@ describe('render.js smoke tests', () => {
 
     const grandBox = document.getElementById('grandTotalBox');
     expect(grandBox.style.display).toBe('none');
+  });
+
+  it('renderCommercialTab renders tables with translations', () => {
+    document.body.innerHTML = `
+      <div id="commercialRoomsList"></div>
+      <div id="commercialMaterialsList"></div>
+    `;
+    const state = defaultState();
+    const room = state.floors[0].rooms[0];
+    room.tile.reference = "TEST-REF";
+    
+    // Import the function
+    const { renderCommercialTab } = require('./render.js');
+    renderCommercialTab(state);
+    
+    const materialsList = document.getElementById('commercialMaterialsList');
+    expect(materialsList.innerHTML).toContain('TEST-REF');
+    expect(materialsList.innerHTML).not.toContain('commercial.totalTiles');
+    expect(materialsList.innerHTML).toContain(t('commercial.totalTiles'));
+    expect(materialsList.innerHTML).toContain(t('commercial.grandTotal'));
+    expect(materialsList.innerHTML).not.toContain('TOTAL'); // Since we replaced hardcoded TOTAL
   });
 });

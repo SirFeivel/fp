@@ -164,6 +164,16 @@
               <div class="card-content">
                 <div class="grid2">
                   <div class="field span2">
+                    <label data-i18n="tile.reference">Referenz / Name</label>
+                    <div class="input-with-icon">
+                      <input id="tileReference" type="text" list="tileReferences" placeholder="z.B. Marmor Carrara" />
+                      <svg class="input-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                    <datalist id="tileReferences"></datalist>
+                  </div>
+                  <div class="field span2">
                     <label data-i18n="tile.shape">Tile Shape</label>
                     <select id="tileShape">
                       <option value="rect" data-i18n="tile.shapeRect">Rectangular</option>
@@ -292,14 +302,6 @@
               </div>
               <div class="card-content hidden">
                 <div class="grid2">
-                  <div class="field">
-                    <label data-i18n="pricing.pricePerM2">Preis pro m² (€)</label>
-                    <input id="pricePerM2" type="number" step="0.01" min="0" />
-                  </div>
-                  <div class="field">
-                    <label data-i18n="pricing.packSize">Packungsgröße (m²)</label>
-                    <input id="packM2" type="number" step="0.01" min="0" />
-                  </div>
                   <div class="field">
                     <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
                     <input id="reserveTiles" type="number" step="1" min="0" />
@@ -500,49 +502,90 @@
       <div class="resize-handle"></div>
 
       <section class="viewer">
-        <div id="warningsWrapper" style="display: none;">
+        <div class="viewer-tabs">
+          <button class="viewer-tab active" data-main-tab="plan" data-i18n="plan.title">Plan (SVG)</button>
+          <button class="viewer-tab" data-main-tab="commercial" data-i18n="tabs.commercial">Kommerziell</button>
+        </div>
+
+        <div class="main-tab-panel active" data-main-panel="plan">
+          <div id="warningsWrapper" style="display: none;">
+            <div class="viewerHead">
+              <h2 data-i18n="warnings.title">Warnungen</h2>
+              <div class="pill" id="warnPill">0</div>
+            </div>
+            <div id="warnings" class="warnings"></div>
+          </div>
+
           <div class="viewerHead">
-            <h2 data-i18n="warnings.title">Warnungen</h2>
-            <div class="pill" id="warnPill">0</div>
+            <h2 id="planTitle" data-i18n="plan.title">Plan (SVG)</h2>
+            <div class="btnrow">
+              <button id="btnFullscreen" class="btn small" title="Fullscreen View">⛶</button>
+            </div>
           </div>
-          <div id="warnings" class="warnings"></div>
+
+          <div class="svgWrap">
+            <div class="plan-toolbar">
+              <label class="toolbar-toggle">
+                <input id="showGrid" type="checkbox" />
+                <div class="toggle-icon"></div>
+                <span class="toolbar-text" data-i18n="room.showGrid">Grid</span>
+              </label>
+              <label class="toolbar-toggle">
+                <input id="showSkirting" type="checkbox" />
+                <div class="toggle-icon"></div>
+                <span class="toolbar-text" data-i18n="skirting.showSkirting">Skirting</span>
+              </label>
+              <label class="toolbar-toggle">
+                <input id="removalMode" type="checkbox" />
+                <div class="toggle-icon"></div>
+                <span class="toolbar-text" data-i18n="removal.mode">Edit Exclusions</span>
+              </label>
+            </div>
+            <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+
+          <div class="tip-section">
+            <div class="tip-header">
+              <span class="tip-icon">💡</span>
+              <span class="tip-title" data-i18n="plan.hintTitle">Tipp</span>
+            </div>
+            <div class="tip-content" data-i18n="plan.hint">
+              Klick wählt aus • Drag verschiebt
+            </div>
+          </div>
         </div>
 
-        <div class="viewerHead">
-          <h2 id="planTitle" data-i18n="plan.title">Plan (SVG)</h2>
-          <div class="btnrow">
-            <button id="btnFullscreen" class="btn small" title="Fullscreen View">⛶</button>
-          </div>
-        </div>
+        <div class="main-tab-panel" data-main-panel="commercial">
+          <div class="commercial-view">
+            <div class="section-card">
+              <div class="section-header">
+                <h3 class="section-title" data-i18n="commercial.rooms">Raumübersicht</h3>
+              </div>
+              <div class="card-content">
+                <div id="commercialRoomsList" class="commercial-list">
+                  <!-- Will be populated by render.js -->
+                </div>
+              </div>
+            </div>
 
-        <div class="svgWrap">
-          <div class="plan-toolbar">
-            <label class="toolbar-toggle">
-              <input id="showGrid" type="checkbox" />
-              <div class="toggle-icon"></div>
-              <span class="toolbar-text" data-i18n="room.showGrid">Grid</span>
-            </label>
-            <label class="toolbar-toggle">
-              <input id="showSkirting" type="checkbox" />
-              <div class="toggle-icon"></div>
-              <span class="toolbar-text" data-i18n="skirting.showSkirting">Skirting</span>
-            </label>
-            <label class="toolbar-toggle">
-              <input id="removalMode" type="checkbox" />
-              <div class="toggle-icon"></div>
-              <span class="toolbar-text" data-i18n="removal.mode">Edit Exclusions</span>
-            </label>
-          </div>
-          <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
+            <div class="section-card">
+              <div class="section-header">
+                <h3 class="section-title" data-i18n="commercial.materials">Zusammengefasste Materialien</h3>
+              </div>
+              <div class="card-content">
+                <div id="commercialMaterialsList" class="commercial-list">
+                  <!-- Will be populated by render.js -->
+                </div>
+              </div>
+            </div>
 
-        <div class="tip-section">
-          <div class="tip-header">
-            <span class="tip-icon">💡</span>
-            <span class="tip-title" data-i18n="plan.hintTitle">Tipp</span>
-          </div>
-          <div class="tip-content" data-i18n="plan.hint">
-            Klick wählt aus • Drag verschiebt
+            <div class="section-card">
+              <div class="card-content">
+                <button id="btnExportCommercial" class="btn primary" style="width: 100%;">
+                  <span data-i18n="commercial.export">Übersicht exportieren</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -630,6 +673,7 @@
               </div>
             </div>
           </div>
+
         </div>
       </section>
     </main>

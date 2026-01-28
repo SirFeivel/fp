@@ -41,3 +41,40 @@ export function initTabs() {
 
   switchTab(savedTab);
 }
+
+export function initMainTabs() {
+  const tabButtons = document.querySelectorAll('[data-main-tab]');
+  const tabPanels = document.querySelectorAll('[data-main-panel]');
+
+  function switchMainTab(targetTab) {
+    tabButtons.forEach(btn => {
+      if (btn.dataset.mainTab === targetTab) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    tabPanels.forEach(panel => {
+      if (panel.dataset.mainPanel === targetTab) {
+        panel.classList.add('active');
+      } else {
+        panel.classList.remove('active');
+      }
+    });
+
+    localStorage.setItem('activeMainTab', targetTab);
+  }
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchMainTab(btn.dataset.mainTab);
+    });
+  });
+
+  const savedTab = localStorage.getItem('activeMainTab') || 'plan';
+  const validTabs = Array.from(tabButtons).map(btn => btn.dataset.mainTab);
+  const finalTab = validTabs.includes(savedTab) ? savedTab : 'plan';
+
+  switchMainTab(finalTab);
+}

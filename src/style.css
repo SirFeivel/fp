@@ -363,6 +363,22 @@ hr{
   box-shadow:0 0 0 3px var(--accentSoft);
 }
 
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-icon input {
+  padding-right: 32px !important;
+}
+.input-icon {
+  position: absolute;
+  right: 12px;
+  color: var(--muted);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
 .inline{
   display:flex;
   align-items:center;
@@ -461,6 +477,7 @@ hr{
   margin-top:4px;
   gap: 16px;
   min-height: 40px;
+  flex-shrink: 0;
 }
 
 #planTitle {
@@ -524,6 +541,7 @@ hr{
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .tip-header {
@@ -851,6 +869,69 @@ hr{
   background:rgba(231,238,252,.18);
 }
 
+/* ---------------- Viewer Tabs (Variant 1) ---------------- */
+.viewer-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.viewer-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 12px 20px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  top: 1px;
+}
+
+.viewer-tab:hover {
+  color: var(--text);
+  background: rgba(231, 238, 252, 0.04);
+}
+
+.viewer-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.main-tab-panel {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+}
+
+.main-tab-panel.active {
+  display: flex;
+}
+
+.commercial-view {
+  padding: 0;
+  overflow-y: auto;
+}
+
+.commercial-view .section-card {
+  margin-bottom: 20px;
+}
+
+.commercial-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Standardize Viewer Scrollbar */
+.viewer {
+  overflow: hidden; /* Important: delegate scrolling to panels */
+}
+
 /* ---------------- Tabs ---------------- */
 .tabs{
   display:flex;
@@ -1116,7 +1197,6 @@ hr{
     display:block;
   }
   .metrics-panel{ margin-top:12px; }
-  #planSvg{ height:420px; }
 }
 
 /* Color picker with presets */
@@ -1158,3 +1238,45 @@ hr{
   border-radius: 4px;
   cursor: pointer;
 }
+.commercial-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.commercial-table th, .commercial-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.commercial-table th {
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.commercial-table tr:last-child td {
+  border-bottom: none;
+}
+.commercial-table input {
+  width: 60px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: var(--fs-sm);
+}
+.commercial-table .room-name {
+  font-weight: 600;
+}
+.commercial-table .material-ref {
+  color: var(--accent);
+  font-family: monospace;
+}
+.commercial-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ---------------- End of Commercial ---------------- */

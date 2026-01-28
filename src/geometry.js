@@ -477,68 +477,79 @@ function detectBondPeriod(frac) {
   return 0;
 }
 
-export function tilesForPreview(state, availableMP, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
-  if (!currentRoom) {
+export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeInclude = null) {
+  let roomOverride = null;
+  let includeExcluded = false;
+
+  if (typeof roomOrInclude === 'boolean') {
+    includeExcluded = roomOrInclude;
+    roomOverride = null;
+  } else {
+    roomOverride = roomOrInclude;
+    includeExcluded = maybeInclude === true;
+  }
+
+  const finalRoom = roomOverride || getCurrentRoom(state);
+  if (!finalRoom) {
     return { tiles: [], error: "Kein Raum ausgewählt." };
   }
 
-  const tw = Number(currentRoom.tile?.widthCm);
-  const th = Number(currentRoom.tile?.heightCm);
-  const tileShape = currentRoom.tile?.shape || "rect";
-  const grout = Number(currentRoom.grout?.widthCm) || 0;
+  const tw = Number(finalRoom.tile?.widthCm);
+  const th = Number(finalRoom.tile?.heightCm);
+  const tileShape = finalRoom.tile?.shape || "rect";
+  const grout = Number(finalRoom.grout?.widthCm) || 0;
   if (!(tw > 0) || !(th > 0) || grout < 0) {
     return { tiles: [], error: null };
   }
 
   if (tileShape === "hex") {
-    return tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   if (tileShape === "rhombus") {
-    return tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   if (tileShape === "square") {
     // For square tiles, we force width = height using the width value
-    return tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded);
+    return tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded, finalRoom);
   }
 
-  const type = currentRoom.pattern?.type || "grid";
+  const type = finalRoom.pattern?.type || "grid";
 
   if (type === "herringbone") {
-    return tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   if (type === "basketweave") {
-    return tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   if (type === "doubleHerringbone") {
-    return tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   if (type === "verticalStackAlternating") {
-    return tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded);
+    return tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
   }
 
   const stepX = tw + grout;
   const stepY = th + grout;
 
-  const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
+  const rotDeg = Number(finalRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
-  const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
-  const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
+  const offX = Number(finalRoom.pattern?.offsetXcm) || 0;
+  const offY = Number(finalRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
-  const preset = currentRoom.pattern?.origin?.preset || "tl";
+  const origin = computeOriginPoint(finalRoom, finalRoom.pattern);
+  const preset = finalRoom.pattern?.origin?.preset || "tl";
 
-  const frac = Number(currentRoom.pattern?.bondFraction) || 0.5;
+  const frac = Number(finalRoom.pattern?.bondFraction) || 0.5;
   const rowShiftCm = type === "runningBond" ? tw * frac : 0;
   const bondPeriod = type === "runningBond" ? detectBondPeriod(frac) : 0;
 
-  const bounds = getRoomBounds(currentRoom);
+  const bounds = getRoomBounds(finalRoom);
   const w = bounds.width;
   const h = bounds.height;
 
@@ -588,7 +599,7 @@ export function tilesForPreview(state, availableMP, includeExcluded = false) {
       const x = startX + c * stepX + shift;
 
       const tileId = `r${r}c${c}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(finalRoom.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
 
       const tileP = tileRectPolygon(x, y, tw, th, origin.x, origin.y, rotRad);
@@ -615,8 +626,8 @@ export function tilesForPreview(state, availableMP, includeExcluded = false) {
   return { tiles, error: null };
 }
 
-function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -702,8 +713,8 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   return { tiles, error: null };
 }
 
-function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -793,8 +804,8 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
   return { tiles, error: null };
 }
 
-function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -876,8 +887,8 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
   return { tiles, error: null };
 }
 
-function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -976,8 +987,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
 // Export for testing
 export { tilesForPreviewHerringbone };
 
-function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -1096,8 +1107,8 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
   return { tiles, error: null };
 }
 
-function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
@@ -1181,8 +1192,8 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
   return { tiles, error: null };
 }
 
-function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false) {
-  const currentRoom = getCurrentRoom(state);
+function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 

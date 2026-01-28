@@ -60,9 +60,11 @@ export function defaultState() {
   const roomId = uuid();
 
   return {
-    meta: { version: 4, updatedAt: nowISO() },
+    meta: { version: 5, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
+
+    materials: {},
 
     floors: [
       {
@@ -84,7 +86,7 @@ export function defaultState() {
               }
             ],
             exclusions: [],
-            tile: { widthCm: 40, heightCm: 20, shape: "rect" },
+            tile: { widthCm: 40, heightCm: 20, shape: "rect", reference: "" },
             grout: { widthCm: 0.2, colorHex: "#ffffff" },
             pattern: {
               type: "grid",

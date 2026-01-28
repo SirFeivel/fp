@@ -9,7 +9,7 @@ import { createExclusionsController } from "./exclusions.js";
 import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
-import { initTabs } from "./tabs.js";
+import { initTabs, initMainTabs } from "./tabs.js";
 import { initResize } from "./resize.js";
 import { initFullscreen } from "./fullscreen.js";
 import { initCollapse } from "./collapse.js";
@@ -25,7 +25,8 @@ import {
   renderExclProps,
   renderPlanSvg,
   renderSectionsList,
-  renderSectionProps
+  renderSectionProps,
+  renderCommercialTab
 } from "./render.js";
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
@@ -111,6 +112,8 @@ function renderAll(lastLabel, options) {
       getSelectedSection: sections.getSelectedSection,
       commitSectionProps: sections.commitSectionProps
     });
+
+    renderCommercialTab(state);
 
     renderExclList(state, selectedExclId);
     renderExclProps({
@@ -220,6 +223,7 @@ function updateAllTranslations() {
   store.autosaveSession(updateMeta);
 
   initTabs();
+  initMainTabs();
   initResize();
   initCollapse();
   initFullscreen(dragController, renderAll);

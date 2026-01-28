@@ -80,10 +80,26 @@
 - Material calculation accounts for per-wall segment cutting.
 - Visualization resets dash pattern at every vertex.
 
-## Commands Run
-- npm run test
-- npm run build
-- git checkout -b feature/skirting-corners
+## Session: Project Summary (2026-01-28)
+### Goal
+- Implement project-wide calculation summary across all floors and rooms.
+- Display total material needs (tiles, area, packs) and costs in the UI.
+
+### Plan
+1. Create feature branch `feature/project-summary` ✓
+2. Implement `computeProjectTotals(state)` in `src/calc.js` ✓
+3. Update `src/calc.js` to support room-specific calculations via `roomOverride` ✓
+4. Update `src/geometry.js` to support room-specific tile generation via `roomOverride` ✓
+5. Update `index.html` to add a Project Summary section to the metrics panel ✓
+6. Update `src/render.js` to populate the Project Summary UI ✓
+7. Add translations for project summary fields in `src/i18n.js` ✓
+8. Verify with multi-room tests and full build ✓
+
+### Status
+- Project-wide totals now available in the right sidebar when more than one room exists.
+- Calculations correctly aggregate floor and skirting needs across all floors and rooms.
+- `tilesForPreview` and related geometry functions refactored to support non-global state lookups while maintaining backward compatibility.
+- All 372 tests pass, and production build is successful.
 
 ## Session: Skirting Inner Borders (2026-01-27)
 ### Goal
@@ -348,6 +364,25 @@
 - Warnings section is now dynamic and hidden if there are no warnings or pattern-specific hints to show.
 - All tests pass and production build is successful.
 
+## Session: Main Window Tabs (2026-01-28)
+### Goal
+- Relocate "Commercial" view from sidebar to main window.
+- Introduce top-level tabs in the viewer area to switch between "Plan" and "Commercial".
+
+### Plan
+1. Create feature branch `feature/main-window-tabs` ✓
+2. Refactor `index.html` to move Commercial content and add main tabs ✓
+3. Implement `initMainTabs` in `src/tabs.js` ✓
+4. Add styling for Integrated Header Tabs (Variant 1) in `src/style.css` ✓
+5. Update `src/main.js` to initialize the new tab controller ✓
+6. Verify with tests and build ✓
+
+### Status
+- Main window now features a top-level navigation bar for "Plan" and "Commercial".
+- "Commercial" view is now in the center area, providing more space for detailed tables.
+- Sidebar is simplified by removing the "Commercial" tab.
+- All 372 tests pass and production build is successful.
+
 ## Commands Run
 - npm run test
 - npm run build
@@ -459,12 +494,55 @@
 - Added `src/removal_patterns.test.js` to prevent future regressions.
 - All 369 tests pass and build is successful.
 
+## Session: Tile Reference Consolidation (2026-01-28)
+### Goal
+- Enable picking from existing tile references in room configuration.
+- Consolidate material requirements for the same tile across multiple rooms in the Commercial summary.
+- Sync tile properties (dimensions, shape) when reusing references to ensure consistency.
+
+### Plan
+1. Create feature branch `feature/referenced-tiles-consolidation` ✓
+2. Implement "Tile Reference Picker" with `<datalist>` in `index.html` ✓
+3. Implement `renderReferencePicker` in `src/render.js` to populate existing references ✓
+4. Enhance `src/ui.js` to sync tile properties (dimensions, shape) when a reference is selected or changed ✓
+5. Verify consolidation of tiles and skirting material in Commercial view ✓
+6. Add automated tests in `src/consolidation.test.js` ✓
+7. Verify all tests pass and production build is successful ✓
+
+### Status
+- Tile Reference field now supports picking from existing project materials via a dropdown.
+- Selecting an existing reference automatically syncs tile width, height, and shape to maintain project-wide consistency.
+- Commercial summary correctly aggregates material needs (including floor tiles and skirting cutouts) for consolidated items.
+- All 375 tests pass and build is successful.
+
 ## Commands Run
 - npm run test
 - npm run build
-- git checkout -b fix/herringbone-removal-animation
-- git commit -am "Fix herringbone removal animation and pattern consistency"
-- git checkout main
-- git merge fix/herringbone-removal-animation
-- git branch -d fix/herringbone-removal-animation
-- git push origin main
+- git checkout -b feature/referenced-tiles-consolidation
+- npx vitest run src/consolidation.test.js
+
+## Session: Update Development Guidelines (2026-01-28)
+### Goal
+- Add a new rule to the development guidelines requiring user confirmation of the plan before coding begins.
+
+### Plan
+1. Update `.junie/guidelines.md` to include the "Plan Confirmation" rule ✓
+
+### Status
+- Added "Planning & Approval" section to `.junie/guidelines.md`.
+- New rule: "Do not start coding before the user confirms that the plan is solid and an agreement has been reached."
+
+## Session: Commercial Table Labels Fix (2026-01-28)
+### Goal
+- Resolve missing labels and raw translation keys in the commercial table.
+
+### Plan
+1. Update `src/i18n.js` with missing translation keys ✓
+2. Update `src/render.js` to use translated labels in `renderCommercialTab` ✓
+3. Add smoke test in `src/render_smoke.test.js` ✓
+4. Verify with all tests and build ✓
+
+### Status
+- Commercial table now correctly displays translated labels instead of raw keys.
+- Added translation keys for "totalTiles", "grandTotal", and "defaultMaterial".
+- All 376 tests pass.

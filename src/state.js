@@ -25,6 +25,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 3) {
       s = migrateV3ToV4(s);
     }
+    if (s.meta?.version === 4) {
+      s = migrateV4ToV5(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || { widthCm: 40, heightCm: 20, shape: "rect" };
@@ -51,6 +54,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
             }
             if (!room.tile) room.tile = deepClone(globalTile);
             if (!room.tile.shape) room.tile.shape = "rect";
+            if (room.tile.reference === undefined) room.tile.reference = "";
             if (!room.grout) room.grout = deepClone(globalGrout);
             if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
             if (!room.pattern) room.pattern = deepClone(globalPattern);
@@ -91,6 +95,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
     if (!s.waste || typeof s.waste !== "object") s.waste = { allowRotate: true };
     if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = true;
+
+    if (!s.materials) s.materials = {};
 
     return s;
   }
@@ -166,6 +172,23 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
     s.meta.version = 4;
+    return s;
+  }
+
+  function migrateV4ToV5(s) {
+    if (!s.materials) s.materials = {};
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        if (floor.rooms && Array.isArray(floor.rooms)) {
+          for (const room of floor.rooms) {
+            if (room.tile && room.tile.reference === undefined) {
+              room.tile.reference = "";
+            }
+          }
+        }
+      }
+    }
+    s.meta.version = 5;
     return s;
   }
 

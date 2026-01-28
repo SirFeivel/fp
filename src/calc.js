@@ -5,8 +5,8 @@ import { getCurrentRoom } from "./core.js";
 /**
  * Calculates material requirements for skirting.
  */
-export function computeSkirtingNeeds(state) {
-  const room = getCurrentRoom(state);
+export function computeSkirtingNeeds(state, roomOverride = null) {
+  const room = roomOverride || getCurrentRoom(state);
   if (!room) {
     return {
       enabled: false,
@@ -78,7 +78,8 @@ export function computeSkirtingNeeds(state) {
   const additionalTiles = stripsPerTile > 0 ? Math.ceil(totalStripsNeeded / stripsPerTile) : 0;
   
   // Cost: additionalTiles * price per tile
-  const pricePerM2 = Number(state.pricing?.pricePerM2) || 0;
+  const pricing = getRoomPricing(state, room);
+  const pricePerM2 = pricing.pricePerM2;
   const tileAreaM2 = (tw * th) / 10000;
   const pricePerTile = tileAreaM2 * pricePerM2;
   const totalCost = additionalTiles * pricePerTile;
@@ -120,6 +121,23 @@ function calculateTileArea(tw, th, shape) {
 
 function rectArea(r) {
   return Math.max(0, r.w) * Math.max(0, r.h);
+}
+
+export function getRoomPricing(state, room) {
+  const ref = room.tile?.reference;
+  if (ref && state.materials && state.materials[ref]) {
+    const m = state.materials[ref];
+    return {
+      pricePerM2: Number(m.pricePerM2) || 0,
+      packM2: Number(m.packM2) || 0,
+      reserveTiles: Number(state.pricing?.reserveTiles) || 0,
+    };
+  }
+  return {
+    pricePerM2: Number(state.pricing?.pricePerM2) || 0,
+    packM2: Number(state.pricing?.packM2) || 0,
+    reserveTiles: Number(state.pricing?.reserveTiles) || 0,
+  };
 }
 
 function bboxFromPathD(d) {
@@ -433,8 +451,8 @@ class OffcutPool {
   }
 }
 
-export function computePlanMetrics(state) {
-  const currentRoom = getCurrentRoom(state);
+export function computePlanMetrics(state, roomOverride = null) {
+  const currentRoom = roomOverride || getCurrentRoom(state);
   if (!currentRoom) {
     return { ok: false, error: "Kein Raum ausgewählt.", data: null };
   }
@@ -457,7 +475,7 @@ export function computePlanMetrics(state) {
   if (!avail.mp) return { ok: false, error: "Keine verfügbare Fläche.", data: null };
 
   // Preview tiles (clipped paths)
-  const t = tilesForPreview(state, avail.mp);
+  const t = tilesForPreview(state, avail.mp, roomOverride, false);
   if (t.error) return { ok: false, error: t.error, data: null };
 
   const tileShape = currentRoom.tile?.shape || "rect";
@@ -635,9 +653,10 @@ export function computePlanMetrics(state) {
   const roomAreaCm2 = bounds.width * bounds.height;
   const grossRoomAreaM2 = cm2ToM2(roomAreaCm2);
 
-  // Pricing (still per installed area)
-  const pricePerM2 = Number(state.pricing?.pricePerM2) || 0;
-  const packM2 = Number(state.pricing?.packM2) || 0;
+  // Pricing
+  const pricing = getRoomPricing(state, currentRoom);
+  const pricePerM2 = pricing.pricePerM2;
+  const packM2 = pricing.packM2;
 
   const priceTotal = installedAreaM2 * pricePerM2;
   const packs = packM2 > 0 ? Math.ceil(installedAreaM2 / packM2) : null;
@@ -707,9 +726,9 @@ export function computePlanMetrics(state) {
 /**
  * Calculates the combined total requirements for both floor and skirting.
  */
-export function computeGrandTotals(state) {
-  const metrics = computePlanMetrics(state);
-  const skirting = computeSkirtingNeeds(state);
+export function computeGrandTotals(state, roomOverride = null) {
+  const metrics = computePlanMetrics(state, roomOverride);
+  const skirting = computeSkirtingNeeds(state, roomOverride);
 
   if (!metrics.ok) {
     return { ok: false, error: metrics.error };
@@ -740,6 +759,91 @@ export function computeGrandTotals(state) {
     totalCost,
     skirtingEnabled: skirting.enabled,
     skirtingType: skirting.type,
-    purchasedAreaM2: totalAreaM2 // consistency with computePlanMetrics terminology
+    purchasedAreaM2: totalAreaM2, // consistency with computePlanMetrics terminology
+    netAreaM2: d.material.installedAreaM2 // Added for project totals
+  };
+}
+
+/**
+ * Calculates project-wide totals by summing up all rooms in all floors.
+ */
+export function computeProjectTotals(state) {
+  let totalTiles = 0;
+  let totalCost = 0;
+  let totalPurchasedAreaM2 = 0;
+  let totalNetAreaM2 = 0;
+  let roomCount = 0;
+
+  const rooms = [];
+  const byMaterial = {};
+
+  if (state.floors) {
+    for (const floor of state.floors) {
+      if (floor.rooms) {
+        for (const room of floor.rooms) {
+          const grand = computeGrandTotals(state, room);
+          if (grand.ok) {
+            totalTiles += grand.totalTiles;
+            totalCost += grand.totalCost;
+            totalPurchasedAreaM2 += grand.totalAreaM2;
+            totalNetAreaM2 += grand.netAreaM2;
+            roomCount++;
+
+            const roomInfo = {
+              id: room.id,
+              name: room.name,
+              floorName: floor.name,
+              reference: room.tile?.reference || "",
+              totalTiles: grand.totalTiles,
+              totalAreaM2: grand.totalAreaM2,
+              netAreaM2: grand.netAreaM2,
+              totalCost: grand.totalCost,
+              totalPacks: grand.totalPacks,
+            };
+            rooms.push(roomInfo);
+
+            const ref = roomInfo.reference;
+            if (!byMaterial[ref]) {
+              const pricing = getRoomPricing(state, room);
+              byMaterial[ref] = {
+                reference: ref,
+                totalTiles: 0,
+                totalAreaM2: 0,
+                netAreaM2: 0,
+                totalCost: 0,
+                pricePerM2: pricing.pricePerM2,
+                packM2: pricing.packM2,
+                extraPacks: (state.materials && state.materials[ref]?.extraPacks) || 0,
+              };
+            }
+            byMaterial[ref].totalTiles += grand.totalTiles;
+            byMaterial[ref].totalAreaM2 += grand.totalAreaM2;
+            byMaterial[ref].netAreaM2 += grand.netAreaM2;
+            byMaterial[ref].totalCost += grand.totalCost;
+          }
+        }
+      }
+    }
+  }
+
+  const materials = Object.values(byMaterial).map(m => {
+    const basePacks = m.packM2 > 0 ? Math.ceil(m.totalAreaM2 / m.packM2) : 0;
+    const totalPacks = basePacks + m.extraPacks;
+    const adjustedCost = m.totalCost + (m.extraPacks * m.packM2 * m.pricePerM2);
+    return { ...m, totalPacks, adjustedCost };
+  });
+
+  const totalPacks = materials.reduce((sum, m) => sum + (m.totalPacks || 0), 0);
+  const totalCostAdjusted = materials.reduce((sum, m) => sum + (m.adjustedCost || 0), 0);
+
+  return {
+    totalTiles,
+    totalCost: totalCostAdjusted,
+    totalPurchasedAreaM2,
+    totalNetAreaM2,
+    totalPacks,
+    roomCount,
+    rooms,
+    materials
   };
 }

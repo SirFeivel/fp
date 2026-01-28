@@ -71,6 +71,9 @@ The project uses **Vitest** for unit and integration testing.
 
 ### 4. General Development Rules
 
+#### Planning & Approval
+- **Plan Confirmation**: Do not start coding before the user confirms that the plan is solid and an agreement has been reached.
+
 #### Topic Management
 - **Branching**: When starting a new topic, always create a new branch and switch to it before making any changes.
 - **Session Tracking**: Update `SESSION.md` every time a Plan is created and when a Plan is successfully completed (merge to main).
