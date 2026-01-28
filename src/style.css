@@ -52,6 +52,12 @@ body{
 /* Optional, but helps perceived polish */
 ::selection{ background:rgba(122,162,255,.25); }
 
+.logo {
+  height: 40px;
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* ---------------- Topbar ---------------- */
 .topbar{
   display:flex;

@@ -1,4 +1,20 @@
-# Session Notes
+## Session: Logo & Favicon Integration (2026-01-28)
+### Goal
+- Integrate the TilePerfect logo and update the application favicon.
+
+### Plan
+1. Create branch `feature/logo-integration` ✓
+2. Update favicon in `index.html` ✓
+3. Add Logo to Topbar in `index.html` ✓
+4. Add CSS styling for the logo in `src/style.css` ✓
+5. Verify changes with build and test ✓
+
+### Status
+- Favicon updated to TilePerfect branding.
+- Logo added to the header next to the app title.
+- Branding consistently applied across the app.
+
+## Session Notes
 
 ## Goal
 - Implement base boards functionality.
