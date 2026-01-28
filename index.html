@@ -12,11 +12,24 @@
         <img src="/logo.svg" alt="TilePerfect Logo" class="logo" />
         <div>
           <div class="title" data-i18n="app.title">TilePerfect [ALPHA]</div>
-          <div class="subtitle" data-i18n="app.subtitle">
-            SVG-Vorschau • Drag&Drop Ausschlüsse • Tiles: Grid + Running Bond
-          </div>
         </div>
       </div>
+
+      <nav class="stepper">
+        <button class="step active" data-step="setup">
+          <span class="step-num">1</span>
+          <span class="step-label" data-i18n="stepper.setup">Setup</span>
+        </button>
+        <button class="step" data-step="planning">
+          <span class="step-num">2</span>
+          <span class="step-label" data-i18n="stepper.planning">Planning</span>
+        </button>
+        <button class="step" data-step="commercial">
+          <span class="step-num">3</span>
+          <span class="step-label" data-i18n="stepper.commercial">Commercial</span>
+        </button>
+      </nav>
+
       <div style="display: flex; gap: 12px; align-items: center;">
         <div class="undo-controls">
           <button id="btnUndo" class="btn-icon" title="Undo (Ctrl+Z)" data-i18n-title="undo.undo">
@@ -31,18 +44,53 @@
               <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/>
             </svg>
           </button>
-          <span class="undo-counter" id="undoCounter">0 / 0</span>
-        </div>
-        <div class="lang-picker">
-          <label data-i18n="language.select">Sprache:</label>
-          <select id="langSelect">
-            <option value="de" data-i18n="language.german">Deutsch</option>
-            <option value="en" data-i18n="language.english">English</option>
-          </select>
         </div>
         <div class="autosave-indicator">
           <span class="dot"></span>
           <span data-i18n="app.autosave">Autosave</span>
+        </div>
+        
+        <div class="global-menu">
+          <button id="btnGlobalMenu" class="btn-icon" title="Menu">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div id="globalDropdown" class="dropdown-menu">
+            <div class="dropdown-item-header" style="padding: 12px 16px; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;" data-i18n="project.title">Settings</div>
+            <button id="btnSaveProjectGlobal" class="dropdown-item">
+              <span class="icon">💾</span>
+              <span data-i18n="project.save">Projekt speichern</span>
+            </button>
+            <button id="btnLoadProjectGlobal" class="dropdown-item">
+              <span class="icon">📁</span>
+              <span data-i18n="project.load">Laden</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button id="btnExportGlobal" class="dropdown-item">
+              <span class="icon">📤</span>
+              <span data-i18n="importExport.export">Export JSON</span>
+            </button>
+            <button id="btnImportGlobal" class="dropdown-item">
+              <span class="icon">📥</span>
+              <span data-i18n="importExport.import">Import JSON</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <div class="lang-picker" style="padding: 8px 16px;">
+              <label data-i18n="language.select">Sprache:</label>
+              <select id="langSelect">
+                <option value="de" data-i18n="language.german">Deutsch</option>
+                <option value="en" data-i18n="language.english">English</option>
+              </select>
+            </div>
+            <div class="dropdown-divider"></div>
+            <button id="btnResetGlobal" class="dropdown-item" style="color: #ff6b6b;">
+              <span class="icon">⚠️</span>
+              <span data-i18n="session.reset">Alles zurücksetzen</span>
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -50,45 +98,18 @@
     <main class="layout">
       <section class="panel panel-nav">
         <div class="panel-header">
-          <h3 class="section-title" data-i18n="tabs.title">Building</h3>
-          <button class="btn-collapse" id="collapseNav" title="Toggle Navigation">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
+          <h3 class="section-title" id="stageTitle" data-i18n="stepper.setup">Setup</h3>
         </div>
-        <nav class="tabs">
-          <button class="tab" data-tab="room">
-            <span class="tab-icon">📐</span>
-            <span data-i18n="room.title">Your Project</span>
-          </button>
-          <button class="tab" data-tab="tiles">
-            <span class="tab-icon">🔲</span>
-            <span data-i18n="tile.title">Fliesen</span>
-          </button>
-          <button class="tab" data-tab="exclusions">
-            <span class="tab-icon">⛔</span>
-            <span data-i18n="exclusions.title">Ausschlüsse</span>
-          </button>
-          <button class="tab" data-tab="project">
-            <span class="tab-icon">💾</span>
-            <span data-i18n="project.tabTitle">Projekt</span>
-          </button>
-          <button class="tab" data-tab="debug">
-            <span class="tab-icon">🐛</span>
-            <span data-i18n="debug.title">Debug</span>
-          </button>
-        </nav>
 
-        <div class="tab-content">
-          <!-- Room Tab -->
-          <div class="tab-panel" data-tab-panel="room">
+        <div class="stage-panels">
+          <!-- Setup Stage Panel -->
+          <div class="stage-panel active" data-stage-panel="setup">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="tabs.title">Building</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div id="structureContent" class="card-content hidden">
+              <div id="structureContent" class="card-content">
                 <div class="grid2">
                   <div class="field span2">
                     <label data-i18n="tabs.floor">Etage</label>
@@ -151,11 +172,10 @@
                 </div>
               </div>
             </div>
-
           </div>
 
-          <!-- Tiles & Pattern Tab -->
-          <div class="tab-panel" data-tab-panel="tiles">
+          <!-- Planning Stage Panel -->
+          <div class="stage-panel" data-stage-panel="planning">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="tile.sectionTiles">Fliesen & Fuge</h3>
@@ -190,9 +210,6 @@
                     <label data-i18n="tile.height">Fliese Länge (cm)</label>
                     <input id="tileH" type="number" min="0" step="0.1" />
                   </div>
-                  <div class="meta subtle span2" id="hexHint" style="display: none; margin-top: -8px;">
-                    <span data-i18n="tile.hexHint">For hexagonal tiles, width = flat-to-flat distance. Height is auto-calculated.</span>
-                  </div>
                   <div class="field">
                     <label data-i18n="tile.grout">Fuge (cm)</label>
                     <input id="groutW" type="number" min="0" step="0.1" />
@@ -210,10 +227,6 @@
                       <input id="groutColor" type="color" value="#ffffff" />
                     </div>
                   </div>
-                  <div class="field">
-                    <label data-i18n="waste.kerfWidth">Schnittbreite (cm)</label>
-                    <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
-                  </div>
                 </div>
               </div>
             </div>
@@ -223,7 +236,7 @@
                 <h3 class="section-title" data-i18n="tile.sectionLayout">Fliesen Layout</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
-              <div class="card-content hidden">
+              <div class="card-content">
                 <div class="grid2">
                   <div class="field" id="patternTypeField">
                     <label data-i18n="tile.pattern">Muster</label>
@@ -234,14 +247,6 @@
                       <option value="doubleHerringbone" data-i18n="tile.patternDoubleHerringbone">Double Herringbone</option>
                       <option value="basketweave" data-i18n="tile.patternBasketweave">Basketweave</option>
                       <option value="verticalStackAlternating" data-i18n="tile.patternVerticalStackAlternating">Vertical Stack Alternating</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label data-i18n="tile.bondFraction">Running Bond Anteil</label>
-                    <select id="bondFraction">
-                      <option value="0.5">1/2</option>
-                      <option value="0.3333333333">1/3</option>
-                      <option value="0.25">1/4</option>
                     </select>
                   </div>
                   <div class="field">
@@ -257,6 +262,14 @@
                       <option value="315">315</option>
                     </select>
                   </div>
+                  <div class="field">
+                    <label data-i18n="tile.bondFraction">Running Bond</label>
+                    <select id="bondFraction">
+                      <option value="0.5">1/2</option>
+                      <option value="0.3333333333">1/3</option>
+                      <option value="0.25">1/4</option>
+                    </select>
+                  </div>
 
                   <div class="field span2" style="margin-top: 8px; border-top: 1px solid var(--line); padding-top: 12px;">
                     <label data-i18n="origin.preset">Startpunkt Preset</label>
@@ -270,11 +283,11 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label data-i18n="origin.x">Startpunkt X (cm)</label>
+                    <label data-i18n="origin.x">Start X (cm)</label>
                     <input id="originX" type="number" step="1" />
                   </div>
                   <div class="field">
-                    <label data-i18n="origin.y">Startpunkt Y (cm)</label>
+                    <label data-i18n="origin.y">Start Y (cm)</label>
                     <input id="originY" type="number" step="1" />
                   </div>
                   <div class="field">
@@ -297,32 +310,48 @@
 
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="tile.sectionPricing">Preis & Verschnitt</h3>
+                <h3 class="section-title" data-i18n="exclusions.title">Ausschlüsse</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div class="card-content hidden">
-                <div class="grid2">
-                  <div class="field">
-                    <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
-                    <input id="reserveTiles" type="number" step="1" min="0" />
-                  </div>
+                <div class="btnrow">
+                  <button id="btnAddRect" class="btn small" data-i18n="exclusions.addRect">+ Box</button>
+                  <button id="btnAddCircle" class="btn small" data-i18n="exclusions.addCircle">+ Circle</button>
+                  <button id="btnAddTri" class="btn small" data-i18n="exclusions.addTriangle">+ Tri</button>
+                </div>
+                <div class="field span2" style="margin-top: 12px;">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="room.showGrid">Grid anzeigen</span>
+                    <input id="showGrid" type="checkbox" />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
+                <div class="field span2">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="skirting.showSkirting">Sockel anzeigen</span>
+                    <input id="showSkirting" type="checkbox" />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
+                <div class="field span2">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="removal.mode">Einzelne Fliesen entfernen</span>
+                    <input id="removalMode" type="checkbox" />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
+                <div class="grid2" style="margin-top: 10px">
                   <div class="field span2">
-                    <label class="toggle-switch">
-                      <span class="toggle-label" data-i18n="waste.allowRotate">Reststücke drehen (Reuse)</span>
-                      <input id="wasteAllowRotate" type="checkbox" checked />
-                      <div class="toggle-slider"></div>
-                    </label>
+                    <label data-i18n="exclusions.list">Exclusions List</label>
+                    <select id="exclList" size="4"></select>
                   </div>
-                  <div class="field span2">
-                    <label class="toggle-switch">
-                      <span class="toggle-label" data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
-                      <input id="wasteOptimizeCuts" type="checkbox" />
-                      <div class="toggle-slider"></div>
-                    </label>
-                  </div>
+                </div>
+                <div id="exclProps" class="grid2" style="margin-top: 10px;">
+                  <!-- Dynamic properties -->
                 </div>
               </div>
             </div>
+
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
                 <h3 class="section-title" data-i18n="skirting.title">Sockelleisten</h3>
@@ -352,147 +381,49 @@
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Exclusions Tab -->
-          <div class="tab-panel" data-tab-panel="exclusions">
             <div class="section-card collapsible-card">
               <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="exclusions.title">Ausschlussbereiche</h3>
+                <h3 class="section-title" data-i18n="tile.sectionPricing">Verschnitt & Mehr</h3>
                 <span class="collapse-toggle">▼</span>
               </div>
               <div class="card-content hidden">
-                <div class="btnrow">
-                  <button id="btnAddRect" class="btn" data-i18n="exclusions.addRect">+ Rechteck</button>
-                  <button id="btnAddCircle" class="btn" data-i18n="exclusions.addCircle">+ Kreis</button>
-                  <button id="btnAddTri" class="btn" data-i18n="exclusions.addTriangle">+ Dreieck</button>
-                </div>
-                <div class="grid2" style="margin-top: 10px">
+                <div class="grid2">
+                  <div class="field">
+                    <label data-i18n="pricing.reserve">Reserve (Fliesen)</label>
+                    <input id="reserveTiles" type="number" step="1" min="0" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="waste.kerfWidth">Schnitt (cm)</label>
+                    <input id="wasteKerfCm" type="number" min="0" step="0.1" />
+                  </div>
                   <div class="field span2">
-                    <label data-i18n="exclusions.list">Liste</label>
-                    <select id="exclList" size="6"></select>
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="waste.allowRotate">Reststücke drehen</span>
+                      <input id="wasteAllowRotate" type="checkbox" checked />
+                      <div class="toggle-slider"></div>
+                    </label>
+                  </div>
+                  <div class="field span2">
+                    <label class="toggle-switch">
+                      <span class="toggle-label" data-i18n="waste.optimizeCuts">Verschnitt optimieren</span>
+                      <input id="wasteOptimizeCuts" type="checkbox" />
+                      <div class="toggle-slider"></div>
+                    </label>
                   </div>
                 </div>
-                <div class="btnrow" style="margin-top: 10px">
-                  <button id="btnDeleteExcl" class="btn danger" data-i18n="exclusions.delete">Löschen</button>
-                </div>
-                <div class="meta subtle" style="margin-top: 10px" data-i18n="exclusions.dragHint">
-                  Drag im Plan verschiebt die Auswahl
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="exclusions.properties">Eigenschaften</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div id="exclProps" class="card-content grid2 hidden">
-                <div class="meta subtle span2" data-i18n="exclusions.noneSelected">– nichts ausgewählt –</div>
               </div>
             </div>
           </div>
 
-          <!-- Project Tab -->
-          <div class="tab-panel" data-tab-panel="project">
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="project.title">Projekt speichern</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
+          <!-- Commercial Stage Panel -->
+          <div class="stage-panel" data-stage-panel="commercial">
+            <div class="section-card">
               <div class="card-content">
-                <div class="grid2">
-                  <div class="field span2">
-                    <label data-i18n="project.nameLabel">Projektname</label>
-                    <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="z.B. Bad EG" />
-                  </div>
-                  <div class="field span2">
-                    <button id="btnSaveProject" class="btn primary" data-i18n="project.save">Projekt speichern</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="project.savedProjects">Gespeicherte Projekte</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content hidden">
-                <div class="grid2">
-                  <div class="field span2">
-                    <label data-i18n="project.savedProjects">Projekte</label>
-                    <select id="projectSelect"></select>
-                  </div>
-                  <div class="btnrow span2">
-                    <button id="btnLoadProject" class="btn" data-i18n="project.load">Laden</button>
-                    <button id="btnDeleteProject" class="btn danger" data-i18n="project.delete">Löschen</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="importExport.title">Import / Export</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content hidden">
-                <div class="btnrow">
-                  <button id="btnExport" class="btn" data-i18n="importExport.export">Export JSON</button>
-                  <button id="btnImport" class="btn" data-i18n="importExport.import">Import JSON</button>
-                  <input id="fileImport" type="file" accept="application/json" style="display: none;" />
-                </div>
-                <div class="meta subtle" style="margin-top: 10px" data-i18n="importExport.hint">
-                  Import ist undo-bar
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card danger-zone">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="session.title">Gefahrenzone</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content hidden">
-                <div class="btnrow">
-                  <button id="btnLoadSession" class="btn" data-i18n="session.restore">Session laden</button>
-                  <button id="btnReset" class="btn danger" data-i18n="session.reset">Alles zurücksetzen (Reset)</button>
-                </div>
-                <div class="meta" style="margin-top: 10px">
-                  <div><span class="k" data-i18n="session.status">Session:</span> <span id="sessionStatus">–</span></div>
-                  <div><span class="k" data-i18n="session.lastSaved">Gespeichert:</span> <span id="lastSaved">–</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Debug Tab -->
-          <div class="tab-panel" data-tab-panel="debug">
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="debug.sectionOptions">Debug Optionen</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content hidden">
-                <div class="field">
-                  <label class="toggle-switch">
-                    <span class="toggle-label" data-i18n="debug.showNeeds">Reststück-Bedarf anzeigen</span>
-                    <input id="debugShowNeeds" type="checkbox" />
-                    <div class="toggle-slider"></div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div class="section-card collapsible-card">
-              <div class="section-header-collapsible" onclick="toggleCard(this)">
-                <h3 class="section-title" data-i18n="state.title">Live State</h3>
-                <span class="collapse-toggle">▼</span>
-              </div>
-              <div class="card-content hidden">
-                <button id="btnCopy" class="btn small" data-i18n="importExport.copy" style="margin-bottom: 8px;">Copy State</button>
-                <pre id="stateView" class="code">–</pre>
+                <div class="meta subtle" data-i18n="commercial.hint">Detaillierte Übersicht im Hauptfenster</div>
+                <button id="btnExportCommercialSidebar" class="btn primary" style="width: 100%; margin-top: 12px;">
+                  <span data-i18n="commercial.export">Übersicht exportieren</span>
+                </button>
               </div>
             </div>
           </div>
@@ -524,23 +455,6 @@
           </div>
 
           <div class="svgWrap">
-            <div class="plan-toolbar">
-              <label class="toolbar-toggle">
-                <input id="showGrid" type="checkbox" />
-                <div class="toggle-icon"></div>
-                <span class="toolbar-text" data-i18n="room.showGrid">Grid</span>
-              </label>
-              <label class="toolbar-toggle">
-                <input id="showSkirting" type="checkbox" />
-                <div class="toggle-icon"></div>
-                <span class="toolbar-text" data-i18n="skirting.showSkirting">Skirting</span>
-              </label>
-              <label class="toolbar-toggle">
-                <input id="removalMode" type="checkbox" />
-                <div class="toggle-icon"></div>
-                <span class="toolbar-text" data-i18n="removal.mode">Edit Exclusions</span>
-              </label>
-            </div>
             <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
           </div>
 

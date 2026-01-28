@@ -9,7 +9,7 @@ import { createExclusionsController } from "./exclusions.js";
 import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
-import { initTabs, initMainTabs } from "./tabs.js";
+import { initTabs, initMainTabs, initGlobalMenu } from "./tabs.js";
 import { initResize } from "./resize.js";
 import { initFullscreen } from "./fullscreen.js";
 import { initCollapse } from "./collapse.js";
@@ -30,6 +30,8 @@ import {
 } from "./render.js";
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
+import { createSVGSectionsController } from "./canvas_sections.js";
+import { createCanvasPlanningController } from "./canvas_planning.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -132,8 +134,11 @@ function renderAll(lastLabel, options) {
     renderPlanSvg({
       state,
       selectedExclId,
+      selectedSectionId,
       setSelectedExcl,
+      setSelectedSection,
       onExclPointerDown: dragController.onExclPointerDown,
+      onOriginPointerDown: canvasPlanning.onOriginPointerDown,
       lastUnionError,
       lastTileError,
       setLastUnionError: (v) => (lastUnionError = v),
@@ -186,6 +191,29 @@ const structure = createStructureController({
 });
 
 const removal = createRemovalController(store, renderAll);
+const svgSections = createSVGSectionsController({
+  getState: store.getState,
+  commit: store.commit,
+  renderAll,
+  getSelectedId: () => selectedSectionId
+});
+const canvasPlanning = createCanvasPlanningController({
+  getState: store.getState,
+  commit: store.commit,
+  renderAll
+});
+
+document.addEventListener('fp-add-section', (e) => {
+  sections.addSection(e.detail.direction);
+});
+
+document.addEventListener('fp-resize-section-start', (e) => {
+  svgSections.onResizeStart(e.detail.sectionId, e.detail.direction, e.detail.event);
+});
+
+document.addEventListener('fp-stage-changed', () => {
+  renderAll();
+});
 
 const dragController = createExclusionDragController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
@@ -224,6 +252,7 @@ function updateAllTranslations() {
 
   initTabs();
   initMainTabs();
+  initGlobalMenu();
   initResize();
   initCollapse();
   initFullscreen(dragController, renderAll);

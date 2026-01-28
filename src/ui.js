@@ -52,9 +52,9 @@ export function bindUI({
     const next = structuredClone(state);
 
     next.view = next.view || {};
-    const showGridEl = document.querySelector('.plan-toolbar #showGrid');
-    const showSkirtingEl = document.querySelector('.plan-toolbar #showSkirting');
-    const removalModeEl = document.querySelector('.plan-toolbar #removalMode');
+    const showGridEl = document.getElementById('showGrid');
+    const showSkirtingEl = document.getElementById('showSkirting');
+    const removalModeEl = document.getElementById('removalMode');
 
     if (showGridEl) next.view.showGrid = Boolean(showGridEl.checked);
     if (showSkirtingEl) next.view.showSkirting = Boolean(showSkirtingEl.checked);
@@ -251,7 +251,7 @@ export function bindUI({
   }
 
   // Buttons
-  document.getElementById("btnReset")?.addEventListener("click", () => {
+  const onReset = () => {
     if (confirm(t("session.confirmReset"))) {
       setSelectedExcl(null);
       setSelectedSection(null);
@@ -261,7 +261,9 @@ export function bindUI({
         updateMetaCb: updateMeta
       });
     }
-  });
+  };
+  document.getElementById("btnReset")?.addEventListener("click", onReset);
+  document.getElementById("btnResetGlobal")?.addEventListener("click", onReset);
 
   document.getElementById("btnLoadSession")?.addEventListener("click", () => {
     const ok = store.loadSessionIfAny();
@@ -275,7 +277,7 @@ export function bindUI({
     renderAll(t("errors.sessionRestored"));
   });
 
-  document.getElementById("btnSaveProject")?.addEventListener("click", () => {
+  const onSave = () => {
     const state = store.getState();
     const name =
       document.getElementById("projectName")?.value.trim() ||
@@ -283,9 +285,11 @@ export function bindUI({
     store.saveCurrentAsProject(name);
     store.autosaveSession(updateMeta);
     renderAll(t("project.saved"));
-  });
+  };
+  document.getElementById("btnSaveProject")?.addEventListener("click", onSave);
+  document.getElementById("btnSaveProjectGlobal")?.addEventListener("click", onSave);
 
-  document.getElementById("btnLoadProject")?.addEventListener("click", () => {
+  const onLoad = () => {
     const id = document.getElementById("projectSelect")?.value;
     if (!id) return;
 
@@ -297,7 +301,9 @@ export function bindUI({
     setSelectedExcl(null);
     resetErrors();
     renderAll(`${t("project.loaded")}: ${res.name}`);
-  });
+  };
+  document.getElementById("btnLoadProject")?.addEventListener("click", onLoad);
+  document.getElementById("btnLoadProjectGlobal")?.addEventListener("click", onLoad);
 
   document.getElementById("btnDeleteProject")?.addEventListener("click", () => {
     const id = document.getElementById("projectSelect")?.value;
@@ -357,9 +363,7 @@ export function bindUI({
     }
   });
   document.addEventListener("change", (e) => {
-    if (e.target.id === 'showGrid' || e.target.id === 'showSkirting') {
-      const val = e.target.checked;
-      document.querySelectorAll('#' + e.target.id).forEach(el => el.checked = val);
+    if (e.target.id === 'showGrid' || e.target.id === 'showSkirting' || e.target.id === 'removalMode') {
       commitFromRoomInputs(t("room.viewChanged"));
     }
   });
@@ -522,16 +526,18 @@ export function bindUI({
   );
 
   // Export
-  document.getElementById("btnExport")?.addEventListener("click", () => {
+  const onExport = () => {
     const state = store.getState();
     const fname = `floorplanner_state_${(state.project?.name || "projekt").replace(
       /\s+/g,
       "_"
     )}.json`;
     downloadText(fname, JSON.stringify(state, null, 2));
-  });
+  };
+  document.getElementById("btnExport")?.addEventListener("click", onExport);
+  document.getElementById("btnExportGlobal")?.addEventListener("click", onExport);
 
-  document.getElementById("btnExportCommercial")?.addEventListener("click", () => {
+  const onExportCommercial = () => {
     const state = store.getState();
     const proj = computeProjectTotals(state);
     
@@ -559,7 +565,9 @@ export function bindUI({
 
     const fname = `fp-summary-${(state.project?.name || "export").replace(/\s+/g, "_")}.txt`;
     downloadText(fname, text);
-  });
+  };
+  document.getElementById("btnExportCommercial")?.addEventListener("click", onExportCommercial);
+  document.getElementById("btnExportCommercialSidebar")?.addEventListener("click", onExportCommercial);
 
   // Commercial Tab Inline Edits (Event Delegation)
   document.getElementById("commercialMaterialsList")?.addEventListener("change", (e) => {
@@ -594,9 +602,11 @@ export function bindUI({
   });
 
   // Import
-  document.getElementById("btnImport")?.addEventListener("click", () => {
+  const onImport = () => {
     document.getElementById("fileImport")?.click();
-  });
+  };
+  document.getElementById("btnImport")?.addEventListener("click", onImport);
+  document.getElementById("btnImportGlobal")?.addEventListener("click", onImport);
 
   document.getElementById("fileImport")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];

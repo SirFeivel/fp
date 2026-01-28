@@ -42,6 +42,22 @@
 - Backward compatibility is maintained via robust migration logic and a temporary fallback in the sections retriever.
 - All 354 tests pass and the production build is successful.
 
+## Session: Application Features Documentation (2026-01-28)
+### Goal
+- Create a comprehensive list of all functionalities the app currently offers and store it as a Markdown file.
+
+### Plan
+1. Analyze the codebase and previous session logs to identify all features ✓
+2. Categorize features into Project Management, Geometry, Layout, Calculations, UI/UX, and Technicals ✓
+3. Create `FEATURES.md` with detailed descriptions ✓
+4. Verify the document accuracy against the current app state ✓
+
+### Status
+- `FEATURES.md` created, documenting 8 main categories of functionality.
+- Both user-facing (e.g., three-stage stepper) and internal (e.g., V2-V5 migration) features are included.
+- Documentation verified and accepted.
+- Post-acceptance verification completed: 376 tests pass, build successful.
+
 ## Session: Unified Room UI (2026-01-27)
 ### Goal
 - Merge "Room Details" and "Sections" visually into a single common place.
@@ -532,17 +548,23 @@
 - Added "Planning & Approval" section to `.junie/guidelines.md`.
 - New rule: "Do not start coding before the user confirms that the plan is solid and an agreement has been reached."
 
-## Session: Commercial Table Labels Fix (2026-01-28)
+## Session: UX Overhaul & Guided Flow (2026-01-28)
 ### Goal
-- Resolve missing labels and raw translation keys in the commercial table.
+- Deep analysis of current functionalities.
+- Implement a calm, flow-based guided UX (Setup -> Planning -> Commercials).
+- Move left menu to a top-right global menu.
+- Enable room setup directly in the plan view.
 
 ### Plan
-1. Update `src/i18n.js` with missing translation keys ✓
-2. Update `src/render.js` to use translated labels in `renderCommercialTab` ✓
-3. Add smoke test in `src/render_smoke.test.js` ✓
-4. Verify with all tests and build ✓
+1. Create branch `feature/ux-overhaul` ✓
+2. Perform deep audit of current functionalities and identify redundancies. *
+3. Design a step-by-step plan for the new UX. *
+4. Get user approval for the design and plan.
+5. Execute the overhaul.
 
 ### Status
-- Commercial table now correctly displays translated labels instead of raw keys.
-- Added translation keys for "totalTiles", "grandTotal", and "defaultMaterial".
-- All 376 tests pass.
+- Audit in progress.
+- Initial project exploration complete.
+
+## Commands Run
+- git checkout -b feature/ux-overhaul

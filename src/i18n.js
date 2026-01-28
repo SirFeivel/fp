@@ -5,6 +5,11 @@ const translations = {
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
     },
+    stepper: {
+      setup: "Setup",
+      planning: "Planung",
+      commercial: "Kommerziell"
+    },
     session: {
       title: "Gefahrenzone",
       reset: "Alles zurücksetzen",
@@ -313,6 +318,11 @@ const translations = {
       title: "TilePerfect [ALPHA]",
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
+    },
+    stepper: {
+      setup: "Setup",
+      planning: "Planning",
+      commercial: "Commercial"
     },
     session: {
       title: "Danger Zone",

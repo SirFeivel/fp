@@ -1,45 +1,79 @@
 export function initTabs() {
-  const tabButtons = document.querySelectorAll('[data-tab]');
-  const tabPanels = document.querySelectorAll('[data-tab-panel]');
+  const stepButtons = document.querySelectorAll('[data-step]');
+  const stagePanels = document.querySelectorAll('[data-stage-panel]');
+  const stageTitle = document.getElementById('stageTitle');
 
-  function switchTab(targetTab) {
-    tabButtons.forEach(btn => {
-      if (btn.dataset.tab === targetTab) {
+  function switchStage(targetStage) {
+    stepButtons.forEach(btn => {
+      if (btn.dataset.step === targetStage) {
         btn.classList.add('active');
       } else {
         btn.classList.remove('active');
       }
     });
 
-    tabPanels.forEach(panel => {
-      if (panel.dataset.tabPanel === targetTab) {
+    stagePanels.forEach(panel => {
+      if (panel.dataset.stagePanel === targetStage) {
         panel.classList.add('active');
       } else {
         panel.classList.remove('active');
       }
     });
 
-    localStorage.setItem('activeTab', targetTab);
+    if (stageTitle) {
+      stageTitle.setAttribute('data-i18n', `stepper.${targetStage}`);
+      // Simple fallback if i18n not yet run
+      const labels = { setup: 'Setup', planning: 'Planning', commercial: 'Commercial' };
+      stageTitle.textContent = labels[targetStage] || targetStage;
+    }
+
+    // Auto-switch viewer tab
+    const viewerTabs = document.querySelectorAll('[data-main-tab]');
+    if (targetStage === 'commercial') {
+      const commTab = Array.from(viewerTabs).find(t => t.dataset.mainTab === 'commercial');
+      if (commTab) commTab.click();
+    } else {
+      const planTab = Array.from(viewerTabs).find(t => t.dataset.mainTab === 'plan');
+      if (planTab) planTab.click();
+    }
+
+    localStorage.setItem('activeStage', targetStage);
+    
+    // Update body class for conditional styling
+    document.body.classList.remove('stage-setup', 'stage-planning', 'stage-commercial');
+    document.body.classList.add(`stage-${targetStage}`);
+
+    // Trigger re-render
+    document.dispatchEvent(new CustomEvent('fp-stage-changed', { detail: { stage: targetStage } }));
   }
 
-  tabButtons.forEach(btn => {
+  stepButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      switchTab(btn.dataset.tab);
+      switchStage(btn.dataset.step);
     });
   });
 
-  let savedTab = localStorage.getItem('activeTab') || 'room';
+  const savedStage = localStorage.getItem('activeStage') || 'setup';
+  switchStage(savedStage);
+}
 
-  if (savedTab === 'advanced') {
-    savedTab = 'debug';
-  }
+export function initGlobalMenu() {
+  const btn = document.getElementById('btnGlobalMenu');
+  const dropdown = document.getElementById('globalDropdown');
+  if (!btn || !dropdown) return;
 
-  const validTabs = Array.from(tabButtons).map(btn => btn.dataset.tab);
-  if (!validTabs.includes(savedTab)) {
-    savedTab = 'room';
-  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('show');
+  });
 
-  switchTab(savedTab);
+  document.addEventListener('click', () => {
+    dropdown.classList.remove('show');
+  });
+
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
 }
 
 export function initMainTabs() {
