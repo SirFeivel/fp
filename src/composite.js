@@ -202,7 +202,7 @@ export function createDefaultSection(x = 0, y = 0, widthCm = 300, heightCm = 300
   };
 }
 
-export function suggestConnectedSection(existingSections, direction = "right") {
+export function suggestConnectedSection(existingSections, direction = "right", edgeInfo = null) {
   const nextNumber = (existingSections?.length || 0) + 1;
   const label = `${t("room.sectionTitle")} ${nextNumber}`;
 
@@ -210,25 +210,64 @@ export function suggestConnectedSection(existingSections, direction = "right") {
     return createDefaultSection(0, 0, 300, 300, label);
   }
 
-  // Compute composite bounds to position new section at the edge of the entire shape
+  let newX = 0;
+  let newY = 0;
+  let newW = 300;
+  let newH = 300;
+
+  // If edgeInfo is provided, position new section at that specific edge
+  if (edgeInfo) {
+    switch (direction) {
+      case "right": {
+        // edgeInfo: { x, y1, y2, secId }
+        const edgeHeight = edgeInfo.y2 - edgeInfo.y1;
+        newX = edgeInfo.x;
+        newY = edgeInfo.y1;
+        newW = Math.min(300, edgeHeight);
+        newH = edgeHeight;
+        break;
+      }
+      case "left": {
+        const edgeHeight = edgeInfo.y2 - edgeInfo.y1;
+        newW = Math.min(300, edgeHeight);
+        newX = edgeInfo.x - newW;
+        newY = edgeInfo.y1;
+        newH = edgeHeight;
+        break;
+      }
+      case "bottom": {
+        // edgeInfo: { y, x1, x2, secId }
+        const edgeWidth = edgeInfo.x2 - edgeInfo.x1;
+        newX = edgeInfo.x1;
+        newY = edgeInfo.y;
+        newW = edgeWidth;
+        newH = Math.min(300, edgeWidth);
+        break;
+      }
+      case "top": {
+        const edgeWidth = edgeInfo.x2 - edgeInfo.x1;
+        newH = Math.min(300, edgeWidth);
+        newX = edgeInfo.x1;
+        newY = edgeInfo.y - newH;
+        newW = edgeWidth;
+        break;
+      }
+    }
+    return createDefaultSection(newX, newY, newW, newH, label);
+  }
+
+  // Fallback: use composite bounds (for backward compatibility)
   const bounds = computeCompositeBounds(existingSections);
   const { minX, minY, maxX, maxY, width, height } = bounds;
 
-  // Find sections at each edge to determine appropriate dimensions
   const eps = 0.01;
   const sectionsAtRight = existingSections.filter(s => Math.abs((s.x + s.widthCm) - maxX) < eps);
   const sectionsAtLeft = existingSections.filter(s => Math.abs(s.x - minX) < eps);
   const sectionsAtBottom = existingSections.filter(s => Math.abs((s.y + s.heightCm) - maxY) < eps);
   const sectionsAtTop = existingSections.filter(s => Math.abs(s.y - minY) < eps);
 
-  let newX = 0;
-  let newY = 0;
-  let newW = 300;
-  let newH = 300;
-
   switch (direction) {
     case "right": {
-      // Place at right edge of composite, spanning the height of sections at that edge
       const edgeMinY = Math.min(...sectionsAtRight.map(s => s.y));
       const edgeMaxY = Math.max(...sectionsAtRight.map(s => s.y + s.heightCm));
       newX = maxX;
@@ -238,7 +277,6 @@ export function suggestConnectedSection(existingSections, direction = "right") {
       break;
     }
     case "left": {
-      // Place at left edge of composite
       const edgeMinY = Math.min(...sectionsAtLeft.map(s => s.y));
       const edgeMaxY = Math.max(...sectionsAtLeft.map(s => s.y + s.heightCm));
       newW = Math.min(300, width * 0.5);
@@ -248,7 +286,6 @@ export function suggestConnectedSection(existingSections, direction = "right") {
       break;
     }
     case "bottom": {
-      // Place at bottom edge of composite
       const edgeMinX = Math.min(...sectionsAtBottom.map(s => s.x));
       const edgeMaxX = Math.max(...sectionsAtBottom.map(s => s.x + s.widthCm));
       newX = edgeMinX;
@@ -258,7 +295,6 @@ export function suggestConnectedSection(existingSections, direction = "right") {
       break;
     }
     case "top": {
-      // Place at top edge of composite
       const edgeMinX = Math.min(...sectionsAtTop.map(s => s.x));
       const edgeMaxX = Math.max(...sectionsAtTop.map(s => s.x + s.widthCm));
       newH = Math.min(300, height * 0.5);
@@ -268,7 +304,6 @@ export function suggestConnectedSection(existingSections, direction = "right") {
       break;
     }
     default: {
-      // Default to right
       newX = maxX;
       newY = minY;
       newW = Math.min(300, width * 0.5);

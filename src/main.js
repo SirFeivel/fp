@@ -164,7 +164,7 @@ function renderAll(lastLabel, options) {
       onSectionPointerDown: sectionDragController.onSectionPointerDown,
       onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
       onSectionInlineEdit: updateSectionInline,
-      onAddSectionAtEdge: (direction) => sections.addSection(direction)
+      onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
     });
 
     renderStateView(state);

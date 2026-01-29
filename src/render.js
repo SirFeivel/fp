@@ -1260,11 +1260,8 @@ export function renderPlanSvg({
     }
   }
 
-  // Add "+" indicators on outer edges for adding new sections
+  // Add "+" indicators on all outer edges for adding new sections
   if (onAddSectionAtEdge && !selectedExclId) {
-    const compositeBounds = computeCompositeBounds(sections);
-    const { minX: cbMinX, minY: cbMinY, maxX: cbMaxX, maxY: cbMaxY } = compositeBounds;
-
     const plusBtnRadius = 10;
     const plusBtnOffset = 25; // Distance from edge
     const plusStyle = {
@@ -1281,15 +1278,96 @@ export function renderPlanSvg({
     };
     const plusSize = 5;
 
-    // All buttons outside the room, centered on each edge
-    const edgeButtons = [
-      { dir: "right", x: cbMaxX + plusBtnOffset, y: (cbMinY + cbMaxY) / 2 },
-      { dir: "left", x: cbMinX - plusBtnOffset, y: (cbMinY + cbMaxY) / 2 },
-      { dir: "bottom", x: (cbMinX + cbMaxX) / 2, y: cbMaxY + plusBtnOffset },
-      { dir: "top", x: (cbMinX + cbMaxX) / 2, y: cbMinY - plusBtnOffset }
-    ];
+    // Helper to check if two edges overlap (share a segment)
+    const edgesOverlap = (a1, a2, b1, b2) => {
+      const min1 = Math.min(a1, a2);
+      const max1 = Math.max(a1, a2);
+      const min2 = Math.min(b1, b2);
+      const max2 = Math.max(b1, b2);
+      const overlapStart = Math.max(min1, min2);
+      const overlapEnd = Math.min(max1, max2);
+      return overlapEnd - overlapStart > 0.01; // More than a point
+    };
 
-    edgeButtons.forEach(btn => {
+    // Check if a section edge is adjacent to another section
+    const isEdgeShared = (sec, edge) => {
+      const eps = 0.01;
+      for (const other of sections) {
+        if (other.id === sec.id) continue;
+
+        const oLeft = other.x;
+        const oRight = other.x + other.widthCm;
+        const oTop = other.y;
+        const oBottom = other.y + other.heightCm;
+
+        const sLeft = sec.x;
+        const sRight = sec.x + sec.widthCm;
+        const sTop = sec.y;
+        const sBottom = sec.y + sec.heightCm;
+
+        if (edge === "right" && Math.abs(sRight - oLeft) < eps) {
+          if (edgesOverlap(sTop, sBottom, oTop, oBottom)) return true;
+        }
+        if (edge === "left" && Math.abs(sLeft - oRight) < eps) {
+          if (edgesOverlap(sTop, sBottom, oTop, oBottom)) return true;
+        }
+        if (edge === "bottom" && Math.abs(sBottom - oTop) < eps) {
+          if (edgesOverlap(sLeft, sRight, oLeft, oRight)) return true;
+        }
+        if (edge === "top" && Math.abs(sTop - oBottom) < eps) {
+          if (edgesOverlap(sLeft, sRight, oLeft, oRight)) return true;
+        }
+      }
+      return false;
+    };
+
+    // Collect all outer edges from all sections
+    const outerEdges = [];
+    for (const sec of sections) {
+      if (!(sec.widthCm > 0 && sec.heightCm > 0)) continue;
+
+      const sLeft = sec.x;
+      const sRight = sec.x + sec.widthCm;
+      const sTop = sec.y;
+      const sBottom = sec.y + sec.heightCm;
+
+      // Check each edge
+      if (!isEdgeShared(sec, "right")) {
+        outerEdges.push({
+          dir: "right",
+          x: sRight + plusBtnOffset,
+          y: (sTop + sBottom) / 2,
+          edgeInfo: { x: sRight, y1: sTop, y2: sBottom, secId: sec.id }
+        });
+      }
+      if (!isEdgeShared(sec, "left")) {
+        outerEdges.push({
+          dir: "left",
+          x: sLeft - plusBtnOffset,
+          y: (sTop + sBottom) / 2,
+          edgeInfo: { x: sLeft, y1: sTop, y2: sBottom, secId: sec.id }
+        });
+      }
+      if (!isEdgeShared(sec, "bottom")) {
+        outerEdges.push({
+          dir: "bottom",
+          x: (sLeft + sRight) / 2,
+          y: sBottom + plusBtnOffset,
+          edgeInfo: { y: sBottom, x1: sLeft, x2: sRight, secId: sec.id }
+        });
+      }
+      if (!isEdgeShared(sec, "top")) {
+        outerEdges.push({
+          dir: "top",
+          x: (sLeft + sRight) / 2,
+          y: sTop - plusBtnOffset,
+          edgeInfo: { y: sTop, x1: sLeft, x2: sRight, secId: sec.id }
+        });
+      }
+    }
+
+    // Render "+" button for each outer edge
+    outerEdges.forEach(btn => {
       const btnGroup = svgEl("g", { cursor: "pointer" });
 
       // Circle background
@@ -1321,7 +1399,7 @@ export function renderPlanSvg({
       btnGroup.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        onAddSectionAtEdge(btn.dir);
+        onAddSectionAtEdge(btn.dir, btn.edgeInfo);
       });
 
       gSec.appendChild(btnGroup);

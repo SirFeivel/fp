@@ -18,13 +18,13 @@ export function createSectionsController({
     return sections.find((s) => s.id === id) || null;
   }
 
-  function addSection(direction = "right") {
+  function addSection(direction = "right", edgeInfo = null) {
     const state = getState();
     const room = getCurrentRoom(state);
     if (!room) return;
 
     const existingSections = getRoomSections(room);
-    const newSection = suggestConnectedSection(existingSections, direction);
+    const newSection = suggestConnectedSection(existingSections, direction, edgeInfo);
 
     const next = deepClone(state);
     const nextRoom = getCurrentRoom(next);
