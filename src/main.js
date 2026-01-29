@@ -744,6 +744,17 @@ function updateAllTranslations() {
       document.getElementById("fileImport")?.click();
     });
 
+    document.getElementById("menuDebug")?.addEventListener("click", () => {
+      settingsDropdown.classList.add("hidden");
+      const debugPanel = document.getElementById("debugPanel");
+      if (!debugPanel) return;
+      debugPanel.classList.toggle("hidden");
+    });
+
+    document.getElementById("btnCloseDebug")?.addEventListener("click", () => {
+      document.getElementById("debugPanel")?.classList.add("hidden");
+    });
+
     document.getElementById("menuReset")?.addEventListener("click", () => {
       settingsDropdown.classList.add("hidden");
       if (confirm(t("session.confirmReset"))) {

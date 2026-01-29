@@ -38,7 +38,8 @@ const translations = {
       load: "Projekt laden",
       export: "JSON exportieren",
       import: "JSON importieren",
-      reset: "Alles zurücksetzen"
+      reset: "Alles zurücksetzen",
+      debug: "Debug-Panel"
     },
     session: {
       title: "Gefahrenzone",
@@ -400,7 +401,8 @@ const translations = {
       load: "Load Project",
       export: "Export JSON",
       import: "Import JSON",
-      reset: "Reset All"
+      reset: "Reset All",
+      debug: "Debug Panel"
     },
     session: {
       title: "Danger Zone",

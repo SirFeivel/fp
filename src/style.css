@@ -273,6 +273,52 @@ body{
   height: 16px;
 }
 
+/* ==================== DEBUG PANEL ==================== */
+.debug-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: min(520px, calc(100vw - 40px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  z-index: 2000;
+}
+
+.debug-panel.hidden {
+  display: none;
+}
+
+.debug-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(0,0,0,0.12);
+}
+
+.debug-panel-title {
+  margin: 0;
+  font-size: var(--fs-section);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.debug-panel-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
 /* ==================== MAIN NAVIGATION ==================== */
 .main-nav {
   display: flex;
