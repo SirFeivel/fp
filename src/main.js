@@ -699,11 +699,12 @@ function updateAllTranslations() {
     // Settings menu actions
     document.getElementById("menuSaveProject")?.addEventListener("click", () => {
       settingsDropdown.classList.add("hidden");
-      const name = prompt(t("project.nameLabel"), "");
-      if (name) {
-        document.getElementById("projectName").value = name;
-        document.getElementById("btnSaveProject")?.click();
-      }
+      const state = store.getState();
+      const name = prompt(t("project.nameLabel"), state.project?.name || "");
+      if (!name) return;
+      store.saveCurrentAsProject(name);
+      store.autosaveSession(updateMeta);
+      renderAll(t("project.saved"));
     });
 
     document.getElementById("menuLoadProject")?.addEventListener("click", () => {
@@ -719,8 +720,16 @@ function updateAllTranslations() {
         const idx = parseInt(choice, 10) - 1;
         if (idx >= 0 && idx < projects.length) {
           const proj = projects[idx];
-          store.loadProject(proj.id);
-          renderAll(t("project.loaded"));
+          const res = store.loadProjectById(proj.id);
+          if (!res.ok) {
+            alert(t("project.notFound"));
+            return;
+          }
+          setSelectedExcl(null);
+          setSelectedSection(null);
+          lastUnionError = null;
+          lastTileError = null;
+          renderAll(`${t("project.loaded")}: ${res.name}`);
         }
       }
     });
