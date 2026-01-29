@@ -405,8 +405,12 @@
             </div>
             <div class="planning-header-right">
               <div id="warningsWrapper" class="planning-warnings-mini">
-                <span class="warn-icon">⚠️</span>
+                <span class="warn-icon" aria-hidden="true">!</span>
                 <span class="pill" id="warnPill">0</span>
+              </div>
+              <div id="tipsWrapper" class="planning-warnings-mini planning-tips-mini hidden">
+                <span class="warn-icon" aria-hidden="true">i</span>
+                <span class="pill" id="tipsPill">0</span>
               </div>
               <button id="btnFullscreen" class="btn-icon" title="Fullscreen">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -415,9 +419,6 @@
               </button>
             </div>
           </div>
-
-          <!-- Warnings (expandable) -->
-          <div id="warnings" class="warnings planning-warnings-full hidden"></div>
 
           <!-- SVG Preview Area -->
           <div class="planning-preview-area">
@@ -866,6 +867,21 @@
     </main>
 
     <!-- ==================== DEBUG ==================== -->
+    <div id="warningsPanel" class="debug-panel warnings-panel hidden">
+      <div class="debug-panel-header">
+        <h4 class="debug-panel-title" data-i18n="warnings.title">Warnings</h4>
+        <button id="btnCloseWarnings" class="btn-icon small" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="debug-panel-content">
+        <div id="warningsList" class="warnings"></div>
+      </div>
+    </div>
+
     <div id="debugPanel" class="debug-panel hidden">
       <div class="debug-panel-header">
         <h4 class="debug-panel-title" data-i18n="debug.title">Debug</h4>

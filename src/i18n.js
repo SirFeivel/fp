@@ -266,7 +266,10 @@ const translations = {
       none: "Keine Hinweise",
       validationOk: "Validierung ok.",
       error: "Muster kann nicht angezeigt werden",
-      warn: "Hinweis"
+      warn: "Warnung",
+      warningsTitle: "Warnungen",
+      tipsTitle: "Tipps",
+      tip: "Tipp"
     },
     validation: {
       noRoomSelected: "Kein Raum ausgewählt",
@@ -625,11 +628,14 @@ const translations = {
       copyFailed: "Copy failed (Clipboard not available)."
     },
     warnings: {
-      title: "Hints",
-      none: "No Hints",
+      title: "Warnings",
+      none: "No warnings",
       validationOk: "Validation OK.",
       error: "Can't display pattern",
-      warn: "Hint"
+      warn: "Warning",
+      warningsTitle: "Warnings",
+      tipsTitle: "Tips",
+      tip: "Tip"
     },
     validation: {
       noRoomSelected: "No room selected",

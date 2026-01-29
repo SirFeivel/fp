@@ -142,11 +142,15 @@ export function hexToRgb(hex) {
 
 export function renderWarnings(state, validateState) {
   const { errors, warns } = validateState(state);
-  const wrap = document.getElementById("warnings");
+  const wrap = document.getElementById("warningsList");
   const wrapper = document.getElementById("warningsWrapper");
-  if (!wrap || !wrapper) return;
+  const tipsWrapper = document.getElementById("tipsWrapper");
+  const panel = document.getElementById("warningsPanel");
+  if (!wrap || !wrapper || !panel) return;
 
   wrap.innerHTML = "";
+  wrapper.classList.remove("status-green", "status-yellow", "status-red");
+  wrapper.dataset.status = "";
 
   const currentRoom = getCurrentRoom(state);
   const patternType = currentRoom?.pattern?.type;
@@ -160,17 +164,37 @@ export function renderWarnings(state, validateState) {
   );
 
   // Other warnings/errors
-  const otherMessages = [
-    ...errors.filter(x => x !== ratioError).map((x) => ({ ...x, level: t("warnings.warn") })),
-    ...warns.map((x) => ({ ...x, level: t("warnings.warn") }))
+  const errorMessages = [
+    ...errors.filter(x => x !== ratioError).map((x) => ({ ...x, level: t("warnings.error"), severity: "error" }))
+  ];
+  const warnMessages = [
+    ...warns.map((x) => ({ ...x, level: t("warnings.warn"), severity: "warn" }))
   ];
 
   const pill = document.getElementById("warnPill");
-  if (pill) {
-    let count = otherMessages.length;
-    if (ratioError) count++;
-    pill.textContent = String(count);
+  const warningCount = errorMessages.length + warnMessages.length + (ratioError ? 1 : 0);
+  if (pill) pill.textContent = String(warningCount);
+
+  const hasErrors = errors.length > 0;
+  const hasWarnings = warns.length > 0 || Boolean(ratioError);
+  if (hasErrors) {
+    wrapper.classList.add("status-red");
+    wrapper.dataset.status = "red";
+  } else if (hasWarnings) {
+    wrapper.classList.add("status-yellow");
+    wrapper.dataset.status = "yellow";
+  } else {
+    wrapper.classList.add("status-green");
+    wrapper.dataset.status = "green";
   }
+
+  const warnIcon = wrapper.querySelector(".warn-icon");
+  if (warnIcon) {
+    warnIcon.textContent = hasErrors ? "×" : hasWarnings ? "!" : "✓";
+  }
+
+  const tips = [];
+  const ratioMessage = ratioError ? { ...ratioError, level: t("warnings.error"), severity: "error" } : null;
 
   // Handle the special Hint/Error box for complex patterns
   if (isComplexPattern) {
@@ -178,32 +202,57 @@ export function renderWarnings(state, validateState) {
     if (patternType === "herringbone") hintKey = "validation.herringboneRatioText";
     if (patternType === "doubleHerringbone") hintKey = "validation.doubleHerringboneRatioText";
     if (patternType === "basketweave") hintKey = "validation.basketweaveRatioText";
-
-    const div = document.createElement("div");
-    if (ratioError) {
-      div.className = "warnItem ratio-error"; // We'll assume CSS handles the yellow hue
-      div.style.backgroundColor = "rgba(255, 193, 7, 0.2)";
-      div.style.borderLeft = "4px solid #ffc107";
-      div.innerHTML = `<div class="wTitle">${t("warnings.error")}: ${ratioError.title}</div><div class="wText">${escapeHTML(ratioError.text)}</div>`;
-    } else {
-      div.className = "warnItem info";
-      div.innerHTML = `<div class="wTitle">${t("warnings.warn")}:</div><div class="wText">${t(hintKey)}</div>`;
+    if (!ratioError) {
+      tips.push({
+        title: t("warnings.tip"),
+        text: t(hintKey)
+      });
     }
-    wrap.appendChild(div);
   }
 
-  for (const w of otherMessages) {
-    const div = document.createElement("div");
-    div.className = "warnItem";
-    div.innerHTML = `<div class="wTitle">${escapeHTML(w.level)}: ${escapeHTML(
-      w.title
-    )}</div><div class="wText">${escapeHTML(w.text)}</div>`;
-    wrap.appendChild(div);
+  const messages = [
+    ...(ratioMessage ? [ratioMessage] : []),
+    ...errorMessages,
+    ...warnMessages
+  ];
+  if (messages.length) {
+    const header = document.createElement("div");
+    header.className = "warnSection";
+    header.textContent = t("warnings.warningsTitle");
+    wrap.appendChild(header);
+    for (const w of messages) {
+      const div = document.createElement("div");
+      div.className = "warnItem";
+      div.innerHTML = `<div class="wTitle">${escapeHTML(w.level)}: ${escapeHTML(
+        w.title
+      )}</div><div class="wText">${escapeHTML(w.text)}</div>`;
+      wrap.appendChild(div);
+    }
   }
 
-  // Hide wrapper if there are no messages
-  const hasMessages = otherMessages.length > 0 || isComplexPattern;
-  wrapper.style.display = hasMessages ? "block" : "none";
+  if (tips.length) {
+    const header = document.createElement("div");
+    header.className = "warnSection";
+    header.textContent = t("warnings.tipsTitle");
+    wrap.appendChild(header);
+    tips.forEach(tip => {
+      const div = document.createElement("div");
+      div.className = "warnItem info";
+      div.innerHTML = `<div class="wTitle">${escapeHTML(tip.title)}</div><div class="wText">${escapeHTML(tip.text)}</div>`;
+      wrap.appendChild(div);
+    });
+  }
+
+  wrapper.style.display = "flex";
+  if (tipsWrapper) {
+    tipsWrapper.style.display = tips.length ? "flex" : "none";
+    const tipsPill = document.getElementById("tipsPill");
+    if (tipsPill) tipsPill.textContent = String(tips.length);
+  }
+
+  if (hasErrors) {
+    panel.classList.remove("hidden");
+  }
 }
 
 export function renderMetrics(state) {

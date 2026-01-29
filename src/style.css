@@ -806,6 +806,18 @@ body{
   padding: 4px 8px;
   border-radius: var(--r-sm);
   cursor: pointer;
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,0.2);
+}
+
+.planning-tips-mini {
+  border-color: rgba(110, 180, 255, 0.45);
+  background: rgba(110, 180, 255, 0.14);
+  color: rgba(195, 225, 255, 0.95);
+}
+
+.planning-tips-mini.hidden {
+  display: none;
 }
 
 .planning-warnings-mini .warn-icon {
@@ -818,12 +830,50 @@ body{
   font-size: var(--fs-xs);
 }
 
+.planning-warnings-mini.status-green {
+  border-color: rgba(76, 175, 80, 0.35);
+  background: rgba(76, 175, 80, 0.12);
+  color: rgba(180, 230, 185, 0.95);
+}
+
+.planning-warnings-mini.status-yellow {
+  border-color: rgba(255, 193, 7, 0.5);
+  background: rgba(255, 193, 7, 0.18);
+  color: rgba(255, 232, 170, 0.95);
+}
+
+.planning-warnings-mini.status-red {
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.22);
+  color: rgba(255, 205, 205, 0.95);
+}
+
+.planning-warnings-mini.status-green .warn-icon,
+.planning-warnings-mini.status-yellow .warn-icon,
+.planning-warnings-mini.status-red .warn-icon {
+  color: currentColor;
+}
+
+.planning-warnings-mini.status-green .pill,
+.planning-warnings-mini.status-yellow .pill,
+.planning-warnings-mini.status-red .pill {
+  border-color: currentColor;
+  color: currentColor;
+}
+
 .planning-warnings-full {
   margin: 0 20px;
   padding: 12px;
   background: rgba(255, 200, 100, 0.1);
   border: 1px solid rgba(255, 200, 100, 0.3);
   border-radius: var(--r-sm);
+}
+
+.warnings-panel {
+  right: 20px;
+  bottom: 20px;
+  width: min(520px, calc(100vw - 40px));
+  max-height: 70vh;
 }
 
 /* SVG Preview Area */
@@ -1686,11 +1736,25 @@ body{
   margin-bottom:12px;
 }
 
+.warnSection{
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
 .warnItem{
   border:1px solid var(--line);
   border-radius:var(--r-sm);
   padding:10px;
   background:rgba(0,0,0,.14);
+}
+
+.warnItem.info{
+  border-color: rgba(110, 180, 255, 0.35);
+  background: rgba(110, 180, 255, 0.08);
 }
 
 .wTitle{ font-size:var(--fs-sm); font-weight:700; margin-bottom:4px; }

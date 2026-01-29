@@ -29,21 +29,30 @@ describe('render.js smoke tests', () => {
   });
 
   it('renderWarnings updates the warnings container', () => {
-    document.body.innerHTML = '<div id="warningsWrapper"><div id="warnings"></div><div id="warnPill"></div></div>';
+    document.body.innerHTML = `
+      <div id="warningsWrapper"><div id="warnPill"></div></div>
+      <div id="tipsWrapper"><div id="tipsPill"></div></div>
+      <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
+    `;
     const state = defaultState();
     const validateState = vi.fn(() => ({ errors: [], warns: [] }));
 
     renderWarnings(state, validateState);
 
-    const wrap = document.getElementById('warnings');
+    const wrap = document.getElementById('warningsList');
     const wrapper = document.getElementById('warningsWrapper');
     expect(wrap.innerHTML).toBe('');
-    expect(wrapper.style.display).toBe('none');
+    expect(wrapper.style.display).toBe('flex');
     expect(document.getElementById('warnPill').textContent).toBe('0');
+    expect(document.getElementById('tipsWrapper').style.display).toBe('none');
   });
 
   it('renderWarnings shows ratio error with current ratio', () => {
-    document.body.innerHTML = '<div id="warningsWrapper"><div id="warnings"></div><div id="warnPill"></div></div>';
+    document.body.innerHTML = `
+      <div id="warningsWrapper"><div id="warnPill"></div></div>
+      <div id="tipsWrapper"><div id="tipsPill"></div></div>
+      <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
+    `;
     const state = defaultState();
     const room = state.floors[0].rooms[0];
     room.pattern.type = 'herringbone';
@@ -61,11 +70,12 @@ describe('render.js smoke tests', () => {
 
     renderWarnings(state, validateState);
 
-    const wrap = document.getElementById('warnings');
+    const wrap = document.getElementById('warningsList');
     const wrapper = document.getElementById('warningsWrapper');
     expect(wrap.innerHTML).toContain('Current ratio: 2.50:1.');
     expect(wrap.innerHTML).toContain('Herringbone ratio invalid');
-    expect(wrapper.style.display).toBe('block');
+    expect(wrapper.style.display).toBe('flex');
+    expect(document.getElementById('warningsPanel').classList.contains('hidden')).toBe(false);
   });
 
   it('renderStateView updates the state view element', () => {
