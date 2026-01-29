@@ -773,11 +773,17 @@ function updateAllTranslations() {
   const openWarningsPanel = () => {
     document.getElementById("warningsPanel")?.classList.remove("hidden");
   };
+  const openTipsPanel = () => {
+    document.getElementById("tipsPanel")?.classList.remove("hidden");
+  };
 
   document.getElementById("warningsWrapper")?.addEventListener("click", openWarningsPanel);
-  document.getElementById("tipsWrapper")?.addEventListener("click", openWarningsPanel);
+  document.getElementById("tipsWrapper")?.addEventListener("click", openTipsPanel);
   document.getElementById("btnCloseWarnings")?.addEventListener("click", () => {
     document.getElementById("warningsPanel")?.classList.add("hidden");
+  });
+  document.getElementById("btnCloseTips")?.addEventListener("click", () => {
+    document.getElementById("tipsPanel")?.classList.add("hidden");
   });
 
   // Continue to Planning button

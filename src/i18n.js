@@ -269,7 +269,8 @@ const translations = {
       warn: "Warnung",
       warningsTitle: "Warnungen",
       tipsTitle: "Tipps",
-      tip: "Tipp"
+      tip: "Tipp",
+      noTips: "Keine Tipps"
     },
     validation: {
       noRoomSelected: "Kein Raum ausgewählt",
@@ -635,7 +636,8 @@ const translations = {
       warn: "Warning",
       warningsTitle: "Warnings",
       tipsTitle: "Tips",
-      tip: "Tip"
+      tip: "Tip",
+      noTips: "No tips"
     },
     validation: {
       noRoomSelected: "No room selected",

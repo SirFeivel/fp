@@ -33,6 +33,7 @@ describe('render.js smoke tests', () => {
       <div id="warningsWrapper"><div id="warnPill"></div></div>
       <div id="tipsWrapper"><div id="tipsPill"></div></div>
       <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
+      <div id="tipsPanel" class="hidden"><div id="tipsList"></div></div>
     `;
     const state = defaultState();
     const validateState = vi.fn(() => ({ errors: [], warns: [] }));
@@ -44,7 +45,7 @@ describe('render.js smoke tests', () => {
     expect(wrap.innerHTML).toBe('');
     expect(wrapper.style.display).toBe('flex');
     expect(document.getElementById('warnPill').textContent).toBe('0');
-    expect(document.getElementById('tipsWrapper').style.display).toBe('none');
+    expect(document.getElementById('tipsWrapper').style.display).toBe('flex');
   });
 
   it('renderWarnings shows ratio error with current ratio', () => {
@@ -52,6 +53,7 @@ describe('render.js smoke tests', () => {
       <div id="warningsWrapper"><div id="warnPill"></div></div>
       <div id="tipsWrapper"><div id="tipsPill"></div></div>
       <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
+      <div id="tipsPanel" class="hidden"><div id="tipsList"></div></div>
     `;
     const state = defaultState();
     const room = state.floors[0].rooms[0];

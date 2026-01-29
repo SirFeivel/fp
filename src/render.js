@@ -143,12 +143,15 @@ export function hexToRgb(hex) {
 export function renderWarnings(state, validateState) {
   const { errors, warns } = validateState(state);
   const wrap = document.getElementById("warningsList");
+  const tipsWrap = document.getElementById("tipsList");
   const wrapper = document.getElementById("warningsWrapper");
   const tipsWrapper = document.getElementById("tipsWrapper");
   const panel = document.getElementById("warningsPanel");
-  if (!wrap || !wrapper || !panel) return;
+  const tipsPanel = document.getElementById("tipsPanel");
+  if (!wrap || !wrapper || !panel || !tipsWrap || !tipsPanel) return;
 
   wrap.innerHTML = "";
+  tipsWrap.innerHTML = "";
   wrapper.classList.remove("status-green", "status-yellow", "status-red");
   wrapper.dataset.status = "";
 
@@ -203,12 +206,28 @@ export function renderWarnings(state, validateState) {
     if (patternType === "doubleHerringbone") hintKey = "validation.doubleHerringboneRatioText";
     if (patternType === "basketweave") hintKey = "validation.basketweaveRatioText";
     if (!ratioError) {
+      let ratioText = "";
+      const tileW = currentRoom?.tile?.widthCm;
+      const tileH = currentRoom?.tile?.heightCm;
+      if (Number.isFinite(tileW) && Number.isFinite(tileH) && tileW > 0 && tileH > 0) {
+        const L = Math.max(tileW, tileH);
+        const W = Math.min(tileW, tileH);
+        const ratio = (L / W).toFixed(2).replace(/\.?0+$/, "");
+        ratioText = `${ratio}:1`;
+      }
       tips.push({
         title: t("warnings.tip"),
-        text: t(hintKey)
+        text: ratioText ? `${t(hintKey)} ${ratioText}.` : t(hintKey)
       });
     }
   }
+
+  const createWarnItem = (title, text, className) => {
+    const div = document.createElement("div");
+    div.className = className;
+    div.innerHTML = `${title ? `<div class="wTitle">${escapeHTML(title)}</div>` : ""}<div class="wText">${escapeHTML(text)}</div>`;
+    return div;
+  };
 
   const messages = [
     ...(ratioMessage ? [ratioMessage] : []),
@@ -216,38 +235,27 @@ export function renderWarnings(state, validateState) {
     ...warnMessages
   ];
   if (messages.length) {
-    const header = document.createElement("div");
-    header.className = "warnSection";
-    header.textContent = t("warnings.warningsTitle");
-    wrap.appendChild(header);
     for (const w of messages) {
-      const div = document.createElement("div");
-      div.className = "warnItem";
-      div.innerHTML = `<div class="wTitle">${escapeHTML(w.level)}: ${escapeHTML(
-        w.title
-      )}</div><div class="wText">${escapeHTML(w.text)}</div>`;
-      wrap.appendChild(div);
+      wrap.appendChild(createWarnItem(w.title, w.text, "warnItem"));
     }
   }
 
   if (tips.length) {
-    const header = document.createElement("div");
-    header.className = "warnSection";
-    header.textContent = t("warnings.tipsTitle");
-    wrap.appendChild(header);
     tips.forEach(tip => {
-      const div = document.createElement("div");
-      div.className = "warnItem info";
-      div.innerHTML = `<div class="wTitle">${escapeHTML(tip.title)}</div><div class="wText">${escapeHTML(tip.text)}</div>`;
-      wrap.appendChild(div);
+      tipsWrap.appendChild(createWarnItem("", tip.text, "warnItem info"));
     });
   }
 
   wrapper.style.display = "flex";
   if (tipsWrapper) {
-    tipsWrapper.style.display = tips.length ? "flex" : "none";
+    tipsWrapper.style.display = "flex";
+    tipsWrapper.classList.remove("hidden");
     const tipsPill = document.getElementById("tipsPill");
     if (tipsPill) tipsPill.textContent = String(tips.length);
+  }
+
+  if (!tips.length && tipsWrap) {
+    tipsWrap.appendChild(createWarnItem("", t("warnings.noTips"), "warnItem info"));
   }
 
   if (hasErrors) {
