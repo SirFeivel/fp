@@ -585,14 +585,17 @@ export function bindUI({
   );
 
   // Export
-  document.getElementById("btnExport")?.addEventListener("click", () => {
+  const exportJson = () => {
     const state = store.getState();
     const fname = `floorplanner_state_${(state.project?.name || "projekt").replace(
       /\s+/g,
       "_"
     )}.json`;
     downloadText(fname, JSON.stringify(state, null, 2));
-  });
+  };
+
+  document.getElementById("btnExport")?.addEventListener("click", exportJson);
+  document.getElementById("menuExport")?.addEventListener("click", exportJson);
 
   document.getElementById("btnExportCommercial")?.addEventListener("click", () => {
     const state = store.getState();
