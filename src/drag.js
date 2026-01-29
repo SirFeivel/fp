@@ -12,6 +12,144 @@ function pointerToSvgXY(svg, clientX, clientY) {
   return { x: p.x, y: p.y };
 }
 
+function formatCm(value) {
+  const rounded = Math.round(value * 10) / 10;
+  if (!Number.isFinite(rounded)) return "0";
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function getResizeOverlay() {
+  return document.getElementById("resizeMetrics");
+}
+
+function showResizeOverlay(text, clientX, clientY) {
+  const el = getResizeOverlay();
+  if (!el) return;
+  el.textContent = text;
+  el.style.left = `${clientX}px`;
+  el.style.top = `${clientY}px`;
+  el.classList.remove("hidden");
+}
+
+function hideResizeOverlay() {
+  const el = getResizeOverlay();
+  if (!el) return;
+  el.classList.add("hidden");
+}
+
+function getRectResizeDims(startShape, handleType, dx, dy) {
+  let newX = startShape.x;
+  let newY = startShape.y;
+  let newW = startShape.w;
+  let newH = startShape.h;
+
+  if (handleType.includes("w")) {
+    newX = startShape.x + dx;
+    newW = Math.max(1, startShape.w - dx);
+  }
+  if (handleType.includes("e")) {
+    newW = Math.max(1, startShape.w + dx);
+  }
+  if (handleType.includes("n")) {
+    newY = startShape.y + dy;
+    newH = Math.max(1, startShape.h - dy);
+  }
+  if (handleType.includes("s")) {
+    newH = Math.max(1, startShape.h + dy);
+  }
+
+  return { newX, newY, newW, newH };
+}
+
+function getTriResizePoints(startShape, handleType, dx, dy) {
+  const pointNum = handleType.replace("p", "");
+  return {
+    p1: pointNum === "1" ? { x: startShape.p1.x + dx, y: startShape.p1.y + dy } : startShape.p1,
+    p2: pointNum === "2" ? { x: startShape.p2.x + dx, y: startShape.p2.y + dy } : startShape.p2,
+    p3: pointNum === "3" ? { x: startShape.p3.x + dx, y: startShape.p3.y + dy } : startShape.p3
+  };
+}
+
+function dist(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getSvgRoots() {
+  const svgs = [];
+  const main = document.getElementById("planSvg");
+  const full = document.getElementById("planSvgFullscreen");
+  if (main) svgs.push(main);
+  if (full) svgs.push(full);
+  return svgs;
+}
+
+function ensureTriLabelGroup(svg, id) {
+  let group = svg.querySelector(`g[data-tri-labels="${id}"]`);
+  if (!group) {
+    group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.setAttribute("data-tri-labels", id);
+    svg.appendChild(group);
+  }
+  return group;
+}
+
+function updateTriSideLabel(textEl, label, p1, p2) {
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+  const vx = p2.x - p1.x;
+  const vy = p2.y - p1.y;
+  const len = Math.sqrt(vx * vx + vy * vy) || 1;
+  const nx = -vy / len;
+  const ny = vx / len;
+  const offset = 6;
+  const x = midX + nx * offset;
+  const y = midY + ny * offset;
+
+  textEl.setAttribute("x", x);
+  textEl.setAttribute("y", y);
+  textEl.textContent = label;
+}
+
+function updateTriangleLabels(id, points) {
+  const svgs = getSvgRoots();
+  svgs.forEach(svg => {
+    const group = ensureTriLabelGroup(svg, id);
+    const labels = {
+      a: group.querySelector('[data-side="a"]'),
+      b: group.querySelector('[data-side="b"]'),
+      c: group.querySelector('[data-side="c"]')
+    };
+
+    ["a", "b", "c"].forEach(key => {
+      if (!labels[key]) {
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("data-side", key);
+        t.setAttribute("fill", "rgba(231,238,252,0.9)");
+        t.setAttribute("font-size", "11");
+        t.setAttribute("font-family", "system-ui, -apple-system, Segoe UI, Roboto, Arial");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("dominant-baseline", "middle");
+        group.appendChild(t);
+        labels[key] = t;
+      }
+    });
+
+    updateTriSideLabel(labels.a, "a", points.p1, points.p2);
+    updateTriSideLabel(labels.b, "b", points.p2, points.p3);
+    updateTriSideLabel(labels.c, "c", points.p3, points.p1);
+  });
+}
+
+function removeTriangleLabels(id) {
+  const svgs = getSvgRoots();
+  svgs.forEach(svg => {
+    const group = svg.querySelector(`g[data-tri-labels="${id}"]`);
+    if (group) group.remove();
+  });
+}
+
 /**
  * Find all SVG elements for a given exclusion ID across all SVG containers
  */
@@ -202,29 +340,34 @@ export function createExclusionDragController({
     // Calculate new dimensions based on handle type and shape
     const { startShape, handleType } = resize;
     const elements = findExclElements(resize.id);
+    let overlayText = "";
+    let rectDims = null;
+    let triPoints = null;
+    let circleR = null;
+
+    if (startShape.type === "rect") {
+      rectDims = getRectResizeDims(startShape, handleType, dx, dy);
+      overlayText = `${formatCm(rectDims.newW)} x ${formatCm(rectDims.newH)} cm`;
+    } else if (startShape.type === "circle") {
+      const centerX = startShape.cx;
+      const centerY = startShape.cy;
+      const distToMouse = Math.sqrt(
+        Math.pow(curMouse.x - centerX, 2) + Math.pow(curMouse.y - centerY, 2)
+      );
+      circleR = Math.max(1, distToMouse);
+      overlayText = `Ø ${formatCm(circleR * 2)} cm`;
+    } else if (startShape.type === "tri") {
+      triPoints = getTriResizePoints(startShape, handleType, dx, dy);
+      const a = dist(triPoints.p1, triPoints.p2);
+      const b = dist(triPoints.p2, triPoints.p3);
+      const c = dist(triPoints.p3, triPoints.p1);
+      overlayText = `a ${formatCm(a)} · b ${formatCm(b)} · c ${formatCm(c)} cm`;
+      updateTriangleLabels(resize.id, triPoints);
+    }
 
     elements.forEach(el => {
       if (startShape.type === "rect") {
-        let newX = startShape.x;
-        let newY = startShape.y;
-        let newW = startShape.w;
-        let newH = startShape.h;
-
-        // Adjust based on which handle is being dragged
-        if (handleType.includes("w")) {
-          newX = startShape.x + dx;
-          newW = Math.max(1, startShape.w - dx);
-        }
-        if (handleType.includes("e")) {
-          newW = Math.max(1, startShape.w + dx);
-        }
-        if (handleType.includes("n")) {
-          newY = startShape.y + dy;
-          newH = Math.max(1, startShape.h - dy);
-        }
-        if (handleType.includes("s")) {
-          newH = Math.max(1, startShape.h + dy);
-        }
+        const { newX, newY, newW, newH } = rectDims;
 
         if (!el.hasAttribute("data-resize-handle")) {
           el.setAttribute("x", newX);
@@ -234,27 +377,22 @@ export function createExclusionDragController({
         }
       } else if (startShape.type === "circle") {
         // For circle, resize handle changes radius
-        const centerX = startShape.cx;
-        const centerY = startShape.cy;
-        const distToMouse = Math.sqrt(
-          Math.pow(curMouse.x - centerX, 2) + Math.pow(curMouse.y - centerY, 2)
-        );
-        const newR = Math.max(1, distToMouse);
-
         if (!el.hasAttribute("data-resize-handle")) {
-          el.setAttribute("r", newR);
+          el.setAttribute("r", circleR);
         }
       } else if (startShape.type === "tri") {
         // For triangle, move the specific point
         const pointNum = handleType.replace("p", "");
         if (!el.hasAttribute("data-resize-handle")) {
-          const p1 = pointNum === "1" ? { x: startShape.p1.x + dx, y: startShape.p1.y + dy } : startShape.p1;
-          const p2 = pointNum === "2" ? { x: startShape.p2.x + dx, y: startShape.p2.y + dy } : startShape.p2;
-          const p3 = pointNum === "3" ? { x: startShape.p3.x + dx, y: startShape.p3.y + dy } : startShape.p3;
+          const { p1, p2, p3 } = triPoints;
           el.setAttribute("points", `${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`);
         }
       }
     });
+
+    if (overlayText) {
+      showResizeOverlay(overlayText, e.clientX, e.clientY);
+    }
 
     // Update handle positions
     updateResizeHandlePositions(resize.id, startShape, dx, dy, handleType, curMouse);
@@ -339,6 +477,10 @@ export function createExclusionDragController({
   function onResizePointerUp(e) {
     const svg = getSvg();
     svg.removeEventListener("pointermove", onResizePointerMove);
+    hideResizeOverlay();
+    if (resize?.startShape?.type === "tri") {
+      removeTriangleLabels(resize.id);
+    }
 
     if (!resize || !dragStartState) return;
 
@@ -420,6 +562,18 @@ export function createExclusionDragController({
       currentDx: 0,
       currentDy: 0
     };
+
+    if (ex.type === "rect") {
+      showResizeOverlay(`${formatCm(ex.w)} x ${formatCm(ex.h)} cm`, e.clientX, e.clientY);
+    } else if (ex.type === "circle") {
+      showResizeOverlay(`Ø ${formatCm(ex.r * 2)} cm`, e.clientX, e.clientY);
+    } else if (ex.type === "tri") {
+      const a = dist(ex.p1, ex.p2);
+      const b = dist(ex.p2, ex.p3);
+      const c = dist(ex.p3, ex.p1);
+      showResizeOverlay(`a ${formatCm(a)} · b ${formatCm(b)} · c ${formatCm(c)} cm`, e.clientX, e.clientY);
+      updateTriangleLabels(id, ex);
+    }
 
     svg.addEventListener("pointermove", onResizePointerMove);
     svg.addEventListener("pointerup", onResizePointerUp, { once: true });

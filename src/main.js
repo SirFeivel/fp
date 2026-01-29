@@ -474,7 +474,7 @@ function updateAllTranslations() {
       } else if (type === "circle") {
         excl.addCircle();
       } else if (type === "triangle") {
-        excl.addTriangle();
+        excl.addTri();
       }
     });
   });

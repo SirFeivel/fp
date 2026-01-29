@@ -1527,6 +1527,22 @@ body{
   min-height:0;
 }
 
+.resize-metrics{
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(15, 26, 46, 0.95);
+  border: 1px solid var(--line2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  transform: translate(-50%, -120%);
+}
+
 /* Plan Toolbar */
 .plan-toolbar {
   position: absolute;
