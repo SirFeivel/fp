@@ -28,6 +28,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 4) {
       s = migrateV4ToV5(s);
     }
+    if (s.meta?.version === 5) {
+      s = migrateV5ToV6(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || { widthCm: 40, heightCm: 20, shape: "rect" };
@@ -41,44 +44,49 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         origin: { preset: "tl", xCm: 0, yCm: 0 }
       };
 
-    if (s.floors && Array.isArray(s.floors)) {
-      for (const floor of s.floors) {
-        if (floor.rooms && Array.isArray(floor.rooms)) {
-          for (const room of floor.rooms) {
-            if (room.sections && Array.isArray(room.sections)) {
-              for (const sec of room.sections) {
-                if (sec.skirtingEnabled === undefined) {
-                  sec.skirtingEnabled = true;
+      if (s.floors && Array.isArray(s.floors)) {
+        for (const floor of s.floors) {
+          if (floor.rooms && Array.isArray(floor.rooms)) {
+            for (const room of floor.rooms) {
+              if (room.sections && Array.isArray(room.sections)) {
+                for (const sec of room.sections) {
+                  if (sec.skirtingEnabled === undefined) {
+                    sec.skirtingEnabled = true;
+                  }
                 }
               }
-            }
-            if (!room.tile) room.tile = deepClone(globalTile);
-            if (!room.tile.shape) room.tile.shape = "rect";
-            if (room.tile.reference === undefined) room.tile.reference = "";
-            if (!room.grout) room.grout = deepClone(globalGrout);
-            if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
-            if (!room.pattern) room.pattern = deepClone(globalPattern);
-            if (!room.skirting) {
-              room.skirting = {
-                enabled: false,
-                type: "cutout",
-                heightCm: 6,
-                boughtWidthCm: 60,
-                boughtPricePerPiece: 5.0
-              };
-            }
-            if (!room.excludedTiles) room.excludedTiles = [];
-            if (!room.excludedSkirts) room.excludedSkirts = [];
-            if (room.exclusions && Array.isArray(room.exclusions)) {
-              for (const ex of room.exclusions) {
-                if (ex.skirtingEnabled === undefined) {
-                  ex.skirtingEnabled = true;
+              if (!room.tile) room.tile = deepClone(globalTile);
+              if (!room.tile.shape) room.tile.shape = "rect";
+              if (room.tile.reference === undefined) room.tile.reference = "";
+              if (!room.grout) room.grout = deepClone(globalGrout);
+              if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
+              if (!room.pattern) room.pattern = deepClone(globalPattern);
+              if (!room.skirting) {
+                room.skirting = {
+                  enabled: false,
+                  type: "cutout",
+                  heightCm: 6,
+                  boughtWidthCm: 60,
+                  boughtPricePerPiece: 5.0
+                };
+              }
+              if (!room.excludedTiles) room.excludedTiles = [];
+              if (!room.excludedSkirts) room.excludedSkirts = [];
+              if (room.exclusions && Array.isArray(room.exclusions)) {
+                for (const ex of room.exclusions) {
+                  if (ex.skirtingEnabled === undefined) {
+                    ex.skirtingEnabled = true;
+                  }
                 }
               }
             }
           }
         }
       }
+
+      delete s.tile;
+      delete s.grout;
+      delete s.pattern;
     }
 
     if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true };
@@ -88,15 +96,28 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.view.showBaseBoards;
     }
 
-      delete s.tile;
-      delete s.grout;
-      delete s.pattern;
-    }
-
     if (!s.waste || typeof s.waste !== "object") s.waste = { allowRotate: true };
     if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = true;
 
     if (!s.materials) s.materials = {};
+    if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
+    if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
+
+    if (s.floors && Array.isArray(s.floors) && Array.isArray(s.tilePresets)) {
+      const presetsByName = new Map(
+        s.tilePresets.filter(p => p?.name).map(p => [p.name, p])
+      );
+      s.floors.forEach(floor => {
+        floor.rooms?.forEach(room => {
+          const ref = room.tile?.reference;
+          const preset = ref ? presetsByName.get(ref) : null;
+          const cutoutAllowed = Boolean(preset?.useForSkirting);
+          if (!cutoutAllowed && room.skirting?.type === "cutout") {
+            room.skirting.type = "bought";
+          }
+        });
+      });
+    }
 
     return s;
   }
@@ -189,6 +210,13 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
     s.meta.version = 5;
+    return s;
+  }
+
+  function migrateV5ToV6(s) {
+    if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
+    if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
+    s.meta.version = 6;
     return s;
   }
 

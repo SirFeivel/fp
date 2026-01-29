@@ -337,6 +337,8 @@ export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
   document.getElementById("tileReference").value = currentRoom?.tile?.reference ?? "";
+  const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
+  if (roomSkirtingEnabled) roomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
   document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));
@@ -348,9 +350,21 @@ export function renderRoomForm(state) {
     document.getElementById("skirtingBoughtWidth").value = skirting.boughtWidthCm || "";
     document.getElementById("skirtingPricePerPiece").value = skirting.boughtPricePerPiece || "";
 
-    const isBought = skirting.type === "bought";
+    const preset = state.tilePresets?.find(p => p?.name && p.name === currentRoom?.tile?.reference);
+    const cutoutAllowed = Boolean(preset?.useForSkirting);
+    const skirtingTypeEl = document.getElementById("skirtingType");
+    const cutoutHint = document.getElementById("skirtingCutoutHint");
+    const cutoutOption = skirtingTypeEl?.querySelector('option[value="cutout"]');
+    if (cutoutOption) cutoutOption.disabled = !cutoutAllowed;
+    if (cutoutHint) cutoutHint.style.display = cutoutAllowed ? "none" : "block";
+    if (!cutoutAllowed && skirtingTypeEl) skirtingTypeEl.value = "bought";
+
+    const effectiveType = cutoutAllowed ? skirting.type : "bought";
+    const isBought = effectiveType === "bought";
     document.getElementById("boughtWidthWrap").style.display = isBought ? "block" : "none";
     document.getElementById("boughtPriceWrap").style.display = isBought ? "block" : "none";
+    const skirtingPresetRow = document.getElementById("skirtingPresetRow");
+    if (skirtingPresetRow) skirtingPresetRow.style.display = isBought ? "flex" : "none";
   }
 
   // Update other collapsible sections' arrows
@@ -391,6 +405,183 @@ export function renderSectionsList(state, selectedSectionId) {
     if (sec.id === selectedSectionId) opt.selected = true;
     sel.appendChild(opt);
   }
+}
+
+export function renderTilePresets(state, selectedId, setSelectedId) {
+  const list = document.getElementById("tilePresetList");
+  if (!list) return;
+  const presets = state.tilePresets || [];
+  list.innerHTML = "";
+
+  if (!presets.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = t("project.none");
+    list.appendChild(opt);
+    list.disabled = true;
+  } else {
+    list.disabled = false;
+    presets.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || t("project.none");
+      if (p.id === selectedId) opt.selected = true;
+      list.appendChild(opt);
+    });
+  }
+
+  const selected = presets.find(p => p.id === selectedId) || presets[0];
+  if (selected && selected.id !== selectedId && setSelectedId) {
+    setSelectedId(selected.id);
+  }
+
+  const name = document.getElementById("tilePresetName");
+  const shape = document.getElementById("tilePresetShape");
+  const w = document.getElementById("tilePresetW");
+  const h = document.getElementById("tilePresetH");
+  const groutW = document.getElementById("tilePresetGroutW");
+  const groutColor = document.getElementById("tilePresetGroutColor");
+  const pricePerM2 = document.getElementById("tilePresetPricePerM2");
+  const packM2 = document.getElementById("tilePresetPackM2");
+  const pricePerPack = document.getElementById("tilePresetPricePerPack");
+  const useSkirting = document.getElementById("tilePresetUseSkirting");
+  const roomList = document.getElementById("tilePresetRoomList");
+
+  if (!selected) {
+    [name, shape, w, h, groutW, groutColor, pricePerM2, packM2, pricePerPack, useSkirting].forEach(el => {
+      if (el) el.disabled = true;
+      if (el && "value" in el) el.value = "";
+      if (el && el.type === "checkbox") el.checked = false;
+    });
+    if (roomList) roomList.innerHTML = "";
+    return;
+  }
+
+  if (name) { name.disabled = false; name.value = selected.name || ""; }
+  if (shape) { shape.disabled = false; shape.value = selected.shape || "rect"; }
+  if (w) { w.disabled = false; w.value = selected.widthCm ?? ""; }
+  if (h) { h.disabled = false; h.value = selected.heightCm ?? ""; }
+  if (groutW) { groutW.disabled = false; groutW.value = Math.round((selected.groutWidthCm ?? 0) * 10); }
+  if (groutColor) { groutColor.disabled = false; groutColor.value = selected.groutColorHex || "#ffffff"; }
+  document.querySelectorAll("#tilePresetGroutColorPresets .color-swatch").forEach(swatch => {
+    if (swatch.dataset.color?.toLowerCase() === (selected.groutColorHex || "#ffffff").toLowerCase()) {
+      swatch.classList.add("selected");
+    } else {
+      swatch.classList.remove("selected");
+    }
+  });
+  if (pricePerM2) { pricePerM2.disabled = false; pricePerM2.value = selected.pricePerM2 ?? ""; }
+  if (packM2) { packM2.disabled = false; packM2.value = selected.packM2 ?? ""; }
+  if (pricePerPack) {
+    pricePerPack.disabled = false;
+    const canCalc = Number.isFinite(selected.pricePerM2) && Number.isFinite(selected.packM2);
+    pricePerPack.value = canCalc ? (selected.pricePerM2 * selected.packM2).toFixed(2) : "";
+  }
+  if (useSkirting) { useSkirting.disabled = false; useSkirting.checked = Boolean(selected.useForSkirting); }
+
+  if (roomList) {
+    roomList.innerHTML = "";
+    const canAssign = Boolean(selected.name);
+    if (state.floors && Array.isArray(state.floors)) {
+      state.floors.forEach(floor => {
+        floor.rooms?.forEach(room => {
+          const label = document.createElement("label");
+          label.className = "preset-room-item";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.dataset.roomId = room.id;
+          input.disabled = !canAssign;
+          input.checked = canAssign && room.tile?.reference === selected.name;
+          const span = document.createElement("span");
+          span.textContent = `${floor.name || t("tabs.floor")} • ${room.name || t("room.name")}`;
+          label.appendChild(input);
+          label.appendChild(span);
+          roomList.appendChild(label);
+        });
+      });
+    }
+  }
+}
+
+export function renderSkirtingPresets(state, selectedId, setSelectedId) {
+  const list = document.getElementById("skirtingPresetList");
+  if (!list) return;
+  const presets = state.skirtingPresets || [];
+  list.innerHTML = "";
+
+  if (!presets.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = t("project.none");
+    list.appendChild(opt);
+    list.disabled = true;
+  } else {
+    list.disabled = false;
+    presets.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || t("project.none");
+      if (p.id === selectedId) opt.selected = true;
+      list.appendChild(opt);
+    });
+  }
+
+  const selected = presets.find(p => p.id === selectedId) || presets[0];
+  if (selected && selected.id !== selectedId && setSelectedId) {
+    setSelectedId(selected.id);
+  }
+
+  const name = document.getElementById("skirtingPresetName");
+  const height = document.getElementById("skirtingPresetHeight");
+  const length = document.getElementById("skirtingPresetLength");
+  const price = document.getElementById("skirtingPresetPrice");
+
+  if (!selected) {
+    [name, height, length, price].forEach(el => {
+      if (el) el.disabled = true;
+      if (el && "value" in el) el.value = "";
+    });
+    return;
+  }
+
+  if (name) { name.disabled = false; name.value = selected.name || ""; }
+  if (height) { height.disabled = false; height.value = selected.heightCm ?? ""; }
+  if (length) { length.disabled = false; length.value = selected.lengthCm ?? ""; }
+  if (price) { price.disabled = false; price.value = selected.pricePerPiece ?? ""; }
+}
+
+export function renderTilePresetPicker(state) {
+  const sel = document.getElementById("tilePresetSelect");
+  if (!sel) return;
+  const presets = state.tilePresets || [];
+  sel.innerHTML = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = presets.length ? "–" : t("project.none");
+  sel.appendChild(empty);
+  presets.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name || t("project.none");
+    sel.appendChild(opt);
+  });
+}
+
+export function renderSkirtingPresetPicker(state) {
+  const sel = document.getElementById("skirtingPresetSelect");
+  if (!sel) return;
+  const presets = state.skirtingPresets || [];
+  sel.innerHTML = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = presets.length ? "–" : t("project.none");
+  sel.appendChild(empty);
+  presets.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name || t("project.none");
+    sel.appendChild(opt);
+  });
 }
 
 export function renderSectionProps({
@@ -456,7 +647,7 @@ export function renderSectionProps({
   div.className = "field span2";
   div.innerHTML = `
     <label class="toggle-switch">
-      <span class="toggle-label">${t("skirting.showSkirting")}</span>
+      <span class="toggle-label">${t("skirting.sectionEnabled")}</span>
       <input id="secSkirtingEnabled" type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""}>
       <div class="toggle-slider"></div>
     </label>
@@ -477,6 +668,11 @@ export function renderReferencePicker(state) {
   if (state.materials) {
     Object.keys(state.materials).forEach((r) => {
       if (r) refs.add(r);
+    });
+  }
+  if (Array.isArray(state.tilePresets)) {
+    state.tilePresets.forEach(p => {
+      if (p?.name) refs.add(p.name);
     });
   }
   if (state.floors) {
@@ -502,6 +698,8 @@ export function renderReferencePicker(state) {
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
   renderReferencePicker(state);
+  renderTilePresetPicker(state);
+  renderSkirtingPresetPicker(state);
 
   document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
@@ -598,7 +796,6 @@ export function renderTilePatternForm(state) {
     }
   }
 
-  // Pricing
   const reserveTiles = document.getElementById("reserveTiles");
   if (reserveTiles) reserveTiles.value = state.pricing?.reserveTiles ?? 0;
 

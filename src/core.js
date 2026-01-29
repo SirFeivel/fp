@@ -60,11 +60,13 @@ export function defaultState() {
   const roomId = uuid();
 
   return {
-    meta: { version: 5, updatedAt: nowISO() },
+    meta: { version: 6, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
     materials: {},
+    tilePresets: [],
+    skirtingPresets: [],
 
     floors: [
       {

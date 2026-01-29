@@ -1,8 +1,8 @@
 // src/main.js
 import "./style.css";
-import { computePlanMetrics } from "./calc.js";
+import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -24,6 +24,8 @@ import {
   renderExclProps,
   renderPlanSvg,
   renderSectionsList,
+  renderTilePresets,
+  renderSkirtingPresets,
   renderSectionProps,
   renderCommercialTab
 } from "./render.js";
@@ -36,6 +38,8 @@ window.__fpStore = store; // keep for console testing
 
 let selectedExclId = null;
 let selectedSectionId = null;
+let selectedTilePresetId = null;
+let selectedSkirtingPresetId = null;
 let lastUnionError = null;
 let lastTileError = null;
 
@@ -108,6 +112,8 @@ function renderAll(lastLabel, options) {
     renderTilePatternForm(state);
 
     renderSectionsList(state, selectedSectionId);
+    renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
+    renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
     renderSectionProps({
       state,
       selectedSectionId,
@@ -372,6 +378,205 @@ function nudgeSelectedExclusion(dx, dy) {
   commitViaStore(t("exclusions.moved"), next);
 }
 
+function bindPresetCollection() {
+  const tileList = document.getElementById("tilePresetList");
+  const tileName = document.getElementById("tilePresetName");
+  const tileShape = document.getElementById("tilePresetShape");
+  const tileW = document.getElementById("tilePresetW");
+  const tileH = document.getElementById("tilePresetH");
+  const groutW = document.getElementById("tilePresetGroutW");
+  const groutColor = document.getElementById("tilePresetGroutColor");
+  const pricePerM2 = document.getElementById("tilePresetPricePerM2");
+  const packM2 = document.getElementById("tilePresetPackM2");
+  const pricePerPack = document.getElementById("tilePresetPricePerPack");
+  const useSkirting = document.getElementById("tilePresetUseSkirting");
+  const roomList = document.getElementById("tilePresetRoomList");
+  const addTile = document.getElementById("btnAddTilePreset");
+  const delTile = document.getElementById("btnDeleteTilePreset");
+
+  const skirtList = document.getElementById("skirtingPresetList");
+  const skirtName = document.getElementById("skirtingPresetName");
+  const skirtHeight = document.getElementById("skirtingPresetHeight");
+  const skirtLength = document.getElementById("skirtingPresetLength");
+  const skirtPrice = document.getElementById("skirtingPresetPrice");
+  const addSkirt = document.getElementById("btnAddSkirtingPreset");
+  const delSkirt = document.getElementById("btnDeleteSkirtingPreset");
+
+  if (tileList) {
+    tileList.addEventListener("change", (e) => {
+      selectedTilePresetId = e.target.value || null;
+      renderAll();
+    });
+  }
+  if (skirtList) {
+    skirtList.addEventListener("change", (e) => {
+      selectedSkirtingPresetId = e.target.value || null;
+      renderAll();
+    });
+  }
+
+  addTile?.addEventListener("click", () => {
+    const next = deepClone(store.getState());
+    const room = getCurrentRoom(next);
+    const base = room?.tile || { widthCm: 30, heightCm: 60, shape: "rect" };
+    const grout = room?.grout || { widthCm: 0.2, colorHex: "#ffffff" };
+    const pricing = room ? getRoomPricing(next, room) : { pricePerM2: 0, packM2: 0 };
+    const preset = {
+      id: uuid(),
+      name: `${t("tile.preset")} ${next.tilePresets.length + 1}`,
+      shape: base.shape || "rect",
+      widthCm: Number(base.widthCm) || 0,
+      heightCm: Number(base.heightCm) || 0,
+      groutWidthCm: Number(grout.widthCm) || 0,
+      groutColorHex: grout.colorHex || "#ffffff",
+      pricePerM2: Number(pricing.pricePerM2) || 0,
+      packM2: Number(pricing.packM2) || 0,
+      useForSkirting: false
+    };
+    next.tilePresets.push(preset);
+    selectedTilePresetId = preset.id;
+    commitViaStore(t("tile.presetAdded"), next);
+  });
+
+  delTile?.addEventListener("click", () => {
+    if (!selectedTilePresetId) return;
+    const next = deepClone(store.getState());
+    next.tilePresets = next.tilePresets.filter(p => p.id !== selectedTilePresetId);
+    selectedTilePresetId = next.tilePresets.at(-1)?.id ?? null;
+    commitViaStore(t("tile.presetDeleted"), next);
+  });
+
+  const commitTilePreset = () => {
+    if (!selectedTilePresetId) return;
+    const next = deepClone(store.getState());
+    const p = next.tilePresets.find(x => x.id === selectedTilePresetId);
+    if (!p) return;
+    const prevName = p.name;
+    if (tileName) p.name = tileName.value ?? p.name;
+    if (tileShape) p.shape = tileShape.value || p.shape;
+    if (tileW) p.widthCm = Number(tileW.value);
+    if (tileH) p.heightCm = Number(tileH.value);
+    if (groutW) p.groutWidthCm = Number(groutW.value) / 10;
+    if (groutColor) p.groutColorHex = groutColor.value || p.groutColorHex;
+    if (pricePerM2) p.pricePerM2 = Number(pricePerM2.value);
+    if (packM2) p.packM2 = Number(packM2.value);
+    if (useSkirting) p.useForSkirting = Boolean(useSkirting.checked);
+
+    if (prevName && p.name && prevName !== p.name) {
+      next.floors?.forEach(floor => {
+        floor.rooms?.forEach(room => {
+          if (room.tile?.reference === prevName) room.tile.reference = p.name;
+        });
+      });
+      if (next.materials?.[prevName] && !next.materials[p.name]) {
+        next.materials[p.name] = next.materials[prevName];
+        delete next.materials[prevName];
+      }
+    }
+
+    commitViaStore(t("tile.presetChanged"), next);
+  };
+
+  [tileName, tileW, tileH, groutW, pricePerM2, packM2].forEach(el => {
+    el?.addEventListener("blur", commitTilePreset);
+  });
+  tileShape?.addEventListener("change", commitTilePreset);
+  groutColor?.addEventListener("change", commitTilePreset);
+  useSkirting?.addEventListener("change", commitTilePreset);
+  pricePerPack?.addEventListener("change", () => {
+    const pack = Number(packM2?.value);
+    const price = Number(pricePerPack.value);
+    if (!Number.isFinite(pack) || pack <= 0) return;
+    if (!Number.isFinite(price)) return;
+    if (pricePerM2) pricePerM2.value = (price / pack).toFixed(2);
+    commitTilePreset();
+  });
+
+  roomList?.addEventListener("change", (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!target.dataset.roomId) return;
+    if (!selectedTilePresetId) return;
+    const next = deepClone(store.getState());
+    const preset = next.tilePresets.find(x => x.id === selectedTilePresetId);
+    if (!preset || !preset.name) return;
+
+    let room = null;
+    next.floors?.forEach(floor => {
+      floor.rooms?.forEach(r => {
+        if (r.id === target.dataset.roomId) room = r;
+      });
+    });
+    if (!room) return;
+
+    if (target.checked) {
+      room.tile.shape = preset.shape || room.tile.shape;
+      room.tile.widthCm = Number(preset.widthCm) || room.tile.widthCm;
+      room.tile.heightCm = Number(preset.heightCm) || room.tile.heightCm;
+      room.tile.reference = preset.name || room.tile.reference;
+      room.grout.widthCm = Number(preset.groutWidthCm) || 0;
+      room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
+      if (preset.useForSkirting) {
+        room.skirting.enabled = true;
+        room.skirting.type = "cutout";
+      }
+      if (preset.name) {
+        next.materials = next.materials || {};
+        next.materials[preset.name] = next.materials[preset.name] || {
+          pricePerM2: next.pricing?.pricePerM2 || 0,
+          packM2: next.pricing?.packM2 || 0
+        };
+        if (Number.isFinite(preset.pricePerM2)) next.materials[preset.name].pricePerM2 = Number(preset.pricePerM2);
+        if (Number.isFinite(preset.packM2)) next.materials[preset.name].packM2 = Number(preset.packM2);
+      }
+    } else if (room.tile?.reference === preset.name) {
+      room.tile.reference = "";
+    }
+
+    commitViaStore(t("tile.presetChanged"), next);
+  });
+
+  addSkirt?.addEventListener("click", () => {
+    const next = deepClone(store.getState());
+    const room = getCurrentRoom(next);
+    const base = room?.skirting || {};
+    const preset = {
+      id: uuid(),
+      name: `${t("skirting.preset")} ${next.skirtingPresets.length + 1}`,
+      heightCm: Number(base.heightCm) || 0,
+      lengthCm: Number(base.boughtWidthCm) || 0,
+      pricePerPiece: Number(base.boughtPricePerPiece) || 0
+    };
+    next.skirtingPresets.push(preset);
+    selectedSkirtingPresetId = preset.id;
+    commitViaStore(t("skirting.presetAdded"), next);
+  });
+
+  delSkirt?.addEventListener("click", () => {
+    if (!selectedSkirtingPresetId) return;
+    const next = deepClone(store.getState());
+    next.skirtingPresets = next.skirtingPresets.filter(p => p.id !== selectedSkirtingPresetId);
+    selectedSkirtingPresetId = next.skirtingPresets.at(-1)?.id ?? null;
+    commitViaStore(t("skirting.presetDeleted"), next);
+  });
+
+  const commitSkirtingPreset = () => {
+    if (!selectedSkirtingPresetId) return;
+    const next = deepClone(store.getState());
+    const p = next.skirtingPresets.find(x => x.id === selectedSkirtingPresetId);
+    if (!p) return;
+    if (skirtName) p.name = skirtName.value ?? p.name;
+    if (skirtHeight) p.heightCm = Number(skirtHeight.value);
+    if (skirtLength) p.lengthCm = Number(skirtLength.value);
+    if (skirtPrice) p.pricePerPiece = Number(skirtPrice.value);
+    commitViaStore(t("skirting.presetChanged"), next);
+  };
+
+  [skirtName, skirtHeight, skirtLength, skirtPrice].forEach(el => {
+    el?.addEventListener("blur", commitSkirtingPreset);
+  });
+}
+
 function updateAllTranslations() {
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
@@ -413,6 +618,7 @@ function updateAllTranslations() {
       lastTileError = null;
     }
   });
+  bindPresetCollection();
 
   document.getElementById("floorSelect")?.addEventListener("change", (e) => {
     structure.selectFloor(e.target.value);
@@ -590,8 +796,7 @@ function updateAllTranslations() {
   }
 
   // Quick Controls
-  const quickTileW = document.getElementById("quickTileW");
-  const quickTileH = document.getElementById("quickTileH");
+  const quickTilePreset = document.getElementById("quickTilePreset");
   const quickPattern = document.getElementById("quickPattern");
   const quickGrout = document.getElementById("quickGrout");
   const quickShowGrid = document.getElementById("quickShowGrid");
@@ -670,8 +875,23 @@ function updateAllTranslations() {
       ?.rooms?.find(r => r.id === state.selectedRoomId);
 
     if (room) {
-      if (quickTileW) quickTileW.value = room.tile?.widthCm || "";
-      if (quickTileH) quickTileH.value = room.tile?.heightCm || "";
+      if (quickTilePreset) {
+        quickTilePreset.innerHTML = "";
+        const presets = state.tilePresets || [];
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = presets.length ? t("tile.custom") : t("project.none");
+        quickTilePreset.appendChild(empty);
+        presets.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || t("project.none");
+          quickTilePreset.appendChild(opt);
+        });
+        const match = presets.find(p => p.name && p.name === room.tile?.reference);
+        quickTilePreset.value = match ? match.id : "";
+        quickTilePreset.disabled = presets.length === 0;
+      }
       if (quickPattern) quickPattern.value = room.pattern?.type || "grid";
       // Display grout in mm (state stores cm)
       if (quickGrout) quickGrout.value = Math.round((room.grout?.widthCm || 0) * 10);
@@ -733,19 +953,38 @@ function updateAllTranslations() {
     syncQuickControls();
   };
 
-  function commitQuickTile() {
+  function commitQuickTilePreset() {
+    const presetId = quickTilePreset?.value;
+    if (!presetId) return;
     const state = store.getState();
+    const preset = state.tilePresets?.find(p => p.id === presetId);
+    if (!preset) return;
     const floorIdx = state.floors?.findIndex(f => f.id === state.selectedFloorId);
     const roomIdx = state.floors?.[floorIdx]?.rooms?.findIndex(r => r.id === state.selectedRoomId);
     if (floorIdx < 0 || roomIdx < 0) return;
 
-    const newW = parseFloat(quickTileW?.value) || 0;
-    const newH = parseFloat(quickTileH?.value) || 0;
-    if (newW <= 0 || newH <= 0) return;
-
     const next = JSON.parse(JSON.stringify(state));
-    next.floors[floorIdx].rooms[roomIdx].tile.widthCm = newW;
-    next.floors[floorIdx].rooms[roomIdx].tile.heightCm = newH;
+    const room = next.floors[floorIdx].rooms[roomIdx];
+    room.tile.shape = preset.shape || room.tile.shape;
+    room.tile.widthCm = Number(preset.widthCm) || room.tile.widthCm;
+    room.tile.heightCm = Number(preset.heightCm) || room.tile.heightCm;
+    room.tile.reference = preset.name || room.tile.reference;
+    room.grout.widthCm = Number(preset.groutWidthCm) || 0;
+    room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
+    if (preset.useForSkirting) {
+      room.skirting.enabled = true;
+      room.skirting.type = "cutout";
+    }
+    const ref = room.tile.reference;
+    if (ref) {
+      next.materials = next.materials || {};
+      next.materials[ref] = next.materials[ref] || {
+        pricePerM2: next.pricing?.pricePerM2 || 0,
+        packM2: next.pricing?.packM2 || 0
+      };
+      if (Number.isFinite(preset.pricePerM2)) next.materials[ref].pricePerM2 = Number(preset.pricePerM2);
+      if (Number.isFinite(preset.packM2)) next.materials[ref].packM2 = Number(preset.packM2);
+    }
     commitViaStore(t("tile.changed"), next);
   }
 
@@ -776,8 +1015,7 @@ function updateAllTranslations() {
     commitViaStore(t("tile.changed"), next);
   }
 
-  quickTileW?.addEventListener("change", commitQuickTile);
-  quickTileH?.addEventListener("change", commitQuickTile);
+  quickTilePreset?.addEventListener("change", commitQuickTilePreset);
   quickPattern?.addEventListener("change", commitQuickPattern);
   quickGrout?.addEventListener("change", commitQuickGrout);
 

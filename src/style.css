@@ -548,6 +548,63 @@ body{
   padding-top: 8px;
 }
 
+.setup-collection {
+  display: grid;
+  gap: 16px;
+}
+
+.collection-section {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px;
+  background: rgba(0,0,0,0.06);
+  display: grid;
+  gap: 10px;
+}
+
+.collection-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preset-room-list {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: rgba(0,0,0,0.12);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.preset-room-list .preset-room-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.preset-room-list .preset-room-item span {
+  margin-left: 2px;
+}
+
+.preset-room-item input[type="checkbox"] {
+  accent-color: var(--accent);
+  appearance: auto;
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
 .btn.large {
   padding: 14px 32px;
   font-size: var(--fs-lg);
@@ -834,6 +891,10 @@ body{
   font-size: var(--fs-md);
   outline: none;
   cursor: pointer;
+}
+
+.quick-select-wide {
+  min-width: 180px;
 }
 
 .quick-select:focus {
@@ -1843,6 +1904,15 @@ body{
 }
 
 #groutColor {
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#tilePresetGroutColor {
   width: 40px;
   height: 22px;
   padding: 0;

@@ -65,7 +65,12 @@ export function bindUI({
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
 
       nextRoom.skirting = nextRoom.skirting || {};
-      nextRoom.skirting.type = document.getElementById("skirtingType")?.value;
+      const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
+      if (roomSkirtingEnabled) nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
+      const selectedType = document.getElementById("skirtingType")?.value;
+      const preset = next.tilePresets?.find(p => p?.name && p.name === nextRoom.tile?.reference);
+      const cutoutAllowed = Boolean(preset?.useForSkirting);
+      nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
       nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
       nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
       nextRoom.skirting.boughtPricePerPiece = Number(document.getElementById("skirtingPricePerPiece")?.value);
@@ -120,8 +125,8 @@ export function bindUI({
     currentRoom.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
 
     // Pricing
-    next.pricing = next.pricing || {};
     const reserveTiles = document.getElementById("reserveTiles");
+    next.pricing = next.pricing || {};
     if (reserveTiles) next.pricing.reserveTiles = Number(reserveTiles.value);
 
     // Waste options
@@ -320,6 +325,45 @@ export function bindUI({
     commitFn: commitFromTilePatternInputs
   });
 
+  document.getElementById("btnApplyTilePreset")?.addEventListener("click", () => {
+    const sel = document.getElementById("tilePresetSelect");
+    const presetId = sel?.value;
+    if (!presetId) return;
+    const state = store.getState();
+    const preset = state.tilePresets?.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    if (!room) return;
+
+    room.tile.shape = preset.shape || room.tile.shape;
+    room.tile.widthCm = Number(preset.widthCm) || room.tile.widthCm;
+    room.tile.heightCm = Number(preset.heightCm) || room.tile.heightCm;
+    room.tile.reference = preset.name || room.tile.reference;
+
+    room.grout.widthCm = Number(preset.groutWidthCm) || 0;
+    room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
+
+    if (preset.useForSkirting) {
+      room.skirting.enabled = true;
+      room.skirting.type = "cutout";
+    }
+
+    const ref = room.tile.reference;
+    if (ref) {
+      next.materials = next.materials || {};
+      next.materials[ref] = next.materials[ref] || {
+        pricePerM2: next.pricing?.pricePerM2 || 0,
+        packM2: next.pricing?.packM2 || 0
+      };
+      if (Number.isFinite(preset.pricePerM2)) next.materials[ref].pricePerM2 = Number(preset.pricePerM2);
+      if (Number.isFinite(preset.packM2)) next.materials[ref].packM2 = Number(preset.packM2);
+    }
+
+    store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
   document.getElementById("tileReference")?.addEventListener("change", (e) => {
     const newRef = e.target.value;
     if (!newRef) return;
@@ -372,6 +416,23 @@ export function bindUI({
   document.getElementById("skirtingType")?.addEventListener("change", () =>
     commitFromRoomInputs(t("skirting.changed"))
   );
+  document.getElementById("btnApplySkirtingPreset")?.addEventListener("click", () => {
+    const sel = document.getElementById("skirtingPresetSelect");
+    const presetId = sel?.value;
+    if (!presetId) return;
+    const state = store.getState();
+    const preset = state.skirtingPresets?.find(p => p.id === presetId);
+    if (!preset) return;
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    if (!room) return;
+    room.skirting.enabled = true;
+    room.skirting.type = "bought";
+    room.skirting.heightCm = Number(preset.heightCm) || room.skirting.heightCm;
+    room.skirting.boughtWidthCm = Number(preset.lengthCm) || room.skirting.boughtWidthCm;
+    room.skirting.boughtPricePerPiece = Number(preset.pricePerPiece) || room.skirting.boughtPricePerPiece;
+    store.commit(t("skirting.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
   [
     "skirtingHeight",
     "skirtingBoughtWidth",
@@ -394,8 +455,8 @@ export function bindUI({
     "offsetY",
     "originX",
     "originY",
-    'reserveTiles',
-    'wasteKerfCm',
+    "reserveTiles",
+    "wasteKerfCm",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (id === "tileW" || id === "tileH") {
@@ -418,6 +479,7 @@ export function bindUI({
       });
     }
   });
+
 
   // Grout color preset swatches
   document.getElementById("groutColorPresets")?.addEventListener("click", (e) => {

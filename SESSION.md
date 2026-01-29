@@ -1,3 +1,21 @@
+## Session: Tile Collection Setup (2026-01-29)
+### Goal
+- Let users define a reusable tile collection in Setup
+- Enable preset selection in Planning to avoid re-entering tile properties
+
+### Branch
+`feature/tile-collection-setup`
+
+### Plan
+1. Add a Tile Collection section in Setup for create/edit/delete presets
+2. Persist presets at project level in state and include in save/load
+3. Surface presets in Planning with “apply preset” behavior
+4. Ensure existing per-room tile settings still work when no preset is chosen
+5. Update i18n strings and add tests where appropriate
+
+### Notes
+- Merged `ux-overhaul-backbone` into `main` on 2026-01-29
+
 ## Session: UX Overhaul - Step 1 (2026-01-28)
 ### Goal
 - Analyze current UX and record flaws
