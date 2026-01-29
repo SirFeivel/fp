@@ -209,13 +209,24 @@ const dragController = createExclusionDragController({
 });
 
 function updateExclusionInline({ id, key, value }) {
-  if (!Number.isFinite(value)) return;
+  if (key !== "__delete__" && !Number.isFinite(value)) return;
 
   const next = deepClone(store.getState());
   const room = getCurrentRoom(next);
   if (!room) return;
   const ex = room.exclusions?.find(x => x.id === id);
   if (!ex) return;
+  if (key === "__delete__") {
+    room.exclusions = room.exclusions.filter(x => x.id !== id);
+    const remaining = room.exclusions;
+    if (remaining.length > 0) {
+      setSelectedExcl(remaining.at(-1)?.id ?? null);
+    } else {
+      setSelectedExcl(null);
+    }
+    commitViaStore(t("exclusions.deleted"), next);
+    return;
+  }
   const bounds = getRoomBounds(room);
 
   const clampPos = (v) => Math.max(0.1, v);

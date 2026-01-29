@@ -1201,6 +1201,50 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           };
 
       const pad = 10;
+      const removeBtnR = 5;
+      let removeBtnX = box.maxX + 6;
+      let removeBtnY = box.minY - pad;
+      if (ex.type === "rect") {
+        removeBtnX = ex.x + ex.w + 12;
+        removeBtnY = ex.y - pad;
+      } else if (ex.type === "circle") {
+        removeBtnX = ex.cx + ex.r + 6;
+        removeBtnY = ex.cy - ex.r - pad;
+      } else if (ex.type === "tri") {
+        removeBtnX = box.maxX + 6;
+        removeBtnY = box.maxY + pad;
+      }
+      const removeGroup = svgEl("g");
+      const crossStyle = {
+        stroke: "rgba(239,68,68,0.95)",
+        "stroke-width": 1.6,
+        "stroke-linecap": "round",
+        cursor: "pointer"
+      };
+      const crossSize = removeBtnR * 0.4;
+      removeGroup.appendChild(svgEl("line", {
+        ...crossStyle,
+        x1: removeBtnX - crossSize,
+        y1: removeBtnY - crossSize,
+        x2: removeBtnX + crossSize,
+        y2: removeBtnY + crossSize
+      }));
+      removeGroup.appendChild(svgEl("line", {
+        ...crossStyle,
+        x1: removeBtnX - crossSize,
+        y1: removeBtnY + crossSize,
+        x2: removeBtnX + crossSize,
+        y2: removeBtnY - crossSize
+      }));
+      removeGroup.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onInlineEdit) {
+          onInlineEdit({ id: ex.id, key: "__delete__" });
+        }
+      });
+      gEx.appendChild(removeGroup);
+
       const posAnchorX = bounds.minX + 12;
       const posAnchorY = bounds.minY + 14;
 
@@ -1281,6 +1325,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           { key: "side-c", p1: ex.p3, p2: ex.p1 }
         ];
 
+        let triLabelMaxY = null;
         sides.forEach(side => {
           const midX = (side.p1.x + side.p2.x) / 2;
           const midY = (side.p1.y + side.p2.y) / 2;
@@ -1294,7 +1339,13 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           const y = midY + ny * offset;
           const angle = Math.atan2(dy, dx) * 180 / Math.PI;
           addEditableLabel(`${fmtCm(len)} cm`, len, side.key, x, y, "middle", angle);
+          triLabelMaxY = triLabelMaxY === null ? y : Math.max(triLabelMaxY, y);
         });
+
+        if (triLabelMaxY !== null) {
+          const dy = triLabelMaxY - removeBtnY;
+          removeGroup.setAttribute("transform", `translate(0 ${dy})`);
+        }
       }
     }
   }
