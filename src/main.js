@@ -4,7 +4,7 @@ import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController } from "./drag.js";
+import { createExclusionDragController, createSectionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
@@ -76,6 +76,7 @@ function refreshProjectSelect() {
 
 function setSelectedExcl(id) {
   selectedExclId = id || null;
+  if (id) selectedSectionId = null; // Deselect section when selecting exclusion
   renderAll();
 }
 function setSelectedId(id) {
@@ -88,6 +89,13 @@ function setSelectedSection(id) {
 }
 function setSelectedSectionId(id) {
   selectedSectionId = id || null;
+}
+
+// Handle section selection - deselects exclusion when selecting section
+function handleSectionSelect(id) {
+  selectedSectionId = id || null;
+  if (id) selectedExclId = null; // Deselect exclusion when selecting section
+  renderAll();
 }
 
 // Hook for post-render sync (set by IIFE below)
@@ -149,7 +157,14 @@ function renderAll(lastLabel, options) {
       setLastUnionError: (v) => (lastUnionError = v),
       setLastTileError: (v) => (lastTileError = v),
       metrics,
-      skipTiles: isDrag
+      skipTiles: isDrag,
+      // Section callbacks
+      selectedSectionId,
+      setSelectedSection: handleSectionSelect,
+      onSectionPointerDown: sectionDragController.onSectionPointerDown,
+      onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
+      onSectionInlineEdit: updateSectionInline,
+      onAddSectionAtEdge: (direction) => sections.addSection(direction)
     });
 
     renderStateView(state);
@@ -212,6 +227,19 @@ const dragController = createExclusionDragController({
   getSelectedId: () => selectedExclId,
   getMoveLabel: () => t("exclusions.moved"),
   getResizeLabel: () => t("exclusions.resized")
+});
+
+const sectionDragController = createSectionDragController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getSelectedSection: () => sections.getSelectedSection(),
+  setSelectedSection: handleSectionSelect,
+  setSelectedIdOnly: setSelectedSectionId,
+  getSelectedId: () => selectedSectionId,
+  getMoveLabel: () => t("room.sectionMoved") || "Section moved",
+  getResizeLabel: () => t("room.sectionResized") || "Section resized"
 });
 
 function updateExclusionInline({ id, key, value }) {
@@ -311,6 +339,32 @@ function updateExclusionInline({ id, key, value }) {
   }
 
   commitViaStore(t("exclusions.changed"), next);
+}
+
+function updateSectionInline({ id, key, value }) {
+  if (key !== "__delete__" && !Number.isFinite(value)) return;
+
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room || !room.sections) return;
+
+  const sec = room.sections.find(s => s.id === id);
+  if (!sec) return;
+
+  if (key === "__delete__") {
+    room.sections = room.sections.filter(s => s.id !== id);
+    if (room.sections.length === 0) {
+      delete room.sections;
+      handleSectionSelect(null);
+    } else {
+      handleSectionSelect(room.sections.at(-1)?.id ?? null);
+    }
+    commitViaStore(t("room.sectionDeleted") || "Section deleted", next);
+    return;
+  }
+
+  // Handle other inline edits (width, height, x, y) if needed
+  commitViaStore(t("room.sectionChanged") || "Section changed", next);
 }
 
 function nudgeSelectedExclusion(dx, dy) {

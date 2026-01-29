@@ -210,47 +210,70 @@ export function suggestConnectedSection(existingSections, direction = "right") {
     return createDefaultSection(0, 0, 300, 300, label);
   }
 
-  const lastSection = existingSections[existingSections.length - 1];
-  const w = lastSection.widthCm || 300;
-  const h = lastSection.heightCm || 300;
-  const x = lastSection.x || 0;
-  const y = lastSection.y || 0;
+  // Compute composite bounds to position new section at the edge of the entire shape
+  const bounds = computeCompositeBounds(existingSections);
+  const { minX, minY, maxX, maxY, width, height } = bounds;
 
-  let newX = x;
-  let newY = y;
-  let newW = w;
-  let newH = h;
+  // Find sections at each edge to determine appropriate dimensions
+  const eps = 0.01;
+  const sectionsAtRight = existingSections.filter(s => Math.abs((s.x + s.widthCm) - maxX) < eps);
+  const sectionsAtLeft = existingSections.filter(s => Math.abs(s.x - minX) < eps);
+  const sectionsAtBottom = existingSections.filter(s => Math.abs((s.y + s.heightCm) - maxY) < eps);
+  const sectionsAtTop = existingSections.filter(s => Math.abs(s.y - minY) < eps);
+
+  let newX = 0;
+  let newY = 0;
+  let newW = 300;
+  let newH = 300;
 
   switch (direction) {
-    case "right":
-      newX = x + w;
-      newY = y;
-      newW = Math.min(w, 300);
-      newH = h;
+    case "right": {
+      // Place at right edge of composite, spanning the height of sections at that edge
+      const edgeMinY = Math.min(...sectionsAtRight.map(s => s.y));
+      const edgeMaxY = Math.max(...sectionsAtRight.map(s => s.y + s.heightCm));
+      newX = maxX;
+      newY = edgeMinY;
+      newW = Math.min(300, width * 0.5);
+      newH = edgeMaxY - edgeMinY;
       break;
-    case "left":
-      newX = x - Math.min(w, 300);
-      newY = y;
-      newW = Math.min(w, 300);
-      newH = h;
+    }
+    case "left": {
+      // Place at left edge of composite
+      const edgeMinY = Math.min(...sectionsAtLeft.map(s => s.y));
+      const edgeMaxY = Math.max(...sectionsAtLeft.map(s => s.y + s.heightCm));
+      newW = Math.min(300, width * 0.5);
+      newX = minX - newW;
+      newY = edgeMinY;
+      newH = edgeMaxY - edgeMinY;
       break;
-    case "bottom":
-      newX = x;
-      newY = y + h;
-      newW = w;
-      newH = Math.min(h, 300);
+    }
+    case "bottom": {
+      // Place at bottom edge of composite
+      const edgeMinX = Math.min(...sectionsAtBottom.map(s => s.x));
+      const edgeMaxX = Math.max(...sectionsAtBottom.map(s => s.x + s.widthCm));
+      newX = edgeMinX;
+      newY = maxY;
+      newW = edgeMaxX - edgeMinX;
+      newH = Math.min(300, height * 0.5);
       break;
-    case "top":
-      newX = x;
-      newY = y - Math.min(h, 300);
-      newW = w;
-      newH = Math.min(h, 300);
+    }
+    case "top": {
+      // Place at top edge of composite
+      const edgeMinX = Math.min(...sectionsAtTop.map(s => s.x));
+      const edgeMaxX = Math.max(...sectionsAtTop.map(s => s.x + s.widthCm));
+      newH = Math.min(300, height * 0.5);
+      newX = edgeMinX;
+      newY = minY - newH;
+      newW = edgeMaxX - edgeMinX;
       break;
-    default:
-      newX = x + w;
-      newY = y;
-      newW = Math.min(w, 300);
-      newH = h;
+    }
+    default: {
+      // Default to right
+      newX = maxX;
+      newY = minY;
+      newW = Math.min(300, width * 0.5);
+      newH = height;
+    }
   }
 
   return createDefaultSection(newX, newY, newW, newH, label);

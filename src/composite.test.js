@@ -365,7 +365,9 @@ describe("suggestConnectedSection", () => {
   it("creates section to the left", () => {
     const existing = [{ id: "s1", x: 400, y: 0, widthCm: 400, heightCm: 300 }];
     const suggested = suggestConnectedSection(existing, "left");
-    expect(suggested.x).toBe(100);
+    // New section placed at left edge of composite bounds
+    // newW = min(300, 400*0.5) = 200, newX = 400 - 200 = 200
+    expect(suggested.x).toBe(200);
     expect(suggested.y).toBe(0);
     expect(suggested.heightCm).toBe(300);
   });
@@ -381,9 +383,12 @@ describe("suggestConnectedSection", () => {
   it("creates section at top", () => {
     const existing = [{ id: "s1", x: 0, y: 300, widthCm: 400, heightCm: 300 }];
     const suggested = suggestConnectedSection(existing, "top");
+    // New section placed at top edge of composite bounds
+    // newH = min(300, 300*0.5) = 150, newY = 300 - 150 = 150
     expect(suggested.x).toBe(0);
-    expect(suggested.y).toBe(0);
+    expect(suggested.y).toBe(150);
     expect(suggested.widthCm).toBe(400);
+    expect(suggested.heightCm).toBe(150);
   });
 
   it("creates default section when no existing sections", () => {

@@ -14,7 +14,7 @@ import {
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
 } from "./geometry.js";
-import { getRoomSections } from "./composite.js";
+import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
 
 let activeSvgEdit = null;
 
@@ -1016,7 +1016,14 @@ export function renderPlanSvg({
   setLastUnionError,
   setLastTileError,
   metrics, // optional; if omitted we compute it here
-  skipTiles = false
+  skipTiles = false,
+  // Section-related callbacks
+  selectedSectionId = null,
+  setSelectedSection = null,
+  onSectionPointerDown = null,
+  onSectionResizeHandlePointerDown = null,
+  onSectionInlineEdit = null,
+  onAddSectionAtEdge = null
 }) {
   const svg = document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
@@ -1085,7 +1092,7 @@ export function renderPlanSvg({
 
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  const viewBoxPadding = 20;
+  const viewBoxPadding = 50;
   svg.setAttribute("viewBox", `${minX - viewBoxPadding} ${minY - viewBoxPadding} ${w + 2 * viewBoxPadding} ${h + 2 * viewBoxPadding}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
@@ -1123,31 +1130,205 @@ export function renderPlanSvg({
   }
 
   // room sections
+  const gSec = svgEl("g");
   for (const section of sections) {
     if (!(section.widthCm > 0 && section.heightCm > 0)) continue;
 
-    svg.appendChild(svgEl("rect", {
+    const isSectionSelected = section.id === selectedSectionId;
+    const sectionRect = svgEl("rect", {
       x: section.x,
       y: section.y,
       width: section.widthCm,
       height: section.heightCm,
-      fill: "rgba(122,162,255,0.06)",
-      stroke: "rgba(122,162,255,0.8)",
-      "stroke-width": 1.2
-    }));
+      fill: isSectionSelected ? "rgba(122,162,255,0.15)" : "rgba(122,162,255,0.06)",
+      stroke: isSectionSelected ? "rgba(122,162,255,1)" : "rgba(122,162,255,0.8)",
+      "stroke-width": isSectionSelected ? 2 : 1.2,
+      cursor: sections.length > 1 ? "move" : "default",
+      "data-secid": section.id
+    });
+
+    // Add click handler for selection (only if multiple sections)
+    if (sections.length > 1 && setSelectedSection) {
+      sectionRect.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setSelectedSection(section.id);
+      });
+      if (onSectionPointerDown) {
+        sectionRect.addEventListener("pointerdown", onSectionPointerDown);
+      }
+    }
+
+    gSec.appendChild(sectionRect);
 
     if (section.label && sections.length > 1) {
       const sectionLabel = svgEl("text", {
         x: section.x + 8,
         y: section.y + 18,
-        fill: "rgba(231,238,252,0.70)",
+        fill: isSectionSelected ? "rgba(231,238,252,0.95)" : "rgba(231,238,252,0.70)",
         "font-size": 12,
-        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
+        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        "pointer-events": "none"
       });
       sectionLabel.textContent = section.label;
-      svg.appendChild(sectionLabel);
+      gSec.appendChild(sectionLabel);
+    }
+
+    // Add resize handles and dimension labels for selected section
+    if (isSectionSelected && sections.length > 1) {
+      const handleRadius = 4;
+      const handleStyle = {
+        fill: "var(--accent, #3b82f6)",
+        stroke: "#fff",
+        "stroke-width": 1.5,
+        cursor: "pointer",
+        "data-secid": section.id
+      };
+      const pad = 10;
+
+      // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
+      const handles = [
+        { type: "nw", x: section.x, y: section.y, cursor: "nwse-resize" },
+        { type: "ne", x: section.x + section.widthCm, y: section.y, cursor: "nesw-resize" },
+        { type: "sw", x: section.x, y: section.y + section.heightCm, cursor: "nesw-resize" },
+        { type: "se", x: section.x + section.widthCm, y: section.y + section.heightCm, cursor: "nwse-resize" },
+        { type: "n", x: section.x + section.widthCm / 2, y: section.y, cursor: "ns-resize" },
+        { type: "s", x: section.x + section.widthCm / 2, y: section.y + section.heightCm, cursor: "ns-resize" },
+        { type: "w", x: section.x, y: section.y + section.heightCm / 2, cursor: "ew-resize" },
+        { type: "e", x: section.x + section.widthCm, y: section.y + section.heightCm / 2, cursor: "ew-resize" }
+      ];
+
+      handles.forEach(h => {
+        const handle = svgEl("circle", {
+          ...handleStyle,
+          cx: h.x,
+          cy: h.y,
+          r: handleRadius,
+          cursor: h.cursor,
+          "data-resize-handle": h.type
+        });
+        if (onSectionResizeHandlePointerDown) {
+          handle.addEventListener("pointerdown", onSectionResizeHandlePointerDown);
+        }
+        gSec.appendChild(handle);
+      });
+
+      // Dimension labels
+      addPillLabel(`${fmtCm(section.widthCm)} cm`, section.x + section.widthCm / 2, section.y - pad, {
+        anchor: "middle",
+        parent: gSec
+      });
+      addPillLabel(`${fmtCm(section.heightCm)} cm`, section.x + section.widthCm + pad, section.y + section.heightCm / 2, {
+        anchor: "middle",
+        angle: 90,
+        parent: gSec
+      });
+
+      // Delete button (X icon) - only if more than one section
+      if (sections.length > 1) {
+        const removeBtnX = section.x + section.widthCm + 12;
+        const removeBtnY = section.y - pad;
+        const removeGroup = svgEl("g", { cursor: "pointer" });
+        const crossStyle = {
+          stroke: "rgba(122,162,255,0.95)",
+          "stroke-width": 1.6,
+          "stroke-linecap": "round"
+        };
+        const crossSize = 3;
+        removeGroup.appendChild(svgEl("line", {
+          ...crossStyle,
+          x1: removeBtnX - crossSize,
+          y1: removeBtnY - crossSize,
+          x2: removeBtnX + crossSize,
+          y2: removeBtnY + crossSize
+        }));
+        removeGroup.appendChild(svgEl("line", {
+          ...crossStyle,
+          x1: removeBtnX - crossSize,
+          y1: removeBtnY + crossSize,
+          x2: removeBtnX + crossSize,
+          y2: removeBtnY - crossSize
+        }));
+        removeGroup.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (onSectionInlineEdit) {
+            onSectionInlineEdit({ id: section.id, key: "__delete__" });
+          }
+        });
+        gSec.appendChild(removeGroup);
+      }
     }
   }
+
+  // Add "+" indicators on outer edges for adding new sections
+  if (onAddSectionAtEdge && !selectedExclId) {
+    const compositeBounds = computeCompositeBounds(sections);
+    const { minX: cbMinX, minY: cbMinY, maxX: cbMaxX, maxY: cbMaxY } = compositeBounds;
+
+    const plusBtnRadius = 10;
+    const plusBtnOffset = 25; // Distance from edge
+    const plusStyle = {
+      fill: "rgba(122,162,255,0.15)",
+      stroke: "rgba(122,162,255,0.8)",
+      "stroke-width": 1.5,
+      cursor: "pointer"
+    };
+    const plusLineStyle = {
+      stroke: "rgba(122,162,255,0.9)",
+      "stroke-width": 2,
+      "stroke-linecap": "round",
+      "pointer-events": "none"
+    };
+    const plusSize = 5;
+
+    // All buttons outside the room, centered on each edge
+    const edgeButtons = [
+      { dir: "right", x: cbMaxX + plusBtnOffset, y: (cbMinY + cbMaxY) / 2 },
+      { dir: "left", x: cbMinX - plusBtnOffset, y: (cbMinY + cbMaxY) / 2 },
+      { dir: "bottom", x: (cbMinX + cbMaxX) / 2, y: cbMaxY + plusBtnOffset },
+      { dir: "top", x: (cbMinX + cbMaxX) / 2, y: cbMinY - plusBtnOffset }
+    ];
+
+    edgeButtons.forEach(btn => {
+      const btnGroup = svgEl("g", { cursor: "pointer" });
+
+      // Circle background
+      btnGroup.appendChild(svgEl("circle", {
+        ...plusStyle,
+        cx: btn.x,
+        cy: btn.y,
+        r: plusBtnRadius
+      }));
+
+      // Plus sign (horizontal line)
+      btnGroup.appendChild(svgEl("line", {
+        ...plusLineStyle,
+        x1: btn.x - plusSize,
+        y1: btn.y,
+        x2: btn.x + plusSize,
+        y2: btn.y
+      }));
+
+      // Plus sign (vertical line)
+      btnGroup.appendChild(svgEl("line", {
+        ...plusLineStyle,
+        x1: btn.x,
+        y1: btn.y - plusSize,
+        x2: btn.x,
+        y2: btn.y + plusSize
+      }));
+
+      btnGroup.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onAddSectionAtEdge(btn.dir);
+      });
+
+      gSec.appendChild(btnGroup);
+    });
+  }
+
+  svg.appendChild(gSec);
 
   // Update dynamic plan title in header
   const planTitleEl = document.getElementById("planTitle");
