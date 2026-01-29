@@ -1,5 +1,6 @@
 // src/drag.js
 import { deepClone, getCurrentRoom } from "./core.js";
+import { getRoomBounds } from "./geometry.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -12,6 +13,10 @@ function pointerToSvgXY(svg, clientX, clientY) {
   return { x: p.x, y: p.y };
 }
 
+function snapToMm(value) {
+  return Math.round(value * 10) / 10;
+}
+
 function formatCm(value) {
   const rounded = Math.round(value * 10) / 10;
   if (!Number.isFinite(rounded)) return "0";
@@ -22,12 +27,14 @@ function getResizeOverlay() {
   return document.getElementById("resizeMetrics");
 }
 
-function showResizeOverlay(text, clientX, clientY) {
+function showResizeOverlay(text, clientX, clientY, options = {}) {
   const el = getResizeOverlay();
   if (!el) return;
+  const { mode = "cursor" } = options;
   el.textContent = text;
   el.style.left = `${clientX}px`;
   el.style.top = `${clientY}px`;
+  el.style.transform = mode === "center" ? "translate(-50%, -50%)" : "translate(-50%, -120%)";
   el.classList.remove("hidden");
 }
 
@@ -35,6 +42,34 @@ function hideResizeOverlay() {
   const el = getResizeOverlay();
   if (!el) return;
   el.classList.add("hidden");
+}
+
+function svgPointToClient(svg, x, y) {
+  const pt = svg.createSVGPoint();
+  pt.x = x;
+  pt.y = y;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const p = pt.matrixTransform(ctm);
+  return { x: p.x, y: p.y };
+}
+
+function showDragOverlay(text, svg, cursorClient, fallbackSvgPoint) {
+  const el = getResizeOverlay();
+  if (!el) return;
+  showResizeOverlay(text, cursorClient.x, cursorClient.y);
+  const rect = el.getBoundingClientRect();
+  const margin = 8;
+  const overflow =
+    rect.left < margin ||
+    rect.right > window.innerWidth - margin ||
+    rect.top < margin ||
+    rect.bottom > window.innerHeight - margin;
+
+  if (overflow && fallbackSvgPoint) {
+    const pos = svgPointToClient(svg, fallbackSvgPoint.x, fallbackSvgPoint.y);
+    showResizeOverlay(text, pos.x, pos.y, { mode: "center" });
+  }
 }
 
 function getRectResizeDims(startShape, handleType, dx, dy) {
@@ -74,6 +109,44 @@ function dist(a, b) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getExclusionBounds(startShape, dx, dy) {
+  if (startShape.type === "rect") {
+    return {
+      minX: startShape.x + dx,
+      minY: startShape.y + dy,
+      maxX: startShape.x + dx + startShape.w,
+      maxY: startShape.y + dy + startShape.h
+    };
+  }
+  if (startShape.type === "circle") {
+    return {
+      minX: startShape.cx + dx - startShape.r,
+      minY: startShape.cy + dy - startShape.r,
+      maxX: startShape.cx + dx + startShape.r,
+      maxY: startShape.cy + dy + startShape.r
+    };
+  }
+  const points = [
+    { x: startShape.p1.x + dx, y: startShape.p1.y + dy },
+    { x: startShape.p2.x + dx, y: startShape.p2.y + dy },
+    { x: startShape.p3.x + dx, y: startShape.p3.y + dy }
+  ];
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  return {
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys)
+  };
+}
+
+function getDragOverlayText(bounds, box) {
+  const left = box.minX - bounds.minX;
+  const top = box.minY - bounds.minY;
+  return `x ${formatCm(left)} cm · y ${formatCm(top)} cm`;
 }
 
 function getSvgRoots() {
@@ -196,8 +269,8 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = curMouse.x - drag.startMouse.x;
-    const dy = curMouse.y - drag.startMouse.y;
+    const dx = snapToMm(curMouse.x - drag.startMouse.x);
+    const dy = snapToMm(curMouse.y - drag.startMouse.y);
 
     // Store current delta for final state computation
     drag.currentDx = dx;
@@ -208,6 +281,16 @@ export function createExclusionDragController({
     elements.forEach(el => {
       el.setAttribute("transform", `translate(${dx}, ${dy})`);
     });
+
+    if (drag.bounds && drag.startShape) {
+      const box = getExclusionBounds(drag.startShape, dx, dy);
+      const text = getDragOverlayText(drag.bounds, box);
+      const center = {
+        x: (box.minX + box.maxX) / 2,
+        y: (box.minY + box.maxY) / 2
+      };
+      showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
+    }
   }
 
   function scheduleDragMove(e) {
@@ -230,6 +313,7 @@ export function createExclusionDragController({
   function onSvgPointerUp(e) {
     const svg = getSvg();
     svg.removeEventListener("pointermove", onSvgPointerMove);
+    hideResizeOverlay();
 
     if (!drag || !dragStartState) return;
 
@@ -311,13 +395,24 @@ export function createExclusionDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     dragStartState = deepClone(state);
 
+    const bounds = getRoomBounds(room);
+
     drag = {
       id,
       startMouse,
       startShape: deepClone(ex),
       currentDx: 0,
-      currentDy: 0
+      currentDy: 0,
+      bounds
     };
+
+    const box = getExclusionBounds(ex, 0, 0);
+    const text = getDragOverlayText(bounds, box);
+    const center = {
+      x: (box.minX + box.maxX) / 2,
+      y: (box.minY + box.maxY) / 2
+    };
+    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
 
     svg.addEventListener("pointermove", onSvgPointerMove);
     svg.addEventListener("pointerup", onSvgPointerUp, { once: true });

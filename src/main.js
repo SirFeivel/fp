@@ -2,7 +2,7 @@
 import "./style.css";
 import { computePlanMetrics } from "./calc.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -11,6 +11,7 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
+import { getRoomBounds } from "./geometry.js";
 
 import {
   renderWarnings,
@@ -135,6 +136,7 @@ function renderAll(lastLabel, options) {
       selectedExclId,
       setSelectedExcl,
       onExclPointerDown: dragController.onExclPointerDown,
+      onInlineEdit: updateExclusionInline,
       onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
       lastUnionError,
       lastTileError,
@@ -205,6 +207,159 @@ const dragController = createExclusionDragController({
   getMoveLabel: () => t("exclusions.moved"),
   getResizeLabel: () => t("exclusions.resized")
 });
+
+function updateExclusionInline({ id, key, value }) {
+  if (!Number.isFinite(value)) return;
+
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room) return;
+  const ex = room.exclusions?.find(x => x.id === id);
+  if (!ex) return;
+  const bounds = getRoomBounds(room);
+
+  const clampPos = (v) => Math.max(0.1, v);
+
+  const getBox = (shape) => {
+    if (shape.type === "rect") {
+      return {
+        minX: shape.x,
+        minY: shape.y,
+        maxX: shape.x + shape.w,
+        maxY: shape.y + shape.h
+      };
+    }
+    if (shape.type === "circle") {
+      return {
+        minX: shape.cx - shape.r,
+        minY: shape.cy - shape.r,
+        maxX: shape.cx + shape.r,
+        maxY: shape.cy + shape.r
+      };
+    }
+    const xs = [shape.p1.x, shape.p2.x, shape.p3.x];
+    const ys = [shape.p1.y, shape.p2.y, shape.p3.y];
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys)
+    };
+  };
+
+  const moveAll = (dx, dy) => {
+    if (ex.type === "rect") {
+      ex.x += dx;
+      ex.y += dy;
+    } else if (ex.type === "circle") {
+      ex.cx += dx;
+      ex.cy += dy;
+    } else if (ex.type === "tri") {
+      ex.p1.x += dx; ex.p1.y += dy;
+      ex.p2.x += dx; ex.p2.y += dy;
+      ex.p3.x += dx; ex.p3.y += dy;
+    }
+  };
+
+  const setSideLength = (p1, p2, nextLen) => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return p2;
+    const scale = nextLen / len;
+    return { x: p1.x + dx * scale, y: p1.y + dy * scale };
+  };
+
+  if (key === "x" || key === "y") {
+    const box = getBox(ex);
+    if (key === "x") {
+      const targetLeft = bounds.minX + value;
+      const dx = targetLeft - box.minX;
+      moveAll(dx, 0);
+    } else {
+      const targetTop = bounds.minY + value;
+      const dy = targetTop - box.minY;
+      moveAll(0, dy);
+    }
+  } else if (ex.type === "rect") {
+    if (key === "w") ex.w = clampPos(value);
+    if (key === "h") ex.h = clampPos(value);
+  } else if (ex.type === "circle") {
+    if (key === "diameter") ex.r = clampPos(value) / 2;
+  } else if (ex.type === "tri") {
+    const nextLen = clampPos(value);
+    if (key === "side-a") ex.p2 = setSideLength(ex.p1, ex.p2, nextLen);
+    if (key === "side-b") ex.p3 = setSideLength(ex.p2, ex.p3, nextLen);
+    if (key === "side-c") ex.p1 = setSideLength(ex.p3, ex.p1, nextLen);
+  }
+
+  commitViaStore(t("exclusions.changed"), next);
+}
+
+function nudgeSelectedExclusion(dx, dy) {
+  const id = selectedExclId;
+  if (!id) return;
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room) return;
+  const ex = room.exclusions?.find(x => x.id === id);
+  if (!ex) return;
+
+  const snap = (v) => Math.round(v * 10) / 10;
+  const isOnGrid = (v) => Math.abs(v - snap(v)) < 1e-6;
+  const snapDir = (v, dir) => {
+    if (dir === 0) return v;
+    if (isOnGrid(v)) return v + dir;
+    return dir > 0 ? Math.ceil(v * 10) / 10 : Math.floor(v * 10) / 10;
+  };
+
+  const getBox = (shape) => {
+    if (shape.type === "rect") {
+      return {
+        minX: shape.x,
+        minY: shape.y,
+        maxX: shape.x + shape.w,
+        maxY: shape.y + shape.h
+      };
+    }
+    if (shape.type === "circle") {
+      return {
+        minX: shape.cx - shape.r,
+        minY: shape.cy - shape.r,
+        maxX: shape.cx + shape.r,
+        maxY: shape.cy + shape.r
+      };
+    }
+    const xs = [shape.p1.x, shape.p2.x, shape.p3.x];
+    const ys = [shape.p1.y, shape.p2.y, shape.p3.y];
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys)
+    };
+  };
+
+  const box = getBox(ex);
+  const targetMinX = snapDir(box.minX, dx);
+  const targetMinY = snapDir(box.minY, dy);
+  const moveDx = dx === 0 ? 0 : targetMinX - box.minX;
+  const moveDy = dy === 0 ? 0 : targetMinY - box.minY;
+
+  if (ex.type === "rect") {
+    ex.x += moveDx;
+    ex.y += moveDy;
+  } else if (ex.type === "circle") {
+    ex.cx += moveDx;
+    ex.cy += moveDy;
+  } else if (ex.type === "tri") {
+    ex.p1.x += moveDx; ex.p1.y += moveDy;
+    ex.p2.x += moveDx; ex.p2.y += moveDy;
+    ex.p3.x += moveDx; ex.p3.y += moveDy;
+  }
+
+  commitViaStore(t("exclusions.moved"), next);
+}
 
 function updateAllTranslations() {
   document.querySelectorAll("[data-i18n]").forEach((el) => {
@@ -277,9 +432,27 @@ function updateAllTranslations() {
   });
 
   document.addEventListener("click", (e) => {
-    if (e.target.id === "planSvg" || e.target.id === "planSvgFullscreen") {
-      setSelectedExcl(null);
-    }
+    if (document.body.dataset.inlineEditing === "true") return;
+    const inPlan = e.target.closest("#planSvg, #planSvgFullscreen");
+    if (!inPlan) return;
+    const inExcl = e.target.closest("[data-exid], [data-resize-handle], [data-inline-edit]");
+    if (inExcl) return;
+    setSelectedExcl(null);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (document.body.dataset.inlineEditing === "true") return;
+    if (!selectedExclId) return;
+    const step = e.shiftKey ? 5 : 0.1;
+    let dx = 0;
+    let dy = 0;
+    if (e.key === "ArrowLeft") dx = -step;
+    if (e.key === "ArrowRight") dx = step;
+    if (e.key === "ArrowUp") dy = -step;
+    if (e.key === "ArrowDown") dy = step;
+    if (dx === 0 && dy === 0) return;
+    e.preventDefault();
+    nudgeSelectedExclusion(dx, dy);
   });
 
   const langSelect = document.getElementById("langSelect");

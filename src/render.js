@@ -16,6 +16,118 @@ import {
 } from "./geometry.js";
 import { getRoomSections } from "./composite.js";
 
+let activeSvgEdit = null;
+
+function setInlineEditing(isEditing) {
+  if (isEditing) {
+    document.body.dataset.inlineEditing = "true";
+  } else {
+    delete document.body.dataset.inlineEditing;
+  }
+}
+
+function closeSvgEdit(commit) {
+  if (!activeSvgEdit) return;
+  const { group, onCommit, buffer, onKeyDown, onPointerDown } = activeSvgEdit;
+  if (commit) {
+    const value = Number(buffer);
+    if (Number.isFinite(value)) {
+      onCommit(value);
+    }
+  }
+  if (onKeyDown) document.removeEventListener("keydown", onKeyDown);
+  if (onPointerDown) document.removeEventListener("pointerdown", onPointerDown, true);
+  group.remove();
+  activeSvgEdit = null;
+  setInlineEditing(false);
+}
+
+function updateEditText() {
+  if (!activeSvgEdit) return;
+  const { textEl, buffer, prefix } = activeSvgEdit;
+  textEl.textContent = `${prefix || ""}|${buffer}`;
+}
+
+function startSvgEdit({ svg, x, y, angle = 0, value, onCommit, onCancel, textStyle, anchor = "middle", prefix = "" }) {
+  closeSvgEdit(false);
+
+  const group = svgEl("g", { "data-inline-edit": "true" });
+  if (angle) {
+    group.setAttribute("transform", `rotate(${angle} ${x} ${y})`);
+  }
+  const textEl = svgEl("text", { ...textStyle, x, y, "text-anchor": anchor, "dominant-baseline": "middle" });
+  group.appendChild(textEl);
+  svg.appendChild(group);
+
+  activeSvgEdit = {
+    group,
+    textEl,
+    buffer: Number.isFinite(value) ? value.toFixed(2) : String(value ?? ""),
+    onCommit,
+    onCancel,
+    prefix,
+    replaceOnType: true
+  };
+
+  updateEditText();
+  setInlineEditing(true);
+
+  const onKeyDown = (e) => {
+    if (!activeSvgEdit) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      closeSvgEdit(true);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeSvgEdit(false);
+      if (activeSvgEdit?.onCancel) activeSvgEdit.onCancel();
+      return;
+    }
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      if (activeSvgEdit.replaceOnType) {
+        activeSvgEdit.buffer = "";
+        activeSvgEdit.replaceOnType = false;
+      } else {
+        activeSvgEdit.buffer = activeSvgEdit.buffer.slice(0, -1);
+      }
+      updateEditText();
+      return;
+    }
+    if (e.key.length === 1) {
+      const ch = e.key === "," ? "." : e.key;
+      if (/^[0-9.\-]$/.test(ch)) {
+        e.preventDefault();
+        if (activeSvgEdit.replaceOnType) {
+          activeSvgEdit.buffer = ch;
+          activeSvgEdit.replaceOnType = false;
+          updateEditText();
+          return;
+        }
+        if (ch === "-" && activeSvgEdit.buffer.length > 0) return;
+        if (ch === "." && activeSvgEdit.buffer.includes(".")) return;
+        activeSvgEdit.buffer += ch;
+        updateEditText();
+      }
+    }
+  };
+
+  const onPointerDown = (e) => {
+    if (!activeSvgEdit) return;
+    if (e.composedPath().includes(group)) return;
+    closeSvgEdit(true);
+    if (activeSvgEdit?.onCancel) activeSvgEdit.onCancel();
+  };
+
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("pointerdown", onPointerDown, true);
+
+  activeSvgEdit.onKeyDown = onKeyDown;
+  activeSvgEdit.onPointerDown = onPointerDown;
+}
+
 /**
  * Convert hex color to RGB components
  */
@@ -621,6 +733,7 @@ export function renderPlanSvg({
   selectedExclId,
   setSelectedExcl,
   onExclPointerDown,
+  onInlineEdit,
   onResizeHandlePointerDown,
   lastUnionError,
   lastTileError,
@@ -638,6 +751,45 @@ export function renderPlanSvg({
     return;
   }
 
+  const fmtCm = (v) => {
+    if (!Number.isFinite(v)) return "0.00";
+    return Number(v).toFixed(2);
+  };
+
+  const labelBaseStyle = {
+    fill: "rgba(231,238,252,0.95)",
+    "font-size": 9,
+    "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+    "text-anchor": "middle",
+    "dominant-baseline": "middle"
+  };
+
+  function addPillLabel(text, x, y, opts = {}) {
+    const { anchor = "middle", onClick, parent = svg, angle = 0 } = opts;
+    const g = svgEl("g", { cursor: onClick ? "text" : "default" });
+    if (angle) {
+      g.setAttribute("transform", `rotate(${angle} ${x} ${y})`);
+    }
+    const t = svgEl("text", { ...labelBaseStyle, x, y, "text-anchor": anchor });
+    t.textContent = text;
+    g.appendChild(t);
+    if (onClick) {
+      g.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      });
+      g.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    }
+    parent.appendChild(g);
+    return g;
+  }
+
+  // Inline edit handled by module-level SVG editor
+
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;
   const h = bounds.height;
@@ -646,6 +798,13 @@ export function renderPlanSvg({
   const maxX = bounds.maxX;
   const maxY = bounds.maxY;
   const exclusions = currentRoom.exclusions || [];
+
+  const resizeOverlay = document.getElementById("resizeMetrics");
+  if (resizeOverlay) {
+    resizeOverlay.classList.add("hidden");
+  }
+  closeSvgEdit(false);
+
   const sections = getRoomSections(currentRoom);
 
   while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -662,8 +821,10 @@ export function renderPlanSvg({
     fill: "#081022"
   }));
 
+  const suppressDetails = Boolean(selectedExclId);
+
   // grid
-  if (state.view?.showGrid) {
+  if (state.view?.showGrid && !suppressDetails) {
     const g = svgEl("g", { opacity: 0.8 });
     const minor = 10, major = 100;
     for (let x = minX; x <= maxX; x += minor) {
@@ -732,7 +893,7 @@ export function renderPlanSvg({
     e.title.includes(t("validation.basketweaveRatioTitle"))
   );
 
-  if (!skipTiles && ratioError) {
+  if (!skipTiles && !suppressDetails && ratioError) {
     const boxG = svgEl("g");
     const boxW = Math.min(w * 0.8, 300);
     const boxH = 100;
@@ -790,7 +951,7 @@ export function renderPlanSvg({
     svg.appendChild(boxG);
   }
 
-  if (!skipTiles && !ratioError) {
+  if (!skipTiles && !suppressDetails && !ratioError) {
     const isRemovalMode = Boolean(state.view?.removalMode);
     const avail = computeAvailableArea(currentRoom, exclusions);
     if (avail.error) setLastTileError(avail.error);
@@ -989,6 +1150,67 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         cursor: "pointer",
         "data-exid": ex.id
       };
+      const addEditableLabel = (text, value, key, x, y, anchor = "middle", angle = 0) => {
+        let finalAngle = angle;
+        if (finalAngle > 90 || finalAngle < -90) {
+          finalAngle += 180;
+        }
+        const labelGroup = addPillLabel(text, x, y, {
+          anchor,
+          angle: finalAngle,
+          parent: gEx
+        });
+        if (!onInlineEdit) return;
+        const openEdit = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          labelGroup.style.display = "none";
+          const isPosLabel = key === "x" || key === "y";
+          startSvgEdit({
+            svg,
+            x,
+            y,
+            angle: finalAngle,
+            value,
+            textStyle: labelBaseStyle,
+            onCommit: (nextVal) => {
+              labelGroup.style.display = "";
+              onInlineEdit({ id: ex.id, key, value: nextVal });
+            },
+            onCancel: () => {
+              labelGroup.style.display = "";
+              setSelectedExcl(null);
+            },
+            anchor,
+            prefix: isPosLabel ? `${key} ` : ""
+          });
+        };
+        labelGroup.addEventListener("pointerdown", openEdit);
+        labelGroup.addEventListener("click", openEdit);
+      };
+
+      const box = ex.type === "rect"
+        ? { minX: ex.x, minY: ex.y, maxX: ex.x + ex.w, maxY: ex.y + ex.h }
+        : ex.type === "circle"
+          ? { minX: ex.cx - ex.r, minY: ex.cy - ex.r, maxX: ex.cx + ex.r, maxY: ex.cy + ex.r }
+          : {
+            minX: Math.min(ex.p1.x, ex.p2.x, ex.p3.x),
+            minY: Math.min(ex.p1.y, ex.p2.y, ex.p3.y),
+            maxX: Math.max(ex.p1.x, ex.p2.x, ex.p3.x),
+            maxY: Math.max(ex.p1.y, ex.p2.y, ex.p3.y)
+          };
+
+      const pad = 10;
+      const posAnchorX = bounds.minX + 12;
+      const posAnchorY = bounds.minY + 14;
+
+      if (selectedExclId && ex.id === selectedExclId) {
+        const bounds = getRoomBounds(currentRoom);
+        const left = box.minX - bounds.minX;
+        const top = box.minY - bounds.minY;
+        addEditableLabel(`x ${fmtCm(left)} cm`, left, "x", posAnchorX, posAnchorY, "start");
+        addEditableLabel(`y ${fmtCm(top)} cm`, top, "y", posAnchorX, posAnchorY + 12, "start");
+      }
 
       if (ex.type === "rect") {
         // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
@@ -1015,6 +1237,9 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           handle.addEventListener("pointerdown", onResizeHandlePointerDown);
           gEx.appendChild(handle);
         });
+
+        addEditableLabel(`${fmtCm(ex.w)} cm`, ex.w, "w", ex.x + ex.w / 2, ex.y - pad, "middle", 0);
+        addEditableLabel(`${fmtCm(ex.h)} cm`, ex.h, "h", ex.x + ex.w + pad, ex.y + ex.h / 2, "middle", 90);
       } else if (ex.type === "circle") {
         // Single handle on the edge for radius
         const handle = svgEl("circle", {
@@ -1027,6 +1252,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         });
         handle.addEventListener("pointerdown", onResizeHandlePointerDown);
         gEx.appendChild(handle);
+
+        addEditableLabel(`Ø ${fmtCm(ex.r * 2)} cm`, ex.r * 2, "diameter", ex.cx, ex.cy - ex.r - pad);
       } else if (ex.type === "tri") {
         // Handles at each vertex
         const points = [
@@ -1046,6 +1273,27 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           });
           handle.addEventListener("pointerdown", onResizeHandlePointerDown);
           gEx.appendChild(handle);
+        });
+
+        const sides = [
+          { key: "side-a", p1: ex.p1, p2: ex.p2 },
+          { key: "side-b", p1: ex.p2, p2: ex.p3 },
+          { key: "side-c", p1: ex.p3, p2: ex.p1 }
+        ];
+
+        sides.forEach(side => {
+          const midX = (side.p1.x + side.p2.x) / 2;
+          const midY = (side.p1.y + side.p2.y) / 2;
+          const dx = side.p2.x - side.p1.x;
+          const dy = side.p2.y - side.p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const offset = 8;
+          const x = midX + nx * offset;
+          const y = midY + ny * offset;
+          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+          addEditableLabel(`${fmtCm(len)} cm`, len, side.key, x, y, "middle", angle);
         });
       }
     }
