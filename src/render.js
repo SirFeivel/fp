@@ -615,72 +615,11 @@ export function renderExclProps({
   });
 }
 
-function renderSectionTools(svg, section, { onAdd, onResizeStart }) {
-  const { x, y, widthCm: w, heightCm: h } = section;
-  const handleSize = 8;
-
-  // Add buttons (+)
-  const addDirs = [
-    { dir: 'top', x: x + w / 2, y: y - 24 },
-    { dir: 'right', x: x + w + 24, y: y + h / 2 },
-    { dir: 'bottom', x: x + w / 2, y: y + h + 24 },
-    { dir: 'left', x: x - 24, y: y + h / 2 }
-  ];
-
-  addDirs.forEach(({ dir, x: bx, y: by }) => {
-    const g = svgEl("g", { cursor: "pointer", class: "btn-add-section" });
-    g.appendChild(svgEl("circle", {
-      cx: bx, cy: by, r: 10,
-      fill: "var(--accent)",
-      stroke: "white",
-      "stroke-width": 1
-    }));
-    // Plus sign
-    g.appendChild(svgEl("line", { x1: bx - 5, y1: by, x2: bx + 5, y2: by, stroke: "white", "stroke-width": 2 }));
-    g.appendChild(svgEl("line", { x1: bx, y1: by - 5, x2: bx, y2: by + 5, stroke: "white", "stroke-width": 2 }));
-    
-    g.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onAdd(dir);
-    });
-    svg.appendChild(g);
-  });
-
-  // Resize handles
-  const handles = [
-    { dir: 'right', x: x + w, y: y + h / 2, cursor: 'ew-resize' },
-    { dir: 'bottom', x: x + w / 2, y: y + h, cursor: 'ns-resize' },
-    { dir: 'bottom-right', x: x + w, y: y + h, cursor: 'nwse-resize' }
-  ];
-
-  handles.forEach(handle => {
-    const hEl = svgEl("rect", {
-      x: handle.x - handleSize / 2,
-      y: handle.y - handleSize / 2,
-      width: handleSize,
-      height: handleSize,
-      fill: "white",
-      stroke: "var(--accent)",
-      "stroke-width": 1.5,
-      cursor: handle.cursor,
-      rx: 2
-    });
-    hEl.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
-      onResizeStart(handle.dir, e);
-    });
-    svg.appendChild(hEl);
-  });
-}
-
 export function renderPlanSvg({
   state,
   selectedExclId,
-  selectedSectionId,
   setSelectedExcl,
-  setSelectedSection,
   onExclPointerDown,
-  onOriginPointerDown,
   lastUnionError,
   lastTileError,
   setLastUnionError,
@@ -744,61 +683,32 @@ export function renderPlanSvg({
     svg.appendChild(g);
   }
 
-    // room sections
-    for (const section of sections) {
-      if (!(section.widthCm > 0 && section.heightCm > 0)) continue;
-      const isSelected = section.id === selectedSectionId;
+  // room sections
+  for (const section of sections) {
+    if (!(section.widthCm > 0 && section.heightCm > 0)) continue;
 
-      const rect = svgEl("rect", {
-        x: section.x,
-        y: section.y,
-        width: section.widthCm,
-        height: section.heightCm,
-        fill: isSelected ? "rgba(122,162,255,0.12)" : "rgba(122,162,255,0.06)",
-        stroke: isSelected ? "var(--accent)" : "rgba(122,162,255,0.8)",
-        "stroke-width": isSelected ? 2.5 : 1.2,
-        cursor: "pointer",
-        "data-secid": section.id
+    svg.appendChild(svgEl("rect", {
+      x: section.x,
+      y: section.y,
+      width: section.widthCm,
+      height: section.heightCm,
+      fill: "rgba(122,162,255,0.06)",
+      stroke: "rgba(122,162,255,0.8)",
+      "stroke-width": 1.2
+    }));
+
+    if (section.label && sections.length > 1) {
+      const sectionLabel = svgEl("text", {
+        x: section.x + 8,
+        y: section.y + 18,
+        fill: "rgba(231,238,252,0.70)",
+        "font-size": 12,
+        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial"
       });
-      rect.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (typeof setSelectedSection === 'function') {
-          setSelectedSection(section.id);
-        }
-      });
-      svg.appendChild(rect);
-
-      if (section.label && sections.length > 1) {
-        const sectionLabel = svgEl("text", {
-          x: section.x + 8,
-          y: section.y + 18,
-          fill: "rgba(231,238,252,0.70)",
-          "font-size": 12,
-          "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-          "pointer-events": "none"
-        });
-        sectionLabel.textContent = section.label;
-        svg.appendChild(sectionLabel);
-      }
-
-      // Render Setup tools if in setup stage
-      const isSetupStage = document.body.classList.contains('stage-setup');
-      if (isSetupStage && isSelected) {
-        renderSectionTools(svg, section, {
-          onAdd: (dir) => {
-             // We'll need to hook this up in main.js
-             const event = new CustomEvent('fp-add-section', { detail: { direction: dir } });
-             document.dispatchEvent(event);
-          },
-          onResizeStart: (dir, e) => {
-             const event = new CustomEvent('fp-resize-section-start', { 
-               detail: { sectionId: section.id, direction: dir, event: e } 
-             });
-             document.dispatchEvent(event);
-          }
-        });
-      }
+      sectionLabel.textContent = section.label;
+      svg.appendChild(sectionLabel);
     }
+  }
 
   // Update dynamic plan title in header
   const planTitleEl = document.getElementById("planTitle");
@@ -809,29 +719,6 @@ export function renderPlanSvg({
     const totalArea = (w * h / 10000).toFixed(2);
     const sectionInfo = sections.length > 1 ? ` (${sections.length} ${t("room.sectionsList")})` : "";
     planTitleEl.textContent = `${floorName} / ${roomName} — ${totalArea} m²${sectionInfo}`;
-  }
-
-  // Origin handle (only in planning stage)
-  const isPlanningStage = document.body.classList.contains('stage-planning');
-  if (isPlanningStage) {
-    const origin = currentRoom.origin || { x: 0, y: 0 };
-    const hOrigin = svgEl("circle", {
-      cx: origin.x,
-      cy: origin.y,
-      r: 6,
-      fill: "var(--accent)",
-      stroke: "white",
-      "stroke-width": 2,
-      cursor: "move",
-      class: "origin-handle"
-    });
-    // Re-use onExclPointerDown for now if we want to share logic, 
-    // but better to have a dedicated handler.
-    // We'll pass it via the options.
-    if (typeof onOriginPointerDown === 'function') {
-      hOrigin.addEventListener("pointerdown", onOriginPointerDown);
-    }
-    svg.appendChild(hOrigin);
   }
 
   // tiles
@@ -1132,24 +1019,6 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         shape.addEventListener('pointerdown', onExclPointerDown);
       });
     }
-
-    if (onOriginPointerDown) {
-      const originHandle = svgFullscreen.querySelector('.origin-handle');
-      if (originHandle) {
-        originHandle.addEventListener('pointerdown', onOriginPointerDown);
-      }
-    }
-
-    const sectionsOnFullscreen = svgFullscreen.querySelectorAll('[data-secid]');
-    sectionsOnFullscreen.forEach(rect => {
-      const secId = rect.dataset.secid;
-      rect.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof setSelectedSection === 'function') {
-          setSelectedSection(secId);
-        }
-      });
-    });
   }
 }
 export function renderCommercialTab(state) {

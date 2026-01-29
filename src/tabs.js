@@ -1,81 +1,4 @@
-export function initTabs() {
-  const stepButtons = document.querySelectorAll('[data-step]');
-  const stagePanels = document.querySelectorAll('[data-stage-panel]');
-  const stageTitle = document.getElementById('stageTitle');
-
-  function switchStage(targetStage) {
-    stepButtons.forEach(btn => {
-      if (btn.dataset.step === targetStage) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-
-    stagePanels.forEach(panel => {
-      if (panel.dataset.stagePanel === targetStage) {
-        panel.classList.add('active');
-      } else {
-        panel.classList.remove('active');
-      }
-    });
-
-    if (stageTitle) {
-      stageTitle.setAttribute('data-i18n', `stepper.${targetStage}`);
-      // Simple fallback if i18n not yet run
-      const labels = { setup: 'Setup', planning: 'Planning', commercial: 'Commercial' };
-      stageTitle.textContent = labels[targetStage] || targetStage;
-    }
-
-    // Auto-switch viewer tab
-    const viewerTabs = document.querySelectorAll('[data-main-tab]');
-    if (targetStage === 'commercial') {
-      const commTab = Array.from(viewerTabs).find(t => t.dataset.mainTab === 'commercial');
-      if (commTab) commTab.click();
-    } else {
-      const planTab = Array.from(viewerTabs).find(t => t.dataset.mainTab === 'plan');
-      if (planTab) planTab.click();
-    }
-
-    localStorage.setItem('activeStage', targetStage);
-    
-    // Update body class for conditional styling
-    document.body.classList.remove('stage-setup', 'stage-planning', 'stage-commercial');
-    document.body.classList.add(`stage-${targetStage}`);
-
-    // Trigger re-render
-    document.dispatchEvent(new CustomEvent('fp-stage-changed', { detail: { stage: targetStage } }));
-  }
-
-  stepButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchStage(btn.dataset.step);
-    });
-  });
-
-  const savedStage = localStorage.getItem('activeStage') || 'setup';
-  switchStage(savedStage);
-}
-
-export function initGlobalMenu() {
-  const btn = document.getElementById('btnGlobalMenu');
-  const dropdown = document.getElementById('globalDropdown');
-  if (!btn || !dropdown) return;
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    dropdown.classList.toggle('show');
-  });
-
-  document.addEventListener('click', () => {
-    dropdown.classList.remove('show');
-  });
-
-  dropdown.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
-}
-
+// Main navigation tabs (Setup / Planning / Commercial)
 export function initMainTabs() {
   const tabButtons = document.querySelectorAll('[data-main-tab]');
   const tabPanels = document.querySelectorAll('[data-main-panel]');
@@ -106,9 +29,30 @@ export function initMainTabs() {
     });
   });
 
-  const savedTab = localStorage.getItem('activeMainTab') || 'plan';
+  // Load saved tab or default to 'setup'
+  const savedTab = localStorage.getItem('activeMainTab') || 'setup';
   const validTabs = Array.from(tabButtons).map(btn => btn.dataset.mainTab);
-  const finalTab = validTabs.includes(savedTab) ? savedTab : 'plan';
+
+  // Handle migration from old tab names
+  let finalTab = savedTab;
+  if (!validTabs.includes(savedTab)) {
+    // Map old tab names to new ones
+    if (savedTab === 'room' || savedTab === 'project') {
+      finalTab = 'setup';
+    } else if (savedTab === 'tiles' || savedTab === 'exclusions' || savedTab === 'plan') {
+      finalTab = 'planning';
+    } else if (savedTab === 'commercial') {
+      finalTab = 'commercial';
+    } else {
+      finalTab = 'setup';
+    }
+  }
 
   switchMainTab(finalTab);
+}
+
+// Legacy function - kept for compatibility but now a no-op
+export function initTabs() {
+  // Old sidebar tabs are removed in the new UX
+  // This function is kept to prevent import errors
 }

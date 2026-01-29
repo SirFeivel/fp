@@ -5,10 +5,34 @@ const translations = {
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
     },
-    stepper: {
-      setup: "Setup",
+    nav: {
+      setup: "Einrichtung",
       planning: "Planung",
-      commercial: "Kommerziell"
+      commercial: "Kosten"
+    },
+    setup: {
+      floorTitle: "Etage",
+      roomTitle: "Raum",
+      width: "Breite (cm)",
+      length: "Länge (cm)",
+      complexRoomHint: "Benötigen Sie eine L-Form oder einen komplexen Raum?",
+      continuePlanning: "Weiter zur Planung"
+    },
+    planning: {
+      tile: "Fliese:",
+      settings: "Einstellungen",
+      advanced: "Erweitert (Ursprung & Offset)",
+      displayOptions: "Anzeigeoptionen",
+      showGrid: "Rasterlinien anzeigen",
+      showSkirting: "Sockelleisten anzeigen",
+      removalMode: "Entfernungsmodus"
+    },
+    settings: {
+      save: "Projekt speichern",
+      load: "Projekt laden",
+      export: "JSON exportieren",
+      import: "JSON importieren",
+      reset: "Alles zurücksetzen"
     },
     session: {
       title: "Gefahrenzone",
@@ -319,10 +343,34 @@ const translations = {
       subtitle: "Professional Tile Layout Planner",
       autosave: "Autosave"
     },
-    stepper: {
+    nav: {
       setup: "Setup",
       planning: "Planning",
       commercial: "Commercial"
+    },
+    setup: {
+      floorTitle: "Floor",
+      roomTitle: "Room",
+      width: "Width (cm)",
+      length: "Length (cm)",
+      complexRoomHint: "Need an L-shape or complex room?",
+      continuePlanning: "Continue to Planning"
+    },
+    planning: {
+      tile: "Tile:",
+      settings: "Settings",
+      advanced: "Advanced (Origin & Offset)",
+      displayOptions: "Display Options",
+      showGrid: "Show grid lines",
+      showSkirting: "Show skirting",
+      removalMode: "Removal mode"
+    },
+    settings: {
+      save: "Save Project",
+      load: "Load Project",
+      export: "Export JSON",
+      import: "Import JSON",
+      reset: "Reset All"
     },
     session: {
       title: "Danger Zone",
