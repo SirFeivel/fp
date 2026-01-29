@@ -257,9 +257,16 @@ body{
 }
 
 .settings-icon {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  text-align: center;
+  height: 20px;
+}
+
+.settings-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ==================== MAIN NAVIGATION ==================== */
@@ -304,7 +311,16 @@ body{
 }
 
 .main-nav-icon {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.main-nav-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .main-nav-context {
@@ -336,12 +352,12 @@ body{
 
 /* ==================== SETUP TAB ==================== */
 .setup-flow {
-  max-width: 560px;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 32px 20px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .setup-block {
@@ -356,7 +372,7 @@ body{
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: rgba(0,0,0,0.15);
+  background: rgba(0,0,0,0.12);
   border-bottom: 1px solid var(--line);
 }
 
@@ -374,8 +390,11 @@ body{
 }
 
 .setup-block-title {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-section);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
   margin: 0;
 }
 
@@ -401,6 +420,7 @@ body{
   background: rgba(0,0,0,.18);
   color: var(--text);
   font-size: var(--fs-md);
+  font-weight: 500;
   min-height: 40px;
   outline: none;
 }
@@ -694,14 +714,15 @@ body{
 }
 
 .planning-room-select select {
-  padding: 6px 12px;
+  padding: 10px 12px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: rgba(0,0,0,.18);
   color: var(--text);
   font-size: var(--fs-md);
-  font-weight: 600;
+  font-weight: 500;
   outline: none;
+  min-height: 40px;
 }
 
 .planning-room-select select:focus {
@@ -1129,11 +1150,11 @@ body{
 }
 
 .panel-section-title {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-section);
   font-weight: 700;
   text-transform: uppercase;
   color: var(--accent);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   margin: 0;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
@@ -1243,7 +1264,7 @@ body{
 /* ==================== COMMERCIAL TAB ==================== */
 .commercial-container {
   padding: 20px;
-  max-width: 1200px;
+  max-width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -1254,17 +1275,19 @@ body{
 .section-card{
   border:1px solid var(--line);
   border-radius:var(--r-md);
-  background:rgba(0,0,0,.08);
+  background:rgba(0,0,0,0.12);
   overflow: hidden;
 }
 
 .section-card .section-header,
 .section-card .section-header-collapsible {
-  padding: 12px 16px;
+  padding: 16px 20px;
+  background: rgba(0,0,0,0.12);
+  border-bottom: 1px solid var(--line);
 }
 
 .section-card .card-content {
-  padding: 0 16px 16px 16px;
+  padding: 16px 20px;
 }
 
 .section-card.danger-zone {
@@ -1306,10 +1329,11 @@ body{
 
 .section-title{
   font-size:var(--fs-section);
-  font-weight:600;
-  letter-spacing:.01em;
+  font-weight:700;
+  text-transform: uppercase;
+  letter-spacing:.06em;
   margin:0;
-  color:var(--text);
+  color:var(--accent);
 }
 
 .collapse-toggle {
