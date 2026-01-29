@@ -496,9 +496,14 @@ function updateAllTranslations() {
     if (planningArea && room) {
       const sections = room.sections || [];
       let totalArea = 0;
-      sections.forEach(s => {
-        totalArea += (s.widthCm || 0) * (s.heightCm || 0) / 10000;
-      });
+      if (sections.length > 0) {
+        sections.forEach(s => {
+          totalArea += (s.widthCm || 0) * (s.heightCm || 0) / 10000;
+        });
+      } else {
+        // Legacy: use room dimensions directly
+        totalArea = (room.widthCm || 0) * (room.heightCm || 0) / 10000;
+      }
       planningArea.textContent = totalArea.toFixed(2) + " m²";
     }
   }
