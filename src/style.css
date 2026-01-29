@@ -769,6 +769,62 @@ body{
   color: var(--muted);
 }
 
+/* Custom spinner for number inputs */
+.quick-spinner {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.quick-spinner-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,.25);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.quick-spinner-btn:first-child {
+  border-radius: var(--r-xs) 0 0 var(--r-xs);
+  border-right: none;
+}
+
+.quick-spinner-btn:last-child {
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  border-left: none;
+}
+
+.quick-spinner-btn:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.quick-spinner-btn:active {
+  background: rgba(255,255,255,0.15);
+}
+
+.quick-spinner .quick-input {
+  border-radius: 0;
+  width: 45px;
+}
+
+/* Hide native number input spinners */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spinner {
+  -moz-appearance: textfield;
+}
+
 .quick-select {
   padding: 8px 12px;
   border-radius: var(--r-xs);
@@ -1171,6 +1227,22 @@ body{
   font-size:var(--fs-sm);
   color:var(--muted);
   font-weight: 500;
+}
+
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-unit input {
+  flex: 1;
+}
+
+.input-unit {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .field input,

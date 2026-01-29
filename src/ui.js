@@ -101,7 +101,8 @@ export function bindUI({
       currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
     }
 
-    currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value);
+    // Convert mm input to cm for state
+    currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value) / 10;
     currentRoom.grout.colorHex = document.getElementById("groutColor")?.value || "#ffffff";
 
     currentRoom.pattern.type = document.getElementById("patternType")?.value;

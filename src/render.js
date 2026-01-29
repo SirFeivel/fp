@@ -394,7 +394,8 @@ export function renderTilePatternForm(state) {
   document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
   document.getElementById("tileH").value = currentRoom?.tile?.heightCm ?? "";
-  document.getElementById("groutW").value = currentRoom?.grout?.widthCm ?? "";
+  // Display grout in mm (state stores cm)
+  document.getElementById("groutW").value = Math.round((currentRoom?.grout?.widthCm ?? 0) * 10);
   const groutColorValue = currentRoom?.grout?.colorHex ?? "#ffffff";
   document.getElementById("groutColor").value = groutColorValue;
 

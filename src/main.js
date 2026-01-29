@@ -274,14 +274,6 @@ function updateAllTranslations() {
     structure.deleteRoom();
   });
 
-  document.addEventListener("change", (e) => {
-    if (e.target.id === "removalMode") {
-      const val = e.target.checked;
-      document.querySelectorAll("#removalMode").forEach(el => el.checked = val);
-      removal.toggleRemovalMode();
-    }
-  });
-
   document.addEventListener("click", (e) => {
     if (e.target.id === "planSvg" || e.target.id === "planSvgFullscreen") {
       setSelectedExcl(null);
@@ -461,7 +453,8 @@ function updateAllTranslations() {
       if (quickTileW) quickTileW.value = room.tile?.widthCm || "";
       if (quickTileH) quickTileH.value = room.tile?.heightCm || "";
       if (quickPattern) quickPattern.value = room.pattern?.type || "grid";
-      if (quickGrout) quickGrout.value = room.grout?.widthCm || "";
+      // Display grout in mm (state stores cm)
+      if (quickGrout) quickGrout.value = Math.round((room.grout?.widthCm || 0) * 10);
     }
 
     // Sync quick toggles with main toggles
@@ -553,11 +546,13 @@ function updateAllTranslations() {
     const roomIdx = state.floors?.[floorIdx]?.rooms?.findIndex(r => r.id === state.selectedRoomId);
     if (floorIdx < 0 || roomIdx < 0) return;
 
-    const newG = parseFloat(quickGrout?.value) || 0;
-    if (newG < 0) return;
+    // Convert mm input to cm for state
+    const newGmm = parseFloat(quickGrout?.value) || 0;
+    if (newGmm < 0) return;
+    const newGcm = newGmm / 10;
 
     const next = JSON.parse(JSON.stringify(state));
-    next.floors[floorIdx].rooms[roomIdx].grout.widthCm = newG;
+    next.floors[floorIdx].rooms[roomIdx].grout.widthCm = newGcm;
     commitViaStore(t("tile.changed"), next);
   }
 
@@ -565,6 +560,29 @@ function updateAllTranslations() {
   quickTileH?.addEventListener("change", commitQuickTile);
   quickPattern?.addEventListener("change", commitQuickPattern);
   quickGrout?.addEventListener("change", commitQuickGrout);
+
+  // Spinner button handlers
+  document.querySelectorAll(".quick-spinner-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.target;
+      const action = btn.dataset.action;
+      const input = document.getElementById(targetId);
+      if (!input) return;
+
+      const step = parseFloat(input.step) || 1;
+      const min = parseFloat(input.min) || 0;
+      let value = parseFloat(input.value) || 0;
+
+      if (action === "increment") {
+        value += step;
+      } else if (action === "decrement") {
+        value = Math.max(min, value - step);
+      }
+
+      input.value = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
 
   // Room dimensions (sync with first section)
   const roomWidthInput = document.getElementById("roomWidth");

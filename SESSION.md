@@ -1,3 +1,527 @@
+## Session: UX Overhaul - Step 1 (2026-01-28)
+### Goal
+- Analyze current UX and record flaws
+- Design a new UX architecture with calm, flow-based guided approach
+- Implement the backbone of the new app structure
+
+### Branch
+`ux-overhaul-backbone`
+
+### Step 1: UX Analysis
+
+#### Current Architecture
+The app uses a 3-column layout:
+- **Left Panel (420px)**: Navigation tabs (Room, Tiles, Exclusions, Project, Debug) + form content
+- **Center (flex)**: Main SVG preview + Commercial tab with horizontal tabs
+- **Right Panel (420px)**: Metrics/calculations display
+
+#### Identified UX Flaws
+
+1. **Overwhelming Three-Panel Layout**
+   - Too much information visible simultaneously
+   - User doesn't know where to focus
+   - No clear visual hierarchy
+
+2. **Dual Tab Systems Create Confusion**
+   - Left sidebar has vertical tabs (Room/Tiles/Exclusions/Project/Debug)
+   - Center viewer has horizontal tabs (Plan/Commercial)
+   - User must understand two navigation paradigms
+
+3. **No Clear Workflow/Flow**
+   - User can jump anywhere - no guided progression
+   - Setup → Planning → Commercial flow not enforced
+   - Missing stepper or progress indication
+
+4. **Collapsible Cards Add Complexity**
+   - Multiple nesting levels (tab > card > content)
+   - Hidden-by-default content requires manual expansion
+   - Features hard to discover
+
+5. **Debug Tab Exposed to End Users**
+   - Developer tool visible in main navigation
+   - Creates confusion for non-technical users
+
+6. **Metrics Sidebar Always Visible**
+   - Shows calculations even during setup phase
+   - Distracting when not relevant
+   - Takes up precious horizontal space
+
+7. **Dense Input Forms**
+   - Too many inputs per card
+   - Small labels, compact spacing
+   - Cognitive overload
+
+8. **Poor Mobile/Responsive Handling**
+   - Below 980px everything stacks vertically
+   - Loses structure entirely
+   - No mobile-optimized flow
+
+9. **No Visual Hierarchy for Workflow Stages**
+   - All tabs appear equal
+   - No indication of completion or progress
+
+10. **Project Management Buried**
+    - Save/load hidden in "Project" tab
+    - Important functions not easily accessible
+
+### Step 2: UX Plan (Approved)
+
+#### Core Principles
+- **Calm, flow-based guided approach**: Setup → Planning → Commercial
+- **Clean main screen**: No side boxes, no distraction
+- **Top navigation**: Tab-based for each core topic
+- **Preserve aesthetics**: Keep existing color scheme and visual identity
+
+#### Approved Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ HEADER: Logo | Project Name | [Save] [Undo/Redo] | Lang | Autosave     │
+├─────────────────────────────────────────────────────────────────────────┤
+│ MAIN TABS: [Setup] [Planning] [Commercial]                 (top nav)   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│                    CLEAN FULL-WIDTH CONTENT AREA                        │
+│                                                                         │
+│   Setup:     Building structure (floors, rooms, sections)              │
+│   Planning:  Per-room tile + layout + SVG preview (the main work)      │
+│   Commercial: Summary tables, pricing, export                          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Tab Structure
+
+1. **Setup Tab** (Building Structure)
+   - Floors management
+   - Rooms management
+   - Sections (room geometry)
+   - Focus: "What spaces do I have?"
+
+2. **Planning Tab** (Per-Room Design Work)
+   - Room selector (which room am I working on?)
+   - Tile configuration (dimensions, shape, reference - per room)
+   - Pattern/Layout (grid, herringbone, offsets, rotation)
+   - Grout settings (width, color)
+   - Full SVG preview with toolbar (grid, skirting, removal mode)
+   - Exclusions management (contextual to the room)
+   - Focus: "How do I tile each room?"
+
+3. **Commercial Tab** (Results)
+   - Room overview table
+   - Consolidated materials table
+   - Pricing inputs
+   - Export options
+   - Focus: "What does it cost?"
+
+#### Implementation Phases
+
+**Phase 1 (This Session): Backbone**
+- New HTML structure with top-level main tabs
+- CSS for clean, full-width content areas
+- Tab switching logic
+- Migrate existing content into new structure
+- Ensure backward compatibility - nothing breaks
+- Make it expandable for future phases
+
+**Phase 2 (Future): Setup Tab Polish**
+- Redesign forms with better layout
+- Progressive disclosure
+
+**Phase 3 (Future): Planning Tab Polish**
+- Full-width SVG optimization
+- Floating/slide-out controls
+- Contextual metrics
+
+**Phase 4 (Future): Commercial Tab Polish**
+- Enhanced tables
+- Better export options
+
+### Step 3: Implementation (Complete)
+
+#### Changes Made
+1. **index.html**: Complete restructure
+   - Removed 3-panel layout (left sidebar, viewer, right metrics)
+   - Added main navigation bar with Setup/Planning/Commercial tabs
+   - Setup tab: Building structure + Project management
+   - Planning tab: Sidebar (tiles/layout/exclusions) + SVG preview + metrics
+   - Commercial tab: Room overview + materials tables
+   - Debug panel hidden (accessible via developer tools)
+
+2. **style.css**: New layout styles
+   - Main navigation styling (`.main-nav`, `.main-nav-tab`)
+   - Setup container (2-column grid)
+   - Planning container (sidebar + preview)
+   - Commercial container (centered, max-width)
+   - Preserved all existing component styles
+   - Responsive breakpoints for mobile
+
+3. **tabs.js**: Updated for new navigation
+   - Replaced old sidebar tabs with main navigation
+   - Added migration from old localStorage tab names
+   - `initTabs()` kept as no-op for compatibility
+
+4. **i18n.js**: Added navigation translations
+   - `nav.setup`, `nav.planning`, `nav.commercial` (DE/EN)
+
+5. **main.js**: Simplified initialization
+   - Removed resize and collapse panel imports
+   - Cleaned up initialization
+
+6. **Removed**: `tabs_responsive.test.js` (obsolete)
+
+### Status
+- All 373 tests pass
+- Build successful
+- Ready for user testing
+
+---
+
+## Session: UX Overhaul - Step 2: Setup Section (2026-01-28)
+
+### Goal
+Simplify the Setup section with unified UX patterns, reduced complexity, and a settings burger menu.
+
+### Current Problems Identified
+
+| Problem | Impact |
+|---------|--------|
+| 6 collapsible cards | Fragmented, overwhelming |
+| Room dimensions buried in "sections" | User must: select section → find properties → edit x/y/width/height |
+| Project management takes 50% of screen | Save/Load/Import/Export/Danger Zone clutter |
+| Section-based approach is complex | x/y coordinates confusing for simple rectangular rooms |
+| No clear flow | User doesn't know what to do next |
+
+### Proposed Plan
+
+#### Part A: Settings Burger Menu (Top Right)
+
+Move all project/settings controls out of Setup into a dropdown menu:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [Logo] TilePerfect    [Setup][Planning][Commercial]   [☰]  │
+│                                                        ↓    │
+│                                              ┌─────────────┐│
+│                                              │ 💾 Save     ││
+│                                              │ 📂 Load     ││
+│                                              │ ─────────── ││
+│                                              │ ↗ Export    ││
+│                                              │ ↙ Import    ││
+│                                              │ ─────────── ││
+│                                              │ 🔄 Reset    ││
+│                                              │ 🐛 Debug    ││
+│                                              └─────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+Contents:
+- Save Project (opens save dialog)
+- Load Project (opens load dialog)
+- Export JSON
+- Import JSON
+- Reset All (with confirm)
+- Debug Mode (toggle)
+
+#### Part B: Simplified Setup Flow
+
+**New single-column centered layout:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         SETUP                               │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  FLOOR                                                 │ │
+│  │  [Ground Floor        ▼]  [+ Add]  [Delete]           │ │
+│  │  Name: [Ground Floor_____]                            │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                          ↓                                  │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  ROOM                                                  │ │
+│  │  [Bathroom            ▼]  [+ Add]  [Delete]           │ │
+│  │  Name: [Bathroom_________]                            │ │
+│  │                                                        │ │
+│  │  DIMENSIONS                                            │ │
+│  │  Width: [300___] cm      Length: [400___] cm          │ │
+│  │                                                        │ │
+│  │  ┌──────────────────────────────────────────────────┐ │ │
+│  │  │ 💡 Need an L-shape or complex room?              │ │ │
+│  │  │    [+ Add Section]                               │ │ │
+│  │  └──────────────────────────────────────────────────┘ │ │
+│  │                                                        │ │
+│  │  (Visible only if >1 section exists:)                 │ │
+│  │  SECTIONS                                              │ │
+│  │  [Main Area     ▼]  [Delete Section]                  │ │
+│  │  X: [0__]  Y: [0__]  W: [300]  H: [400]               │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+│              [→ Continue to Planning]                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Key UX Improvements
+
+1. **No collapsible cards** - Everything visible, no hunting
+2. **Inline actions** - Add/Delete buttons next to dropdowns
+3. **Direct dimension input** - Width × Length visible immediately
+4. **Progressive disclosure** - Section list only when needed (>1 section)
+5. **Visual flow** - Arrow indicates progression Floor → Room
+6. **Clear next step** - "Continue to Planning" button
+7. **Helpful hints** - Inline tips for advanced features
+
+#### Implementation Tasks
+
+1. Add settings burger menu to header
+2. Create settings dropdown with Save/Load/Import/Export/Reset/Debug
+3. Restructure Setup HTML to single-column flow
+4. Implement inline add/delete controls
+5. Show room dimensions directly (synced with first section)
+6. Progressive disclosure for multi-section management
+7. Add "Continue to Planning" navigation button
+8. Update CSS for new layout
+9. Update i18n for new strings
+
+### Implementation Complete
+
+#### Changes Made
+
+1. **Header Settings Menu (☰)**
+   - Added hamburger button in topbar right
+   - Dropdown with Save, Load, Export, Import, Reset options
+   - Click-outside to close behavior
+   - Proper animations and styling
+
+2. **Simplified Setup Flow**
+   - Single-column centered layout (max-width 560px)
+   - Two numbered blocks: Floor (1) and Room (2)
+   - Inline add/delete buttons next to dropdowns
+   - Direct Width × Length inputs for room dimensions
+   - Syncs with first section automatically
+   - "Continue to Planning" button at bottom
+
+3. **Progressive Disclosure for Sections**
+   - Hint box shown by default: "Need an L-shape?"
+   - Sections panel only appears when >1 section exists
+   - Clean section property grid (X, Y, W, H)
+
+4. **Removed from Setup**
+   - All collapsible cards
+   - Save/Load/Import/Export cards (moved to menu)
+   - Danger Zone card (moved to menu)
+
+5. **New CSS Classes**
+   - `.setup-flow`, `.setup-block`, `.setup-block-header`
+   - `.inline-select-row`, `.btn-inline`
+   - `.dimensions-row`, `.dimensions-x`
+   - `.sections-hint`, `.sections-panel`, `.btn-text`
+   - `.settings-dropdown`, `.settings-item`
+
+6. **New i18n Keys**
+   - `setup.*` (floorTitle, roomTitle, width, length, complexRoomHint, continuePlanning)
+   - `settings.*` (save, load, export, import, reset)
+
+### Status
+- All 373 tests pass
+- Build successful
+- Ready for user testing
+
+---
+
+## Session: UX Overhaul - Step 3: Planning Tab (2026-01-29)
+
+### Goal
+Improve the Planning tab with easy controls, clear flow, and maximized preview space.
+
+### Current Problems Identified
+
+| Problem | Impact |
+|---------|--------|
+| 5 collapsible cards in sidebar | Fragmented, same issue as old Setup |
+| Fixed 340px sidebar | Takes space from preview, not responsive |
+| Most controls hidden by default | User must expand cards to find options |
+| No room context | User doesn't know which room they're planning |
+| Metrics buried at bottom | Easy to miss important calculations |
+| Advanced options prominent | Origin, offset, kerf mixed with basics |
+| Exclusions workflow complex | Add → Select → Edit properties = many steps |
+
+### Current Structure
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ SIDEBAR (340px fixed)          │  PREVIEW                       │
+│ ┌────────────────────────────┐ │  ┌─────────────────────────────┐│
+│ │ ▼ Tiles & Grout           │ │  │ [Warnings]                  ││
+│ │   Reference, Shape, Size  │ │  │                             ││
+│ │   Grout, Kerf             │ │  │ Plan Title        [⛶]      ││
+│ └────────────────────────────┘ │  │ ┌─────────────────────────┐││
+│ ┌────────────────────────────┐ │  │ │      SVG Preview        │││
+│ │ ▶ Tile Layout (hidden)    │ │  │ │                         │││
+│ └────────────────────────────┘ │  │ │  [Grid][Skirting][Remove]│││
+│ ┌────────────────────────────┐ │  │ └─────────────────────────┘││
+│ │ ▶ Skirting (hidden)       │ │  │                             ││
+│ └────────────────────────────┘ │  │ [Tip section]              ││
+│ ┌────────────────────────────┐ │  │                             ││
+│ │ ▶ Exclusions (hidden)     │ │  │ ┌─────────────────────────┐││
+│ └────────────────────────────┘ │  │ │ METRICS (at bottom)     │││
+│ ┌────────────────────────────┐ │  │ │ Area, Tiles, Packs...   │││
+│ │ ▶ Price & Waste (hidden)  │ │  └─────────────────────────────┘│
+│ └────────────────────────────┘ │                                │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Proposed Plan
+
+#### New Layout: Preview-First with Slide-Out Panel
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  PLANNING                                                        │
+│  Room: [Bathroom ▼]                      [Area: 12.5m²] [⚙️] [⛶]│
+├──────────────────────────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │                                                              │ │
+│ │                     SVG PREVIEW (FULL WIDTH)                 │ │
+│ │                                                              │ │
+│ │  ┌─────────────────────────────────────────────────────────┐ │ │
+│ │  │ QUICK CONTROLS (floating bottom)                        │ │ │
+│ │  │ Tile: [30×60cm] Pattern: [Grid ▼] Grout: [0.3cm]       │ │ │
+│ │  │ [Grid] [Skirting] [Removal] [+ Exclusion]              │ │ │
+│ │  └─────────────────────────────────────────────────────────┘ │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ METRICS BAR                                                  │ │
+│ │ Tiles: 125 (98 full, 27 cut) │ Packs: 8 │ Cost: €245.00    │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+
+   [⚙️ Settings] opens slide-out panel from right:
+   ┌─────────────────────────────┐
+   │ TILE SETTINGS              │
+   │ Reference: [___________]   │
+   │ Shape: [Rectangular ▼]     │
+   │ Width: [30] × Height: [60] │
+   │ Grout: [0.3] Color: [■]    │
+   │                            │
+   │ PATTERN                    │
+   │ Type: [Grid ▼]             │
+   │ Rotation: [0° ▼]           │
+   │ ▶ Advanced (Origin/Offset) │
+   │                            │
+   │ SKIRTING                   │
+   │ Height: [8] cm             │
+   │ Type: [Self-cut ▼]         │
+   │                            │
+   │ EXCLUSIONS                 │
+   │ [Toilet] [Drain] [+]       │
+   │                            │
+   │ CALCULATION                │
+   │ Reserve: [2] tiles         │
+   │ ☑ Allow rotation           │
+   └─────────────────────────────┘
+```
+
+#### Key Improvements
+
+| Before | After |
+|--------|-------|
+| Fixed sidebar takes 340px | Full-width preview |
+| 5 collapsible cards | Quick controls + slide-out panel |
+| No room selector | Room dropdown at top |
+| Metrics at bottom | Metrics bar always visible |
+| Exclusions buried | Quick add from toolbar |
+| Advanced mixed with basic | Progressive disclosure |
+
+#### Quick Controls Bar (Always Visible)
+
+Essential controls floating at bottom of preview:
+- **Tile size** display (click to edit)
+- **Pattern** dropdown
+- **Grout** width
+- **Toggle buttons**: Grid, Skirting, Removal Mode
+- **Add Exclusion** button
+
+#### Slide-Out Settings Panel
+
+Opened via ⚙️ button, contains all detailed settings:
+- Tile configuration (reference, shape, dimensions, grout color)
+- Pattern settings (type, rotation, advanced origin/offset)
+- Skirting configuration
+- Exclusions list with inline edit
+- Calculation options (reserve, rotation, optimization)
+
+#### Metrics Bar
+
+Horizontal bar below preview showing key numbers:
+- Total tiles (full + cut)
+- Packs needed
+- Total cost
+- Expandable for detailed breakdown
+
+#### Implementation Tasks
+
+1. Remove sidebar, make preview full-width ✓
+2. Add room selector to Planning header ✓
+3. Create floating quick controls bar ✓
+4. Implement slide-out settings panel ✓
+5. Create horizontal metrics bar ✓
+6. Move exclusion add to toolbar ✓
+7. Progressive disclosure for advanced options ✓
+8. Update CSS for new layout ✓
+9. Update i18n for new strings ✓
+
+### Implementation Complete
+
+#### Changes Made
+
+1. **New Full-Width Preview Layout**
+   - Removed fixed 340px sidebar
+   - SVG preview now takes full width
+   - Cleaner, more focused view
+
+2. **Planning Header**
+   - Room selector dropdown (switches room in real-time)
+   - Area display (calculated from sections)
+   - Settings button (opens slide-out panel)
+   - Fullscreen button
+   - Mini warnings indicator
+
+3. **Quick Controls Bar (Floating)**
+   - Tile size inputs (W × H cm)
+   - Pattern dropdown (Grid, Running Bond, Herringbone, etc.)
+   - Grout width input
+   - Toggle buttons: Grid, Skirting, Removal Mode
+   - Quick Add Exclusion button
+   - Semi-transparent backdrop, centered at bottom
+
+4. **Metrics Bar (Always Visible)**
+   - Horizontal bar below preview
+   - Shows: Area, Tiles (with cut count), Packs, Cost, Waste
+   - Cost highlighted with accent color
+
+5. **Slide-Out Settings Panel**
+   - Opens from right side
+   - Organized sections: Tiles & Grout, Pattern & Layout, Skirting, Exclusions, Calculation
+   - Advanced options in collapsible details (Origin & Offset)
+   - Close on click outside or X button
+
+6. **New CSS Classes**
+   - `.planning-fullwidth`, `.planning-header`
+   - `.quick-controls`, `.quick-control-group`, `.quick-toggle`
+   - `.metrics-bar`, `.metrics-bar-item`
+   - `.settings-panel`, `.panel-section`, `.panel-fields`
+
+7. **New i18n Keys**
+   - `planning.*` (tile, settings, advanced)
+
+### Status
+- All 373 tests pass
+- Build successful
+- Ready for user testing
+
+---
+
 ## Session: Logo & Favicon Integration (2026-01-28)
 ### Goal
 - Integrate the TilePerfect logo and update the application favicon.
@@ -41,22 +565,6 @@
 - Legacy property inputs have been removed from the sidebar, centralizing control in the sections panel.
 - Backward compatibility is maintained via robust migration logic and a temporary fallback in the sections retriever.
 - All 354 tests pass and the production build is successful.
-
-## Session: Application Features Documentation (2026-01-28)
-### Goal
-- Create a comprehensive list of all functionalities the app currently offers and store it as a Markdown file.
-
-### Plan
-1. Analyze the codebase and previous session logs to identify all features ✓
-2. Categorize features into Project Management, Geometry, Layout, Calculations, UI/UX, and Technicals ✓
-3. Create `FEATURES.md` with detailed descriptions ✓
-4. Verify the document accuracy against the current app state ✓
-
-### Status
-- `FEATURES.md` created, documenting 8 main categories of functionality.
-- Both user-facing (e.g., three-stage stepper) and internal (e.g., V2-V5 migration) features are included.
-- Documentation verified and accepted.
-- Post-acceptance verification completed: 376 tests pass, build successful.
 
 ## Session: Unified Room UI (2026-01-27)
 ### Goal
@@ -548,23 +1056,17 @@
 - Added "Planning & Approval" section to `.junie/guidelines.md`.
 - New rule: "Do not start coding before the user confirms that the plan is solid and an agreement has been reached."
 
-## Session: UX Overhaul & Guided Flow (2026-01-28)
+## Session: Commercial Table Labels Fix (2026-01-28)
 ### Goal
-- Deep analysis of current functionalities.
-- Implement a calm, flow-based guided UX (Setup -> Planning -> Commercials).
-- Move left menu to a top-right global menu.
-- Enable room setup directly in the plan view.
+- Resolve missing labels and raw translation keys in the commercial table.
 
 ### Plan
-1. Create branch `feature/ux-overhaul` ✓
-2. Perform deep audit of current functionalities and identify redundancies. *
-3. Design a step-by-step plan for the new UX. *
-4. Get user approval for the design and plan.
-5. Execute the overhaul.
+1. Update `src/i18n.js` with missing translation keys ✓
+2. Update `src/render.js` to use translated labels in `renderCommercialTab` ✓
+3. Add smoke test in `src/render_smoke.test.js` ✓
+4. Verify with all tests and build ✓
 
 ### Status
-- Audit in progress.
-- Initial project exploration complete.
-
-## Commands Run
-- git checkout -b feature/ux-overhaul
+- Commercial table now correctly displays translated labels instead of raw keys.
+- Added translation keys for "totalTiles", "grandTotal", and "defaultMaterial".
+- All 376 tests pass.

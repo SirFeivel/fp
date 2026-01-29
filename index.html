@@ -258,8 +258,12 @@
                 </div>
                 <div class="quick-control-group">
                   <span class="quick-label" data-i18n="tile.grout">Grout:</span>
-                  <input id="quickGrout" type="number" class="quick-input small" min="0" step="0.1" />
-                  <span class="quick-unit">cm</span>
+                  <div class="quick-spinner">
+                    <button type="button" class="quick-spinner-btn" data-action="decrement" data-target="quickGrout">−</button>
+                    <input id="quickGrout" type="number" class="quick-input small no-spinner" min="0" step="1" />
+                    <button type="button" class="quick-spinner-btn" data-action="increment" data-target="quickGrout">+</button>
+                  </div>
+                  <span class="quick-unit">mm</span>
                 </div>
                 <div class="quick-control-divider"></div>
                 <div class="quick-toggles">
@@ -364,8 +368,11 @@
                 </div>
                 <div class="field-row">
                   <div class="field">
-                    <label data-i18n="tile.grout">Grout (cm)</label>
-                    <input id="groutW" type="number" min="0" step="0.1" />
+                    <label data-i18n="tile.grout">Grout</label>
+                    <div class="input-with-unit">
+                      <input id="groutW" type="number" min="0" step="1" />
+                      <span class="input-unit">mm</span>
+                    </div>
                   </div>
                   <div class="field">
                     <label data-i18n="tile.groutColor">Color</label>
