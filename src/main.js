@@ -135,6 +135,7 @@ function renderAll(lastLabel, options) {
       selectedExclId,
       setSelectedExcl,
       onExclPointerDown: dragController.onExclPointerDown,
+      onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
       lastUnionError,
       lastTileError,
       setLastUnionError: (v) => (lastUnionError = v),
@@ -201,7 +202,8 @@ const dragController = createExclusionDragController({
   setSelectedExcl,
   setSelectedIdOnly: setSelectedId, // Set ID without triggering render (for drag start)
   getSelectedId: () => selectedExclId,
-  getMoveLabel: () => t("exclusions.moved")
+  getMoveLabel: () => t("exclusions.moved"),
+  getResizeLabel: () => t("exclusions.resized")
 });
 
 function updateAllTranslations() {

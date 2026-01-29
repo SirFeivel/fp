@@ -621,6 +621,7 @@ export function renderPlanSvg({
   selectedExclId,
   setSelectedExcl,
   onExclPointerDown,
+  onResizeHandlePointerDown,
   lastUnionError,
   lastTileError,
   setLastUnionError,
@@ -977,6 +978,77 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       setSelectedExcl(ex.id);
     });
     gEx.appendChild(shapeEl);
+
+    // Add resize handles for selected exclusion
+    if (isSel && onResizeHandlePointerDown) {
+      const handleRadius = 4;
+      const handleStyle = {
+        fill: "var(--accent, #3b82f6)",
+        stroke: "#fff",
+        "stroke-width": 1.5,
+        cursor: "pointer",
+        "data-exid": ex.id
+      };
+
+      if (ex.type === "rect") {
+        // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
+        const handles = [
+          { type: "nw", x: ex.x, y: ex.y, cursor: "nwse-resize" },
+          { type: "ne", x: ex.x + ex.w, y: ex.y, cursor: "nesw-resize" },
+          { type: "sw", x: ex.x, y: ex.y + ex.h, cursor: "nesw-resize" },
+          { type: "se", x: ex.x + ex.w, y: ex.y + ex.h, cursor: "nwse-resize" },
+          { type: "n", x: ex.x + ex.w / 2, y: ex.y, cursor: "ns-resize" },
+          { type: "s", x: ex.x + ex.w / 2, y: ex.y + ex.h, cursor: "ns-resize" },
+          { type: "w", x: ex.x, y: ex.y + ex.h / 2, cursor: "ew-resize" },
+          { type: "e", x: ex.x + ex.w, y: ex.y + ex.h / 2, cursor: "ew-resize" }
+        ];
+
+        handles.forEach(h => {
+          const handle = svgEl("circle", {
+            ...handleStyle,
+            cx: h.x,
+            cy: h.y,
+            r: handleRadius,
+            cursor: h.cursor,
+            "data-resize-handle": h.type
+          });
+          handle.addEventListener("pointerdown", onResizeHandlePointerDown);
+          gEx.appendChild(handle);
+        });
+      } else if (ex.type === "circle") {
+        // Single handle on the edge for radius
+        const handle = svgEl("circle", {
+          ...handleStyle,
+          cx: ex.cx + ex.r,
+          cy: ex.cy,
+          r: handleRadius,
+          cursor: "ew-resize",
+          "data-resize-handle": "r"
+        });
+        handle.addEventListener("pointerdown", onResizeHandlePointerDown);
+        gEx.appendChild(handle);
+      } else if (ex.type === "tri") {
+        // Handles at each vertex
+        const points = [
+          { type: "p1", x: ex.p1.x, y: ex.p1.y },
+          { type: "p2", x: ex.p2.x, y: ex.p2.y },
+          { type: "p3", x: ex.p3.x, y: ex.p3.y }
+        ];
+
+        points.forEach(p => {
+          const handle = svgEl("circle", {
+            ...handleStyle,
+            cx: p.x,
+            cy: p.y,
+            r: handleRadius,
+            cursor: "move",
+            "data-resize-handle": p.type
+          });
+          handle.addEventListener("pointerdown", onResizeHandlePointerDown);
+          gEx.appendChild(handle);
+        });
+      }
+    }
   }
   svg.appendChild(gEx);
 
@@ -1015,9 +1087,16 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     }
 
     if (onExclPointerDown) {
-      const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]');
+      const exclusionShapes = svgFullscreen.querySelectorAll('[data-exid]:not([data-resize-handle])');
       exclusionShapes.forEach(shape => {
         shape.addEventListener('pointerdown', onExclPointerDown);
+      });
+    }
+
+    if (onResizeHandlePointerDown) {
+      const resizeHandles = svgFullscreen.querySelectorAll('[data-resize-handle]');
+      resizeHandles.forEach(handle => {
+        handle.addEventListener('pointerdown', onResizeHandlePointerDown);
       });
     }
   }
