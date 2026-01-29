@@ -443,6 +443,40 @@ function updateAllTranslations() {
     settingsPanel?.classList.remove("hidden");
   });
 
+  // Exclusion dropdown
+  const quickAddExclusion = document.getElementById("quickAddExclusion");
+  const exclDropdown = document.getElementById("exclDropdown");
+
+  quickAddExclusion?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exclDropdown?.classList.toggle("hidden");
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    if (exclDropdown && !exclDropdown.classList.contains("hidden") &&
+        !exclDropdown.contains(e.target) &&
+        e.target !== quickAddExclusion) {
+      exclDropdown.classList.add("hidden");
+    }
+  });
+
+  // Exclusion dropdown items
+  document.querySelectorAll(".quick-dropdown-item[data-excl-type]").forEach(item => {
+    item.addEventListener("click", () => {
+      const type = item.dataset.exclType;
+      exclDropdown?.classList.add("hidden");
+
+      if (type === "rect") {
+        excl.addRect();
+      } else if (type === "circle") {
+        excl.addCircle();
+      } else if (type === "triangle") {
+        excl.addTriangle();
+      }
+    });
+  });
+
   function syncQuickControls() {
     const state = store.getState();
     const room = state.floors
