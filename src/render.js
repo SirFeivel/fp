@@ -648,6 +648,7 @@ export function renderExclProps({
   commitExclProps
 }) {
   const wrap = document.getElementById("exclProps");
+  const wasOpen = wrap?.dataset?.advOpen === "true";
   const ex = getSelectedExcl();
   wrap.innerHTML = "";
 
@@ -659,13 +660,34 @@ export function renderExclProps({
     return;
   }
 
+  const header = document.createElement("div");
+  header.className = "section-header-collapsible";
+  header.innerHTML = `
+    <h5 class="section-title">${t("exclusions.advanced")}</h5>
+    <span class="collapse-toggle">${wasOpen ? "▾" : "▸"}</span>
+  `;
+  wrap.appendChild(header);
+
+  const content = document.createElement("div");
+  content.className = "excl-advanced";
+  if (!wasOpen) content.classList.add("hidden");
+  wrap.appendChild(content);
+  wrap.dataset.advOpen = String(wasOpen);
+
+  header.addEventListener("click", () => {
+    const isOpen = content.classList.toggle("hidden") === false;
+    wrap.dataset.advOpen = String(isOpen);
+    const toggle = header.querySelector(".collapse-toggle");
+    if (toggle) toggle.textContent = isOpen ? "▾" : "▸";
+  });
+
   const field = (label, id, value, step = "0.1") => {
     const d = document.createElement("div");
     d.className = "field";
     d.innerHTML = `<label>${escapeHTML(
       label
     )}</label><input id="${id}" type="number" step="${step}" />`;
-    wrap.appendChild(d);
+    content.appendChild(d);
     const inp = d.querySelector("input");
     inp.value = value;
     inp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
@@ -681,7 +703,7 @@ export function renderExclProps({
   const labelDiv = document.createElement("div");
   labelDiv.className = "field span2";
   labelDiv.innerHTML = `<label>${t("exclusions.label")}</label><input id="exLabel" type="text" />`;
-  wrap.appendChild(labelDiv);
+  content.appendChild(labelDiv);
   const labelInp = labelDiv.querySelector("input");
   labelInp.value = ex.label || "";
   labelInp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
@@ -720,7 +742,7 @@ export function renderExclProps({
       <div class="toggle-slider"></div>
     </label>
   `;
-  wrap.appendChild(div);
+  content.appendChild(div);
 
   const inp = div.querySelector("#exSkirtingEnabled");
   inp.addEventListener("change", () => {

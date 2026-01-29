@@ -183,6 +183,7 @@ const translations = {
     },
     exclusions: {
       title: "Ausschlussbereiche",
+      advanced: "Erweitert",
       addRect: "+ Rechteck",
       addCircle: "+ Kreis",
       addTriangle: "+ Dreieck",
@@ -522,6 +523,7 @@ const translations = {
     },
     exclusions: {
       title: "Exclusion Areas",
+      advanced: "Advanced",
       addRect: "+ Rectangle",
       addCircle: "+ Circle",
       addTriangle: "+ Triangle",
