@@ -91,7 +91,7 @@ describe('safeParseJSON', () => {
 describe('defaultState', () => {
   it('should create state with valid structure', () => {
     const state = defaultState();
-    expect(state.meta.version).toBe(5);
+    expect(state.meta.version).toBe(6);
     expect(state.floors).toHaveLength(1);
     expect(state.floors[0].rooms).toHaveLength(1);
     expect(state.floors[0].rooms[0].sections).toHaveLength(1);

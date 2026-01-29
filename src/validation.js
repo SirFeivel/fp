@@ -157,7 +157,7 @@ export function validateState(s) {
 
   const preset = s.tilePresets?.find(p => p?.name && p.name === currentRoom?.tile?.reference);
   const cutoutAllowed = Boolean(preset?.useForSkirting);
-  if (skirting?.type === "cutout" && !cutoutAllowed) {
+  if (skirting?.enabled && skirting?.type === "cutout" && !cutoutAllowed) {
     warns.push({
       title: t("skirting.cutoutNotAllowedTitle"),
       text: t("skirting.cutoutNotAllowedText")
