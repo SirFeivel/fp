@@ -72,6 +72,8 @@ export function createStructureController({
         name: "Raum",
         sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
         exclusions: [],
+        excludedTiles: [],
+        excludedSkirts: [],
         tile: { widthCm: 60, heightCm: 60, shape: "rect" },
         grout: { widthCm: 0.2, colorHex: "#ffffff" },
         pattern: {
@@ -81,6 +83,13 @@ export function createStructureController({
           offsetXcm: 0,
           offsetYcm: 0,
           origin: { preset: "tl", xCm: 0, yCm: 0 }
+        },
+        skirting: {
+          enabled: false,
+          type: "cutout",
+          heightCm: 6,
+          boughtWidthCm: 60,
+          boughtPricePerPiece: 5.0
         }
       }]
     };
@@ -128,7 +137,7 @@ export function createStructureController({
       exclusions: [],
       excludedTiles: [],
       excludedSkirts: [],
-      tile: { widthCm: 60, heightCm: 60, shape: "rect" },
+      tile: { widthCm: 60, heightCm: 60, shape: "rect", reference: "" },
       grout: { widthCm: 0.2, colorHex: "#ffffff" },
       pattern: {
         type: "grid",
@@ -137,6 +146,13 @@ export function createStructureController({
         offsetXcm: 0,
         offsetYcm: 0,
         origin: { preset: "tl", xCm: 0, yCm: 0 }
+      },
+      skirting: {
+        enabled: false,
+        type: "cutout",
+        heightCm: 6,
+        boughtWidthCm: 60,
+        boughtPricePerPiece: 5.0
       }
     };
 

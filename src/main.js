@@ -947,10 +947,67 @@ function updateAllTranslations() {
     }
   }
 
+  function enhanceNumberSpinners() {
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+      if (input.dataset.spinner === "true") return;
+      if (input.closest(".quick-spinner")) {
+        input.classList.add("spinner-input");
+        input.dataset.spinner = "true";
+        return;
+      }
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "quick-spinner";
+
+      const dec = document.createElement("button");
+      dec.type = "button";
+      dec.className = "quick-spinner-btn";
+      dec.textContent = "−";
+
+      const inc = document.createElement("button");
+      inc.type = "button";
+      inc.className = "quick-spinner-btn";
+      inc.textContent = "+";
+
+      const stepValue = () => {
+        const step = parseFloat(input.step);
+        return Number.isFinite(step) && step > 0 ? step : 1;
+      };
+      const minValue = () => {
+        if (input.min === "") return null;
+        const min = parseFloat(input.min);
+        return Number.isFinite(min) ? min : null;
+      };
+
+      const applyDelta = (dir) => {
+        let value = parseFloat(input.value);
+        if (!Number.isFinite(value)) value = 0;
+        value += dir * stepValue();
+        const min = minValue();
+        if (min !== null) value = Math.max(min, value);
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      dec.addEventListener("click", () => applyDelta(-1));
+      inc.addEventListener("click", () => applyDelta(1));
+
+      input.classList.add("no-spinner", "spinner-input");
+      input.dataset.spinner = "true";
+
+      input.replaceWith(wrapper);
+      wrapper.appendChild(dec);
+      wrapper.appendChild(input);
+      wrapper.appendChild(inc);
+    });
+  }
+
   // Register the sync function as the post-render hook
   afterRenderHook = () => {
     syncDimensionsFromState();
     syncQuickControls();
+    enhanceNumberSpinners();
   };
 
   function commitQuickTilePreset() {

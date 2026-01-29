@@ -279,7 +279,11 @@
                     <div class="field">
                       <label data-i18n="tile.grout">Grout</label>
                       <div class="input-with-unit">
-                        <input id="tilePresetGroutW" type="number" min="0" step="1" />
+                        <div class="quick-spinner">
+                          <button type="button" class="quick-spinner-btn" data-action="decrement" data-target="tilePresetGroutW">−</button>
+                          <input id="tilePresetGroutW" type="number" class="quick-input small no-spinner" min="0" step="1" />
+                          <button type="button" class="quick-spinner-btn" data-action="increment" data-target="tilePresetGroutW">+</button>
+                        </div>
                         <span class="input-unit">mm</span>
                       </div>
                     </div>
@@ -570,7 +574,11 @@
                   <div class="field">
                     <label data-i18n="tile.grout">Grout</label>
                     <div class="input-with-unit">
-                      <input id="groutW" type="number" min="0" step="1" />
+                      <div class="quick-spinner">
+                        <button type="button" class="quick-spinner-btn" data-action="decrement" data-target="groutW">−</button>
+                        <input id="groutW" type="number" class="quick-input small no-spinner" min="0" step="1" />
+                        <button type="button" class="quick-spinner-btn" data-action="increment" data-target="groutW">+</button>
+                      </div>
                       <span class="input-unit">mm</span>
                     </div>
                   </div>
