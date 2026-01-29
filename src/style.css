@@ -706,52 +706,53 @@ body{
   flex: 1;
   position: relative;
   min-height: 300px;
+  padding-bottom: 70px; /* Space for quick controls */
 }
 
 /* Quick Controls Bar */
 .quick-controls {
   position: absolute;
-  bottom: 16px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: rgba(15, 26, 46, 0.95);
+  gap: 16px;
+  padding: 14px 24px;
+  background: rgba(15, 26, 46, 0.98);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line2);
   border-radius: var(--r-md);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   z-index: 10;
 }
 
 .quick-control-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .quick-label {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
   color: var(--muted);
   font-weight: 500;
 }
 
 .quick-input {
-  width: 50px;
-  padding: 6px 8px;
+  width: 60px;
+  padding: 8px 10px;
   border-radius: var(--r-xs);
   border: 1px solid var(--line);
   background: rgba(0,0,0,.25);
   color: var(--text);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   text-align: center;
   outline: none;
 }
 
 .quick-input.small {
-  width: 40px;
+  width: 50px;
 }
 
 .quick-input:focus {
@@ -760,21 +761,21 @@ body{
 
 .quick-x {
   color: var(--muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
 }
 
 .quick-unit {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--muted);
 }
 
 .quick-select {
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--r-xs);
   border: 1px solid var(--line);
   background: rgba(0,0,0,.25);
   color: var(--text);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   outline: none;
   cursor: pointer;
 }
@@ -785,21 +786,21 @@ body{
 
 .quick-control-divider {
   width: 1px;
-  height: 24px;
+  height: 28px;
   background: var(--line);
 }
 
 .quick-toggles {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .quick-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--r-xs);
   border: 1px solid var(--line);
   background: transparent;
@@ -812,7 +813,7 @@ body{
 }
 
 .quick-toggle-icon {
-  font-size: 14px;
+  font-size: 18px;
   color: var(--muted);
   transition: color 0.15s;
 }
@@ -833,16 +834,16 @@ body{
 
 .quick-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .quick-btn {
-  padding: 6px 10px;
+  padding: 8px 14px;
   border-radius: var(--r-xs);
   border: 1px solid var(--line);
   background: var(--btn);
   color: var(--text);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
