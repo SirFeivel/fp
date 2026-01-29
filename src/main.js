@@ -85,6 +85,9 @@ function setSelectedSectionId(id) {
   selectedSectionId = id || null;
 }
 
+// Hook for post-render sync (set by IIFE below)
+let afterRenderHook = null;
+
 function renderAll(lastLabel, options) {
   let opts = options || {};
   let label = lastLabel;
@@ -145,6 +148,9 @@ function renderAll(lastLabel, options) {
 
     refreshProjectSelect();
     updateMeta();
+
+    // Call post-render hook (syncs quick controls, planning selectors, etc.)
+    if (afterRenderHook) afterRenderHook();
   } catch (error) {
     console.error("Render failed:", error);
     const errorDiv = document.getElementById("warnings");
@@ -508,6 +514,12 @@ function updateAllTranslations() {
     }
   }
 
+  // Register the sync function as the post-render hook
+  afterRenderHook = () => {
+    syncDimensionsFromState();
+    syncQuickControls();
+  };
+
   function commitQuickTile() {
     const state = store.getState();
     const floorIdx = state.floors?.findIndex(f => f.id === state.selectedFloorId);
@@ -612,19 +624,6 @@ function updateAllTranslations() {
     sections.addSection();
   });
 
-  // Override renderAll to also sync dimensions and quick controls
-  const originalRenderAll = renderAll;
-  const patchedRenderAll = function(lastLabel, options) {
-    originalRenderAll(lastLabel, options);
-    syncDimensionsFromState();
-    syncQuickControls();
-  };
-
-  // Patch store render callback
-  store.setRenderCallback && store.setRenderCallback(patchedRenderAll);
-
   updateAllTranslations();
   renderAll(hadSession ? t("init.withSession") : t("init.default"));
-  syncDimensionsFromState();
-  syncQuickControls();
 })();
