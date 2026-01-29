@@ -445,13 +445,14 @@ function floorDiv(a, b) {
 }
 
 // helper: compute inverse-rotated bounds of the room around origin
-function inverseRotatedRoomBounds(w, h, origin, rotRad) {
+// roomMinX/roomMinY: actual top-left corner of room (may be negative for composite sections)
+function inverseRotatedRoomBounds(w, h, origin, rotRad, roomMinX = 0, roomMinY = 0) {
   const inv = -rotRad;
   const pts = [
-    rotatePoint2(0, 0, origin.x, origin.y, inv),
-    rotatePoint2(w, 0, origin.x, origin.y, inv),
-    rotatePoint2(w, h, origin.x, origin.y, inv),
-    rotatePoint2(0, h, origin.x, origin.y, inv),
+    rotatePoint2(roomMinX, roomMinY, origin.x, origin.y, inv),
+    rotatePoint2(roomMinX + w, roomMinY, origin.x, origin.y, inv),
+    rotatePoint2(roomMinX + w, roomMinY + h, origin.x, origin.y, inv),
+    rotatePoint2(roomMinX, roomMinY + h, origin.x, origin.y, inv),
   ];
   let minX = Infinity,
     minY = Infinity,
@@ -553,7 +554,7 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
@@ -648,7 +649,7 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
@@ -736,7 +737,7 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
@@ -822,7 +823,7 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
@@ -908,7 +909,7 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const margin = TILE_MARGIN_MULTIPLIER * (L + W + grout);
   const minX = b.minX - margin;
@@ -1010,7 +1011,7 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const margin = TILE_MARGIN_MULTIPLIER * (L + W2 + grout);
   const minX = b.minX - margin;
@@ -1127,7 +1128,7 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
@@ -1213,7 +1214,7 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeEx
   const w = bounds.width;
   const h = bounds.height;
 
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad);
+  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * unitW;
   const marginY = TILE_MARGIN_MULTIPLIER * unitH;
