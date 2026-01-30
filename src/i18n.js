@@ -812,8 +812,10 @@ const translations = {
 let currentLang = "de";
 
 try {
-  if (typeof localStorage !== "undefined") {
-    currentLang = localStorage.getItem("floorplanner_lang") || "de";
+  const isNodeRuntime = typeof process !== "undefined" && process.versions?.node;
+  const storage = !isNodeRuntime && typeof document !== "undefined" ? document.defaultView?.localStorage : null;
+  if (storage) {
+    currentLang = storage.getItem("floorplanner_lang") || "de";
   }
 } catch (e) {
   currentLang = "de";
@@ -823,9 +825,9 @@ export function setLanguage(lang) {
   if (translations[lang]) {
     currentLang = lang;
     try {
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("floorplanner_lang", lang);
-      }
+      const isNodeRuntime = typeof process !== "undefined" && process.versions?.node;
+      const storage = !isNodeRuntime && typeof document !== "undefined" ? document.defaultView?.localStorage : null;
+      if (storage) storage.setItem("floorplanner_lang", lang);
     } catch (e) {
       // localStorage not available
     }
