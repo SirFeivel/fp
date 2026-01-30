@@ -518,88 +518,54 @@ export async function exportRoomsPdf(state, options, onProgress) {
 }
 
 export async function exportCommercialPdf(state, options) {
-  const { format, orientation } = getPageSize(options);
-  const doc = new jsPDF({ unit: "pt", format, orientation });
-  const model = buildCommercialExportModel(state);
+  const { format } = getPageSize(options);
+  let doc = new jsPDF({ unit: "pt", format, orientation: "landscape" });
+  const w = doc.internal.pageSize.getWidth();
+  const h = doc.internal.pageSize.getHeight();
+  if (w < h) {
+    doc = new jsPDF({ unit: "pt", format: [h, w], orientation: "landscape" });
+  }
+  const proj = computeProjectTotals(state);
 
-  doc.setFontSize(16);
-  doc.text(t("export.commercial"), 40, 40);
+  const headerFontSize = 10;
+  doc.setFontSize(headerFontSize);
+  doc.setTextColor(30);
+  const leftX = 40;
+  const rightX = doc.internal.pageSize.getWidth() - 220;
+  const topY = 28;
+  const line = 14;
+
+  doc.text(`${t("pdf.projectName")}: ${state.project?.name || ""}`, leftX, topY);
+  doc.text(`${dateStamp()}`, leftX, topY + line);
+  doc.text(`${t("pdf.company")}: ____________________`, rightX, topY);
+  doc.text(`${t("pdf.address")}: ____________________`, rightX, topY + line);
+  doc.text(`${t("pdf.contact")}: ____________________`, rightX, topY + line * 2);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  const cards = [
-    { label: t("metrics.totalArea"), value: `${model.summary.totalAreaM2.toFixed(2)} m²` },
-    { label: t("metrics.totalTiles"), value: String(model.summary.totalTiles) },
-    { label: t("commercial.totalPacks"), value: String(model.summary.totalPacks) },
-    { label: t("commercial.totalCost"), value: model.summary.totalCost.toFixed(2) },
-    { label: t("metrics.grandTotal"), value: model.summary.grandTotal.toFixed(2) }
-  ];
+  let y = 90;
+  const roomsTable = buildCommercialRoomsTable(proj);
+  y = drawTableGrid(doc, t("commercial.rooms"), roomsTable.columns, roomsTable.rows, y, pageWidth, pageHeight, { fontSize: 9 });
 
-  const cardWidth = (pageWidth - 100) / 3;
-  let cx = 40;
-  let cy = 70;
-  doc.setFontSize(10);
-  cards.forEach((card, idx) => {
-    doc.setFillColor(16, 24, 40);
-    doc.rect(cx, cy, cardWidth, 52, "F");
-    doc.setTextColor(231);
-    doc.text(card.label, cx + 8, cy + 18);
-    doc.setFontSize(12);
-    doc.text(card.value, cx + 8, cy + 38);
-    doc.setFontSize(10);
-    doc.setTextColor(30);
-    cx += cardWidth + 10;
-    if ((idx + 1) % 3 === 0) {
-      cx = 40;
-      cy += 62;
-    }
-  });
+  layoutFooter(doc, pageHeight - 18, options.notes || "", 8);
 
-  let y = cy + 20;
-  y = drawTable(
-    doc,
-    t("commercial.materials"),
-    [t("tile.reference"), t("commercial.totalPacks"), t("commercial.totalCost")],
-    model.materials.map((item) => ([
-      item.reference || t("commercial.defaultMaterial"),
-      String(item.totalPacks || 0),
-      (item.adjustedCost || 0).toFixed(2)
-    ])),
-    y,
-    pageHeight
-  );
+  doc.addPage();
+  const pageWidth2 = doc.internal.pageSize.getWidth();
+  const pageHeight2 = doc.internal.pageSize.getHeight();
+  const rightX2 = pageWidth2 - 220;
+  doc.setFontSize(headerFontSize);
+  doc.setTextColor(30);
+  doc.text(`${t("pdf.projectName")}: ${state.project?.name || ""}`, leftX, topY);
+  doc.text(`${dateStamp()}`, leftX, topY + line);
+  doc.text(`${t("pdf.company")}: ____________________`, rightX2, topY);
+  doc.text(`${t("pdf.address")}: ____________________`, rightX2, topY + line);
+  doc.text(`${t("pdf.contact")}: ____________________`, rightX2, topY + line * 2);
 
-  y = drawTable(
-    doc,
-    t("commercial.rooms"),
-    [t("pdf.room"), t("metrics.totalArea"), t("metrics.totalTiles"), t("commercial.totalPacks"), t("commercial.totalCost")],
-    model.rooms.map((room) => ([
-      `${room.floor} / ${room.room}`,
-      room.areaM2.toFixed(2),
-      String(room.tiles),
-      String(room.packs),
-      room.cost.toFixed(2)
-    ])),
-    y + 16,
-    pageHeight
-  );
+  const matsTable = buildCommercialMaterialsTable(proj);
+  drawTableGrid(doc, t("commercial.materials"), matsTable.columns, matsTable.rows, 90, pageWidth2, pageHeight2, { fontSize: 8 });
 
-  if (model.skirting.length) {
-    drawTable(
-      doc,
-      t("pdf.skirting"),
-      [t("pdf.room"), t("pdf.dimensions"), t("skirting.pieces"), t("commercial.totalCost")],
-      model.skirting.map((row) => ([
-        `${row.floor} / ${row.room}`,
-        String(row.skirtingLengthCm),
-        String(row.skirtingPieces),
-        String((row.skirtingCost || 0).toFixed(2))
-      ])),
-      y + 16,
-      pageHeight
-    );
-  }
+  layoutFooter(doc, pageHeight2 - 18, options.notes || "", 8);
 
   const filename = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}.pdf`);
   doc.save(filename);
@@ -638,10 +604,142 @@ function drawTable(doc, title, headers, rows, startY, pageHeight) {
   return y;
 }
 
+function drawTableGrid(doc, title, columns, rows, startY, pageWidth, pageHeight, opts = {}) {
+  const left = 40;
+  const right = 40;
+  const tableWidth = pageWidth - left - right;
+  const rowHeight = opts.rowHeight || 16;
+  const headerHeight = opts.headerHeight || 18;
+  const fontSize = opts.fontSize || 9;
+  const maxY = pageHeight - 40;
+
+  let y = startY;
+  doc.setFontSize(fontSize + 1);
+  doc.setTextColor(30);
+  doc.text(title, left, y);
+  y += headerHeight;
+
+  const totalWeight = columns.reduce((sum, col) => sum + (col.weight || 1), 0);
+  const widths = columns.map((col) => (tableWidth * (col.weight || 1)) / totalWeight);
+
+  const drawHeader = () => {
+    doc.setFillColor(240);
+    doc.rect(left, y - headerHeight + 4, tableWidth, headerHeight, "F");
+    doc.setFontSize(fontSize);
+    doc.setTextColor(60);
+    let x = left;
+    columns.forEach((col, idx) => {
+      const textX = col.align === "right" ? x + widths[idx] - 4 : x + 4;
+      doc.text(col.label, textX, y, { align: col.align || "left", maxWidth: widths[idx] - 8 });
+      x += widths[idx];
+    });
+    y += rowHeight;
+  };
+
+  drawHeader();
+
+  rows.forEach((row) => {
+    if (y + rowHeight > maxY) {
+      doc.addPage();
+      y = 40;
+      drawHeader();
+    }
+
+    doc.setFontSize(fontSize);
+    doc.setTextColor(30);
+    doc.setFont(undefined, row.isTotal ? "bold" : "normal");
+
+    let x = left;
+    row.cells.forEach((cell, idx) => {
+      const text = String(cell ?? "");
+      const textX = columns[idx].align === "right" ? x + widths[idx] - 4 : x + 4;
+      doc.text(text, textX, y, { align: columns[idx].align || "left", maxWidth: widths[idx] - 8 });
+      x += widths[idx];
+    });
+    y += rowHeight;
+  });
+
+  doc.setFont(undefined, "normal");
+  return y;
+}
+
+export function buildCommercialRoomsTable(proj) {
+  const columns = [
+    { label: t("tabs.floor"), weight: 1.2 },
+    { label: t("tabs.room"), weight: 1.2 },
+    { label: t("tile.reference"), weight: 1.4 },
+    { label: t("metrics.netArea"), align: "right", weight: 1 },
+    { label: t("metrics.totalTiles"), align: "right", weight: 0.9 },
+    { label: t("metrics.price"), align: "right", weight: 1 }
+  ];
+  const rows = proj.rooms.map((r) => ({
+    cells: [
+      r.floorName || "",
+      r.name || "",
+      r.reference || t("commercial.defaultMaterial"),
+      `${r.netAreaM2.toFixed(2)} m²`,
+      String(r.totalTiles),
+      `${r.totalCost.toFixed(2)} €`
+    ]
+  }));
+  return { columns, rows };
+}
+
+export function buildCommercialMaterialsTable(proj) {
+  const columns = [
+    { label: t("tile.reference"), weight: 1.6 },
+    { label: t("commercial.totalM2"), align: "right", weight: 0.9 },
+    { label: t("commercial.totalTiles"), align: "right", weight: 0.9 },
+    { label: t("commercial.totalPacks"), align: "right", weight: 0.9 },
+    { label: t("commercial.packsFloor"), align: "right", weight: 0.9 },
+    { label: t("commercial.packsSkirting"), align: "right", weight: 0.9 },
+    { label: t("commercial.amountOverride"), align: "right", weight: 0.9 },
+    { label: t("commercial.pricePerM2"), align: "right", weight: 1 },
+    { label: t("commercial.pricePerPack"), align: "right", weight: 1 },
+    { label: t("commercial.packSize"), align: "right", weight: 1 },
+    { label: t("commercial.totalCost"), align: "right", weight: 1 }
+  ];
+  const rows = proj.materials.map((m) => {
+    const pricePerPack = (m.pricePerM2 * m.packM2).toFixed(2);
+    return {
+      cells: [
+        m.reference || t("commercial.defaultMaterial"),
+        `${m.netAreaM2.toFixed(2)} m²`,
+        String(m.totalTiles),
+        String(m.totalPacks || 0),
+        String(m.floorPacks || 0),
+        String(m.skirtingPacks || 0),
+        String(m.extraPacks || 0),
+        `${m.pricePerM2.toFixed(2)} €`,
+        `${pricePerPack} €`,
+        `${m.packM2.toFixed(2)} m²`,
+        `${m.adjustedCost.toFixed(2)} €`
+      ]
+    };
+  });
+  rows.push({
+    isTotal: true,
+    cells: [
+      t("commercial.grandTotal"),
+      `${proj.totalNetAreaM2.toFixed(2)} m²`,
+      String(proj.totalTiles),
+      String(proj.totalPacks),
+      "–",
+      "–",
+      "",
+      "",
+      "",
+      "",
+      `${proj.totalCost.toFixed(2)} €`
+    ]
+  });
+  return { columns, rows };
+}
+
 export async function exportCommercialXlsx(state, options) {
   const XLSXModule = await import("xlsx");
   const XLSX = XLSXModule.default || XLSXModule;
-  const model = buildCommercialExportModel(state);
+  const proj = computeProjectTotals(state);
 
   const wb = XLSX.utils.book_new();
 

@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeFilename, buildRoomExportModel, buildCommercialExportModel, computeRoomPdfLayout } from "./export.js";
+import {
+  sanitizeFilename,
+  buildRoomExportModel,
+  buildCommercialExportModel,
+  computeRoomPdfLayout,
+  buildCommercialRoomsTable,
+  buildCommercialMaterialsTable
+} from "./export.js";
 import { defaultState } from "./core.js";
+import { computeProjectTotals } from "./calc.js";
 
 describe("export helpers", () => {
   it("sanitizes filenames", () => {
@@ -41,5 +49,25 @@ describe("export helpers", () => {
     expect(layout.legendWidth).toBeGreaterThan(300);
     expect(layout.legendHeight).toBe(10);
     expect(layout.planY).toBeGreaterThan(layout.boxY);
+  });
+
+  it("builds commercial rooms table matching UI columns", () => {
+    const state = defaultState();
+    const proj = computeProjectTotals(state);
+    const table = buildCommercialRoomsTable(proj);
+    expect(table.columns.length).toBe(6);
+    table.columns.forEach((col) => {
+      expect(typeof col.label).toBe("string");
+      expect(col.label.length).toBeGreaterThan(0);
+    });
+    expect(table.rows.length).toBe(proj.rooms.length);
+  });
+
+  it("builds commercial materials table with totals row", () => {
+    const state = defaultState();
+    const proj = computeProjectTotals(state);
+    const table = buildCommercialMaterialsTable(proj);
+    expect(table.columns.length).toBe(11);
+    expect(table.rows.at(-1)?.isTotal).toBe(true);
   });
 });
