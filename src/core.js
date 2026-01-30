@@ -1,4 +1,5 @@
 // src/core.js
+import { t } from "./i18n.js";
 export const LS_SESSION = "fp.session.v1";
 export const LS_PROJECTS = "fp.projects.v1";
 
@@ -43,6 +44,36 @@ export function escapeHTML(s) {
         "'": "&#39;"
       }[c])
   );
+}
+
+export function showUserWarning(messageKey, details = "") {
+  if (typeof document === "undefined") {
+    console.warn(t(messageKey), details);
+    return;
+  }
+
+  const warningsEl = document.getElementById("warnings");
+  if (!warningsEl) {
+    console.warn(t(messageKey), details);
+    return;
+  }
+
+  const div = document.createElement("div");
+  div.className = "warnItem";
+  div.style.border = "2px solid rgba(255,193,7,0.5)";
+
+  const title = document.createElement("div");
+  title.className = "wTitle";
+  title.textContent = t(messageKey);
+
+  const text = document.createElement("div");
+  text.className = "wText";
+  text.textContent = details;
+
+  div.replaceChildren(title, text);
+  warningsEl.prepend(div);
+
+  setTimeout(() => div.remove(), 10000);
 }
 
 export function uuid() {

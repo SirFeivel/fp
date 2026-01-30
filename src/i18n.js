@@ -391,7 +391,11 @@ const translations = {
       renderFailed: "Fehler: Rendering fehlgeschlagen",
       reloadPage: "Bitte Seite neu laden.",
       noSession: "Keine gültige Session gefunden.",
-      sessionRestored: "Letzten Stand wiederhergestellt"
+      sessionRestored: "Letzten Stand wiederhergestellt",
+      autosaveFailed: "Automatisches Speichern fehlgeschlagen",
+      importFailed: "Import fehlgeschlagen",
+      exportFailed: "Export fehlgeschlagen",
+      geometryError: "Geometrie-Berechnungsfehler"
     },
     language: {
       select: "Sprache:",
@@ -791,7 +795,11 @@ const translations = {
       renderFailed: "Error: Rendering failed",
       reloadPage: "Please reload page.",
       noSession: "No valid session found.",
-      sessionRestored: "Last state restored"
+      sessionRestored: "Last state restored",
+      autosaveFailed: "Autosave failed",
+      importFailed: "Import failed",
+      exportFailed: "Export failed",
+      geometryError: "Geometry calculation error"
     },
     language: {
       select: "Language:",

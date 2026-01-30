@@ -11,7 +11,8 @@ import {
   DEFAULT_PRICING,
   DEFAULT_WASTE,
   DEFAULT_SKIRTING_CONFIG,
-  DEFAULT_SKIRTING_PRESET
+  DEFAULT_SKIRTING_PRESET,
+  showUserWarning
 } from './core.js';
 import { clearMetricsCache } from './calc.js';
 
@@ -331,6 +332,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       updateMetaCb?.();
     } catch (e) {
       console.warn('Autosave failed:', e);
+      showUserWarning("errors.autosaveFailed", e.message);
     }
   }
 
