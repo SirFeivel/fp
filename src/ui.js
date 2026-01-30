@@ -518,7 +518,7 @@ export function bindUI({
 
     // Waste: kerfCm (Schnittbreite)
     const kerfEl = document.getElementById('wasteKerfCm');
-    if (kerfEl) next.waste.kerfCm = Number(kerfEl.value);
+    if (kerfEl) next.waste.kerfCm = Number(kerfEl.value) / 10;
 
     const optimizeCuts = document.getElementById("wasteOptimizeCuts");
     if (optimizeCuts) next.waste.optimizeCuts = Boolean(optimizeCuts.checked);

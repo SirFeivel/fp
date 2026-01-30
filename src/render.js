@@ -1024,7 +1024,7 @@ export function renderTilePatternForm(state) {
 
   // Schnittbreite
   const kerfEl = document.getElementById("wasteKerfCm");
-  if (kerfEl) kerfEl.value = state?.waste?.kerfCm ?? 0;
+  if (kerfEl) kerfEl.value = Math.round((state?.waste?.kerfCm ?? 0.2) * 10);
 }
 
 export function renderExclList(state, selectedExclId) {

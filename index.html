@@ -709,49 +709,43 @@
                   </select>
                 </div>
 
-                <!-- Advanced: Origin & Offset -->
-                <details class="panel-details">
-                  <summary data-i18n="planning.advanced">Advanced (Origin & Offset)</summary>
-                  <div class="panel-fields">
-                    <div class="field">
-                      <label data-i18n="origin.preset">Origin Preset</label>
-                      <select id="originPreset">
-                        <option value="tl" data-i18n="origin.presetTL">Top Left</option>
-                        <option value="tr" data-i18n="origin.presetTR">Top Right</option>
-                        <option value="bl" data-i18n="origin.presetBL">Bottom Left</option>
-                        <option value="br" data-i18n="origin.presetBR">Bottom Right</option>
-                        <option value="center" data-i18n="origin.presetCenter">Center</option>
-                        <option value="free" data-i18n="origin.presetFree">Free</option>
-                      </select>
-                    </div>
-                    <div class="field-row">
-                      <div class="field">
-                        <label data-i18n="origin.x">Origin X</label>
-                        <input id="originX" type="number" step="1" />
-                      </div>
-                      <div class="field">
-                        <label data-i18n="origin.y">Origin Y</label>
-                        <input id="originY" type="number" step="1" />
-                      </div>
-                    </div>
-                    <div class="field-row">
-                      <div class="field">
-                        <label data-i18n="tile.offsetX">Offset X</label>
-                        <input id="offsetX" type="number" step="1" />
-                      </div>
-                      <div class="field">
-                        <label data-i18n="tile.offsetY">Offset Y</label>
-                        <input id="offsetY" type="number" step="1" />
-                      </div>
-                    </div>
-                    <div class="btnrow">
-                      <button id="btnOffLeft" class="btn small">←</button>
-                      <button id="btnOffRight" class="btn small">→</button>
-                      <button id="btnOffUp" class="btn small">↑</button>
-                      <button id="btnOffDown" class="btn small">↓</button>
-                    </div>
+                <div class="field">
+                  <label data-i18n="origin.preset">Origin Preset</label>
+                  <select id="originPreset">
+                    <option value="tl" data-i18n="origin.presetTL">Top Left</option>
+                    <option value="tr" data-i18n="origin.presetTR">Top Right</option>
+                    <option value="bl" data-i18n="origin.presetBL">Bottom Left</option>
+                    <option value="br" data-i18n="origin.presetBR">Bottom Right</option>
+                    <option value="center" data-i18n="origin.presetCenter">Center</option>
+                    <option value="free" data-i18n="origin.presetFree">Free</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="origin.x">Origin X</label>
+                    <input id="originX" type="number" step="1" />
                   </div>
-                </details>
+                  <div class="field">
+                    <label data-i18n="origin.y">Origin Y</label>
+                    <input id="originY" type="number" step="1" />
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="tile.offsetX">Offset X</label>
+                    <input id="offsetX" type="number" step="1" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="tile.offsetY">Offset Y</label>
+                    <input id="offsetY" type="number" step="1" />
+                  </div>
+                </div>
+                <div class="btnrow">
+                  <button id="btnOffLeft" class="btn small">←</button>
+                  <button id="btnOffRight" class="btn small">→</button>
+                  <button id="btnOffUp" class="btn small">↑</button>
+                  <button id="btnOffDown" class="btn small">↓</button>
+                </div>
               </div>
             </div>
 
@@ -760,6 +754,33 @@
               <h4 class="panel-section-title" data-i18n="skirting.title">Skirting</h4>
               <div class="panel-fields" id="skirtingRoomsList">
                 <div class="meta subtle" data-i18n="project.none">– none –</div>
+              </div>
+            </div>
+
+            <!-- Calculation Options -->
+            <div class="panel-section">
+              <h4 class="panel-section-title" data-i18n="tile.sectionPricing">Calculation</h4>
+              <div class="panel-fields">
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="pricing.reserve">Reserve (tiles)</label>
+                    <input id="reserveTiles" type="number" step="1" min="0" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="waste.kerfWidth">Kerf (mm)</label>
+                    <input id="wasteKerfCm" type="number" min="0" step="1" value="2" />
+                  </div>
+                </div>
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="waste.allowRotate">Allow offcut rotation</span>
+                  <input id="wasteAllowRotate" type="checkbox" checked />
+                  <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="waste.optimizeCuts">Optimize cuts</span>
+                  <input id="wasteOptimizeCuts" type="checkbox" />
+                  <div class="toggle-slider"></div>
+                </label>
               </div>
             </div>
 
@@ -781,33 +802,6 @@
                 <div id="exclProps" class="excl-props">
                   <div class="meta subtle" data-i18n="exclusions.noneSelected">– none selected –</div>
                 </div>
-              </div>
-            </div>
-
-            <!-- Calculation Options -->
-            <div class="panel-section">
-              <h4 class="panel-section-title" data-i18n="tile.sectionPricing">Calculation</h4>
-              <div class="panel-fields">
-                <div class="field-row">
-                  <div class="field">
-                    <label data-i18n="pricing.reserve">Reserve (tiles)</label>
-                    <input id="reserveTiles" type="number" step="1" min="0" />
-                  </div>
-                  <div class="field">
-                    <label data-i18n="waste.kerfWidth">Kerf (cm)</label>
-                    <input id="wasteKerfCm" type="number" min="0" step="0.1" value="0" />
-                  </div>
-                </div>
-                <label class="toggle-switch">
-                  <span class="toggle-label" data-i18n="waste.allowRotate">Allow offcut rotation</span>
-                  <input id="wasteAllowRotate" type="checkbox" checked />
-                  <div class="toggle-slider"></div>
-                </label>
-                <label class="toggle-switch">
-                  <span class="toggle-label" data-i18n="waste.optimizeCuts">Optimize cuts</span>
-                  <input id="wasteOptimizeCuts" type="checkbox" />
-                  <div class="toggle-slider"></div>
-                </label>
               </div>
             </div>
 

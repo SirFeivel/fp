@@ -160,7 +160,8 @@ export function defaultState() {
     pricing: { ...DEFAULT_PRICING },
 
     waste: {
-      allowRotate: true
+      allowRotate: true,
+      kerfCm: 0.2
     },
 
     view: {

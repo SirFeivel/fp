@@ -170,7 +170,7 @@ const translations = {
       sectionGrout: "Fugen",
       sectionPattern: "Muster",
       sectionPosition: "Position & Offset",
-      sectionPricing: "Preis & Verschnitt",
+      sectionPricing: "Fliesenhandling",
       sectionLayout: "Fliesen Layout",
       preset: "Preset",
       createPreset: "Preset erstellen",
@@ -218,7 +218,7 @@ const translations = {
     waste: {
       allowRotate: "Reststücke drehen (Reuse)",
       optimizeCuts: "Verschnitt optimieren (Zuschnitt erlaubt)",
-      kerfWidth: "Schnittbreite / Kerf (cm)",
+      kerfWidth: "Schnittbreite / Kerf (mm)",
       changed: "Reuse geändert",
       optimizeChanged: "Verschnitt-Optimierung geändert"
     },
@@ -570,7 +570,7 @@ const translations = {
       sectionGrout: "Grout",
       sectionPattern: "Pattern",
       sectionPosition: "Position & Offset",
-      sectionPricing: "Pricing & Waste",
+      sectionPricing: "Handling Tiles",
       sectionLayout: "Tile Layout",
       preset: "Preset",
       createPreset: "Create preset",
@@ -618,7 +618,7 @@ const translations = {
     waste: {
       allowRotate: "Rotate leftovers (Reuse)",
       optimizeCuts: "Optimize waste (allow cutting)",
-      kerfWidth: "Kerf Width (cm)",
+      kerfWidth: "Kerf Width (mm)",
       changed: "Reuse changed",
       optimizeChanged: "Waste optimization changed"
     },
