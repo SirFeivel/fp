@@ -65,8 +65,13 @@ export function bindUI({
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
 
       nextRoom.skirting = nextRoom.skirting || {};
-      const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
-      if (roomSkirtingEnabled) nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
+    const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
+    const planningRoomSkirtingEnabled = document.getElementById("planningRoomSkirtingEnabled");
+    if (planningRoomSkirtingEnabled) {
+      nextRoom.skirting.enabled = Boolean(planningRoomSkirtingEnabled.checked);
+    } else if (roomSkirtingEnabled) {
+      nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
+    }
       const selectedTypeRaw = document.getElementById("skirtingType")?.value;
       const selectedType =
         selectedTypeRaw === "bought" || selectedTypeRaw === "cutout"
@@ -328,6 +333,12 @@ export function bindUI({
     markDirty: () => store.markDirty(),
     commitLabel: t("tile.changed"),
     commitFn: commitFromTilePatternInputs
+  });
+  document.getElementById("roomSkirtingEnabled")?.addEventListener("change", () => {
+    commitFromRoomInputs(t("skirting.changed"));
+  });
+  document.getElementById("planningRoomSkirtingEnabled")?.addEventListener("change", () => {
+    commitFromRoomInputs(t("skirting.changed"));
   });
 
   document.getElementById("btnApplyTilePreset")?.addEventListener("click", () => {

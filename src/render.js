@@ -395,7 +395,9 @@ export function renderRoomForm(state) {
   document.getElementById("roomName").value = currentRoom?.name ?? "";
   document.getElementById("tileReference").value = currentRoom?.tile?.reference ?? "";
   const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
+  const planningRoomSkirtingEnabled = document.getElementById("planningRoomSkirtingEnabled");
   if (roomSkirtingEnabled) roomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
+  if (planningRoomSkirtingEnabled) planningRoomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
   document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));

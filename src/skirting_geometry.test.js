@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSkirtingPerimeter } from './geometry.js';
+import { computeSkirtingPerimeter, computeSkirtingArea, multiPolygonToPathD } from './geometry.js';
 
 describe('computeSkirtingPerimeter', () => {
   it('calculates perimeter for a simple rectangular room', () => {
@@ -112,5 +112,22 @@ describe('computeSkirtingPerimeter', () => {
     };
     // Only exclusion perimeter: 50 * 4 = 200
     expect(computeSkirtingPerimeter(room)).toBeCloseTo(200);
+  });
+
+  it('skips room walls when room skirting is disabled but keeps exclusions', () => {
+    const room = {
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 200, heightCm: 100, skirtingEnabled: true }],
+      skirting: { enabled: false },
+      exclusions: [
+        { id: 'ex1', type: 'rect', x: 50, y: 20, w: 30, h: 30, skirtingEnabled: true }
+      ]
+    };
+
+    const { mp } = computeSkirtingArea(room, room.exclusions);
+    expect(mp).toBeDefined();
+
+    const d = multiPolygonToPathD(mp || []);
+    expect(d).not.toContain("0 0");
+    expect(d).toContain("50 20");
   });
 });

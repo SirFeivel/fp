@@ -87,7 +87,10 @@ export function computeSkirtingArea(room, exclusions) {
   if (!room) return { mp: null, error: "No room" };
 
   const allSections = getRoomSections(room);
-  const activeSections = allSections.filter(s => s.skirtingEnabled !== false);
+  const roomSkirtingEnabled = room.skirting?.enabled !== false;
+  const activeSections = roomSkirtingEnabled
+    ? allSections.filter(s => s.skirtingEnabled !== false)
+    : [];
   const skirtingExclusions = (exclusions || []).filter(ex => ex.skirtingEnabled !== false);
 
   if (activeSections.length === 0 && skirtingExclusions.length === 0) {

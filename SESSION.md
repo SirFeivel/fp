@@ -1139,3 +1139,20 @@ Horizontal bar below preview showing key numbers:
 - Complete
 - `npm test` and `npm run build` successful
 - `npm run dev` started successfully
+
+## Session: Room Skirting Toggle (2026-01-30)
+### Goal
+- Make the per-room skirting toggle affect room perimeter skirting while keeping exclusion skirting intact.
+
+### Branch
+`feature-room-skirting-toggle`
+
+### Plan
+1. Skip room sections when room.skirting.enabled is false
+2. Keep exclusion skirting independent
+3. Add a test for room toggle behavior
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully

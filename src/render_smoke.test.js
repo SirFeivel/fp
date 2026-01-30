@@ -106,6 +106,7 @@ describe('render.js smoke tests', () => {
     `;
     const state = defaultState();
     const room = state.floors[0].rooms[0];
+    room.skirting.enabled = true;
     room.skirting.type = 'bought';
     room.skirting.boughtWidthCm = 100;
     room.skirting.boughtPricePerPiece = 10;
@@ -213,6 +214,7 @@ describe('render.js smoke tests', () => {
     const state = defaultState();
     state.view.showSkirting = true;
     const room = state.floors[0].rooms[0];
+    room.skirting.enabled = true;
     if (room.sections && room.sections[0]) {
       room.sections[0].widthCm = 100;
       room.sections[0].heightCm = 100;
