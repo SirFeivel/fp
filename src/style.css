@@ -2155,8 +2155,8 @@ body{
   border-radius: var(--r-sm);
   background: rgba(255,255,255,0.04);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -2170,10 +2170,88 @@ body{
 }
 
 .tile-edit-actions-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+}
+
+.tile-edit-btn.update {
+  border-color: rgba(255, 196, 95, 0.5);
+  color: #ffd48a;
+}
+
+.tile-edit-btn.update:hover {
+  background: rgba(255, 196, 95, 0.15);
+  border-color: rgba(255, 196, 95, 0.8);
+}
+
+.tile-edit-btn.update.armed {
+  box-shadow: 0 0 0 2px rgba(255, 196, 95, 0.25);
+}
+
+.tile-edit-btn.new {
+  border-color: rgba(122, 162, 255, 0.5);
+  color: var(--accent);
+}
+
+.tile-edit-btn.new:hover {
+  background: rgba(122, 162, 255, 0.12);
+  border-color: rgba(122, 162, 255, 0.8);
+}
+
+.tile-edit-btn.discard {
+  border-color: rgba(255, 107, 107, 0.5);
+  color: #ff8a8a;
+}
+
+.tile-edit-btn.discard:hover {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.8);
+}
+
+.tile-edit-warning {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 196, 95, 0.35);
+  border-radius: var(--r-sm);
+  background: rgba(255, 196, 95, 0.08);
+}
+
+.tile-edit-warning .wTitle {
+  color: #ffd48a;
+}
+
+.tile-edit-new {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-sm);
+  background: rgba(122, 162, 255, 0.08);
+}
+
+.tile-edit-new.hidden {
+  display: none;
+}
+
+.tile-edit-new-label {
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.tile-edit-new-controls {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.tile-edit-new-controls input {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,.18);
+  color: var(--text);
+  font-size: var(--fs-sm);
 }
 
 .field-error {

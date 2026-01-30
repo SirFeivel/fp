@@ -567,10 +567,22 @@
                 </label>
                 <div id="tileEditActions" class="tile-edit-actions hidden">
                   <div class="tile-edit-actions-text" data-i18n="planning.tileEditActionsTitle">Save changes</div>
+                  <div id="tileEditWarning" class="warnItem tile-edit-warning hidden">
+                    <div class="wTitle" data-i18n="planning.tileEditUpdateWarnTitle">Affects all rooms</div>
+                    <div class="wText" data-i18n="planning.tileEditUpdateWarnText">Updating this preset will update every room using it.</div>
+                  </div>
+                  <div id="tileEditNewPresetRow" class="tile-edit-new hidden">
+                    <label class="tile-edit-new-label" data-i18n="planning.tileEditNewLabel">New preset name</label>
+                    <div class="tile-edit-new-controls">
+                      <input id="tileEditNewName" type="text" />
+                      <button id="tileEditNewConfirmBtn" class="btn small tile-edit-btn new" data-i18n="planning.tileEditCreate">Create</button>
+                      <button id="tileEditNewCancelBtn" class="btn ghost small tile-edit-btn discard" data-i18n="planning.tileEditCancel">Cancel</button>
+                    </div>
+                  </div>
                   <div class="tile-edit-actions-buttons">
-                    <button id="tileEditUpdateBtn" class="btn small" data-i18n="planning.tileEditUpdatePreset">Update preset</button>
-                    <button id="tileEditNewBtn" class="btn small" data-i18n="planning.tileEditSaveNew">Save new</button>
-                    <button id="tileEditDiscardBtn" class="btn ghost small" data-i18n="planning.tileEditDiscard">Discard</button>
+                    <button id="tileEditUpdateBtn" class="btn small tile-edit-btn update" data-i18n="planning.tileEditUpdatePreset">Update preset</button>
+                    <button id="tileEditNewBtn" class="btn small tile-edit-btn new" data-i18n="planning.tileEditSaveNew">Save new</button>
+                    <button id="tileEditDiscardBtn" class="btn ghost small tile-edit-btn discard" data-i18n="planning.tileEditDiscard">Discard</button>
                   </div>
                 </div>
                 <div class="tile-config-fields">
