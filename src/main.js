@@ -969,20 +969,25 @@ function updateAllTranslations() {
   // Planning Settings Panel Toggle
   const settingsPanel = document.getElementById("settingsPanel");
   const btnCloseSettings = document.getElementById("btnCloseSettings");
+  const quickOpenSettings = document.getElementById("quickOpenSettings");
+  const setSettingsPanelOpen = (open) => {
+    if (!settingsPanel) return;
+    settingsPanel.classList.toggle("hidden", !open);
+    if (quickOpenSettings) quickOpenSettings.classList.toggle("active", open);
+  };
 
   if (settingsPanel && btnCloseSettings) {
     btnCloseSettings.addEventListener("click", () => {
-      settingsPanel.classList.add("hidden");
+      setSettingsPanelOpen(false);
     });
 
     // Close on click outside
     document.addEventListener("click", (e) => {
-      const quickOpenSettings = document.getElementById("quickOpenSettings");
       if (!settingsPanel.classList.contains("hidden") &&
           !settingsPanel.contains(e.target) &&
           e.target !== quickOpenSettings &&
           !(quickOpenSettings && quickOpenSettings.contains(e.target))) {
-        settingsPanel.classList.add("hidden");
+        setSettingsPanelOpen(false);
       }
     });
   }
@@ -1008,7 +1013,6 @@ function updateAllTranslations() {
   const quickPattern = document.getElementById("quickPattern");
   const quickGrout = document.getElementById("quickGrout");
   const quickRemovalMode = document.getElementById("quickRemovalMode");
-  const quickOpenSettings = document.getElementById("quickOpenSettings");
 
   // Quick toggle event handlers
   wireQuickViewToggleHandlers();
@@ -1033,7 +1037,8 @@ function updateAllTranslations() {
 
   // Quick settings button opens settings panel
   quickOpenSettings?.addEventListener("click", () => {
-    settingsPanel?.classList.remove("hidden");
+    const isOpen = settingsPanel && !settingsPanel.classList.contains("hidden");
+    setSettingsPanelOpen(!isOpen);
   });
 
   // Exclusion dropdown

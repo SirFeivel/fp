@@ -26,7 +26,7 @@ const translations = {
     },
     planning: {
       tile: "Fliese:",
-      settings: "Einstellungen",
+      settings: "Raumeinstellungen",
       advanced: "Erweitert (Ursprung & Offset)",
       displayOptions: "Anzeigeoptionen",
       showGrid: "Rasterlinien anzeigen",
@@ -398,7 +398,7 @@ const translations = {
     },
     planning: {
       tile: "Tile:",
-      settings: "Settings",
+      settings: "Room Settings",
       advanced: "Advanced (Origin & Offset)",
       displayOptions: "Display Options",
       showGrid: "Show grid lines",

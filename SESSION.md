@@ -1316,3 +1316,20 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Planning Settings Toggle State (2026-01-30)
+### Goal
+- Give the planning settings button an active state when the panel is open.
+
+### Branch
+`feature-planning-ui`
+
+### Plan
+1. Add active styling for the quick settings button
+2. Toggle the active state when the settings panel opens/closes
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run

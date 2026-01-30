@@ -1133,6 +1133,12 @@ body{
   border-color: var(--line2);
 }
 
+.quick-btn.active {
+  background: var(--accentSoft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Quick Dropdown */
 .quick-dropdown {
   position: relative;
@@ -1245,7 +1251,7 @@ body{
   position: fixed;
   top: calc(var(--topbar-height) + var(--main-nav-height));
   right: 0;
-  width: 360px;
+  width: min(520px, 46vw);
   height: calc(100vh - var(--topbar-height) - var(--main-nav-height));
   background: var(--panel);
   border-left: 1px solid var(--line);
