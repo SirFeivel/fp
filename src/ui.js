@@ -728,6 +728,10 @@ export function bindUI({
   });
 
   document.getElementById("tilePresetSelect")?.addEventListener("change", (e) => {
+    if (!e.target.value) {
+      renderAll();
+      return;
+    }
     if (tileEditActive) {
       if (tileEditDirty) {
         setTileEditError(t("planning.tileEditSwitchBlocked"));
@@ -741,6 +745,24 @@ export function bindUI({
     setTileEditNewRowOpen(false);
     setTileEditError("");
     applyTilePreset(e.target.value);
+  });
+
+  document.getElementById("btnCreateTilePreset")?.addEventListener("click", () => {
+    if (!tileEditActive) {
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+      setTileEditError("");
+      snapshotTileEditState();
+      setTileEditActive(true);
+    }
+    if (!tileEditDirty) markTileEditDirty();
+    const baseName = getCurrentRoom(store.getState())?.tile?.reference || "";
+    const input = document.getElementById("tileReference");
+    if (input && baseName) {
+      input.value = baseName;
+    }
+    setTileEditNewRowOpen(true);
+    syncTileEditActions();
   });
 
   document.getElementById("tileConfigEditToggle")?.addEventListener("change", (e) => {

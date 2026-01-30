@@ -692,10 +692,7 @@ export function renderTilePresetPicker(state, currentRoom) {
   if (!sel) return;
   const presets = state.tilePresets || [];
   sel.innerHTML = "";
-  const empty = document.createElement("option");
-  empty.value = "";
-  empty.textContent = presets.length ? "–" : t("project.none");
-  sel.appendChild(empty);
+  sel.disabled = presets.length === 0;
   let matchId = "";
   const ref = currentRoom?.tile?.reference;
   if (ref) {
@@ -709,6 +706,8 @@ export function renderTilePresetPicker(state, currentRoom) {
     if (p.id === matchId) opt.selected = true;
     sel.appendChild(opt);
   });
+  const createBtn = document.getElementById("btnCreateTilePreset");
+  if (createBtn) createBtn.classList.toggle("hidden", presets.length > 0);
 }
 
 export function renderSkirtingPresetPicker(state) {

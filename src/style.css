@@ -2220,6 +2220,29 @@ body{
   color: #ffd48a;
 }
 
+.preset-delete-warning {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  border-radius: var(--r-sm);
+  background: rgba(255, 107, 107, 0.08);
+  margin-top: 10px;
+}
+
+.preset-delete-warning.hidden {
+  display: none;
+}
+
+.preset-delete-warning .wTitle {
+  color: #ff8a8a;
+}
+
+.preset-delete-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .tile-edit-new {
   display: grid;
   gap: 6px;

@@ -529,6 +529,10 @@ function bindPresetCollection() {
   const roomList = document.getElementById("tilePresetRoomList");
   const addTile = document.getElementById("btnAddTilePreset");
   const delTile = document.getElementById("btnDeleteTilePreset");
+  const tilePresetDeleteWarning = document.getElementById("tilePresetDeleteWarning");
+  const tilePresetDeleteWarningText = document.getElementById("tilePresetDeleteWarningText");
+  const tilePresetDeleteConfirm = document.getElementById("btnConfirmDeleteTilePreset");
+  const tilePresetDeleteCancel = document.getElementById("btnCancelDeleteTilePreset");
 
   const skirtList = document.getElementById("skirtingPresetList");
   const skirtName = document.getElementById("skirtingPresetName");
@@ -538,9 +542,35 @@ function bindPresetCollection() {
   const addSkirt = document.getElementById("btnAddSkirtingPreset");
   const delSkirt = document.getElementById("btnDeleteSkirtingPreset");
 
+  let pendingTilePresetDelete = null;
+  const hideTilePresetDeleteWarning = () => {
+    pendingTilePresetDelete = null;
+    tilePresetDeleteWarning?.classList.add("hidden");
+    if (tilePresetDeleteWarningText) tilePresetDeleteWarningText.textContent = "";
+  };
+
+  const applyTilePresetDelete = (next, presetName, roomsUsingPreset) => {
+    if (!roomsUsingPreset?.length) return;
+    const roomIdSet = new Set(roomsUsingPreset);
+    next.floors?.forEach(floor => {
+      floor.rooms?.forEach(room => {
+        if (roomIdSet.has(room.id)) {
+          room.tile.reference = "";
+          room.tile.shape = "rect";
+          room.tile.widthCm = 0;
+          room.tile.heightCm = 0;
+        }
+      });
+    });
+    if (presetName && next.materials?.[presetName]) {
+      delete next.materials[presetName];
+    }
+  };
+
   if (tileList) {
     tileList.addEventListener("change", (e) => {
       selectedTilePresetId = e.target.value || null;
+      hideTilePresetDeleteWarning();
       renderAll();
     });
   }
@@ -577,9 +607,45 @@ function bindPresetCollection() {
   delTile?.addEventListener("click", () => {
     if (!selectedTilePresetId) return;
     const next = deepClone(store.getState());
+    const preset = next.tilePresets.find(p => p.id === selectedTilePresetId);
+    const presetName = preset?.name || "";
+    const roomsUsingPreset = [];
+    if (presetName) {
+      next.floors?.forEach(floor => {
+        floor.rooms?.forEach(room => {
+          if (room.tile?.reference === presetName) roomsUsingPreset.push(room.id);
+        });
+      });
+    }
+
+    if (roomsUsingPreset.length > 0) {
+      pendingTilePresetDelete = { id: selectedTilePresetId, name: presetName, rooms: roomsUsingPreset };
+      if (tilePresetDeleteWarningText) {
+        tilePresetDeleteWarningText.textContent =
+          `${t("tile.presetDeleteWarn")} ${roomsUsingPreset.length} ${t("tile.presetDeleteWarnTail")}`;
+      }
+      tilePresetDeleteWarning?.classList.remove("hidden");
+      return;
+    }
+
     next.tilePresets = next.tilePresets.filter(p => p.id !== selectedTilePresetId);
     selectedTilePresetId = next.tilePresets.at(-1)?.id ?? null;
     commitViaStore(t("tile.presetDeleted"), next);
+  });
+
+  tilePresetDeleteConfirm?.addEventListener("click", () => {
+    if (!pendingTilePresetDelete?.id) return;
+    const next = deepClone(store.getState());
+    const { id, name, rooms } = pendingTilePresetDelete;
+    applyTilePresetDelete(next, name, rooms);
+    next.tilePresets = next.tilePresets.filter(p => p.id !== id);
+    selectedTilePresetId = next.tilePresets.at(-1)?.id ?? null;
+    hideTilePresetDeleteWarning();
+    commitViaStore(t("tile.presetDeleted"), next);
+  });
+
+  tilePresetDeleteCancel?.addEventListener("click", () => {
+    hideTilePresetDeleteWarning();
   });
 
   const commitTilePreset = () => {
@@ -1085,10 +1151,6 @@ function updateAllTranslations() {
       if (quickTilePreset) {
         quickTilePreset.innerHTML = "";
         const presets = state.tilePresets || [];
-        const empty = document.createElement("option");
-        empty.value = "";
-        empty.textContent = presets.length ? t("tile.custom") : t("project.none");
-        quickTilePreset.appendChild(empty);
         presets.forEach(p => {
           const opt = document.createElement("option");
           opt.value = p.id;
@@ -1096,7 +1158,7 @@ function updateAllTranslations() {
           quickTilePreset.appendChild(opt);
         });
         const match = presets.find(p => p.name && p.name === room.tile?.reference);
-        quickTilePreset.value = match ? match.id : "";
+        quickTilePreset.value = match ? match.id : (presets[0]?.id || "");
         quickTilePreset.disabled = presets.length === 0;
       }
       if (quickPattern) quickPattern.value = room.pattern?.type || "grid";

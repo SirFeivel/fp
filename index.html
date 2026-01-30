@@ -276,6 +276,14 @@
                     <button id="btnAddTilePreset" class="btn-inline" title="Add Preset">+</button>
                     <button id="btnDeleteTilePreset" class="btn-inline danger" title="Delete Preset">×</button>
                   </div>
+                  <div id="tilePresetDeleteWarning" class="warnItem preset-delete-warning hidden">
+                    <div class="wTitle" data-i18n="setup.presetDeleteInUseTitle">Preset in use</div>
+                    <div class="wText" id="tilePresetDeleteWarningText"></div>
+                    <div class="preset-delete-actions">
+                      <button id="btnConfirmDeleteTilePreset" class="btn small tile-edit-btn discard" data-i18n="setup.presetDeleteConfirm">Delete preset</button>
+                      <button id="btnCancelDeleteTilePreset" class="btn ghost small tile-edit-btn" data-i18n="setup.presetDeleteCancel">Cancel</button>
+                    </div>
+                  </div>
                   <div class="field">
                     <label data-i18n="setup.presetName">Name</label>
                     <input id="tilePresetName" type="text" />
@@ -554,6 +562,7 @@
                   <div class="field">
                     <label data-i18n="tile.preset">Preset</label>
                     <select id="tilePresetSelect"></select>
+                    <button id="btnCreateTilePreset" class="btn small hidden" data-i18n="tile.createPreset">Create preset</button>
                   </div>
                   <div class="field">
                     <label>&nbsp;</label>
