@@ -736,58 +736,413 @@ export function buildCommercialMaterialsTable(proj) {
   return { columns, rows };
 }
 
-export async function exportCommercialXlsx(state, options) {
+export async function buildCommercialXlsxWorkbook(state) {
   const XLSXModule = await import("xlsx");
   const XLSX = XLSXModule.default || XLSXModule;
   const proj = computeProjectTotals(state);
 
   const wb = XLSX.utils.book_new();
 
-  const summaryRows = [
-    {
-      totalAreaM2: model.summary.totalAreaM2,
-      totalTiles: model.summary.totalTiles,
-      totalPacks: model.summary.totalPacks,
-      totalCost: model.summary.totalCost,
-      grandTotal: model.summary.grandTotal
+  const sheetName = (label) => sanitizeFilename(label).slice(0, 31) || "Sheet";
+  const introName = sheetName(t("export.intro"));
+  const summaryName = sheetName(t("export.summary"));
+  const roomsName = sheetName(t("export.rooms"));
+  const materialsName = sheetName(t("export.materials"));
+  const skirtingName = sheetName(t("export.skirting"));
+
+  const introSheet = XLSX.utils.aoa_to_sheet([
+    [t("export.introTitle")],
+    [t("export.introProject"), state.project?.name || "–"],
+    [t("export.introDate"), dateStamp()],
+    [t("export.introGenerated"), "TilePerfect"],
+    [""],
+    [t("export.introOverview")],
+    [t("export.introAssumptions")],
+    [t("export.introRooms")],
+    [t("export.introMaterials")],
+    [t("export.introSkirting")],
+    [t("export.introSummary")],
+    [""],
+    [t("export.introNotes")]
+  ]);
+
+  const summarySheet = XLSX.utils.aoa_to_sheet([
+    [t("metrics.totalArea"), ""],
+    [t("metrics.totalTiles"), ""],
+    [t("commercial.totalPacks"), ""],
+    [t("commercial.totalCost"), ""],
+    [t("metrics.grandTotal"), ""]
+  ]);
+
+  const calcTileAreaM2 = (room) => {
+    const tw = Number(room.tile?.widthCm) || 0;
+    const th = Number(room.tile?.heightCm) || 0;
+    const shape = room.tile?.shape || "rect";
+    if (shape === "hex") {
+      const radius = tw / Math.sqrt(3);
+      return ((3 * Math.sqrt(3) / 2) * radius * radius) / 10000;
     }
+    if (shape === "rhombus") {
+      return (tw * th) / 20000;
+    }
+    if (shape === "square") {
+      return (tw * tw) / 10000;
+    }
+    return (tw * th) / 10000;
+  };
+
+  const tileAreaForRef = new Map();
+  for (const floor of state.floors || []) {
+    for (const room of floor.rooms || []) {
+      const ref = room.tile?.reference || t("commercial.defaultMaterial");
+      if (!tileAreaForRef.has(ref)) {
+        tileAreaForRef.set(ref, calcTileAreaM2(room));
+      }
+    }
+  }
+
+  const roomsHeader = [
+    t("tabs.floor"),
+    t("tabs.room"),
+    t("tile.reference"),
+    t("metrics.netArea"),
+    t("commercial.floorTiles"),
+    t("commercial.skirtingTiles"),
+    t("commercial.totalTiles"),
+    t("commercial.tileAreaM2"),
+    t("commercial.totalM2"),
+    t("commercial.packSize"),
+    t("commercial.pricePerM2"),
+    t("commercial.pricePerPack"),
+    t("commercial.packsFloor"),
+    t("commercial.packsSkirting"),
+    t("commercial.totalPacks"),
+    t("skirting.type"),
+    t("skirting.pieces"),
+    t("skirting.pricePerPiece"),
+    t("skirting.cost"),
+    t("commercial.totalCost")
   ];
 
-  const materialRows = (model.materials || []).map((m) => ({
-    reference: m.reference || t("commercial.defaultMaterial"),
-    totalPacks: m.totalPacks || 0,
-    totalCost: Number(m.adjustedCost || m.totalCost || 0)
-  }));
+  const roomsRows = [];
+  for (const floor of state.floors || []) {
+    for (const room of floor.rooms || []) {
+      const grand = computeGrandTotals(state, room);
+      if (!grand.ok) continue;
+      const pricing = getRoomPricing(state, room);
+      const skirting = computeSkirtingNeeds(state, room);
+      roomsRows.push([
+        floor.name || "",
+        room.name || "",
+        room.tile?.reference || t("commercial.defaultMaterial"),
+        grand.netAreaM2,
+        grand.floorTiles,
+        grand.skirtingTiles,
+        "",
+        calcTileAreaM2(room),
+        "",
+        pricing.packM2,
+        pricing.pricePerM2,
+        "",
+        "",
+        "",
+        "",
+        skirting.type || room.skirting?.type || "cutout",
+        skirting.count || 0,
+        Number(room.skirting?.boughtPricePerPiece) || 0,
+        "",
+        ""
+      ]);
+    }
+  }
+  roomsRows.push([
+    t("commercial.grandTotal"),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]);
+  const roomsSheet = XLSX.utils.aoa_to_sheet([roomsHeader, ...roomsRows]);
 
-  const roomRows = (model.rooms || []).map((r) => ({
-    room: `${r.floor} / ${r.room}`,
-    areaM2: r.areaM2,
-    tiles: r.tiles,
-    packs: r.packs,
-    skirtingLengthCm: r.skirtingLengthCm,
-    cost: r.cost
-  }));
+  const materialsHeader = [
+    t("tile.reference"),
+    t("commercial.floorTiles"),
+    t("commercial.skirtingTiles"),
+    t("commercial.totalTiles"),
+    t("commercial.tileAreaM2"),
+    t("commercial.totalM2"),
+    t("commercial.packSize"),
+    t("commercial.pricePerM2"),
+    t("commercial.pricePerPack"),
+    t("commercial.amountOverride"),
+    t("commercial.totalPacks"),
+    t("commercial.skirtingCostBought"),
+    t("commercial.totalCost")
+  ];
 
-  const skirtingRows = (model.skirting || []).map((s) => ({
-    room: `${s.floor} / ${s.room}`,
-    lengthCm: s.skirtingLengthCm,
-    pieces: s.skirtingPieces,
-    cost: s.skirtingCost,
-    type: s.skirtingType
-  }));
+  const materialRows = (proj.materials || []).map((m) => {
+    const ref = m.reference || t("commercial.defaultMaterial");
+    return [
+      ref,
+      "",
+      "",
+      "",
+      tileAreaForRef.get(ref) || 0,
+      "",
+      m.packM2,
+      m.pricePerM2,
+      "",
+      m.extraPacks,
+      "",
+      "",
+      ""
+    ];
+  });
+  materialRows.push([
+    t("commercial.grandTotal"),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]);
+  const materialsSheet = XLSX.utils.aoa_to_sheet([materialsHeader, ...materialRows]);
 
-  const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
-  const materialsSheet = XLSX.utils.json_to_sheet(materialRows);
-  const roomsSheet = XLSX.utils.json_to_sheet(roomRows);
-  const skirtingSheet = XLSX.utils.json_to_sheet(skirtingRows);
+  const skirtingHeader = [
+    t("tabs.floor"),
+    t("tabs.room"),
+    t("tile.reference"),
+    t("pdf.dimensions"),
+    t("skirting.pieces"),
+    t("skirting.type"),
+    t("skirting.pricePerPiece"),
+    t("commercial.tileAreaM2"),
+    t("commercial.pricePerM2"),
+    t("metrics.totalTiles"),
+    t("commercial.totalCost")
+  ];
 
-  const sheetName = (label) => sanitizeFilename(label).slice(0, 31) || "Sheet";
+  const skirtingRows = [];
+  for (const floor of state.floors || []) {
+    for (const room of floor.rooms || []) {
+      const skirting = computeSkirtingNeeds(state, room);
+      if (!skirting || !skirting.enabled) continue;
+      skirtingRows.push([
+        floor.name || "",
+        room.name || "",
+        room.tile?.reference || t("commercial.defaultMaterial"),
+        skirting.totalLengthCm || 0,
+        skirting.count || 0,
+        skirting.type || room.skirting?.type || "cutout",
+        Number(room.skirting?.boughtPricePerPiece) || 0,
+        calcTileAreaM2(room),
+        getRoomPricing(state, room).pricePerM2,
+        skirting.additionalTiles || 0,
+        ""
+      ]);
+    }
+  }
+  skirtingRows.push([
+    t("commercial.grandTotal"),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]);
+  const skirtingSheet = XLSX.utils.aoa_to_sheet([skirtingHeader, ...skirtingRows]);
 
-  XLSX.utils.book_append_sheet(wb, summarySheet, sheetName(t("export.summary")));
-  XLSX.utils.book_append_sheet(wb, materialsSheet, sheetName(t("export.materials")));
-  XLSX.utils.book_append_sheet(wb, roomsSheet, sheetName(t("export.rooms")));
-  XLSX.utils.book_append_sheet(wb, skirtingSheet, sheetName(t("export.skirting")));
+  XLSX.utils.book_append_sheet(wb, introSheet, introName);
+  XLSX.utils.book_append_sheet(wb, summarySheet, summaryName);
+  XLSX.utils.book_append_sheet(wb, roomsSheet, roomsName);
+  XLSX.utils.book_append_sheet(wb, materialsSheet, materialsName);
+  XLSX.utils.book_append_sheet(wb, skirtingSheet, skirtingName);
 
-  const filename = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}.xlsx`);
-  XLSX.writeFile(wb, filename);
+  const setFormula = (sheet, rowIndex, colIndex, formula) => {
+    const cell = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+    sheet[cell] = sheet[cell] || {};
+    sheet[cell].f = formula;
+    sheet[cell].t = "n";
+  };
+
+  const lastRow = (sheet) => {
+    const ref = sheet["!ref"];
+    if (!ref) return 1;
+    const range = XLSX.utils.decode_range(ref);
+    return range.e.r + 1;
+  };
+
+  const setNumberFormat = (sheet, fromRow, toRow, colIndices, format) => {
+    for (let r = fromRow; r <= toRow; r++) {
+      for (const c of colIndices) {
+        const cellRef = XLSX.utils.encode_cell({ r, c });
+        if (!sheet[cellRef]) continue;
+        sheet[cellRef].z = format;
+      }
+    }
+  };
+
+  const setAutoFilter = (sheet, lastCol, lastRowIndex) => {
+    sheet["!autofilter"] = { ref: `A1:${lastCol}${lastRowIndex}` };
+  };
+
+
+  const roomsLast = lastRow(roomsSheet);
+  for (let r = 2; r <= roomsLast - 1; r++) {
+    setFormula(roomsSheet, r - 1, 6, `E${r}+F${r}`);
+    setFormula(roomsSheet, r - 1, 8, `G${r}*H${r}`);
+    setFormula(roomsSheet, r - 1, 11, `J${r}*K${r}`);
+    setFormula(roomsSheet, r - 1, 12, `IF(J${r}>0,CEILING(D${r}/J${r},1),0)`);
+    setFormula(roomsSheet, r - 1, 13, `IF(J${r}>0,CEILING((F${r}*H${r})/J${r},1),0)`);
+    setFormula(roomsSheet, r - 1, 14, `M${r}+N${r}`);
+    setFormula(roomsSheet, r - 1, 18, `IF(P${r}=\"bought\",Q${r}*R${r},F${r}*H${r}*K${r})`);
+    setFormula(roomsSheet, r - 1, 19, `D${r}*K${r}+S${r}`);
+  }
+  if (roomsLast > 2) {
+    const totalRow = roomsLast;
+    setFormula(roomsSheet, totalRow - 1, 3, `SUM(D2:D${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 4, `SUM(E2:E${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 5, `SUM(F2:F${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 6, `SUM(G2:G${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 8, `SUM(I2:I${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 12, `SUM(M2:M${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 13, `SUM(N2:N${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 14, `SUM(O2:O${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 18, `SUM(S2:S${totalRow - 1})`);
+    setFormula(roomsSheet, totalRow - 1, 19, `SUM(T2:T${totalRow - 1})`);
+  }
+
+  const matsLast = lastRow(materialsSheet);
+  for (let r = 2; r <= matsLast - 1; r++) {
+    setFormula(materialsSheet, r - 1, 1, `SUMIFS('${roomsName}'!E:E,'${roomsName}'!C:C,A${r})`);
+    setFormula(materialsSheet, r - 1, 2, `SUMIFS('${roomsName}'!F:F,'${roomsName}'!C:C,A${r})`);
+    setFormula(materialsSheet, r - 1, 3, `B${r}+C${r}`);
+    setFormula(materialsSheet, r - 1, 5, `D${r}*E${r}`);
+    setFormula(materialsSheet, r - 1, 8, `G${r}*H${r}`);
+    setFormula(materialsSheet, r - 1, 10, `IF(G${r}>0,CEILING(F${r}/G${r},1)+J${r},J${r})`);
+    setFormula(materialsSheet, r - 1, 11, `SUMIFS('${roomsName}'!S:S,'${roomsName}'!C:C,A${r},'${roomsName}'!P:P,\"bought\")`);
+    setFormula(materialsSheet, r - 1, 12, `SUMIFS('${roomsName}'!T:T,'${roomsName}'!C:C,A${r})+J${r}*I${r}`);
+  }
+  if (matsLast > 2) {
+    const totalRow = matsLast;
+    setFormula(materialsSheet, totalRow - 1, 1, `SUM(B2:B${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 2, `SUM(C2:C${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 3, `SUM(D2:D${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 5, `SUM(F2:F${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 10, `SUM(K2:K${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 11, `SUM(L2:L${totalRow - 1})`);
+    setFormula(materialsSheet, totalRow - 1, 12, `SUM(M2:M${totalRow - 1})`);
+  }
+
+  const skirtLast = lastRow(skirtingSheet);
+  for (let r = 2; r <= skirtLast - 1; r++) {
+    setFormula(skirtingSheet, r - 1, 10, `IF(F${r}=\"bought\",E${r}*G${r},J${r}*H${r}*I${r})`);
+  }
+  if (skirtLast > 2) {
+    const totalRow = skirtLast;
+    setFormula(skirtingSheet, totalRow - 1, 3, `SUM(D2:D${totalRow - 1})`);
+    setFormula(skirtingSheet, totalRow - 1, 4, `SUM(E2:E${totalRow - 1})`);
+    setFormula(skirtingSheet, totalRow - 1, 9, `SUM(J2:J${totalRow - 1})`);
+    setFormula(skirtingSheet, totalRow - 1, 10, `SUM(K2:K${totalRow - 1})`);
+  }
+
+  const matsDataLast = Math.max(2, matsLast - 1);
+  setFormula(summarySheet, 0, 1, `SUM('${materialsName}'!F2:F${matsDataLast})`);
+  setFormula(summarySheet, 1, 1, `SUM('${materialsName}'!D2:D${matsDataLast})`);
+  setFormula(summarySheet, 2, 1, `SUM('${materialsName}'!K2:K${matsDataLast})`);
+  setFormula(summarySheet, 3, 1, `SUM('${materialsName}'!M2:M${matsDataLast})`);
+  setFormula(summarySheet, 4, 1, `B4`);
+
+  // Formats and layout (readability)
+  const fmtInt = "0";
+  const fmtNum2 = "0.00";
+  const fmtNum3 = "0.000";
+  const fmtCurrency = "€ #,##0.00";
+
+  setNumberFormat(summarySheet, 0, 4, [1], fmtNum2);
+  setNumberFormat(summarySheet, 1, 1, [1], fmtInt);
+  setNumberFormat(summarySheet, 2, 2, [1], fmtInt);
+  setNumberFormat(summarySheet, 3, 4, [1], fmtCurrency);
+  summarySheet["!cols"] = [{ wch: 28 }, { wch: 18 }];
+
+  introSheet["!cols"] = [{ wch: 120 }];
+
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [3], fmtNum2); // net area
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [4, 5, 6], fmtInt); // tiles
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [7], fmtNum3); // tile area
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [8], fmtNum2); // total m2
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [9], fmtNum2); // pack size
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [10, 11], fmtCurrency); // price/m2 + price/pack
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [12, 13, 14], fmtInt); // packs
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [16], fmtInt); // skirting pieces
+  setNumberFormat(roomsSheet, 1, roomsLast - 1, [17, 18, 19], fmtCurrency); // skirting cost + total cost
+  roomsSheet["!cols"] = [
+    { wch: 18 }, { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 12 },
+    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }
+  ];
+  setAutoFilter(roomsSheet, "T", roomsLast);
+
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [1, 2, 3], fmtInt); // tiles
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [4], fmtNum3); // tile area
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [5, 6], fmtNum2); // total m2 + pack size
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [7, 8], fmtCurrency); // price m2/pack
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [9, 10], fmtInt); // extra packs + total packs
+  setNumberFormat(materialsSheet, 1, matsLast - 1, [11, 12], fmtCurrency); // bought skirting + total cost
+  materialsSheet["!cols"] = [
+    { wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+    { wch: 12 }, { wch: 16 }, { wch: 16 }
+  ];
+  setAutoFilter(materialsSheet, "M", matsLast);
+
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [3], fmtNum2); // length cm
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [4], fmtInt); // pieces
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [6], fmtCurrency); // price per piece
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [7], fmtNum3); // tile area
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [8], fmtCurrency); // price per m2
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [9], fmtInt); // tiles
+  setNumberFormat(skirtingSheet, 1, skirtLast - 1, [10], fmtCurrency); // total cost
+  skirtingSheet["!cols"] = [
+    { wch: 18 }, { wch: 24 }, { wch: 24 }, { wch: 14 }, { wch: 10 },
+    { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
+    { wch: 14 }
+  ];
+  setAutoFilter(skirtingSheet, "K", skirtLast);
+
+  return { wb, introName, summaryName, roomsName, materialsName, skirtingName, XLSX };
+}
+
+export async function exportCommercialXlsx(state, options) {
+  const { wb, XLSX } = await buildCommercialXlsxWorkbook(state);
+  const baseName = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}`);
+  XLSX.writeFile(wb, `${baseName}.xlsx`);
 }

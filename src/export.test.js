@@ -5,10 +5,13 @@ import {
   buildCommercialExportModel,
   computeRoomPdfLayout,
   buildCommercialRoomsTable,
-  buildCommercialMaterialsTable
+  buildCommercialMaterialsTable,
+  buildCommercialXlsxWorkbook
 } from "./export.js";
 import { defaultState } from "./core.js";
 import { computeProjectTotals } from "./calc.js";
+import fs from "node:fs";
+import path from "node:path";
 
 describe("export helpers", () => {
   it("sanitizes filenames", () => {
@@ -69,5 +72,45 @@ describe("export helpers", () => {
     const table = buildCommercialMaterialsTable(proj);
     expect(table.columns.length).toBe(11);
     expect(table.rows.at(-1)?.isTotal).toBe(true);
+  });
+
+  it("builds excel workbook with formulas for edge case state", async () => {
+    const fixturePath = path.join(process.cwd(), "src/__fixtures__/export_excel_edgecase.json");
+    const state = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+    const { wb, roomsName, materialsName, summaryName, introName, XLSX } = await buildCommercialXlsxWorkbook(state);
+
+    expect(wb.Sheets[introName]).toBeDefined();
+    expect(wb.Sheets[summaryName]).toBeDefined();
+    expect(wb.Sheets[roomsName]).toBeDefined();
+    expect(wb.Sheets[materialsName]).toBeDefined();
+
+    const roomsSheet = wb.Sheets[roomsName];
+    expect(roomsSheet["G2"]?.f).toBe("E2+F2");
+    expect(roomsSheet["I2"]?.f).toBe("G2*H2");
+    expect(roomsSheet["L2"]?.f).toBe("J2*K2");
+    expect(roomsSheet["M2"]?.f).toBe("IF(J2>0,CEILING(D2/J2,1),0)");
+    expect(roomsSheet["N2"]?.f).toBe("IF(J2>0,CEILING((F2*H2)/J2,1),0)");
+    expect(roomsSheet["O2"]?.f).toBe("M2+N2");
+    expect(roomsSheet["S2"]?.f).toBe("IF(P2=\"bought\",Q2*R2,F2*H2*K2)");
+    expect(roomsSheet["T2"]?.f).toBe("D2*K2+S2");
+
+    const matsSheet = wb.Sheets[materialsName];
+    expect(matsSheet["B2"]?.f).toContain(roomsName);
+    expect(matsSheet["C2"]?.f).toContain(roomsName);
+    expect(matsSheet["D2"]?.f).toBe("B2+C2");
+    expect(matsSheet["F2"]?.f).toBe("D2*E2");
+    expect(matsSheet["I2"]?.f).toBe("G2*H2");
+    expect(matsSheet["K2"]?.f).toBe("IF(G2>0,CEILING(F2/G2,1)+J2,J2)");
+    expect(matsSheet["L2"]?.f).toContain(roomsName);
+    expect(matsSheet["M2"]?.f).toContain("J2*I2");
+
+    const matsRange = XLSX.utils.decode_range(matsSheet["!ref"]);
+    const matsLastRow = matsRange.e.r + 1;
+    const matsTotalCell = `M${matsLastRow}`;
+    expect(matsSheet[matsTotalCell]?.f).toBe(`SUM(M2:M${matsLastRow - 1})`);
+
+    const summarySheet = wb.Sheets[summaryName];
+    expect(summarySheet["B1"]?.f).toContain(materialsName);
+    expect(summarySheet["B4"]?.f).toContain(materialsName);
   });
 });

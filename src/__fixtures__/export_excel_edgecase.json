@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "version": 6,
+    "updatedAt": "2026-01-30T22:54:43.892Z"
+  },
+  "project": {
+    "name": "Projekt"
+  },
+  "materials": {
+    "Preset 2": {
+      "pricePerM2": 39.9,
+      "packM2": 1.44
+    }
+  },
+  "tilePresets": [
+    {
+      "id": "4fd6f3aa-c63d-46d0-8cf8-c0fa6bc09e82",
+      "name": "Standard",
+      "shape": "rect",
+      "widthCm": 40,
+      "heightCm": 20,
+      "groutWidthCm": 0.2,
+      "groutColorHex": "#ffffff",
+      "pricePerM2": 39.9,
+      "packM2": 1.44,
+      "useForSkirting": true
+    },
+    {
+      "id": "4c3693a9-2338-4b44-9151-f7c3ce035e5a",
+      "name": "Preset 2",
+      "shape": "hex",
+      "widthCm": 50.1,
+      "heightCm": 20,
+      "groutWidthCm": 0.2,
+      "groutColorHex": "#ffffff",
+      "pricePerM2": 39.9,
+      "packM2": 1.44,
+      "useForSkirting": false
+    }
+  ],
+  "skirtingPresets": [
+    {
+      "id": "f384cd86-21eb-4fc8-a091-477062b04c21",
+      "name": "Standard Sockelleiste",
+      "heightCm": 6,
+      "lengthCm": 60,
+      "pricePerPiece": 5
+    }
+  ],
+  "floors": [
+    {
+      "id": "393aa949-6f6e-42e6-851b-e9ea96fac567",
+      "name": "Erdgeschoss",
+      "rooms": [
+        {
+          "id": "79e287d9-d646-4e25-afc8-c3a5fce68121",
+          "name": "Raum",
+          "sections": [
+            {
+              "id": "2b738269-e2a5-489d-850f-3982f6b5b2c5",
+              "label": "Hauptbereich",
+              "x": 0,
+              "y": 0,
+              "widthCm": 200,
+              "heightCm": 400,
+              "skirtingEnabled": true
+            },
+            {
+              "id": "5329ddc3-8e89-4f4f-8b07-5376f0741f51",
+              "label": "Area 2",
+              "x": 0,
+              "y": -122.61530303955078,
+              "widthCm": 136.48333740234375,
+              "heightCm": 122.61530303955078,
+              "skirtingEnabled": false
+            }
+          ],
+          "exclusions": [],
+          "tile": {
+            "widthCm": 40,
+            "heightCm": 20,
+            "shape": "rect",
+            "reference": "Standard"
+          },
+          "grout": {
+            "widthCm": 0.2,
+            "colorHex": "#ffffff"
+          },
+          "pattern": {
+            "type": "grid",
+            "bondFraction": 0.5,
+            "rotationDeg": 0,
+            "offsetXcm": 0,
+            "offsetYcm": 0,
+            "origin": {
+              "preset": "tl",
+              "xCm": 0,
+              "yCm": 0
+            }
+          },
+          "skirting": {
+            "enabled": true,
+            "type": "cutout",
+            "heightCm": 6,
+            "boughtWidthCm": 60,
+            "boughtPricePerPiece": 5
+          },
+          "excludedTiles": [
+            "r17c6",
+            "r13c4",
+            "r10c5"
+          ],
+          "excludedSkirts": [
+            "w200.00,0.00-200.00,400.00-p2",
+            "w0.00,0.00-0.00,400.00-p8",
+            "w0.00,0.00-0.00,400.00-p1",
+            "w200.00,-200.00-200.00,400.00-p2"
+          ]
+        },
+        {
+          "id": "aa88239d-e8ef-480a-b61d-3c31a55c4cee",
+          "name": "Raum 2",
+          "sections": [
+            {
+              "id": "81a2edf9-afd7-4e79-90f7-209333987e07",
+              "label": "Hauptbereich",
+              "x": 0,
+              "y": 0,
+              "widthCm": 600,
+              "heightCm": 400,
+              "skirtingEnabled": true
+            }
+          ],
+          "exclusions": [
+            {
+              "id": "7ece4f48-0d88-4dd8-8c02-14d10d8008dc",
+              "type": "circle",
+              "label": "Circle 1",
+              "cx": 288.4,
+              "cy": 216.2,
+              "r": 40,
+              "skirtingEnabled": true
+            }
+          ],
+          "excludedTiles": [],
+          "excludedSkirts": [],
+          "tile": {
+            "widthCm": 50.1,
+            "heightCm": 20,
+            "shape": "hex",
+            "reference": "Preset 2"
+          },
+          "grout": {
+            "widthCm": 0.2,
+            "colorHex": "#ffffff"
+          },
+          "pattern": {
+            "type": "grid",
+            "bondFraction": 0.5,
+            "rotationDeg": 0,
+            "offsetXcm": 0,
+            "offsetYcm": 0,
+            "origin": {
+              "preset": "tl",
+              "xCm": 0,
+              "yCm": 0
+            }
+          },
+          "skirting": {
+            "enabled": false,
+            "type": "bought",
+            "heightCm": 6,
+            "boughtWidthCm": 60,
+            "boughtPricePerPiece": 5
+          }
+        },
+        {
+          "id": "06d87c92-2a11-46d3-9b51-656111ed9d89",
+          "name": "Raum 3",
+          "sections": [
+            {
+              "id": "49238413-87b2-45dc-87db-044846f3ef1a",
+              "label": "Hauptbereich",
+              "x": 0,
+              "y": 0,
+              "widthCm": 450,
+              "heightCm": 150,
+              "skirtingEnabled": true
+            }
+          ],
+          "exclusions": [
+            {
+              "id": "bc1daacf-8411-4b28-9cba-71915ada2d9b",
+              "type": "rect",
+              "label": "Rectangle 1",
+              "x": -0.20000000000000284,
+              "y": 121.8,
+              "w": 90,
+              "h": 30,
+              "skirtingEnabled": true
+            }
+          ],
+          "excludedTiles": [],
+          "excludedSkirts": [],
+          "tile": {
+            "widthCm": 40,
+            "heightCm": 20,
+            "shape": "rect",
+            "reference": "Standard"
+          },
+          "grout": {
+            "widthCm": 0.2,
+            "colorHex": "#ffffff"
+          },
+          "pattern": {
+            "type": "grid",
+            "bondFraction": 0.5,
+            "rotationDeg": 0,
+            "offsetXcm": 0,
+            "offsetYcm": 0,
+            "origin": {
+              "preset": "tl",
+              "xCm": 0,
+              "yCm": 0
+            }
+          },
+          "skirting": {
+            "enabled": true,
+            "type": "cutout",
+            "heightCm": 6,
+            "boughtWidthCm": 60,
+            "boughtPricePerPiece": 5
+          }
+        }
+      ]
+    }
+  ],
+  "selectedFloorId": "393aa949-6f6e-42e6-851b-e9ea96fac567",
+  "selectedRoomId": "aa88239d-e8ef-480a-b61d-3c31a55c4cee",
+  "pricing": {
+    "packM2": 1.44,
+    "pricePerM2": 39.9,
+    "reserveTiles": 0
+  },
+  "waste": {
+    "allowRotate": true,
+    "optimizeCuts": false,
+    "kerfCm": 0.2
+  },
+  "view": {
+    "showGrid": true,
+    "showNeeds": false,
+    "showSkirting": true,
+    "removalMode": false
+  }
+}
