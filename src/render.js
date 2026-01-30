@@ -2315,3 +2315,67 @@ export function renderCommercialTab(state) {
   matsTable.appendChild(matsTbody);
   materialsListEl.appendChild(matsTable);
 }
+
+export function renderExportTab(state, selection = null) {
+  const listEl = document.getElementById("exportRoomsList");
+  if (!listEl) return;
+
+  listEl.replaceChildren();
+
+  const floors = state.floors || [];
+  if (!floors.length) {
+    const empty = document.createElement("div");
+    empty.className = "subtle";
+    empty.textContent = t("export.noRoomsSelected");
+    listEl.appendChild(empty);
+    return;
+  }
+
+  const hasSelection = selection && selection.size > 0;
+
+  for (const floor of floors) {
+    if (!floor.rooms || floor.rooms.length === 0) continue;
+
+    const group = document.createElement("div");
+    group.className = "export-room-group";
+
+    const title = document.createElement("div");
+    title.className = "export-room-group-title";
+    title.textContent = floor.name || t("tabs.floor");
+    group.appendChild(title);
+
+    for (const room of floor.rooms) {
+      const row = document.createElement("div");
+      row.className = "export-room-item";
+
+      const labelWrap = document.createElement("div");
+      labelWrap.className = "export-room-label";
+
+      const name = document.createElement("div");
+      name.className = "export-room-name";
+      name.textContent = room.name || t("tabs.room");
+
+      const meta = document.createElement("div");
+      meta.className = "export-room-meta";
+      const section = room.sections?.[0];
+      if (section) {
+        meta.textContent = `${Math.round(section.widthCm)} x ${Math.round(section.heightCm)} cm`;
+      } else {
+        meta.textContent = "–";
+      }
+
+      labelWrap.append(name, meta);
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "export-room-checkbox";
+      checkbox.dataset.roomId = room.id;
+      checkbox.checked = hasSelection ? selection.has(room.id) : true;
+
+      row.append(labelWrap, checkbox);
+      group.appendChild(row);
+    }
+
+    listEl.appendChild(group);
+  }
+}
