@@ -199,6 +199,18 @@ export function bindUI({
     sel.addEventListener("change", () => setSelectedSection(sel.value || null));
   }
 
+  function bindSettingsPanelSelectionReset() {
+    const settingsPanel = document.getElementById("settingsPanel");
+    if (!settingsPanel) return;
+    settingsPanel.addEventListener("click", (e) => {
+      const inExclControls = e.target.closest(
+        "#exclList, #exclProps, #btnAddRect, #btnAddCircle, #btnAddTri, #btnDeleteExcl"
+      );
+      if (inExclControls) return;
+      setSelectedExcl(null);
+    });
+  }
+
   function updateTileShapeUI() {
     const shape = document.getElementById("tileShape")?.value || "rect";
     const tileHField = document.getElementById("tileHeightField");
@@ -611,6 +623,7 @@ export function bindUI({
   document.getElementById("btnAddTri")?.addEventListener("click", excl.addTri);
   document.getElementById("btnDeleteExcl")?.addEventListener("click", excl.deleteSelectedExcl);
   bindExclList();
+  bindSettingsPanelSelectionReset();
 
   // Undo/Redo
   document.getElementById("btnUndo")?.addEventListener("click", () =>

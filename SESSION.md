@@ -1333,3 +1333,20 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Exclusion Selection Reset (2026-01-30)
+### Goal
+- Clear exclusion selection when clicking other settings panel controls.
+
+### Branch
+`feature-planning-ui`
+
+### Plan
+1. Add settings-panel click handler to clear exclusion selection outside exclusion controls
+2. Verify selection resets without closing the panel
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
