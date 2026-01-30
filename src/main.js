@@ -1,6 +1,7 @@
 // src/main.js
 import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
+import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
@@ -964,7 +965,7 @@ function updateAllTranslations() {
   });
 
   document.addEventListener("click", (e) => {
-    if (document.body.dataset.inlineEditing === "true") return;
+    if (isInlineEditing()) return;
     const inPlan = e.target.closest("#planSvg, #planSvgFullscreen");
     if (!inPlan) return;
     const inInteractive = e.target.closest("[data-exid], [data-secid], [data-resize-handle], [data-inline-edit], [data-add-btn]");
@@ -973,7 +974,7 @@ function updateAllTranslations() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if (document.body.dataset.inlineEditing === "true") return;
+    if (isInlineEditing()) return;
     if (!selectedExclId) return;
     const step = e.shiftKey ? 5 : 0.1;
     let dx = 0;
@@ -988,7 +989,7 @@ function updateAllTranslations() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if (document.body.dataset.inlineEditing === "true") return;
+    if (isInlineEditing()) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target;
     if (target?.isContentEditable) return;

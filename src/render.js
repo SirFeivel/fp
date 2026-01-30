@@ -2,6 +2,7 @@
 import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom, getCurrentFloor, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, DEFAULT_WASTE } from "./core.js";
+import { setInlineEditing, getUiState } from "./ui_state.js";
 import { t } from "./i18n.js";
 import {
   svgEl,
@@ -18,14 +19,6 @@ import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 
 let activeSvgEdit = null;
-
-function setInlineEditing(isEditing) {
-  if (isEditing) {
-    document.body.dataset.inlineEditing = "true";
-  } else {
-    delete document.body.dataset.inlineEditing;
-  }
-}
 
 function closeSvgEdit(commit) {
   if (!activeSvgEdit) return;
@@ -394,7 +387,7 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
-  const isCreateMode = document.body?.dataset?.tileEditMode === "create";
+  const isCreateMode = getUiState().tileEditMode === "create";
   const tileRefEl = document.getElementById("tileReference");
   if (tileRefEl && !isCreateMode) {
     tileRefEl.value = currentRoom?.tile?.reference ?? "";
@@ -855,9 +848,10 @@ export function renderReferencePicker(state) {
 
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
-  const tileEditActive = document.body?.dataset?.tileEdit === "true";
-  const tileEditDirty = document.body?.dataset?.tileEditDirty === "true";
-  const tileEditMode = document.body?.dataset?.tileEditMode || "edit";
+  const uiState = getUiState();
+  const tileEditActive = uiState.tileEditActive;
+  const tileEditDirty = uiState.tileEditDirty;
+  const tileEditMode = uiState.tileEditMode || "edit";
   renderReferencePicker(state);
   renderTilePresetPicker(state, currentRoom);
   renderSkirtingPresetPicker(state);

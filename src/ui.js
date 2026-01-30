@@ -3,6 +3,7 @@ import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, g
 import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
 import { computeProjectTotals } from "./calc.js";
+import { getUiState, setUiState } from "./ui_state.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
   if (!el) return;
@@ -49,12 +50,12 @@ export function bindUI({
 }) {
   let tileEditActive = false;
   let tileEditDirty = false;
+  let tileEditMode = "edit";
   let tileEditSnapshot = null;
   let tileEditUpdateArmed = false;
   let tileEditCreateIntent = false;
   let tileEditSuppressWarningReset = false;
-  document.body.dataset.tileEditDirty = "false";
-  document.body.dataset.tileEditMode = "edit";
+  setUiState({ tileEditActive, tileEditDirty, tileEditMode });
 
   const setTileEditError = (msg) => {
     const el = document.getElementById("tileEditError");
@@ -107,7 +108,8 @@ export function bindUI({
   };
 
   const setTileEditMode = (mode) => {
-    document.body.dataset.tileEditMode = mode;
+    tileEditMode = mode;
+    setUiState({ tileEditMode });
   };
 
   const normalizeTileValues = (values) => {
@@ -158,10 +160,10 @@ export function bindUI({
   const syncTileEditActions = () => {
     const actions = document.getElementById("tileEditActions");
     if (!actions) return;
-    if (document.body.dataset.tileEditMode === "create" && !tileEditCreateIntent) {
+    if (tileEditMode === "create" && !tileEditCreateIntent) {
       setTileEditMode("edit");
     }
-    const mode = document.body.dataset.tileEditMode || "edit";
+    const mode = tileEditMode;
     actions.classList.toggle("hidden", !tileEditActive);
     const state = store.getState();
     const room = getCurrentRoom(state);
@@ -175,14 +177,12 @@ export function bindUI({
 
   const setTileEditActive = (active) => {
     tileEditActive = active;
-    document.body.dataset.tileEdit = active ? "true" : "false";
+    setUiState({ tileEditActive });
     if (!active) {
       tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
+      setUiState({ tileEditDirty });
       tileEditCreateIntent = false;
       resetTileEditWarning();
-      setTileEditMode("edit");
-    } else if (!document.body.dataset.tileEditMode) {
       setTileEditMode("edit");
     }
     renderAll();
@@ -192,10 +192,10 @@ export function bindUI({
   const markTileEditDirty = () => {
     if (tileEditActive) {
       tileEditDirty = true;
-      document.body.dataset.tileEditDirty = "true";
+      setUiState({ tileEditDirty });
       setTileEditError("");
       resetTileEditWarning();
-      if (document.body.dataset.tileEditMode === "create") {
+      if (tileEditMode === "create") {
         // keep create mode
       }
       syncTileEditActions();
@@ -325,7 +325,8 @@ export function bindUI({
       return;
     }
     // Keep edit mode on and show inline actions instead of a browser prompt.
-    document.body.dataset.tileEditDirty = "true";
+    tileEditDirty = true;
+    setUiState({ tileEditDirty });
     renderAll();
     syncTileEditActions();
     resetTileEditWarning();
@@ -350,7 +351,7 @@ export function bindUI({
       revertTileEdits(next);
       store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
+      setUiState({ tileEditDirty });
       tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
@@ -371,7 +372,7 @@ export function bindUI({
       applyTilePresetUpdate(next, { preset: null, values, grout, asNew: true });
       store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
+      setUiState({ tileEditDirty });
       tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
@@ -397,7 +398,7 @@ export function bindUI({
       applyTilePresetUpdate(next, { preset, values, grout, asNew: false, oldName });
       store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
+      setUiState({ tileEditDirty });
       tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
@@ -461,7 +462,7 @@ export function bindUI({
   }
 
   function commitFromTilePatternInputs(label) {
-    if (document.body.dataset.tileEditMode === "create") return;
+    if (tileEditMode === "create") return;
     const state = store.getState();
     const next = structuredClone(state);
 
@@ -793,7 +794,7 @@ export function bindUI({
 
   document.getElementById("btnCreateTilePreset")?.addEventListener("click", () => {
     tileEditDirty = false;
-    document.body.dataset.tileEditDirty = "false";
+    setUiState({ tileEditDirty });
     setTileEditError("");
     snapshotTileEditState();
     if (!tileEditActive) setTileEditActive(true);
@@ -806,7 +807,7 @@ export function bindUI({
   document.getElementById("tileConfigEditToggle")?.addEventListener("change", (e) => {
     if (e.target.checked) {
       tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
+      setUiState({ tileEditDirty });
       setTileEditError("");
       snapshotTileEditState();
       tileEditCreateIntent = false;
@@ -886,7 +887,7 @@ export function bindUI({
 
   document.getElementById("tileReference")?.addEventListener("change", (e) => {
     setTileEditError("");
-    if (document.body.dataset.tileEditMode === "create") return;
+    if (tileEditMode === "create") return;
     const newRef = e.target.value;
     if (!newRef) return;
 

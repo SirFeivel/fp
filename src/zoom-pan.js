@@ -2,6 +2,7 @@
 // Event controller for zoom and pan interactions
 
 import { getViewport, setViewport, resetViewport, MIN_ZOOM, MAX_ZOOM } from "./viewport.js";
+import { isInlineEditing } from "./ui_state.js";
 
 const ZOOM_STEP = 0.1;
 const ZOOM_WHEEL_FACTOR = 0.001;
@@ -185,7 +186,7 @@ export function createZoomPanController({
     if (target?.isContentEditable) return;
     const tag = target?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (document.body.dataset.inlineEditing === "true") return;
+    if (isInlineEditing()) return;
 
     // Track space key for space+drag
     if (e.key === " " || e.code === "Space") {
