@@ -193,6 +193,7 @@ describe('render.js smoke tests', () => {
     expect(toggle.checked).toBe(false);
   });
 
+
   it('renderSectionProps renders skirting toggle for section', () => {
     document.body.innerHTML = '<div id="sectionProps"></div>';
     const currentSec = { id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true };

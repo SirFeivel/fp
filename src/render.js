@@ -905,7 +905,6 @@ export function renderExclProps({
   commitExclProps
 }) {
   const wrap = document.getElementById("exclProps");
-  const wasOpen = wrap?.dataset?.advOpen === "true";
   const ex = getSelectedExcl();
   wrap.innerHTML = "";
 
@@ -917,36 +916,15 @@ export function renderExclProps({
     return;
   }
 
-  const header = document.createElement("div");
-  header.className = "section-header-collapsible";
-  header.innerHTML = `
-    <h5 class="section-title">${t("exclusions.advanced")}</h5>
-    <span class="collapse-toggle">${wasOpen ? "▾" : "▸"}</span>
-  `;
-  wrap.appendChild(header);
-
-  const content = document.createElement("div");
-  content.className = "excl-advanced";
-  if (!wasOpen) content.classList.add("hidden");
-  wrap.appendChild(content);
-  wrap.dataset.advOpen = String(wasOpen);
-
-  header.addEventListener("click", () => {
-    const isOpen = content.classList.toggle("hidden") === false;
-    wrap.dataset.advOpen = String(isOpen);
-    const toggle = header.querySelector(".collapse-toggle");
-    if (toggle) toggle.textContent = isOpen ? "▾" : "▸";
-  });
-
   const field = (label, id, value, step = "0.1") => {
     const d = document.createElement("div");
     d.className = "field";
     d.innerHTML = `<label>${escapeHTML(
       label
     )}</label><input id="${id}" type="number" step="${step}" />`;
-    content.appendChild(d);
+    wrap.appendChild(d);
     const inp = d.querySelector("input");
-    inp.value = value;
+    inp.value = Number.isFinite(value) ? value.toFixed(2) : value;
     inp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -960,7 +938,7 @@ export function renderExclProps({
   const labelDiv = document.createElement("div");
   labelDiv.className = "field span2";
   labelDiv.innerHTML = `<label>${t("exclusions.label")}</label><input id="exLabel" type="text" />`;
-  content.appendChild(labelDiv);
+  wrap.appendChild(labelDiv);
   const labelInp = labelDiv.querySelector("input");
   labelInp.value = ex.label || "";
   labelInp.addEventListener("blur", () => commitExclProps(t("exclusions.changed")));
@@ -972,21 +950,21 @@ export function renderExclProps({
   });
 
   if (ex.type === "rect") {
-    field(t("exclProps.x"), "exX", ex.x);
-    field(t("exclProps.y"), "exY", ex.y);
-    field(t("exclProps.width"), "exW", ex.w);
-    field(t("exclProps.height"), "exH", ex.h);
+    field(t("exclProps.x"), "exX", ex.x, "0.01");
+    field(t("exclProps.y"), "exY", ex.y, "0.01");
+    field(t("exclProps.width"), "exW", ex.w, "0.01");
+    field(t("exclProps.height"), "exH", ex.h, "0.01");
   } else if (ex.type === "circle") {
-    field(t("exclProps.centerX"), "exCX", ex.cx);
-    field(t("exclProps.centerY"), "exCY", ex.cy);
-    field(t("exclProps.radius"), "exR", ex.r);
+    field(t("exclProps.centerX"), "exCX", ex.cx, "0.01");
+    field(t("exclProps.centerY"), "exCY", ex.cy, "0.01");
+    field(t("exclProps.radius"), "exR", ex.r, "0.01");
   } else if (ex.type === "tri") {
-    field(t("exclProps.p1x"), "exP1X", ex.p1.x);
-    field(t("exclProps.p1y"), "exP1Y", ex.p1.y);
-    field(t("exclProps.p2x"), "exP2X", ex.p2.x);
-    field(t("exclProps.p2y"), "exP2Y", ex.p2.y);
-    field(t("exclProps.p3x"), "exP3X", ex.p3.x);
-    field(t("exclProps.p3y"), "exP3Y", ex.p3.y);
+    field(t("exclProps.p1x"), "exP1X", ex.p1.x, "0.01");
+    field(t("exclProps.p1y"), "exP1Y", ex.p1.y, "0.01");
+    field(t("exclProps.p2x"), "exP2X", ex.p2.x, "0.01");
+    field(t("exclProps.p2y"), "exP2Y", ex.p2.y, "0.01");
+    field(t("exclProps.p3x"), "exP3X", ex.p3.x, "0.01");
+    field(t("exclProps.p3y"), "exP3Y", ex.p3.y, "0.01");
   }
 
   // Add Skirting Toggle for Exclusion
@@ -999,7 +977,7 @@ export function renderExclProps({
       <div class="toggle-slider"></div>
     </label>
   `;
-  content.appendChild(div);
+  wrap.appendChild(div);
 
   const inp = div.querySelector("#exSkirtingEnabled");
   inp.addEventListener("change", () => {

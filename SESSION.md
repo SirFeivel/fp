@@ -1260,3 +1260,40 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Selection Skirting Controls (2026-01-30)
+### Goal
+- Add a planning selection panel with skirting toggle for room/section/exclusion.
+- Add a keyboard shortcut (S) to toggle skirting for the active selection.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Add selection panel in Planning UI and render selection toggle
+2. Wire selection toggle to room/section/exclusion skirting state
+3. Add keyboard shortcut and tests
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
+
+## Session: Exclusion UI Simplification (2026-01-30)
+### Goal
+- Remove the exclusion advanced collapse and show controls directly with cleaner formatting.
+- Remove the temporary Selection panel in Planning.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Simplify exclusion properties layout and format numeric inputs to 2 decimals
+2. Remove Selection panel and related strings/tests
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run

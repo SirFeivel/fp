@@ -248,6 +248,37 @@ const sectionDragController = createSectionDragController({
   getResizeLabel: () => t("room.sectionResized") || "Section resized"
 });
 
+function setRoomSkirtingEnabled(enabled) {
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room) return;
+  room.skirting = room.skirting || {};
+  room.skirting.enabled = enabled;
+  commitViaStore(t("skirting.changed"), next);
+}
+
+function setSectionSkirtingEnabled(id, enabled) {
+  if (!id) return;
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room || !room.sections) return;
+  const sec = room.sections.find(s => s.id === id);
+  if (!sec) return;
+  sec.skirtingEnabled = enabled;
+  commitViaStore(t("room.sectionChanged") || "Section changed", next);
+}
+
+function setExclusionSkirtingEnabled(id, enabled) {
+  if (!id) return;
+  const next = deepClone(store.getState());
+  const room = getCurrentRoom(next);
+  if (!room || !room.exclusions) return;
+  const ex = room.exclusions.find(e => e.id === id);
+  if (!ex) return;
+  ex.skirtingEnabled = enabled;
+  commitViaStore(t("exclusions.changed"), next);
+}
+
 function updateExclusionInline({ id, key, value }) {
   if (key !== "__delete__" && !Number.isFinite(value)) return;
 
@@ -741,6 +772,37 @@ function updateAllTranslations() {
     if (dx === 0 && dy === 0) return;
     e.preventDefault();
     nudgeSelectedExclusion(dx, dy);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (document.body.dataset.inlineEditing === "true") return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target;
+    if (target?.isContentEditable) return;
+    const tag = target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key !== "s" && e.key !== "S") return;
+    e.preventDefault();
+
+    const state = store.getState();
+    const room = getCurrentRoom(state);
+    if (!room) return;
+
+    if (selectedExclId) {
+      const ex = room.exclusions?.find(x => x.id === selectedExclId);
+      if (!ex) return;
+      setExclusionSkirtingEnabled(selectedExclId, ex.skirtingEnabled === false);
+      return;
+    }
+
+    if (selectedSectionId) {
+      const sec = room.sections?.find(s => s.id === selectedSectionId);
+      if (!sec) return;
+      setSectionSkirtingEnabled(selectedSectionId, sec.skirtingEnabled === false);
+      return;
+    }
+
+    setRoomSkirtingEnabled(room.skirting?.enabled === false);
   });
 
   const langSelect = document.getElementById("langSelect");
