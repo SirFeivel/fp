@@ -86,6 +86,19 @@ describe('computeSkirtingPerimeter', () => {
     expect(computeSkirtingPerimeter(room)).toBeCloseTo(2000);
   });
 
+  it('keeps wall skirting when a disabled exclusion touches the boundary', () => {
+    const room = {
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 200, heightCm: 100, skirtingEnabled: true }],
+      skirting: { enabled: true },
+      exclusions: [
+        { id: 'ex1', type: 'rect', x: 0, y: 20, w: 30, h: 30, skirtingEnabled: false }
+      ]
+    };
+    // Room perimeter: 200 * 2 + 100 * 2 = 600
+    // Exclusion touches wall; only the overlap is removed from wall skirting.
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(570);
+  });
+
   it('ignores sections that have skirting disabled', () => {
     const room = {
       sections: [

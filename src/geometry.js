@@ -134,7 +134,7 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
   const area = computeSkirtingArea(room, room.exclusions);
   if (!area.mp) return [];
 
-  // Source of truth for physical walls
+  // Source of truth for physical walls (includes all exclusions)
   const avail = computeAvailableArea(room, room.exclusions);
   if (!avail.mp) return [];
 
@@ -154,38 +154,40 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
         const p1 = ring[i];
         const p2 = ring[i + 1];
 
-        // Only keep segments that are part of the actual physical room/exclusion boundaries
-        if (isSegmentOnBoundary(p1, p2, avail.mp)) {
-          const dx = p2[0] - p1[0];
-          const dy = p2[1] - p1[1];
-          const wallLength = Math.sqrt(dx * dx + dy * dy);
+        const dx = p2[0] - p1[0];
+        const dy = p2[1] - p1[1];
+        const wallLength = Math.sqrt(dx * dx + dy * dy);
+        if (wallLength <= 0) continue;
 
-          // Normalize points for stable Wall ID regardless of direction
-          const pts = [p1, p2].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-          const wallId = `w${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}-${pts[1][0].toFixed(2)},${pts[1][1].toFixed(2)}`;
+        const overlaps = boundaryOverlapIntervals(p1, p2, avail.mp);
+        if (overlaps.length === 0) continue;
 
-          // Subdivide wall into pieces
-          const numPieces = Math.ceil(wallLength / pieceLength);
-          const unitDx = dx / wallLength;
-          const unitDy = dy / wallLength;
+        // Normalize points for stable Wall ID regardless of direction
+        const pts = [p1, p2].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        const wallId = `w${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}-${pts[1][0].toFixed(2)},${pts[1][1].toFixed(2)}`;
+        const unitDx = dx / wallLength;
+        const unitDy = dy / wallLength;
 
-          for (let j = 0; j < numPieces; j++) {
-            const startDist = j * pieceLength;
-            const endDist = Math.min((j + 1) * pieceLength, wallLength);
-            
-            const segP1 = [p1[0] + unitDx * startDist, p1[1] + unitDy * startDist];
-            const segP2 = [p1[0] + unitDx * endDist, p1[1] + unitDy * endDist];
-            
-            // Stable ID for the piece
+        for (const [startDist, endDist] of overlaps) {
+          const startIdx = Math.floor(startDist / pieceLength);
+          const endIdx = Math.floor((endDist - 1e-6) / pieceLength);
+
+          for (let j = startIdx; j <= endIdx; j++) {
+            const pieceStart = Math.max(startDist, j * pieceLength);
+            const pieceEnd = Math.min(endDist, (j + 1) * pieceLength);
+            if (pieceEnd - pieceStart <= 1e-6) continue;
+
+            const segP1 = [p1[0] + unitDx * pieceStart, p1[1] + unitDy * pieceStart];
+            const segP2 = [p1[0] + unitDx * pieceEnd, p1[1] + unitDy * pieceEnd];
             const pieceId = `${wallId}-p${j}`;
-            
+
             const isExcluded = Boolean(room.excludedSkirts?.includes(pieceId));
             if (!includeExcluded && isExcluded) continue;
 
             segments.push({
               p1: segP1,
               p2: segP2,
-              length: endDist - startDist,
+              length: pieceEnd - pieceStart,
               id: pieceId,
               excluded: isExcluded
             });
@@ -213,6 +215,55 @@ function isSegmentOnBoundary(p1, p2, mp) {
     }
   }
   return false;
+}
+
+function boundaryOverlapIntervals(p1, p2, mp) {
+  const eps = 1e-6;
+  const dx = p2[0] - p1[0];
+  const dy = p2[1] - p1[1];
+  const wallLength = Math.sqrt(dx * dx + dy * dy);
+  if (wallLength <= 0) return [];
+
+  const useX = Math.abs(dx) >= Math.abs(dy);
+  const axisDelta = useX ? dx : dy;
+  if (Math.abs(axisDelta) < eps) return [];
+
+  const intervals = [];
+
+  for (const poly of mp) {
+    for (const ring of poly) {
+      if (ring.length < 2) continue;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const q1 = ring[i];
+        const q2 = ring[i + 1];
+        if (!isPointOnLine(q1, p1, p2, eps) || !isPointOnLine(q2, p1, p2, eps)) continue;
+
+        const t1 = ((useX ? q1[0] : q1[1]) - (useX ? p1[0] : p1[1])) / axisDelta;
+        const t2 = ((useX ? q2[0] : q2[1]) - (useX ? p1[0] : p1[1])) / axisDelta;
+        const tStart = Math.max(Math.min(t1, t2), 0);
+        const tEnd = Math.min(Math.max(t1, t2), 1);
+        if (tEnd - tStart > eps) {
+          intervals.push([tStart * wallLength, tEnd * wallLength]);
+        }
+      }
+    }
+  }
+
+  if (!intervals.length) return [];
+  intervals.sort((a, b) => a[0] - b[0]);
+
+  const merged = [intervals[0]];
+  for (let i = 1; i < intervals.length; i++) {
+    const last = merged[merged.length - 1];
+    const cur = intervals[i];
+    if (cur[0] <= last[1] + eps) {
+      last[1] = Math.max(last[1], cur[1]);
+    } else {
+      merged.push(cur);
+    }
+  }
+
+  return merged;
 }
 
 /**

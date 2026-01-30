@@ -1243,3 +1243,20 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Exclusion Skirting Boundary (2026-01-30)
+### Goal
+- Keep wall skirting intact when an exclusion with skirting disabled touches the room boundary.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Use skirting-enabled exclusions for skirting boundary checks
+2. Add a regression test for exclusions touching the boundary
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
