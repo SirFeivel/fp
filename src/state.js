@@ -93,6 +93,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true };
+    if (s.view.showGrid === undefined) s.view.showGrid = true;
+    if (s.view.showNeeds === undefined) s.view.showNeeds = false;
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;
@@ -112,10 +114,58 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       for (const floor of s.floors) {
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
+            room.tile = room.tile || {
+              widthCm: DEFAULT_TILE_PRESET.widthCm,
+              heightCm: DEFAULT_TILE_PRESET.heightCm,
+              shape: DEFAULT_TILE_PRESET.shape,
+              reference: ""
+            };
+            if (room.tile.widthCm == null) room.tile.widthCm = DEFAULT_TILE_PRESET.widthCm;
+            if (room.tile.heightCm == null) room.tile.heightCm = DEFAULT_TILE_PRESET.heightCm;
+            if (!room.tile.shape) room.tile.shape = DEFAULT_TILE_PRESET.shape;
+            if (room.tile.reference === undefined) room.tile.reference = "";
+
+            room.grout = room.grout || { widthCm: DEFAULT_TILE_PRESET.groutWidthCm, colorHex: DEFAULT_TILE_PRESET.groutColorHex };
+            if (room.grout.widthCm == null) room.grout.widthCm = DEFAULT_TILE_PRESET.groutWidthCm;
+            if (!room.grout.colorHex) room.grout.colorHex = DEFAULT_TILE_PRESET.groutColorHex;
+
+            room.pattern = room.pattern || {
+              type: "grid",
+              bondFraction: 0.5,
+              rotationDeg: 0,
+              offsetXcm: 0,
+              offsetYcm: 0,
+              origin: { preset: "tl", xCm: 0, yCm: 0 }
+            };
+            if (!room.pattern.type) room.pattern.type = "grid";
+            if (room.pattern.bondFraction == null) room.pattern.bondFraction = 0.5;
+            if (room.pattern.rotationDeg == null) room.pattern.rotationDeg = 0;
+            if (room.pattern.offsetXcm == null) room.pattern.offsetXcm = 0;
+            if (room.pattern.offsetYcm == null) room.pattern.offsetYcm = 0;
+            if (!room.pattern.origin) room.pattern.origin = { preset: "tl", xCm: 0, yCm: 0 };
+            if (!room.pattern.origin.preset) room.pattern.origin.preset = "tl";
+            if (room.pattern.origin.xCm == null) room.pattern.origin.xCm = 0;
+            if (room.pattern.origin.yCm == null) room.pattern.origin.yCm = 0;
+
             if (!room.skirting) {
               room.skirting = { ...DEFAULT_SKIRTING_CONFIG, enabled: false };
             } else if (room.skirting.type !== "cutout" && room.skirting.type !== "bought") {
               room.skirting.type = "cutout";
+            }
+
+            if (!room.excludedTiles) room.excludedTiles = [];
+            if (!room.excludedSkirts) room.excludedSkirts = [];
+
+            if (room.exclusions && Array.isArray(room.exclusions)) {
+              for (const ex of room.exclusions) {
+                if (ex.skirtingEnabled === undefined) ex.skirtingEnabled = true;
+              }
+            }
+
+            if (room.sections && Array.isArray(room.sections)) {
+              for (const sec of room.sections) {
+                if (sec.skirtingEnabled === undefined) sec.skirtingEnabled = true;
+              }
             }
           }
         }
