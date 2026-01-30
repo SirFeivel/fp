@@ -1,5 +1,5 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
 import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
 import { computeProjectTotals } from "./calc.js";
@@ -837,8 +837,8 @@ export function bindUI({
     const pricePerM2 = document.getElementById("tilePricePerM2");
     const packM2 = document.getElementById("tilePackM2");
     const allowSkirting = document.getElementById("tileAllowSkirting");
-    const defaultW = values.widthCm > 0 ? values.widthCm : (Number(defaults.widthCm) || 40);
-    const defaultH = values.heightCm > 0 ? values.heightCm : (Number(defaults.heightCm) || 20);
+    const defaultW = values.widthCm > 0 ? values.widthCm : (Number(defaults.widthCm) || DEFAULT_TILE_PRESET.widthCm);
+    const defaultH = values.heightCm > 0 ? values.heightCm : (Number(defaults.heightCm) || DEFAULT_TILE_PRESET.heightCm);
     if (tileW && (!values.widthCm || values.widthCm <= 0)) tileW.value = String(defaultW);
     if (tileH && (!values.heightCm || values.heightCm <= 0)) {
       if (shape === "square") {
@@ -851,10 +851,10 @@ export function bindUI({
       }
     }
     if (pricePerM2 && (pricePerM2.value === "" || Number(pricePerM2.value) < 0)) {
-      pricePerM2.value = String(pricingDefaults.pricePerM2 ?? 0);
+      pricePerM2.value = String(pricingDefaults.pricePerM2 ?? DEFAULT_PRICING.pricePerM2);
     }
     if (packM2 && (packM2.value === "" || Number(packM2.value) < 0)) {
-      packM2.value = String(pricingDefaults.packM2 ?? 0);
+      packM2.value = String(pricingDefaults.packM2 ?? DEFAULT_PRICING.packM2);
     }
     if (allowSkirting) allowSkirting.checked = Boolean(defaults.useForSkirting);
     syncTileEditActions();

@@ -1,7 +1,7 @@
 // src/render.js
 import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
-import { escapeHTML, getCurrentRoom, getCurrentFloor } from "./core.js";
+import { escapeHTML, getCurrentRoom, getCurrentFloor, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, DEFAULT_WASTE } from "./core.js";
 import { t } from "./i18n.js";
 import {
   svgEl,
@@ -1033,7 +1033,7 @@ export function renderTilePatternForm(state) {
 
   // Schnittbreite
   const kerfEl = document.getElementById("wasteKerfCm");
-  if (kerfEl) kerfEl.value = Math.round((state?.waste?.kerfCm ?? 0.2) * 10);
+  if (kerfEl) kerfEl.value = Math.round((state?.waste?.kerfCm ?? DEFAULT_WASTE.kerfCm) * 10);
 }
 
 export function renderExclList(state, selectedExclId) {
@@ -1787,8 +1787,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       
       const skirting = currentRoom.skirting || {};
       const pieceLength = skirting.type === "bought" 
-        ? (Number(skirting.boughtWidthCm) || 60)
-        : (Number(currentRoom.tile?.widthCm) || 60);
+        ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
+        : (Number(currentRoom.tile?.widthCm) || DEFAULT_TILE_PRESET.widthCm);
 
       const gap = 2.5; // visible gap in cm
 

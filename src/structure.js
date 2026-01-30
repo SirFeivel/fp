@@ -65,13 +65,7 @@ export function createStructureController({
     const next = deepClone(state);
 
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
-    const defaultPreset = hasPreset ? getDefaultTilePresetTemplate(next) : {
-      shape: "rect",
-      widthCm: 0,
-      heightCm: 0,
-      groutWidthCm: 0.2,
-      groutColorHex: "#ffffff"
-    };
+    const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
     const newFloor = {
       id: uuid(),
@@ -139,13 +133,7 @@ export function createStructureController({
     if (!currentFloor) return;
 
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
-    const defaultPreset = hasPreset ? getDefaultTilePresetTemplate(next) : {
-      shape: "rect",
-      widthCm: 0,
-      heightCm: 0,
-      groutWidthCm: 0.2,
-      groutColorHex: "#ffffff"
-    };
+    const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
     const newRoom = {
       id: uuid(),

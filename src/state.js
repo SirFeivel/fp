@@ -9,6 +9,7 @@ import {
   getCurrentRoom,
   DEFAULT_TILE_PRESET,
   DEFAULT_PRICING,
+  DEFAULT_WASTE,
   DEFAULT_SKIRTING_CONFIG,
   DEFAULT_SKIRTING_PRESET
 } from './core.js';
@@ -98,8 +99,10 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.view.showBaseBoards;
     }
 
-    if (!s.waste || typeof s.waste !== "object") s.waste = { allowRotate: true };
-    if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = true;
+    if (!s.waste || typeof s.waste !== "object") s.waste = { ...DEFAULT_WASTE };
+    if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = DEFAULT_WASTE.allowRotate;
+    if (typeof s.waste.optimizeCuts !== "boolean") s.waste.optimizeCuts = DEFAULT_WASTE.optimizeCuts;
+    if (!Number.isFinite(s.waste.kerfCm)) s.waste.kerfCm = DEFAULT_WASTE.kerfCm;
 
     if (!s.materials) s.materials = {};
     if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
@@ -177,7 +180,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       selectedFloorId: floorId,
       selectedRoomId: roomId,
       pricing: oldState.pricing || { ...DEFAULT_PRICING },
-      waste: oldState.waste || { allowRotate: true },
+      waste: oldState.waste || { ...DEFAULT_WASTE },
       view: oldState.view || { showGrid: true, showNeeds: false }
     };
 

@@ -79,6 +79,12 @@ export const DEFAULT_SKIRTING_PRESET = {
   pricePerPiece: 5
 };
 
+export const DEFAULT_WASTE = {
+  allowRotate: true,
+  optimizeCuts: false,
+  kerfCm: 0.2
+};
+
 export const DEFAULT_SKIRTING_CONFIG = {
   enabled: true,
   type: "cutout",
@@ -159,10 +165,7 @@ export function defaultState() {
 
     pricing: { ...DEFAULT_PRICING },
 
-    waste: {
-      allowRotate: true,
-      kerfCm: 0.2
-    },
+    waste: { ...DEFAULT_WASTE },
 
     view: {
       showGrid: true,
