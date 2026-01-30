@@ -4,6 +4,7 @@ import { computePlanMetrics, computeSkirtingNeeds, computeProjectTotals, compute
 import { t } from "./i18n.js";
 import { getCurrentRoom, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { renderPlanSvg } from "./render.js";
+import { getRalMatch } from "./ral.js";
 
 function dateStamp() {
   const d = new Date();
@@ -83,6 +84,9 @@ export function buildRoomExportModel(state, roomId) {
       }
       : { tiles: 0, packs: 0, cost: 0 },
     pricing
+    ,
+    skirtingPieces: skirting.count || 0,
+    skirtingLengthCm: skirting.totalLengthCm || 0
   };
 }
 
@@ -234,61 +238,187 @@ async function svgToPngDataUrl(svgEl, width, height) {
   return canvas.toDataURL("image/png");
 }
 
-function layoutHeader(doc, model, options, pageWidth) {
-  doc.setFontSize(12);
-  doc.setTextColor(30);
-  doc.text(`${t("pdf.projectName")}: ${model.projectName}`, 40, 40);
-  doc.text(`${t("pdf.floor")}: ${model.floorName}`, 40, 58);
-  doc.text(`${t("pdf.room")}: ${model.roomName}`, 40, 76);
-
-  doc.setFontSize(10);
-  doc.text(`${t("pdf.dimensions")}: ${model.roomDimensionsCm.width} x ${model.roomDimensionsCm.length} cm`, 40, 96);
-  doc.text(`${t("pdf.area")}: ${model.roomAreaM2.toFixed(2)} m²`, 40, 112);
-  if (options.scale && options.scale !== "fit") {
-    doc.text(`${t("export.scale")}: ${options.scale}`, 40, 128);
-  }
-
+export function computeRoomPdfLayout({ pageWidth, pageHeight, leftLineCount, rightLineCount }) {
+  const isCompact = pageHeight < 700;
+  const fontSize = isCompact ? 9 : 10;
+  const line = isCompact ? 12 : 14;
+  const headerGap = isCompact ? 6 : 8;
+  const boxHeight = isCompact ? 56 : 68;
+  const row = isCompact ? 11 : 12;
+  const footerReserve = isCompact ? 20 : 28;
+  const leftX = 40;
   const rightX = pageWidth - 220;
-  doc.text(`${t("pdf.company")}: ____________________`, rightX, 40);
-  doc.text(`${t("pdf.address")}: ____________________`, rightX, 58);
-  doc.text(`${t("pdf.contact")}: ____________________`, rightX, 76);
+  const topY = 28;
+  const headerBottom = topY + line * Math.max(leftLineCount, rightLineCount) + headerGap;
+  const gap = isCompact ? 8 : 10;
+  const boxWidth = (pageWidth - 80 - gap) / 2;
+  const boxY = headerBottom + 10;
+  const planY = boxY + boxHeight + 10;
+  const planX = leftX;
+  const planWidth = pageWidth - leftX * 2;
+  const planHeight = pageHeight - planY - footerReserve;
+  const legendWidth = Math.min(pageWidth - leftX * 2, Math.max(320, Math.round(pageWidth * 0.7)));
+  const legendHeight = 10;
+  const legendX = pageWidth - leftX - legendWidth;
+  const legendY = pageHeight - 18;
 
-  if (options.includeMetrics) {
-    doc.text(`${t("metrics.totalTiles")}: ${model.metrics.tiles}`, rightX, 96);
-    doc.text(`${t("commercial.totalPacks")}: ${model.metrics.packs}`, rightX, 112);
-    doc.text(`${t("commercial.totalCost")}: ${model.metrics.cost.toFixed(2)} €`, rightX, 128);
-  }
-
-  doc.setFontSize(9);
-  const tileY = 148;
-  doc.text(`${t("pdf.tile")}: ${model.tile.reference || "–"}`, 40, tileY);
-  doc.text(`${t("pdf.dimensions")}: ${model.tile.widthCm} x ${model.tile.heightCm} cm`, 40, tileY + 14);
-  doc.text(`${t("pdf.grout")}: ${model.grout.widthMm} mm (${model.grout.colorHex})`, 40, tileY + 28);
-  doc.text(`${t("pdf.pattern")}: ${model.tile.pattern}`, 40, tileY + 42);
-
-  const pattern = model.pattern || {};
-  const layoutY = tileY;
-  const layoutX = rightX;
-  doc.text(`${t("pdf.pattern")}: ${pattern.type || "grid"}`, layoutX, layoutY);
-  doc.text(`Origin: ${pattern.originLabel || "tl"} (${pattern.originXcm || 0}/${pattern.originYcm || 0})`, layoutX, layoutY + 14);
-  doc.text(`Rotation: ${pattern.rotationDeg || 0}°`, layoutX, layoutY + 28);
-  doc.text(`Offset: ${pattern.offsetXcm || 0} / ${pattern.offsetYcm || 0} cm`, layoutX, layoutY + 42);
+  return {
+    isCompact,
+    fontSize,
+    line,
+    headerGap,
+    boxHeight,
+    row,
+    footerReserve,
+    leftX,
+    rightX,
+    topY,
+    headerBottom,
+    gap,
+    boxWidth,
+    boxY,
+    planX,
+    planY,
+    planWidth,
+    planHeight,
+    legendX,
+    legendY,
+    legendWidth,
+    legendHeight,
+    legendFontSize: isCompact ? 7 : 8
+  };
 }
 
-function layoutFooter(doc, y, notes) {
-  doc.setFontSize(9);
+function layoutHeader(doc, model, options, pageWidth, pageHeight, ralInfo) {
+  const leftLines = [
+    `${t("pdf.projectName")}: ${model.projectName}`,
+    `${t("pdf.floor")}: ${model.floorName}`,
+    `${t("pdf.room")}: ${model.roomName}`,
+    `${t("pdf.dimensions")}: ${model.roomDimensionsCm.width} x ${model.roomDimensionsCm.length} cm`,
+    `${t("pdf.area")}: ${model.roomAreaM2.toFixed(2)} m²`,
+  ];
+  if (options.scale && options.scale !== "fit") {
+    leftLines.push(`${t("export.scale")}: ${options.scale}`);
+  }
+
+  const rightLines = [
+    `${t("pdf.company")}: ____________________`,
+    `${t("pdf.address")}: ____________________`,
+    `${t("pdf.contact")}: ____________________`,
+  ];
+  if (options.includeMetrics) {
+    rightLines.push(`${t("metrics.totalTiles")}: ${model.metrics.tiles}`);
+    rightLines.push(`${t("commercial.totalPacks")}: ${model.metrics.packs}`);
+    rightLines.push(`${t("commercial.totalCost")}: ${model.metrics.cost.toFixed(2)} €`);
+  }
+
+  const layout = computeRoomPdfLayout({
+    pageWidth,
+    pageHeight,
+    leftLineCount: leftLines.length + 1,
+    rightLineCount: rightLines.length
+  });
+
+  doc.setFontSize(layout.fontSize);
+  doc.setTextColor(30);
+
+  leftLines.forEach((text, idx) => doc.text(text, layout.leftX, layout.topY + layout.line * idx));
+  doc.text(`${dateStamp()}`, layout.leftX, layout.topY + layout.line * leftLines.length);
+  rightLines.forEach((text, idx) => doc.text(text, layout.rightX, layout.topY + layout.line * idx));
+  const pricePerPack = (Number(model.pricing?.pricePerM2) || 0) * (Number(model.pricing?.packM2) || 0);
+  const ralLabel = ralInfo ? `${ralInfo.code} ${ralInfo.name}` : "–";
+  const pattern = model.pattern || {};
+
+  doc.setDrawColor(180);
+  doc.setFillColor(248);
+  doc.rect(layout.leftX, layout.boxY, layout.boxWidth, layout.boxHeight, "FD");
+  doc.rect(layout.leftX + layout.boxWidth + layout.gap, layout.boxY, layout.boxWidth, layout.boxHeight, "FD");
+
+  doc.setFont(undefined, "bold");
+  doc.text(t("pdf.tileDetails"), layout.leftX, layout.boxY - 6);
+  doc.text(t("pdf.layoutDetails"), layout.leftX + layout.boxWidth + layout.gap, layout.boxY - 6);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(Math.max(7, Math.round(layout.fontSize * 0.8)));
+
+  doc.text(`${t("pdf.tile")}: ${model.tile.reference || "–"}`, layout.leftX + 6, layout.boxY + layout.row);
+  doc.text(`${t("pdf.dimensions")}: ${model.tile.widthCm} x ${model.tile.heightCm} cm`, layout.leftX + 6, layout.boxY + layout.row * 2);
+  doc.text(`${t("commercial.packSize")}: ${(model.pricing?.packM2 || 0).toFixed(2)} m²`, layout.leftX + 6, layout.boxY + layout.row * 3);
+  doc.text(`${t("commercial.pricePerPack")}: ${pricePerPack.toFixed(2)} €`, layout.leftX + 6, layout.boxY + layout.row * 4);
+  doc.text(`${t("pdf.skirtingPieces")}: ${model.skirtingPieces}`, layout.leftX + 6, layout.boxY + layout.row * 5);
+
+  const layoutX = layout.leftX + layout.boxWidth + layout.gap;
+  doc.text(`${t("pdf.pattern")}: ${pattern.type || "grid"}`, layoutX + 6, layout.boxY + layout.row);
+  doc.text(`${t("pdf.grout")}: ${model.grout.widthMm} mm`, layoutX + 6, layout.boxY + layout.row * 2);
+  doc.text(`${t("pdf.color")}: ${ralLabel} ${model.grout.colorHex}`, layoutX + 6, layout.boxY + layout.row * 3);
+  doc.text(`${t("pdf.origin")}: ${pattern.originLabel || "tl"} (${pattern.originXcm || 0}/${pattern.originYcm || 0})`, layoutX + 6, layout.boxY + layout.row * 4);
+  doc.text(`${t("pdf.rotation")}: ${pattern.rotationDeg || 0}°`, layoutX + 6, layout.boxY + layout.row * 5);
+  doc.setFontSize(layout.fontSize);
+
+  return layout;
+}
+
+function layoutFooter(doc, y, notes, fontSize = 8) {
+  doc.setFontSize(fontSize);
   doc.setTextColor(80);
-  doc.text(`${t("pdf.generatedBy")} • ${dateStamp()}`, 40, y);
+  doc.text(`${t("pdf.generatedBy")}`, 40, y);
   if (notes) {
     doc.text(`${t("pdf.notes")}: ${notes}`, 40, y + 14);
   }
 }
 
-function layoutLegend(doc, x, y) {
-  doc.setFontSize(9);
-  doc.text(`${t("pdf.legend")}:`, x, y);
-  doc.text(`— ${t("pdf.skirting")}`, x, y + 14);
-  doc.text(`— ${t("export.includeExclusions")}`, x, y + 28);
+function layoutLegend(doc, x, y, fontSize = 10, width = 260, height = 22) {
+  const boxW = width;
+  const boxH = height;
+  doc.setDrawColor(160);
+  doc.setFillColor(245);
+  doc.rect(x, y - boxH + 2, boxW, boxH, "FD");
+
+  doc.setFontSize(fontSize);
+  doc.setTextColor(20);
+
+  const labels = [
+    { label: t("pdf.skirting"), draw: "line" },
+    { label: t("export.legendExclusion"), draw: "box-dashed" },
+    { label: t("export.legendRemovedTile"), draw: "box-x" },
+    { label: t("export.legendRemovedSkirting"), draw: "line-x" },
+    { label: t("export.legendStartPoint"), draw: "circle" }
+  ];
+  const pad = 6;
+  const itemWidth = (boxW - pad * 2) / labels.length;
+  const baselineY = y - boxH / 2 + 4;
+
+  labels.forEach((item, idx) => {
+    const itemX = x + pad + idx * itemWidth;
+    const iconX = itemX + 4;
+    const textX = itemX + 22;
+    const iconY = baselineY - 1;
+
+    doc.setDrawColor(20);
+    doc.setFillColor(220);
+
+    if (item.draw === "line") {
+      doc.line(iconX, iconY, iconX + 14, iconY);
+    } else if (item.draw === "box-dashed") {
+      doc.rect(iconX, iconY - 6, 12, 8, "FD");
+      doc.setLineDashPattern([3, 2], 0);
+      doc.rect(iconX, iconY - 6, 12, 8, "S");
+      doc.setLineDashPattern([], 0);
+    } else if (item.draw === "box-x") {
+      doc.rect(iconX, iconY - 6, 12, 8, "FD");
+      doc.line(iconX, iconY - 6, iconX + 12, iconY + 2);
+      doc.line(iconX, iconY + 2, iconX + 12, iconY - 6);
+    } else if (item.draw === "line-x") {
+      doc.line(iconX, iconY, iconX + 14, iconY);
+      doc.line(iconX + 4, iconY - 4, iconX + 8, iconY + 2);
+      doc.line(iconX + 4, iconY + 2, iconX + 8, iconY - 4);
+    } else if (item.draw === "circle") {
+      doc.setFillColor(255);
+      doc.circle(iconX + 6, iconY - 2, 3.5, "FD");
+      doc.circle(iconX + 6, iconY - 2, 3.5, "S");
+    }
+
+    doc.text(item.label, textX, baselineY);
+  });
 }
 
 function getPageSize(options) {
@@ -305,7 +435,7 @@ function resolveScale(scale, roomWidthCm, roomHeightCm, pageWidth, pageHeight) {
   const planHeight = (roomHeightCm / factor) * cmToPt;
 
   const minPageW = Math.max(pageWidth, planWidth + 80);
-  const minPageH = Math.max(pageHeight, planHeight + 240);
+  const minPageH = Math.max(pageHeight, planHeight + 300);
 
   return {
     scale: factor,
@@ -318,7 +448,7 @@ function resolveScale(scale, roomWidthCm, roomHeightCm, pageWidth, pageHeight) {
 
 export async function exportRoomsPdf(state, options, onProgress) {
   const roomEntries = buildRoomList(state).filter(({ room }) => options.roomIds.includes(room.id));
-  const { format, orientation } = getPageSize(options);
+  const { format } = getPageSize(options);
   let doc = null;
 
   for (let i = 0; i < roomEntries.length; i++) {
@@ -326,9 +456,12 @@ export async function exportRoomsPdf(state, options, onProgress) {
     const model = buildRoomExportModel(state, room.id);
     if (!model) continue;
 
-    const basePage = doc
-      ? { width: doc.internal.pageSize.getWidth(), height: doc.internal.pageSize.getHeight() }
-      : { width: 0, height: 0 };
+    const roomOrientation = model.roomDimensionsCm.width >= model.roomDimensionsCm.length ? "landscape" : "portrait";
+    const measurementDoc = new jsPDF({ unit: "pt", format, orientation: roomOrientation });
+    const basePage = {
+      width: measurementDoc.internal.pageSize.getWidth(),
+      height: measurementDoc.internal.pageSize.getHeight()
+    };
     const scaleInfo = resolveScale(
       options.scale,
       model.roomDimensionsCm.width,
@@ -342,21 +475,22 @@ export async function exportRoomsPdf(state, options, onProgress) {
       : format;
 
     if (!doc) {
-      doc = new jsPDF({ unit: "pt", format: pageFormat, orientation });
+      doc = new jsPDF({ unit: "pt", format: pageFormat, orientation: roomOrientation });
     } else {
-      doc.addPage(pageFormat, orientation);
+      doc.addPage(pageFormat, roomOrientation);
     }
 
     onProgress?.({ current: i + 1, total: roomEntries.length, roomId: room.id });
 
-    layoutHeader(doc, model, options, doc.internal.pageSize.getWidth());
+    const ralInfo = await getRalMatch(model.grout.colorHex);
+    const layout = layoutHeader(doc, model, options, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), ralInfo);
 
     const svgResult = renderPlanSvgForExport(state, room.id, options);
     const svg = svgResult.svg;
-    const planX = 40;
-    const planY = 140;
-    const planWidth = scaleInfo.planWidth || (doc.internal.pageSize.getWidth() - 80);
-    const planHeight = scaleInfo.planHeight || (doc.internal.pageSize.getHeight() - 240);
+    const planX = layout.planX;
+    const planY = layout.planY;
+    const planWidth = Math.min(scaleInfo.planWidth || layout.planWidth, layout.planWidth);
+    const planHeight = Math.min(scaleInfo.planHeight || layout.planHeight, layout.planHeight);
 
     const ok = await svgToPdf(doc, svg, planX, planY, planWidth, planHeight);
     if (!ok) {
@@ -367,9 +501,16 @@ export async function exportRoomsPdf(state, options, onProgress) {
     svgResult.container.remove();
 
     if (options.includeLegend) {
-      layoutLegend(doc, planX, doc.internal.pageSize.getHeight() - 90);
+      layoutLegend(
+        doc,
+        layout.legendX,
+        layout.legendY,
+        layout.legendFontSize,
+        layout.legendWidth,
+        layout.legendHeight
+      );
     }
-    layoutFooter(doc, doc.internal.pageSize.getHeight() - 40, options.notes || "");
+    layoutFooter(doc, doc.internal.pageSize.getHeight() - 18, options.notes || "", layout.legendFontSize);
   }
 
   const filename = sanitizeFilename(`${state.project?.name || "plan"}_rooms_${dateStamp()}.pdf`);

@@ -12,6 +12,7 @@ import {
   roomPolygon,
   tilesForPreview,
   getRoomBounds,
+  computeOriginPoint,
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
 } from "./geometry.js";
@@ -1230,15 +1231,52 @@ export function renderPlanSvg({
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
-  function drawDimensionLine(x1, y1, x2, y2, label, offsetX, offsetY) {
+  function drawDimensionLine(
+    x1,
+    y1,
+    x2,
+    y2,
+    label,
+    offsetX,
+    offsetY,
+    labelShiftX = 0,
+    labelShiftY = 0,
+    labelAngle = 0
+  ) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len;
+    const ny = dy / len;
+    const px = -ny;
+    const py = nx;
+    const tick = 8;
+
     const lx1 = x1 + offsetX;
     const ly1 = y1 + offsetY;
     const lx2 = x2 + offsetX;
     const ly2 = y2 + offsetY;
+
     svg.appendChild(svgEl("line", { x1: lx1, y1: ly1, x2: lx2, y2: ly2, stroke: "#111111", "stroke-width": 1 }));
-    svg.appendChild(svgEl("line", { x1: lx1, y1: ly1, x2: lx1 + (offsetY ? 6 : 0), y2: ly1 + (offsetX ? 6 : 0), stroke: "#111111", "stroke-width": 1 }));
-    svg.appendChild(svgEl("line", { x1: lx2, y1: ly2, x2: lx2 + (offsetY ? 6 : 0), y2: ly2 + (offsetX ? 6 : 0), stroke: "#111111", "stroke-width": 1 }));
-    addPillLabel(label, (lx1 + lx2) / 2, (ly1 + ly2) / 2, { parent: svg });
+    svg.appendChild(svgEl("line", {
+      x1: lx1 - px * (tick / 2),
+      y1: ly1 - py * (tick / 2),
+      x2: lx1 + px * (tick / 2),
+      y2: ly1 + py * (tick / 2),
+      stroke: "#111111",
+      "stroke-width": 1
+    }));
+    svg.appendChild(svgEl("line", {
+      x1: lx2 - px * (tick / 2),
+      y1: ly2 - py * (tick / 2),
+      x2: lx2 + px * (tick / 2),
+      y2: ly2 + py * (tick / 2),
+      stroke: "#111111",
+      "stroke-width": 1
+    }));
+    const labelX = (lx1 + lx2) / 2 + labelShiftX;
+    const labelY = (ly1 + ly2) / 2 + labelShiftY;
+    addPillLabel(label, labelX, labelY, { parent: svg, angle: labelAngle });
   }
 
   // Inline edit handled by module-level SVG editor
@@ -1265,7 +1303,9 @@ export function renderPlanSvg({
 
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  const viewBoxPadding = 50;
+  const dimMargin = isExportBW ? 18 : 0;
+  const basePadding = isExportBW ? 24 : 50;
+  const viewBoxPadding = basePadding + dimMargin;
   const baseViewBox = {
     minX: minX - viewBoxPadding,
     minY: minY - viewBoxPadding,
@@ -1301,8 +1341,8 @@ export function renderPlanSvg({
   if (isExportBW) {
     const widthLabel = `${Math.round(w)} cm`;
     const heightLabel = `${Math.round(h)} cm`;
-    drawDimensionLine(minX, minY, maxX, minY, widthLabel, 0, -18);
-    drawDimensionLine(minX, minY, minX, maxY, heightLabel, -18, 0);
+    drawDimensionLine(minX, minY, maxX, minY, widthLabel, 0, -dimMargin, 0, -6);
+    drawDimensionLine(minX, minY, minX, maxY, heightLabel, -dimMargin, 0, -6, 0, -90);
   }
 
   // grid
@@ -1326,6 +1366,19 @@ export function renderPlanSvg({
       }));
     }
     svg.appendChild(g);
+  }
+
+  if (isExportBW) {
+    const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+    const markerRadius = 6;
+    svg.appendChild(svgEl("circle", {
+      cx: origin.x,
+      cy: origin.y,
+      r: markerRadius,
+      fill: "#ffffff",
+      stroke: "#111111",
+      "stroke-width": 2.5
+    }));
   }
 
   // room sections
@@ -1740,9 +1793,11 @@ export function renderPlanSvg({
       const isExcluded = tile.excluded;
       const attrs = {
         d: tile.d,
-        fill: isExportBW ? "none" : (isExcluded 
-          ? "rgba(239,68,68,0.25)" 
-          : (tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)")),
+        fill: isExportBW
+          ? (isExcluded ? "rgba(0,0,0,0.12)" : "none")
+          : (isExcluded 
+            ? "rgba(239,68,68,0.25)" 
+            : (tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)")),
         stroke: isExportBW
           ? "#222222"
           : (isExcluded
@@ -1867,6 +1922,14 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         };
         if (id) attrs["data-skirtid"] = id;
         if (excluded) {
+          if (isExportBW) {
+            gSkirting.appendChild(svgEl("path", {
+              d,
+              stroke: "#bdbdbd",
+              "stroke-width": 7,
+              "stroke-linecap": "butt"
+            }));
+          }
           attrs.stroke = isExportBW ? "#111111" : "rgba(239,68,68,0.8)";
           attrs["stroke-width"] = isExportBW ? 3 : 8;
           if (!isExportBW) attrs["class"] = "skirt-excluded";
@@ -1899,7 +1962,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     const isSel = ex.id === selectedExclId;
     // Match section styling pattern: selected has higher opacity, unselected is more subtle
     const common = {
-      fill: isExportBW ? "rgba(0,0,0,0.08)" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
+      fill: isExportBW ? "rgba(0,0,0,0.12)" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
       stroke: isExportBW ? "#111111" : (isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)"),
       "stroke-width": isExportBW ? 1.2 : (isSel ? 2 : 1.2),
       cursor: "move",
