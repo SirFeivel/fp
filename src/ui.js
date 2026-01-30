@@ -72,21 +72,28 @@ export function bindUI({
       } else if (roomSkirtingEnabled) {
         nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
       }
-      const selectedTypeRaw = document.getElementById("skirtingType")?.value;
-      const selectedType =
-        selectedTypeRaw === "bought" || selectedTypeRaw === "cutout"
-          ? selectedTypeRaw
-          : "cutout";
+      const skirtingTypeEl = document.getElementById("skirtingType");
+      const skirtingHeightEl = document.getElementById("skirtingHeight");
+      const skirtingBoughtWidthEl = document.getElementById("skirtingBoughtWidth");
+      const skirtingPricePerPieceEl = document.getElementById("skirtingPricePerPiece");
       const ref = nextRoom.tile?.reference;
       const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
       const prevCutoutAllowed = Boolean(preset?.useForSkirting);
       const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
-      nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
-      nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
-      nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
-      nextRoom.skirting.boughtPricePerPiece = Number(document.getElementById("skirtingPricePerPiece")?.value);
 
-      if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled) {
+      if (skirtingTypeEl) {
+        const selectedTypeRaw = skirtingTypeEl.value;
+        const selectedType =
+          selectedTypeRaw === "bought" || selectedTypeRaw === "cutout"
+            ? selectedTypeRaw
+            : "cutout";
+        nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
+      }
+      if (skirtingHeightEl) nextRoom.skirting.heightCm = Number(skirtingHeightEl.value);
+      if (skirtingBoughtWidthEl) nextRoom.skirting.boughtWidthCm = Number(skirtingBoughtWidthEl.value);
+      if (skirtingPricePerPieceEl) nextRoom.skirting.boughtPricePerPiece = Number(skirtingPricePerPieceEl.value);
+
+      if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled && skirtingTypeEl) {
         nextRoom.skirting.type = "cutout";
       }
     }

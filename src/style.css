@@ -1307,6 +1307,51 @@ body{
   gap: 12px;
 }
 
+.skirting-room-list {
+  display: grid;
+  gap: 8px;
+}
+
+.skirting-room-floor {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 6px;
+}
+
+.skirting-room-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.08);
+}
+
+.skirting-room-row.is-section {
+  padding-left: 18px;
+  background: rgba(0,0,0,0.05);
+}
+
+.skirting-room-row.is-section.is-disabled {
+  opacity: 0.5;
+}
+
+.skirting-room-row.is-section.is-disabled .toggle-switch {
+  cursor: not-allowed;
+}
+
+.skirting-room-name {
+  font-size: var(--fs-sm);
+}
+
+.skirting-room-toggle {
+  justify-content: flex-end;
+  width: auto;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

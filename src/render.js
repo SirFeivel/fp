@@ -404,15 +404,18 @@ export function renderRoomForm(state) {
 
   const skirting = currentRoom?.skirting;
   if (skirting) {
-    document.getElementById("skirtingType").value = skirting.type || "cutout";
-    document.getElementById("skirtingHeight").value = skirting.heightCm || "";
-    document.getElementById("skirtingBoughtWidth").value = skirting.boughtWidthCm || "";
-    document.getElementById("skirtingPricePerPiece").value = skirting.boughtPricePerPiece || "";
+    const skirtingTypeEl = document.getElementById("skirtingType");
+    if (skirtingTypeEl) skirtingTypeEl.value = skirting.type || "cutout";
+    const skirtingHeightEl = document.getElementById("skirtingHeight");
+    if (skirtingHeightEl) skirtingHeightEl.value = skirting.heightCm || "";
+    const skirtingBoughtWidthEl = document.getElementById("skirtingBoughtWidth");
+    if (skirtingBoughtWidthEl) skirtingBoughtWidthEl.value = skirting.boughtWidthCm || "";
+    const skirtingPricePerPieceEl = document.getElementById("skirtingPricePerPiece");
+    if (skirtingPricePerPieceEl) skirtingPricePerPieceEl.value = skirting.boughtPricePerPiece || "";
 
     const ref = currentRoom?.tile?.reference;
     const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
     const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
-    const skirtingTypeEl = document.getElementById("skirtingType");
     const cutoutHint = document.getElementById("skirtingCutoutHint");
     const cutoutOption = skirtingTypeEl?.querySelector('option[value="cutout"]');
     if (cutoutOption) cutoutOption.disabled = !cutoutAllowed;
@@ -421,8 +424,10 @@ export function renderRoomForm(state) {
 
     const effectiveType = cutoutAllowed ? skirting.type : "bought";
     const isBought = effectiveType === "bought";
-    document.getElementById("boughtWidthWrap").style.display = isBought ? "block" : "none";
-    document.getElementById("boughtPriceWrap").style.display = isBought ? "block" : "none";
+    const boughtWidthWrap = document.getElementById("boughtWidthWrap");
+    if (boughtWidthWrap) boughtWidthWrap.style.display = isBought ? "block" : "none";
+    const boughtPriceWrap = document.getElementById("boughtPriceWrap");
+    if (boughtPriceWrap) boughtPriceWrap.style.display = isBought ? "block" : "none";
     const skirtingPresetRow = document.getElementById("skirtingPresetRow");
     if (skirtingPresetRow) skirtingPresetRow.style.display = isBought ? "flex" : "none";
   }
@@ -608,6 +613,78 @@ export function renderSkirtingPresets(state, selectedId, setSelectedId) {
   if (height) { height.disabled = false; height.value = selected.heightCm ?? ""; }
   if (length) { length.disabled = false; length.value = selected.lengthCm ?? ""; }
   if (price) { price.disabled = false; price.value = selected.pricePerPiece ?? ""; }
+}
+
+export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection }) {
+  const wrap = document.getElementById("skirtingRoomsList");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  wrap.classList.add("skirting-room-list");
+
+  const floors = state.floors || [];
+  if (floors.length === 0) {
+    const div = document.createElement("div");
+    div.className = "meta subtle";
+    div.textContent = t("project.none");
+    wrap.appendChild(div);
+    return;
+  }
+
+  floors.forEach((floor, floorIdx) => {
+    const floorLabel = document.createElement("div");
+    floorLabel.className = "skirting-room-floor";
+    const floorName = floor.name || `${t("tabs.floor")} ${floorIdx + 1}`;
+    floorLabel.textContent = floorName;
+    wrap.appendChild(floorLabel);
+
+    const rooms = floor.rooms || [];
+    rooms.forEach((room, roomIdx) => {
+      const roomEnabled = room.skirting?.enabled !== false;
+      const roomRow = document.createElement("div");
+      roomRow.className = "skirting-room-row";
+      const roomName = room.name || `${t("tabs.room")} ${roomIdx + 1}`;
+      const roomNameEl = document.createElement("div");
+      roomNameEl.className = "skirting-room-name";
+      roomNameEl.textContent = `${roomName} · ${t("skirting.wholeRoom")}`;
+      const roomToggle = document.createElement("label");
+      roomToggle.className = "toggle-switch skirting-room-toggle";
+      roomToggle.innerHTML = `
+        <input type="checkbox" ${roomEnabled ? "checked" : ""} data-room-id="${room.id}">
+        <div class="toggle-slider"></div>
+      `;
+      roomRow.appendChild(roomNameEl);
+      roomRow.appendChild(roomToggle);
+      const roomInput = roomToggle.querySelector("input");
+      roomInput.addEventListener("change", () => {
+        onToggleRoom?.(room.id, Boolean(roomInput.checked));
+      });
+      wrap.appendChild(roomRow);
+
+      const sections = getRoomSections(room);
+      sections.forEach((sec, secIdx) => {
+        const secRow = document.createElement("div");
+        secRow.className = "skirting-room-row is-section";
+        if (!roomEnabled) secRow.classList.add("is-disabled");
+        const secName = sec.label || `${t("room.section")} ${secIdx + 1}`;
+        const secNameEl = document.createElement("div");
+        secNameEl.className = "skirting-room-name";
+        secNameEl.textContent = `${t("room.section")}: ${secName}`;
+        const secToggle = document.createElement("label");
+        secToggle.className = "toggle-switch skirting-room-toggle";
+        secToggle.innerHTML = `
+          <input type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""} data-room-id="${room.id}" data-sec-id="${sec.id}" ${roomEnabled ? "" : "disabled"}>
+          <div class="toggle-slider"></div>
+        `;
+        secRow.appendChild(secNameEl);
+        secRow.appendChild(secToggle);
+        const secInput = secToggle.querySelector("input");
+        secInput.addEventListener("change", () => {
+          onToggleSection?.(room.id, sec.id, Boolean(secInput.checked));
+        });
+        wrap.appendChild(secRow);
+      });
+    });
+  });
 }
 
 export function renderTilePresetPicker(state) {

@@ -23,6 +23,7 @@ import {
   renderTilePatternForm,
   renderExclList,
   renderExclProps,
+  renderSkirtingRoomList,
   renderPlanSvg,
   renderSectionsList,
   renderTilePresets,
@@ -128,6 +129,10 @@ function renderAll(lastLabel, options) {
     renderSectionsList(state, selectedSectionId);
     renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
     renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
+    renderSkirtingRoomList(state, {
+      onToggleRoom: setRoomSkirtingEnabledById,
+      onToggleSection: setSectionSkirtingEnabledById
+    });
     renderSectionProps({
       state,
       selectedSectionId,
@@ -257,12 +262,46 @@ function setRoomSkirtingEnabled(enabled) {
   commitViaStore(t("skirting.changed"), next);
 }
 
+function setRoomSkirtingEnabledById(roomId, enabled) {
+  const next = deepClone(store.getState());
+  let targetRoom = null;
+  for (const floor of next.floors || []) {
+    const match = floor.rooms?.find(r => r.id === roomId);
+    if (match) {
+      targetRoom = match;
+      break;
+    }
+  }
+  if (!targetRoom) return;
+  targetRoom.skirting = targetRoom.skirting || {};
+  targetRoom.skirting.enabled = enabled;
+  commitViaStore(t("skirting.changed"), next);
+}
+
 function setSectionSkirtingEnabled(id, enabled) {
   if (!id) return;
   const next = deepClone(store.getState());
   const room = getCurrentRoom(next);
   if (!room || !room.sections) return;
   const sec = room.sections.find(s => s.id === id);
+  if (!sec) return;
+  sec.skirtingEnabled = enabled;
+  commitViaStore(t("room.sectionChanged") || "Section changed", next);
+}
+
+function setSectionSkirtingEnabledById(roomId, sectionId, enabled) {
+  if (!roomId || !sectionId) return;
+  const next = deepClone(store.getState());
+  let targetRoom = null;
+  for (const floor of next.floors || []) {
+    const match = floor.rooms?.find(r => r.id === roomId);
+    if (match) {
+      targetRoom = match;
+      break;
+    }
+  }
+  if (!targetRoom || !targetRoom.sections) return;
+  const sec = targetRoom.sections.find(s => s.id === sectionId);
   if (!sec) return;
   sec.skirtingEnabled = enabled;
   commitViaStore(t("room.sectionChanged") || "Section changed", next);

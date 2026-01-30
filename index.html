@@ -704,48 +704,8 @@
             <!-- Skirting -->
             <div class="panel-section">
               <h4 class="panel-section-title" data-i18n="skirting.title">Skirting</h4>
-              <div class="panel-fields">
-                <label class="toggle-switch">
-                  <span class="toggle-label" data-i18n="skirting.roomEnabled">Skirting for this room</span>
-                  <input id="planningRoomSkirtingEnabled" type="checkbox" />
-                  <div class="toggle-slider"></div>
-                </label>
-                <div class="field-row">
-                  <div class="field">
-                    <label data-i18n="skirting.height">Height (cm)</label>
-                    <input id="skirtingHeight" type="number" step="0.1" />
-                  </div>
-                  <div class="field">
-                    <label data-i18n="skirting.type">Type</label>
-                    <select id="skirtingType">
-                      <option value="cutout" data-i18n="skirting.typeCutout">Self-cut</option>
-                      <option value="bought" data-i18n="skirting.typeBought">Pre-made</option>
-                    </select>
-                    <div id="skirtingCutoutHint" class="meta subtle" style="display:none;" data-i18n="skirting.cutoutNotAllowedText">
-                      Cutout skirting is disabled for this tile. Enable "Use as skirting" on the tile preset in Setup → Tile Collection.
-                    </div>
-                  </div>
-                </div>
-                <div class="field-row" id="skirtingPresetRow">
-                  <div class="field">
-                    <label data-i18n="skirting.preset">Preset</label>
-                    <select id="skirtingPresetSelect"></select>
-                  </div>
-                  <div class="field">
-                    <label>&nbsp;</label>
-                    <button id="btnApplySkirtingPreset" class="btn small" data-i18n="skirting.applyPreset">Apply Preset</button>
-                  </div>
-                </div>
-                <div class="field-row" id="boughtSkirtingFields">
-                  <div class="field" id="boughtWidthWrap">
-                    <label data-i18n="skirting.boughtWidth">Length/piece (cm)</label>
-                    <input id="skirtingBoughtWidth" type="number" step="0.1" />
-                  </div>
-                  <div class="field" id="boughtPriceWrap">
-                    <label data-i18n="skirting.pricePerPiece">Price/piece (€)</label>
-                    <input id="skirtingPricePerPiece" type="number" step="0.01" />
-                  </div>
-                </div>
+              <div class="panel-fields" id="skirtingRoomsList">
+                <div class="meta subtle" data-i18n="project.none">– none –</div>
               </div>
             </div>
 

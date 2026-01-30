@@ -9,6 +9,7 @@ import {
   renderStateView,
   renderExclProps,
   renderSectionProps,
+  renderSkirtingRoomList,
   renderRoomForm,
   renderPlanSvg
 } from './render.js';
@@ -208,6 +209,23 @@ describe('render.js smoke tests', () => {
     const toggle = document.getElementById('secSkirtingEnabled');
     expect(toggle).not.toBeNull();
     expect(toggle.checked).toBe(true);
+  });
+
+  it('renderSkirtingRoomList renders room and section toggles', () => {
+    document.body.innerHTML = '<div id="skirtingRoomsList"></div>';
+    const state = defaultState();
+    state.floors[0].name = "Floor 1";
+    const room = state.floors[0].rooms[0];
+    room.name = "Living";
+    room.sections = [
+      { id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true },
+      { id: 's2', x: 100, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: false }
+    ];
+
+    renderSkirtingRoomList(state, { onToggleRoom: vi.fn(), onToggleSection: vi.fn() });
+
+    const inputs = document.querySelectorAll('#skirtingRoomsList input[type="checkbox"]');
+    expect(inputs.length).toBe(3);
   });
 
   it('renderPlanSvg renders skirting paths when enabled', () => {

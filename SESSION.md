@@ -1297,3 +1297,22 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Skirting Room/Section Toggles (2026-01-30)
+### Goal
+- Replace planning skirting settings with a list of rooms and sections toggles.
+- Hide skirting type/height controls for now.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Replace skirting panel UI with rooms/sections toggle list
+2. Render and wire toggle list to state updates
+3. Adjust rendering/commit logic to handle missing skirting inputs and add tests
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
