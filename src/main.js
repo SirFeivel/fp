@@ -110,6 +110,159 @@ function handleSectionSelect(id) {
 // Hook for post-render sync (set by IIFE below)
 let afterRenderHook = null;
 
+const RenderScope = {
+  SETUP: "setup",
+  PLANNING: "planning",
+  COMMERCIAL: "commercial",
+  PLAN_AND_COMMERCIAL: "plan_and_commercial",
+  ALL: "all"
+};
+
+function resolveRenderScope(label, opts) {
+  if (opts?.scope) return opts.scope;
+  if (!label) return RenderScope.ALL;
+  if (label.startsWith("Undo:") || label.startsWith("Redo:")) return RenderScope.ALL;
+  if (label.startsWith("Update Material:")) return RenderScope.COMMERCIAL;
+
+  const planCommercial = new Set([
+    t("tile.changed"),
+    t("tile.patternChanged"),
+    t("tile.offsetChanged"),
+    t("tile.presetChanged"),
+    t("skirting.changed"),
+    t("removal.modeToggled"),
+    t("removal.tileToggled"),
+    t("removal.skirtToggled"),
+    t("exclusions.added"),
+    t("exclusions.deleted"),
+    t("exclusions.changed"),
+    t("exclusions.moved"),
+    t("room.sectionAdded"),
+    t("room.sectionDeleted"),
+    t("waste.changed"),
+    t("waste.optimizeChanged")
+  ]);
+
+  const setupAll = new Set([
+    t("structure.floorAdded"),
+    t("structure.floorDeleted"),
+    t("structure.floorChanged"),
+    t("structure.roomAdded"),
+    t("structure.roomDeleted"),
+    t("room.changed"),
+    t("session.reset"),
+    t("project.loaded")
+  ]);
+
+  const planningOnly = new Set([
+    t("room.viewChanged")
+  ]);
+
+  if (planCommercial.has(label)) return RenderScope.PLAN_AND_COMMERCIAL;
+  if (planningOnly.has(label)) return RenderScope.PLANNING;
+  if (setupAll.has(label)) return RenderScope.ALL;
+  return RenderScope.ALL;
+}
+
+function renderSetupSection(state) {
+  structure.renderFloorSelect();
+  structure.renderFloorName();
+  structure.renderRoomSelect();
+}
+
+function renderPlanningSection(state, opts) {
+  const isDrag = opts?.mode === "drag";
+  renderRoomForm(state);
+  renderTilePatternForm(state);
+
+  renderSectionsList(state, selectedSectionId);
+  renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
+  renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
+  renderSkirtingRoomList(state, {
+    onToggleRoom: setRoomSkirtingEnabledById,
+    onToggleSection: setSectionSkirtingEnabledById
+  });
+  renderSectionProps({
+    state,
+    selectedSectionId,
+    getSelectedSection: sections.getSelectedSection,
+    commitSectionProps: sections.commitSectionProps
+  });
+
+  renderExclList(state, selectedExclId);
+  renderExclProps({
+    state,
+    selectedExclId,
+    getSelectedExcl: excl.getSelectedExcl,
+    commitExclProps: excl.commitExclProps
+  });
+
+  renderWarnings(state, validateState);
+  if (!isDrag) renderMetrics(state);
+
+  const metrics = isDrag ? null : computePlanMetrics(state);
+  if (metrics) console.log("metrics", metrics);
+
+  renderPlanSvg({
+    state,
+    selectedExclId,
+    setSelectedExcl,
+    onExclPointerDown: dragController.onExclPointerDown,
+    onInlineEdit: updateExclusionInline,
+    onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
+    lastUnionError,
+    lastTileError,
+    setLastUnionError: (v) => (lastUnionError = v),
+    setLastTileError: (v) => (lastTileError = v),
+    metrics,
+    skipTiles: isDrag,
+    // Section callbacks
+    selectedSectionId,
+    setSelectedSection: handleSectionSelect,
+    onSectionPointerDown: sectionDragController.onSectionPointerDown,
+    onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
+    onSectionInlineEdit: updateSectionInline,
+    onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
+  });
+}
+
+function renderCommercialSection(state) {
+  renderCommercialTab(state);
+}
+
+function renderCommon(state, label) {
+  renderStateView(state);
+  renderCounts(store.getUndoStack(), store.getRedoStack(), label);
+  refreshProjectSelect();
+  updateMeta();
+  if (afterRenderHook) afterRenderHook();
+}
+
+function renderByScope(state, scope, label, opts) {
+  switch (scope) {
+    case RenderScope.SETUP:
+      renderSetupSection(state);
+      break;
+    case RenderScope.PLANNING:
+      renderPlanningSection(state, opts);
+      break;
+    case RenderScope.COMMERCIAL:
+      renderCommercialSection(state);
+      break;
+    case RenderScope.PLAN_AND_COMMERCIAL:
+      renderPlanningSection(state, opts);
+      renderCommercialSection(state);
+      break;
+    case RenderScope.ALL:
+    default:
+      renderSetupSection(state);
+      renderPlanningSection(state, opts);
+      renderCommercialSection(state);
+      break;
+  }
+  renderCommon(state, label);
+}
+
 function renderAll(lastLabel, options) {
   let opts = options || {};
   let label = lastLabel;
@@ -117,77 +270,11 @@ function renderAll(lastLabel, options) {
     opts = lastLabel;
     label = undefined;
   }
-  const isDrag = opts.mode === "drag";
+  const scope = resolveRenderScope(label, opts);
 
   try {
     const state = store.getState();
-
-    structure.renderFloorSelect();
-    structure.renderFloorName();
-    structure.renderRoomSelect();
-    renderRoomForm(state);
-    renderTilePatternForm(state);
-
-    renderSectionsList(state, selectedSectionId);
-    renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
-    renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
-    renderSkirtingRoomList(state, {
-      onToggleRoom: setRoomSkirtingEnabledById,
-      onToggleSection: setSectionSkirtingEnabledById
-    });
-    renderSectionProps({
-      state,
-      selectedSectionId,
-      getSelectedSection: sections.getSelectedSection,
-      commitSectionProps: sections.commitSectionProps
-    });
-
-    renderCommercialTab(state);
-
-    renderExclList(state, selectedExclId);
-    renderExclProps({
-      state,
-      selectedExclId,
-      getSelectedExcl: excl.getSelectedExcl,
-      commitExclProps: excl.commitExclProps
-    });
-
-    renderWarnings(state, validateState);
-    if (!isDrag) renderMetrics(state);
-
-    const metrics = isDrag ? null : computePlanMetrics(state);
-    if (metrics) console.log("metrics", metrics);
-
-    renderPlanSvg({
-      state,
-      selectedExclId,
-      setSelectedExcl,
-      onExclPointerDown: dragController.onExclPointerDown,
-      onInlineEdit: updateExclusionInline,
-      onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
-      lastUnionError,
-      lastTileError,
-      setLastUnionError: (v) => (lastUnionError = v),
-      setLastTileError: (v) => (lastTileError = v),
-      metrics,
-      skipTiles: isDrag,
-      // Section callbacks
-      selectedSectionId,
-      setSelectedSection: handleSectionSelect,
-      onSectionPointerDown: sectionDragController.onSectionPointerDown,
-      onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
-      onSectionInlineEdit: updateSectionInline,
-      onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
-    });
-
-    renderStateView(state);
-    renderCounts(store.getUndoStack(), store.getRedoStack(), label);
-
-    refreshProjectSelect();
-    updateMeta();
-
-    // Call post-render hook (syncs quick controls, planning selectors, etc.)
-    if (afterRenderHook) afterRenderHook();
+    renderByScope(state, scope, label, opts);
   } catch (error) {
     console.error("Render failed:", error);
     const errorDiv = document.getElementById("warnings");
