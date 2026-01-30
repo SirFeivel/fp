@@ -2071,7 +2071,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     svg.appendChild(t2);
   }
 
-  const svgFullscreen = document.getElementById("planSvgFullscreen");
+  const svgFullscreen = !svgOverride ? document.getElementById("planSvgFullscreen") : null;
   if (svgFullscreen) {
     svgFullscreen.innerHTML = svg.innerHTML;
     svgFullscreen.setAttribute('viewBox', svg.getAttribute('viewBox'));
