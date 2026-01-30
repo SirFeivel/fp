@@ -236,8 +236,8 @@ function layoutHeader(doc, model, options, pageWidth) {
 
   if (options.includeMetrics) {
     doc.text(`${t("metrics.totalTiles")}: ${model.metrics.tiles}`, rightX, 96);
-    doc.text(`${t("metrics.totalPacks")}: ${model.metrics.packs}`, rightX, 112);
-    doc.text(`${t("metrics.totalCost")}: ${model.metrics.cost.toFixed(2)}`, rightX, 128);
+    doc.text(`${t("commercial.totalPacks")}: ${model.metrics.packs}`, rightX, 112);
+    doc.text(`${t("commercial.totalCost")}: ${model.metrics.cost.toFixed(2)}`, rightX, 128);
   }
 }
 
@@ -356,8 +356,8 @@ export async function exportCommercialPdf(state, options) {
   const cards = [
     { label: t("metrics.totalArea"), value: `${model.summary.totalAreaM2.toFixed(2)} m²` },
     { label: t("metrics.totalTiles"), value: String(model.summary.totalTiles) },
-    { label: t("metrics.totalPacks"), value: String(model.summary.totalPacks) },
-    { label: t("metrics.totalCost"), value: model.summary.totalCost.toFixed(2) },
+    { label: t("commercial.totalPacks"), value: String(model.summary.totalPacks) },
+    { label: t("commercial.totalCost"), value: model.summary.totalCost.toFixed(2) },
     { label: t("metrics.grandTotal"), value: model.summary.grandTotal.toFixed(2) }
   ];
 
@@ -382,27 +382,48 @@ export async function exportCommercialPdf(state, options) {
   });
 
   let y = cy + 20;
-  y = drawTable(doc, t("commercial.materials"), ["Reference", "Packs", "Cost"], model.materials.map((item) => ([
-    item.reference || t("commercial.defaultMaterial"),
-    String(item.totalPacks || 0),
-    (item.adjustedCost || 0).toFixed(2)
-  ])), y, pageHeight);
+  y = drawTable(
+    doc,
+    t("commercial.materials"),
+    [t("tile.reference"), t("commercial.totalPacks"), t("commercial.totalCost")],
+    model.materials.map((item) => ([
+      item.reference || t("commercial.defaultMaterial"),
+      String(item.totalPacks || 0),
+      (item.adjustedCost || 0).toFixed(2)
+    ])),
+    y,
+    pageHeight
+  );
 
-  y = drawTable(doc, t("commercial.rooms"), ["Room", "Area (m²)", "Tiles", "Packs", "Cost"], model.rooms.map((room) => ([
-    `${room.floor} / ${room.room}`,
-    room.areaM2.toFixed(2),
-    String(room.tiles),
-    String(room.packs),
-    room.cost.toFixed(2)
-  ])), y + 16, pageHeight);
+  y = drawTable(
+    doc,
+    t("commercial.rooms"),
+    [t("pdf.room"), t("metrics.totalArea"), t("metrics.totalTiles"), t("commercial.totalPacks"), t("commercial.totalCost")],
+    model.rooms.map((room) => ([
+      `${room.floor} / ${room.room}`,
+      room.areaM2.toFixed(2),
+      String(room.tiles),
+      String(room.packs),
+      room.cost.toFixed(2)
+    ])),
+    y + 16,
+    pageHeight
+  );
 
   if (model.skirting.length) {
-    drawTable(doc, t("pdf.skirting"), ["Room", "Length (cm)", "Pieces", "Cost"], model.skirting.map((row) => ([
-      `${row.floor} / ${row.room}`,
-      String(row.skirtingLengthCm),
-      String(row.skirtingPieces),
-      String((row.skirtingCost || 0).toFixed(2))
-    ])), y + 16, pageHeight);
+    drawTable(
+      doc,
+      t("pdf.skirting"),
+      [t("pdf.room"), t("pdf.dimensions"), t("skirting.pieces"), t("commercial.totalCost")],
+      model.skirting.map((row) => ([
+        `${row.floor} / ${row.room}`,
+        String(row.skirtingLengthCm),
+        String(row.skirtingPieces),
+        String((row.skirtingCost || 0).toFixed(2))
+      ])),
+      y + 16,
+      pageHeight
+    );
   }
 
   const filename = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}.pdf`);
@@ -462,10 +483,12 @@ export async function exportCommercialXlsx(state, options) {
   const roomsSheet = XLSX.utils.json_to_sheet(model.rooms || []);
   const skirtingSheet = XLSX.utils.json_to_sheet(model.skirting || []);
 
-  XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
-  XLSX.utils.book_append_sheet(wb, materialsSheet, "Materials");
-  XLSX.utils.book_append_sheet(wb, roomsSheet, "Rooms");
-  XLSX.utils.book_append_sheet(wb, skirtingSheet, "Skirting");
+  const sheetName = (label) => sanitizeFilename(label).slice(0, 31) || "Sheet";
+
+  XLSX.utils.book_append_sheet(wb, summarySheet, sheetName(t("export.summary")));
+  XLSX.utils.book_append_sheet(wb, materialsSheet, sheetName(t("export.materials")));
+  XLSX.utils.book_append_sheet(wb, roomsSheet, sheetName(t("export.rooms")));
+  XLSX.utils.book_append_sheet(wb, skirtingSheet, sheetName(t("export.skirting")));
 
   const filename = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}.xlsx`);
   XLSX.writeFile(wb, filename);

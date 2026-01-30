@@ -2323,7 +2323,16 @@ export function renderExportTab(state, selection = null) {
   listEl.replaceChildren();
 
   const floors = state.floors || [];
-  if (!floors.length) {
+  const roomCount = floors.reduce((sum, floor) => sum + (floor.rooms?.length || 0), 0);
+  const btnRoomsPdf = document.getElementById("btnExportRoomsPdf");
+  const btnCommercialPdf = document.getElementById("btnExportCommercialPdf");
+  const btnCommercialXlsx = document.getElementById("btnExportCommercialXlsx");
+
+  if (btnRoomsPdf) btnRoomsPdf.disabled = roomCount === 0;
+  if (btnCommercialPdf) btnCommercialPdf.disabled = roomCount === 0;
+  if (btnCommercialXlsx) btnCommercialXlsx.disabled = roomCount === 0;
+
+  if (!floors.length || roomCount === 0) {
     const empty = document.createElement("div");
     empty.className = "subtle";
     empty.textContent = t("export.noRoomsSelected");

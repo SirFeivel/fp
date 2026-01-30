@@ -397,6 +397,10 @@ const translations = {
       noTileConfigured: "Keine Fliese konfiguriert",
       plansTitle: "Raumpläne",
       commercialTitle: "Kaufmännisch",
+      summary: "Übersicht",
+      materials: "Materialien",
+      rooms: "Räume",
+      skirting: "Sockelleisten",
       selectionChanged: "Export-Auswahl geändert"
     },
     pdf: {
@@ -848,6 +852,10 @@ const translations = {
       noTileConfigured: "No tile configured",
       plansTitle: "Room Plans",
       commercialTitle: "Commercial",
+      summary: "Summary",
+      materials: "Materials",
+      rooms: "Rooms",
+      skirting: "Skirting",
       selectionChanged: "Export selection changed"
     },
     pdf: {
