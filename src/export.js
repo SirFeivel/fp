@@ -55,6 +55,16 @@ export function buildRoomExportModel(state, roomId) {
       heightCm: Number(room.tile?.heightCm) || 0,
       pattern: room.pattern?.type || "grid"
     },
+    pattern: {
+      type: room.pattern?.type || "grid",
+      rotationDeg: Number(room.pattern?.rotationDeg) || 0,
+      offsetXcm: Number(room.pattern?.offsetXcm) || 0,
+      offsetYcm: Number(room.pattern?.offsetYcm) || 0,
+      originLabel: room.pattern?.origin?.preset || "tl",
+      originXcm: Number(room.pattern?.origin?.xCm) || 0,
+      originYcm: Number(room.pattern?.origin?.yCm) || 0,
+      bondFraction: Number(room.pattern?.bondFraction) || 0
+    },
     grout: {
       widthMm: Number(room.grout?.widthCm || 0) * 10,
       colorHex: room.grout?.colorHex || "#ffffff"
@@ -246,8 +256,23 @@ function layoutHeader(doc, model, options, pageWidth) {
   if (options.includeMetrics) {
     doc.text(`${t("metrics.totalTiles")}: ${model.metrics.tiles}`, rightX, 96);
     doc.text(`${t("commercial.totalPacks")}: ${model.metrics.packs}`, rightX, 112);
-    doc.text(`${t("commercial.totalCost")}: ${model.metrics.cost.toFixed(2)}`, rightX, 128);
+    doc.text(`${t("commercial.totalCost")}: ${model.metrics.cost.toFixed(2)} €`, rightX, 128);
   }
+
+  doc.setFontSize(9);
+  const tileY = 148;
+  doc.text(`${t("pdf.tile")}: ${model.tile.reference || "–"}`, 40, tileY);
+  doc.text(`${t("pdf.dimensions")}: ${model.tile.widthCm} x ${model.tile.heightCm} cm`, 40, tileY + 14);
+  doc.text(`${t("pdf.grout")}: ${model.grout.widthMm} mm (${model.grout.colorHex})`, 40, tileY + 28);
+  doc.text(`${t("pdf.pattern")}: ${model.tile.pattern}`, 40, tileY + 42);
+
+  const pattern = model.pattern || {};
+  const layoutY = tileY;
+  const layoutX = rightX;
+  doc.text(`${t("pdf.pattern")}: ${pattern.type || "grid"}`, layoutX, layoutY);
+  doc.text(`Origin: ${pattern.originLabel || "tl"} (${pattern.originXcm || 0}/${pattern.originYcm || 0})`, layoutX, layoutY + 14);
+  doc.text(`Rotation: ${pattern.rotationDeg || 0}°`, layoutX, layoutY + 28);
+  doc.text(`Offset: ${pattern.offsetXcm || 0} / ${pattern.offsetYcm || 0} cm`, layoutX, layoutY + 42);
 }
 
 function layoutFooter(doc, y, notes) {

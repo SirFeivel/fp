@@ -1211,6 +1211,36 @@ export function renderPlanSvg({
     return g;
   }
 
+  function bboxFromPathD(d) {
+    const nums = d
+      .trim()
+      .split(/[\s,]+/)
+      .map((x) => Number(x))
+      .filter((x) => Number.isFinite(x));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = nums[i];
+      const y = nums[i + 1];
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+    if (!Number.isFinite(minX)) return null;
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  function drawDimensionLine(x1, y1, x2, y2, label, offsetX, offsetY) {
+    const lx1 = x1 + offsetX;
+    const ly1 = y1 + offsetY;
+    const lx2 = x2 + offsetX;
+    const ly2 = y2 + offsetY;
+    svg.appendChild(svgEl("line", { x1: lx1, y1: ly1, x2: lx2, y2: ly2, stroke: "#111111", "stroke-width": 1 }));
+    svg.appendChild(svgEl("line", { x1: lx1, y1: ly1, x2: lx1 + (offsetY ? 6 : 0), y2: ly1 + (offsetX ? 6 : 0), stroke: "#111111", "stroke-width": 1 }));
+    svg.appendChild(svgEl("line", { x1: lx2, y1: ly2, x2: lx2 + (offsetY ? 6 : 0), y2: ly2 + (offsetX ? 6 : 0), stroke: "#111111", "stroke-width": 1 }));
+    addPillLabel(label, (lx1 + lx2) / 2, (ly1 + ly2) / 2, { parent: svg });
+  }
+
   // Inline edit handled by module-level SVG editor
 
   const bounds = getRoomBounds(currentRoom);
@@ -1267,6 +1297,13 @@ export function renderPlanSvg({
   }));
 
   const suppressDetails = Boolean(selectedExclId);
+
+  if (isExportBW) {
+    const widthLabel = `${Math.round(w)} cm`;
+    const heightLabel = `${Math.round(h)} cm`;
+    drawDimensionLine(minX, minY, maxX, minY, widthLabel, 0, -18);
+    drawDimensionLine(minX, minY, minX, maxY, heightLabel, -18, 0);
+  }
 
   // grid
   if (state.view?.showGrid && !suppressDetails) {
@@ -1699,8 +1736,8 @@ export function renderPlanSvg({
       const groutHex = groutWidth > 0 ? (currentRoom?.grout?.colorHex || "#ffffff") : "#ffffff";
       const groutRgb = hexToRgb(groutHex);
 
-      for (const tile of t.tiles) {
-        const isExcluded = tile.excluded;
+    for (const tile of t.tiles) {
+      const isExcluded = tile.excluded;
       const attrs = {
         d: tile.d,
         fill: isExportBW ? "none" : (isExcluded 
@@ -1718,6 +1755,16 @@ export function renderPlanSvg({
       if (isExcluded) {
         attrs["stroke-dasharray"] = "4 2";
         attrs["class"] = "tile-excluded";
+        if (isExportBW) {
+          const bb = bboxFromPathD(tile.d);
+          if (bb) {
+            const cx = bb.x + bb.w / 2;
+            const cy = bb.y + bb.h / 2;
+            const size = Math.min(bb.w, bb.h) * 0.2;
+            g.appendChild(svgEl("line", { x1: cx - size, y1: cy - size, x2: cx + size, y2: cy + size, stroke: "#111111", "stroke-width": 1 }));
+            g.appendChild(svgEl("line", { x1: cx - size, y1: cy + size, x2: cx + size, y2: cy - size, stroke: "#111111", "stroke-width": 1 }));
+          }
+        }
       }
         if (tile.id) attrs["data-tileid"] = tile.id;
         g.appendChild(svgEl("path", attrs));
@@ -1784,7 +1831,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       const gSkirting = svgEl("g", { 
         fill: "none", 
         stroke: isExportBW ? "#111111" : "var(--accent)", 
-        "stroke-width": isExportBW ? 2 : 4, 
+        "stroke-width": isExportBW ? 3 : 4, 
         opacity: 0.6,
         "stroke-linejoin": "round",
         "pointer-events": isRemovalMode ? "auto" : "none"
@@ -1821,8 +1868,15 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         if (id) attrs["data-skirtid"] = id;
         if (excluded) {
           attrs.stroke = isExportBW ? "#111111" : "rgba(239,68,68,0.8)";
-          attrs["stroke-width"] = isExportBW ? 2 : 8;
+          attrs["stroke-width"] = isExportBW ? 3 : 8;
           if (!isExportBW) attrs["class"] = "skirt-excluded";
+          if (isExportBW) {
+            const cx = (p1[0] + p2[0]) / 2;
+            const cy = (p1[1] + p2[1]) / 2;
+            const size = 6;
+            gSkirting.appendChild(svgEl("line", { x1: cx - size, y1: cy - size, x2: cx + size, y2: cy + size, stroke: "#111111", "stroke-width": 1 }));
+            gSkirting.appendChild(svgEl("line", { x1: cx - size, y1: cy + size, x2: cx + size, y2: cy - size, stroke: "#111111", "stroke-width": 1 }));
+          }
         }
 
         // Pieces (dashed line) - show gaps to background for better recognition
@@ -1845,7 +1899,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     const isSel = ex.id === selectedExclId;
     // Match section styling pattern: selected has higher opacity, unselected is more subtle
     const common = {
-      fill: isExportBW ? "none" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
+      fill: isExportBW ? "rgba(0,0,0,0.08)" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
       stroke: isExportBW ? "#111111" : (isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)"),
       "stroke-width": isExportBW ? 1.2 : (isSel ? 2 : 1.2),
       cursor: "move",
@@ -2346,7 +2400,7 @@ export function renderExportTab(state, selection = null) {
     return;
   }
 
-  const hasSelection = selection && selection.size > 0;
+  const hasSelection = selection instanceof Set;
 
   for (const floor of floors) {
     if (!floor.rooms || floor.rooms.length === 0) continue;

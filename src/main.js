@@ -273,12 +273,15 @@ function toggleExportProgress(show) {
 }
 
 function renderExportSection(state) {
-  if (exportSelection.size === 0) {
-    for (const floor of state.floors || []) {
-      for (const room of floor.rooms || []) {
-        exportSelection.add(room.id);
+  if (!renderExportSection.hasInitialized) {
+    if (exportSelection.size === 0) {
+      for (const floor of state.floors || []) {
+        for (const room of floor.rooms || []) {
+          exportSelection.add(room.id);
+        }
       }
     }
+    renderExportSection.hasInitialized = true;
   }
   renderExportTab(state, exportSelection);
 }
@@ -1261,7 +1264,7 @@ function updateAllTranslations() {
   const exportRoomsList = document.getElementById("exportRoomsList");
   exportRoomsList?.addEventListener("change", () => {
     updateExportSelectionFromList();
-    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+    setExportStatus(t("export.selectionChanged"));
   });
 
   document.getElementById("exportSelectAllRooms")?.addEventListener("click", () => {
@@ -1269,15 +1272,16 @@ function updateAllTranslations() {
       input.checked = true;
     });
     updateExportSelectionFromList();
-    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+    setExportStatus(t("export.selectionChanged"));
   });
 
   document.getElementById("exportClearRooms")?.addEventListener("click", () => {
+    exportSelection.clear();
     document.querySelectorAll("#exportRoomsList input[type=\"checkbox\"][data-room-id]").forEach((input) => {
       input.checked = false;
     });
     updateExportSelectionFromList();
-    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+    setExportStatus(t("export.selectionChanged"));
   });
 
   document.getElementById("btnExportRoomsPdf")?.addEventListener("click", async () => {
