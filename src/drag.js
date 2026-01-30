@@ -348,11 +348,11 @@ export function createExclusionDragController({
       // Commit triggers full render with correct tile calculations
       commit(getMoveLabel(), finalState);
     } else {
-      // No movement - clear transforms and trigger render to show selection properly
+      // No movement - selection already set in pointerdown, just trigger full render
       const elements = findExclElements(drag.id);
       elements.forEach(el => el.removeAttribute("transform"));
-      // Use setSelectedExcl to trigger proper render with selection styling
-      setSelectedExcl(drag.id);
+      // Use render() instead of setSelectedExcl() since ID is already set
+      if (render) render();
     }
 
     drag = null;
@@ -945,10 +945,12 @@ export function createSectionDragController({
 
       commit(getMoveLabel(), finalState);
     } else {
-      // No movement - clear transforms and render
+      // No movement - selection already set in pointerdown, just trigger render
       const elements = findSectionElements(drag.id);
       elements.forEach(el => el.removeAttribute("transform"));
-      setSelectedSection(drag.id);
+      // Use render() instead of setSelectedSection() since ID is already set
+      // This avoids redundant state changes
+      if (render) render();
     }
 
     drag = null;
@@ -972,9 +974,12 @@ export function createSectionDragController({
     const sec = sections.find(s => s.id === id);
     if (!sec) return;
 
-    // Set selection immediately and render
-    if (setSelectedSection) {
-      setSelectedSection(id);
+    // Set selection state and do a fast render (skip tiles for performance)
+    if (setSelectedIdOnly) {
+      setSelectedIdOnly(id);
+    }
+    if (render) {
+      render({ mode: "drag" });
     }
 
     const svg = getSvg();

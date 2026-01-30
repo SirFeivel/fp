@@ -75,9 +75,11 @@ function refreshProjectSelect() {
 }
 
 function setSelectedExcl(id) {
-  selectedExclId = id || null;
+  const newId = id || null;
+  const changed = selectedExclId !== newId || (id && selectedSectionId);
+  selectedExclId = newId;
   if (id) selectedSectionId = null; // Deselect section when selecting exclusion
-  renderAll();
+  if (changed) renderAll();
 }
 function setSelectedId(id) {
   selectedExclId = id || null;
@@ -93,9 +95,11 @@ function setSelectedSectionId(id) {
 
 // Handle section selection - deselects exclusion when selecting section
 function handleSectionSelect(id) {
-  selectedSectionId = id || null;
+  const newId = id || null;
+  const changed = selectedSectionId !== newId || (id && selectedExclId);
+  selectedSectionId = newId;
   if (id) selectedExclId = null; // Deselect exclusion when selecting section
-  renderAll();
+  if (changed) renderAll();
 }
 
 // Hook for post-render sync (set by IIFE below)

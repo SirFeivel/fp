@@ -441,9 +441,9 @@ describe('createExclusionDragController', () => {
       expect(commit).not.toHaveBeenCalled();
     });
 
-    it('clears transform and triggers selection render when no movement', () => {
+    it('clears transform and triggers render when no movement', () => {
       const exclusions = [{ id: 'ex1', type: 'rect', x: 10, y: 20, w: 50, h: 30 }];
-      const { controller, setSelectedExcl } = createMockController(exclusions);
+      const { controller, render } = createMockController(exclusions);
 
       const mockEl = { setAttribute: vi.fn(), removeAttribute: vi.fn() };
       mockElements = [mockEl];
@@ -462,11 +462,15 @@ describe('createExclusionDragController', () => {
 
       controller.onExclPointerDown(mockDownEvent);
 
+      // Clear render mock to isolate pointerup's render call
+      render.mockClear();
+
       // End drag without moving
       pointerUpHandler({});
 
       expect(mockEl.removeAttribute).toHaveBeenCalledWith('transform');
-      expect(setSelectedExcl).toHaveBeenCalledWith('ex1'); // Should trigger proper selection render
+      // render() is called directly (ID already set in pointerdown)
+      expect(render).toHaveBeenCalled();
     });
 
     it('removes pointermove listener on drag end', () => {
