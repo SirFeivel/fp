@@ -924,6 +924,7 @@ export function createSectionDragController({
   function onSvgPointerUp(e) {
     const svg = getSvg();
     svg.removeEventListener("pointermove", onSvgPointerMove);
+    try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
     hideResizeOverlay();
 
     if (!drag || !dragStartState) return;
@@ -971,22 +972,9 @@ export function createSectionDragController({
     const sec = sections.find(s => s.id === id);
     if (!sec) return;
 
-    if (setSelectedIdOnly) {
-      setSelectedIdOnly(id);
-    }
-
-    // Apply visual selection styling
-    const elements = findSectionElements(id);
-    elements.forEach(el => {
-      if (!el.hasAttribute("data-resize-handle")) {
-        el.setAttribute("stroke", "rgba(122,162,255,1)");
-        el.setAttribute("stroke-width", "2");
-        el.setAttribute("fill", "rgba(122,162,255,0.15)");
-      }
-    });
-
-    if (render) {
-      render({ mode: "drag" });
+    // Set selection immediately and render
+    if (setSelectedSection) {
+      setSelectedSection(id);
     }
 
     const svg = getSvg();

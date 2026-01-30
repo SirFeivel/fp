@@ -706,8 +706,8 @@ function updateAllTranslations() {
     if (document.body.dataset.inlineEditing === "true") return;
     const inPlan = e.target.closest("#planSvg, #planSvgFullscreen");
     if (!inPlan) return;
-    const inExcl = e.target.closest("[data-exid], [data-resize-handle], [data-inline-edit]");
-    if (inExcl) return;
+    const inInteractive = e.target.closest("[data-exid], [data-secid], [data-resize-handle], [data-inline-edit], [data-add-btn]");
+    if (inInteractive) return;
     setSelectedExcl(null);
   });
 

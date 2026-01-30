@@ -1499,7 +1499,7 @@ export function renderPlanSvg({
 
       previewTiles = t.tiles;
 
-      const g = svgEl("g", { opacity: 1 });
+      const g = svgEl("g", { opacity: 1, "pointer-events": isRemovalMode ? "auto" : "none" });
       svg.appendChild(g);
 
       // Get grout color from state - use default white if grout width is 0
