@@ -65,30 +65,30 @@ export function bindUI({
       nextRoom.name = document.getElementById("roomName")?.value ?? "";
 
       nextRoom.skirting = nextRoom.skirting || {};
-    const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
-    const planningRoomSkirtingEnabled = document.getElementById("planningRoomSkirtingEnabled");
-    if (planningRoomSkirtingEnabled) {
-      nextRoom.skirting.enabled = Boolean(planningRoomSkirtingEnabled.checked);
-    } else if (roomSkirtingEnabled) {
-      nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
-    }
+      const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
+      const planningRoomSkirtingEnabled = document.getElementById("planningRoomSkirtingEnabled");
+      if (planningRoomSkirtingEnabled) {
+        nextRoom.skirting.enabled = Boolean(planningRoomSkirtingEnabled.checked);
+      } else if (roomSkirtingEnabled) {
+        nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
+      }
       const selectedTypeRaw = document.getElementById("skirtingType")?.value;
       const selectedType =
         selectedTypeRaw === "bought" || selectedTypeRaw === "cutout"
           ? selectedTypeRaw
           : "cutout";
       const ref = nextRoom.tile?.reference;
-    const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
-    const prevCutoutAllowed = Boolean(preset?.useForSkirting);
-    const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
-    nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
+      const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
+      const prevCutoutAllowed = Boolean(preset?.useForSkirting);
+      const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
+      nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
       nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
       nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
       nextRoom.skirting.boughtPricePerPiece = Number(document.getElementById("skirtingPricePerPiece")?.value);
-    }
 
-    if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled) {
-      nextRoom.skirting.type = "cutout";
+      if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled) {
+        nextRoom.skirting.type = "cutout";
+      }
     }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -339,10 +339,18 @@ export function bindUI({
     commitLabel: t("tile.changed"),
     commitFn: commitFromTilePatternInputs
   });
-  document.getElementById("roomSkirtingEnabled")?.addEventListener("change", () => {
+  const roomSkirtingEnabledEl = document.getElementById("roomSkirtingEnabled");
+  const planningRoomSkirtingEnabledEl = document.getElementById("planningRoomSkirtingEnabled");
+  roomSkirtingEnabledEl?.addEventListener("change", () => {
+    if (planningRoomSkirtingEnabledEl) {
+      planningRoomSkirtingEnabledEl.checked = roomSkirtingEnabledEl.checked;
+    }
     commitFromRoomInputs(t("skirting.changed"));
   });
-  document.getElementById("planningRoomSkirtingEnabled")?.addEventListener("change", () => {
+  planningRoomSkirtingEnabledEl?.addEventListener("change", () => {
+    if (roomSkirtingEnabledEl) {
+      roomSkirtingEnabledEl.checked = planningRoomSkirtingEnabledEl.checked;
+    }
     commitFromRoomInputs(t("skirting.changed"));
   });
 

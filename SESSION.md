@@ -1224,3 +1224,22 @@ Horizontal bar below preview showing key numbers:
 - Complete
 - `npm test` and `npm run build` successful
 - `npm run dev` started successfully
+
+## Session: Toggle Wiring & Tests (2026-01-30)
+### Goal
+- Ensure skirting and view toggles stay in sync across Setup, Planning settings, and quick controls.
+- Add tests covering toggle wiring.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Sync room skirting toggles in UI commit flow
+2. Extract quick view toggle wiring + sync and add tests
+3. Add unit tests for toggle behavior
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run

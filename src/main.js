@@ -12,6 +12,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
+import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 
 import {
   renderWarnings,
@@ -905,27 +906,11 @@ function updateAllTranslations() {
   const quickTilePreset = document.getElementById("quickTilePreset");
   const quickPattern = document.getElementById("quickPattern");
   const quickGrout = document.getElementById("quickGrout");
-  const quickShowGrid = document.getElementById("quickShowGrid");
-  const quickShowSkirting = document.getElementById("quickShowSkirting");
   const quickRemovalMode = document.getElementById("quickRemovalMode");
   const quickOpenSettings = document.getElementById("quickOpenSettings");
 
   // Quick toggle event handlers
-  quickShowGrid?.addEventListener("change", (e) => {
-    const mainShowGrid = document.getElementById("showGrid");
-    if (mainShowGrid) {
-      mainShowGrid.checked = e.target.checked;
-      mainShowGrid.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-  });
-
-  quickShowSkirting?.addEventListener("change", (e) => {
-    const mainShowSkirting = document.getElementById("showSkirting");
-    if (mainShowSkirting) {
-      mainShowSkirting.checked = e.target.checked;
-      mainShowSkirting.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-  });
+  wireQuickViewToggleHandlers();
 
   const syncRemovalCheckboxes = (checked) => {
     const mainRemovalMode = document.getElementById("removalMode");
@@ -1014,11 +999,8 @@ function updateAllTranslations() {
     }
 
     // Sync quick toggles with main toggles
-    const mainShowGrid = document.getElementById("showGrid");
-    const mainShowSkirting = document.getElementById("showSkirting");
     const mainRemovalMode = document.getElementById("removalMode");
-    if (quickShowGrid && mainShowGrid) quickShowGrid.checked = mainShowGrid.checked;
-    if (quickShowSkirting && mainShowSkirting) quickShowSkirting.checked = mainShowSkirting.checked;
+    syncQuickViewToggleStates();
     if (quickRemovalMode && mainRemovalMode) quickRemovalMode.checked = mainRemovalMode.checked;
 
     // Sync planning floor selector
