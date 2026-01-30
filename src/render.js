@@ -15,6 +15,7 @@ import {
   computeSkirtingSegments
 } from "./geometry.js";
 import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
+import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 
 let activeSvgEdit = null;
 
@@ -1226,14 +1227,30 @@ export function renderPlanSvg({
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
   const viewBoxPadding = 50;
-  svg.setAttribute("viewBox", `${minX - viewBoxPadding} ${minY - viewBoxPadding} ${w + 2 * viewBoxPadding} ${h + 2 * viewBoxPadding}`);
+  const baseViewBox = {
+    minX: minX - viewBoxPadding,
+    minY: minY - viewBoxPadding,
+    width: w + 2 * viewBoxPadding,
+    height: h + 2 * viewBoxPadding
+  };
+
+  // Store base viewBox for zoom/pan calculations
+  setBaseViewBox(state.selectedRoomId, baseViewBox);
+
+  // Calculate effective viewBox with zoom/pan applied
+  const effectiveViewBox = calculateEffectiveViewBox(state.selectedRoomId);
+  const vb = effectiveViewBox || baseViewBox;
+
+  svg.setAttribute("viewBox", `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
+  // Background extends beyond normal bounds to cover zoomed out views
+  const bgPadding = Math.max(baseViewBox.width, baseViewBox.height) * 10;
   svg.appendChild(svgEl("rect", {
-    x: minX - viewBoxPadding,
-    y: minY - viewBoxPadding,
-    width: w + 2 * viewBoxPadding,
-    height: h + 2 * viewBoxPadding,
+    x: baseViewBox.minX - bgPadding,
+    y: baseViewBox.minY - bgPadding,
+    width: baseViewBox.width + 2 * bgPadding,
+    height: baseViewBox.height + 2 * bgPadding,
     fill: "#081022"
   }));
 

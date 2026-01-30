@@ -13,6 +13,8 @@ import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
+import { createZoomPanController } from "./zoom-pan.js";
+import { getViewport } from "./viewport.js";
 
 import {
   renderWarnings,
@@ -251,6 +253,13 @@ const sectionDragController = createSectionDragController({
   getSelectedId: () => selectedSectionId,
   getMoveLabel: () => t("room.sectionMoved") || "Section moved",
   getResizeLabel: () => t("room.sectionResized") || "Section resized"
+});
+
+const zoomPanController = createZoomPanController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getCurrentRoomId: () => store.getState().selectedRoomId,
+  onViewportChange: () => renderAll({ mode: "zoom" }),
+  getSelectedExclId: () => selectedExclId
 });
 
 function setRoomSkirtingEnabled(enabled) {
@@ -812,6 +821,9 @@ function updateAllTranslations() {
   initMainTabs();
   initFullscreen(dragController, renderAll);
 
+  // Initialize zoom/pan controller
+  zoomPanController.attach();
+
   bindUI({
     store,
     excl,
@@ -1160,6 +1172,17 @@ function updateAllTranslations() {
     });
   });
 
+  // Zoom controls
+  document.getElementById("zoomIn")?.addEventListener("click", () => {
+    zoomPanController.zoomIn();
+  });
+  document.getElementById("zoomOut")?.addEventListener("click", () => {
+    zoomPanController.zoomOut();
+  });
+  document.getElementById("zoomReset")?.addEventListener("click", () => {
+    zoomPanController.reset();
+  });
+
   function syncQuickControls() {
     const state = store.getState();
     const room = state.floors
@@ -1293,11 +1316,22 @@ function updateAllTranslations() {
     });
   }
 
+  // Update zoom indicator
+  function updateZoomIndicator() {
+    const state = store.getState();
+    const vp = getViewport(state.selectedRoomId);
+    const zoomLevel = document.getElementById("zoomLevel");
+    if (zoomLevel) {
+      zoomLevel.textContent = `${Math.round(vp.zoom * 100)}%`;
+    }
+  }
+
   // Register the sync function as the post-render hook
   afterRenderHook = () => {
     syncDimensionsFromState();
     syncQuickControls();
     enhanceNumberSpinners();
+    updateZoomIndicator();
   };
 
   function commitQuickTilePreset() {

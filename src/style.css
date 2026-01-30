@@ -1194,6 +1194,42 @@ body{
   color: var(--accent);
 }
 
+/* Zoom Controls */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoom-btn {
+  width: var(--control-h-sm);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.zoom-indicator {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* SVG Pan/Zoom Cursors */
+#planSvg.pan-ready,
+#planSvgFullscreen.pan-ready {
+  cursor: grab;
+}
+
+#planSvg.panning,
+#planSvgFullscreen.panning {
+  cursor: grabbing;
+}
+
 /* Metrics Bar */
 .metrics-bar {
   display: flex;
