@@ -12,7 +12,10 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
-    "polygon-clipping": "^0.15.7"
+    "jspdf": "^4.0.0",
+    "polygon-clipping": "^0.15.7",
+    "svg2pdf.js": "^2.7.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
