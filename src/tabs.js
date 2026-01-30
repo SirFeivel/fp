@@ -43,6 +43,8 @@ export function initMainTabs() {
       finalTab = 'planning';
     } else if (savedTab === 'commercial') {
       finalTab = 'commercial';
+    } else if (savedTab === 'export') {
+      finalTab = 'export';
     } else {
       finalTab = 'setup';
     }
