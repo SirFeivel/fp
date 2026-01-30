@@ -225,11 +225,20 @@ function layoutHeader(doc, model, options, pageWidth) {
   doc.setFontSize(10);
   doc.text(`${t("pdf.dimensions")}: ${model.roomDimensionsCm.width} x ${model.roomDimensionsCm.length} cm`, 40, 96);
   doc.text(`${t("pdf.area")}: ${model.roomAreaM2.toFixed(2)} m²`, 40, 112);
+  if (options.scale && options.scale !== "fit") {
+    doc.text(`${t("export.scale")}: ${options.scale}`, 40, 128);
+  }
 
   const rightX = pageWidth - 220;
   doc.text(`${t("pdf.company")}: ____________________`, rightX, 40);
   doc.text(`${t("pdf.address")}: ____________________`, rightX, 58);
   doc.text(`${t("pdf.contact")}: ____________________`, rightX, 76);
+
+  if (options.includeMetrics) {
+    doc.text(`${t("metrics.totalTiles")}: ${model.metrics.tiles}`, rightX, 96);
+    doc.text(`${t("metrics.totalPacks")}: ${model.metrics.packs}`, rightX, 112);
+    doc.text(`${t("metrics.totalCost")}: ${model.metrics.cost.toFixed(2)}`, rightX, 128);
+  }
 }
 
 function layoutFooter(doc, y, notes) {
@@ -323,7 +332,9 @@ export async function exportRoomsPdf(state, options, onProgress) {
 
     svgResult.container.remove();
 
-    layoutLegend(doc, planX, doc.internal.pageSize.getHeight() - 90);
+    if (options.includeLegend) {
+      layoutLegend(doc, planX, doc.internal.pageSize.getHeight() - 90);
+    }
     layoutFooter(doc, doc.internal.pageSize.getHeight() - 40, options.notes || "");
   }
 
@@ -339,30 +350,96 @@ export async function exportCommercialPdf(state, options) {
   doc.setFontSize(16);
   doc.text(t("export.commercial"), 40, 40);
 
-  doc.setFontSize(11);
-  doc.text(`${t("metrics.totalArea")} ${model.summary.totalAreaM2.toFixed(2)} m²`, 40, 70);
-  doc.text(`${t("metrics.totalTiles")} ${model.summary.totalTiles}`, 40, 88);
-  doc.text(`${t("metrics.totalPacks")} ${model.summary.totalPacks}`, 40, 106);
-  doc.text(`${t("metrics.totalCost")} ${model.summary.totalCost.toFixed(2)}`, 40, 124);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
-  let y = 160;
-  doc.setFontSize(12);
-  doc.text(t("commercial.materials"), 40, y);
-  y += 18;
-  doc.setFontSize(9);
+  const cards = [
+    { label: t("metrics.totalArea"), value: `${model.summary.totalAreaM2.toFixed(2)} m²` },
+    { label: t("metrics.totalTiles"), value: String(model.summary.totalTiles) },
+    { label: t("metrics.totalPacks"), value: String(model.summary.totalPacks) },
+    { label: t("metrics.totalCost"), value: model.summary.totalCost.toFixed(2) },
+    { label: t("metrics.grandTotal"), value: model.summary.grandTotal.toFixed(2) }
+  ];
 
-  for (const item of model.materials) {
-    const line = `${item.reference || t("commercial.defaultMaterial")} | ${item.packs || 0} | ${item.totalCost?.toFixed?.(2) || 0}`;
-    doc.text(line, 40, y);
-    y += 14;
-    if (y > doc.internal.pageSize.getHeight() - 60) {
-      doc.addPage();
-      y = 40;
+  const cardWidth = (pageWidth - 100) / 3;
+  let cx = 40;
+  let cy = 70;
+  doc.setFontSize(10);
+  cards.forEach((card, idx) => {
+    doc.setFillColor(16, 24, 40);
+    doc.rect(cx, cy, cardWidth, 52, "F");
+    doc.setTextColor(231);
+    doc.text(card.label, cx + 8, cy + 18);
+    doc.setFontSize(12);
+    doc.text(card.value, cx + 8, cy + 38);
+    doc.setFontSize(10);
+    doc.setTextColor(30);
+    cx += cardWidth + 10;
+    if ((idx + 1) % 3 === 0) {
+      cx = 40;
+      cy += 62;
     }
+  });
+
+  let y = cy + 20;
+  y = drawTable(doc, t("commercial.materials"), ["Reference", "Packs", "Cost"], model.materials.map((item) => ([
+    item.reference || t("commercial.defaultMaterial"),
+    String(item.totalPacks || 0),
+    (item.adjustedCost || 0).toFixed(2)
+  ])), y, pageHeight);
+
+  y = drawTable(doc, t("commercial.rooms"), ["Room", "Area (m²)", "Tiles", "Packs", "Cost"], model.rooms.map((room) => ([
+    `${room.floor} / ${room.room}`,
+    room.areaM2.toFixed(2),
+    String(room.tiles),
+    String(room.packs),
+    room.cost.toFixed(2)
+  ])), y + 16, pageHeight);
+
+  if (model.skirting.length) {
+    drawTable(doc, t("pdf.skirting"), ["Room", "Length (cm)", "Pieces", "Cost"], model.skirting.map((row) => ([
+      `${row.floor} / ${row.room}`,
+      String(row.skirtingLengthCm),
+      String(row.skirtingPieces),
+      String((row.skirtingCost || 0).toFixed(2))
+    ])), y + 16, pageHeight);
   }
 
   const filename = sanitizeFilename(`${state.project?.name || "plan"}_commercial_${dateStamp()}.pdf`);
   doc.save(filename);
+}
+
+function drawTable(doc, title, headers, rows, startY, pageHeight) {
+  let y = startY;
+  const left = 40;
+  const rowHeight = 16;
+  const maxY = pageHeight - 40;
+
+  doc.setFontSize(11);
+  doc.setTextColor(30);
+  doc.text(title, left, y);
+  y += 18;
+
+  doc.setFontSize(9);
+  doc.setTextColor(80);
+  doc.text(headers.join(" | "), left, y);
+  y += rowHeight;
+
+  for (const row of rows) {
+    if (y > maxY) {
+      doc.addPage();
+      y = 40;
+      doc.setFontSize(9);
+      doc.setTextColor(80);
+      doc.text(headers.join(" | "), left, y);
+      y += rowHeight;
+    }
+    doc.setTextColor(30);
+    doc.text(row.join(" | "), left, y);
+    y += rowHeight;
+  }
+
+  return y;
 }
 
 export async function exportCommercialXlsx(state, options) {
