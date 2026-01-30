@@ -1,5 +1,5 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, uuid } from "./core.js";
 import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
 import { computeProjectTotals } from "./calc.js";
@@ -47,6 +47,280 @@ export function bindUI({
   setSelectedSection,
   resetErrors
 }) {
+  let tileEditActive = false;
+  let tileEditDirty = false;
+  let tileEditSnapshot = null;
+  document.body.dataset.tileEditDirty = "false";
+
+  const setTileEditError = (msg) => {
+    const el = document.getElementById("tileEditError");
+    if (!el) return;
+    if (!msg) {
+      el.textContent = "";
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  };
+
+  const normalizePresetName = (name) => (name || "").trim().toLowerCase();
+
+  const resolvePresetName = (state, { presetId, refRaw, fallback, allowSuffixOnConflict }) => {
+    const presets = state.tilePresets || [];
+    const raw = (refRaw ?? "").trim();
+    if (raw) {
+      const normalized = normalizePresetName(raw);
+      const conflict = presets.find(p => normalizePresetName(p?.name) === normalized && p?.id !== presetId);
+      if (conflict) {
+        if (!allowSuffixOnConflict) return { ok: false, name: raw };
+        return { ok: true, name: getUniqueName(presets, raw) };
+      }
+      return { ok: true, name: raw };
+    }
+
+    const base = fallback || `${t("tile.preset")} ${presets.length + 1}`;
+    return { ok: true, name: getUniqueName(presets, base) };
+  };
+
+  const getUniqueName = (presets, base) => {
+    let candidate = base;
+    let idx = 2;
+    while (presets.find(p => normalizePresetName(p?.name) === normalizePresetName(candidate))) {
+      candidate = `${base} ${idx}`;
+      idx += 1;
+    }
+    return candidate;
+  };
+
+  const getCurrentPresetId = () => {
+    const state = store.getState();
+    const room = getCurrentRoom(state);
+    const ref = room?.tile?.reference;
+    if (!ref) return "";
+    const match = state.tilePresets?.find(p => p?.name && p.name === ref);
+    return match?.id || "";
+  };
+
+  const syncTileEditActions = () => {
+    const actions = document.getElementById("tileEditActions");
+    if (!actions) return;
+    actions.classList.toggle("hidden", !(tileEditActive && tileEditDirty));
+    const state = store.getState();
+    const room = getCurrentRoom(state);
+    const ref = room?.tile?.reference;
+    const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    const updateBtn = document.getElementById("tileEditUpdateBtn");
+    if (updateBtn) updateBtn.style.display = preset ? "" : "none";
+  };
+
+  const setTileEditActive = (active) => {
+    tileEditActive = active;
+    document.body.dataset.tileEdit = active ? "true" : "false";
+    if (!active) {
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+    }
+    renderAll();
+    syncTileEditActions();
+  };
+
+  const markTileEditDirty = () => {
+    if (tileEditActive) {
+      tileEditDirty = true;
+      document.body.dataset.tileEditDirty = "true";
+      setTileEditError("");
+      syncTileEditActions();
+    }
+  };
+
+  const snapshotTileEditState = () => {
+    const state = store.getState();
+    const room = getCurrentRoom(state);
+    if (!room) return;
+    const ref = room.tile?.reference;
+    const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    tileEditSnapshot = {
+      roomId: room.id,
+      tile: structuredClone(room.tile || {}),
+      grout: structuredClone(room.grout || {}),
+      reference: ref || "",
+      presetId: preset?.id || null,
+      presetName: preset?.name || "",
+      materialsRef: ref && state.materials ? structuredClone(state.materials[ref] || null) : null
+    };
+  };
+
+  const readTileInputs = () => {
+    const refRaw = document.getElementById("tileReference")?.value ?? "";
+    const ref = refRaw.trim();
+    const shape = document.getElementById("tileShape")?.value || "rect";
+    const widthCm = Number(document.getElementById("tileW")?.value) || 0;
+    const heightCm = Number(document.getElementById("tileH")?.value) || 0;
+    const pricePerM2 = Number(document.getElementById("tilePricePerM2")?.value) || 0;
+    const packM2 = Number(document.getElementById("tilePackM2")?.value) || 0;
+    const useForSkirting = Boolean(document.getElementById("tileAllowSkirting")?.checked);
+    return { ref, refRaw, shape, widthCm, heightCm, pricePerM2, packM2, useForSkirting };
+  };
+
+  const readGroutInputs = () => {
+    const groutWidthCm = (Number(document.getElementById("groutW")?.value) || 0) / 10;
+    const groutColorHex = document.getElementById("groutColor")?.value || "#ffffff";
+    return { groutWidthCm, groutColorHex };
+  };
+
+  const applyTilePresetUpdate = (next, { preset, values, grout, asNew, oldName }) => {
+    const room = getCurrentRoom(next);
+    if (!room) return;
+    const name = values.ref || preset?.name || `${t("tile.preset")} ${next.tilePresets?.length + 1}`;
+    let targetPreset = preset;
+    if (asNew || !targetPreset) {
+      targetPreset = {
+        id: uuid(),
+        name,
+        shape: values.shape,
+        widthCm: values.widthCm,
+        heightCm: values.heightCm,
+        pricePerM2: values.pricePerM2,
+        packM2: values.packM2,
+        useForSkirting: values.useForSkirting
+      };
+      next.tilePresets = next.tilePresets || [];
+      next.tilePresets.push(targetPreset);
+    } else {
+      targetPreset.name = name;
+      targetPreset.shape = values.shape;
+      targetPreset.widthCm = values.widthCm;
+      targetPreset.heightCm = values.heightCm;
+      targetPreset.pricePerM2 = values.pricePerM2;
+      targetPreset.packM2 = values.packM2;
+      targetPreset.useForSkirting = values.useForSkirting;
+    }
+
+    room.tile.shape = values.shape;
+    room.tile.widthCm = values.widthCm;
+    room.tile.heightCm = values.heightCm;
+    room.tile.reference = targetPreset.name || room.tile.reference;
+    room.grout.widthCm = grout.groutWidthCm;
+    room.grout.colorHex = grout.groutColorHex;
+
+    if (values.useForSkirting) {
+      room.skirting.enabled = true;
+      room.skirting.type = "cutout";
+    }
+
+    const ref = room.tile.reference;
+    if (ref) {
+      next.materials = next.materials || {};
+      next.materials[ref] = next.materials[ref] || {};
+      next.materials[ref].pricePerM2 = values.pricePerM2;
+      next.materials[ref].packM2 = values.packM2;
+    }
+
+    if (!asNew && oldName) {
+      next.floors?.forEach((floor) => {
+        floor.rooms?.forEach((rm) => {
+          if (rm.tile?.reference === oldName) {
+            if (oldName !== ref) rm.tile.reference = ref;
+            rm.tile.shape = values.shape;
+            rm.tile.widthCm = values.widthCm;
+            rm.tile.heightCm = values.heightCm;
+          }
+        });
+      });
+      if (oldName !== ref && next.materials?.[oldName]) {
+        delete next.materials[oldName];
+      }
+    }
+  };
+
+  const revertTileEdits = (next) => {
+    const room = getCurrentRoom(next);
+    if (!room || !tileEditSnapshot) return;
+    room.tile = structuredClone(tileEditSnapshot.tile || {});
+    room.grout = structuredClone(tileEditSnapshot.grout || {});
+    room.tile.reference = tileEditSnapshot.reference || room.tile.reference;
+    const ref = tileEditSnapshot.reference;
+    if (ref) {
+      next.materials = next.materials || {};
+      if (tileEditSnapshot.materialsRef) {
+        next.materials[ref] = structuredClone(tileEditSnapshot.materialsRef);
+      } else {
+        delete next.materials[ref];
+      }
+    }
+  };
+
+  const finishTileEdit = () => {
+    if (!tileEditDirty) {
+      setTileEditActive(false);
+      return;
+    }
+    // Keep edit mode on and show inline actions instead of a browser prompt.
+    document.body.dataset.tileEditDirty = "true";
+    renderAll();
+    syncTileEditActions();
+  };
+
+  const applyTileEditChoice = (choice) => {
+    const state = store.getState();
+    const next = structuredClone(state);
+    const values = readTileInputs();
+    const grout = readGroutInputs();
+    const preset = tileEditSnapshot?.presetId
+      ? next.tilePresets?.find(p => p.id === tileEditSnapshot.presetId)
+      : null;
+    const hasPreset = Boolean(preset);
+
+    if (choice === "discard") {
+      revertTileEdits(next);
+      store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+      setTileEditActive(false);
+      setTileEditError("");
+      return;
+    }
+
+    if (choice === "new" || (choice === "update" && !hasPreset)) {
+      const nameResult = resolvePresetName(next, {
+        presetId: null,
+        refRaw: values.refRaw,
+        fallback: values.ref || preset?.name,
+        allowSuffixOnConflict: true
+      });
+      values.ref = nameResult.name;
+      applyTilePresetUpdate(next, { preset: null, values, grout, asNew: true });
+      store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+      setTileEditActive(false);
+      setTileEditError("");
+      return;
+    }
+
+    if (choice === "update") {
+      const nameResult = resolvePresetName(next, {
+        presetId: preset?.id || null,
+        refRaw: values.refRaw,
+        fallback: values.ref || preset?.name,
+        allowSuffixOnConflict: false
+      });
+      if (!nameResult.ok) {
+        setTileEditError(t("planning.tileEditDuplicateName"));
+        return;
+      }
+      const oldName = preset?.name || "";
+      values.ref = nameResult.name;
+      applyTilePresetUpdate(next, { preset, values, grout, asNew: false, oldName });
+      store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+      setTileEditActive(false);
+      setTileEditError("");
+      return;
+    }
+  };
   function commitFromRoomInputs(label) {
     const state = store.getState();
     const next = structuredClone(state);
@@ -373,9 +647,7 @@ export function bindUI({
     commitFromRoomInputs(t("skirting.changed"));
   });
 
-  document.getElementById("btnApplyTilePreset")?.addEventListener("click", () => {
-    const sel = document.getElementById("tilePresetSelect");
-    const presetId = sel?.value;
+  const applyTilePreset = (presetId) => {
     if (!presetId) return;
     const state = store.getState();
     const preset = state.tilePresets?.find(p => p.id === presetId);
@@ -410,9 +682,55 @@ export function bindUI({
     }
 
     store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  };
+
+  document.getElementById("btnApplyTilePreset")?.addEventListener("click", () => {
+    const sel = document.getElementById("tilePresetSelect");
+    applyTilePreset(sel?.value);
+  });
+
+  document.getElementById("tilePresetSelect")?.addEventListener("change", (e) => {
+    if (tileEditActive) {
+      if (tileEditDirty) {
+        setTileEditError(t("planning.tileEditSwitchBlocked"));
+        syncTileEditActions();
+        e.target.value = getCurrentPresetId();
+        return;
+      }
+      setTileEditActive(false);
+    }
+    setTileEditError("");
+    applyTilePreset(e.target.value);
+  });
+
+  document.getElementById("tileConfigEditToggle")?.addEventListener("change", (e) => {
+    if (e.target.checked) {
+      tileEditDirty = false;
+      document.body.dataset.tileEditDirty = "false";
+      setTileEditError("");
+      snapshotTileEditState();
+      setTileEditActive(true);
+    } else {
+      finishTileEdit();
+      e.target.checked = tileEditActive;
+    }
+  });
+
+  document.getElementById("tileEditUpdateBtn")?.addEventListener("click", () => {
+    setTileEditError("");
+    applyTileEditChoice("update");
+  });
+  document.getElementById("tileEditNewBtn")?.addEventListener("click", () => {
+    setTileEditError("");
+    applyTileEditChoice("new");
+  });
+  document.getElementById("tileEditDiscardBtn")?.addEventListener("click", () => {
+    setTileEditError("");
+    applyTileEditChoice("discard");
   });
 
   document.getElementById("tileReference")?.addEventListener("change", (e) => {
+    setTileEditError("");
     const newRef = e.target.value;
     if (!newRef) return;
 
@@ -527,6 +845,23 @@ export function bindUI({
       });
     }
   });
+
+  [
+    "tileReference",
+    "tileShape",
+    "tileW",
+    "tileH",
+    "tilePricePerM2",
+    "tilePackM2",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    el?.addEventListener("input", markTileEditDirty);
+    el?.addEventListener("change", markTileEditDirty);
+    if (id === "tileReference") {
+      el?.addEventListener("input", () => setTileEditError(""));
+    }
+  });
+  document.getElementById("tileAllowSkirting")?.addEventListener("change", markTileEditDirty);
 
 
   // Grout color preset swatches

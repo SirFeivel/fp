@@ -548,13 +548,8 @@
           <div class="settings-panel-content">
             <!-- Tile Settings -->
             <div class="panel-section">
-              <h4 class="panel-section-title" data-i18n="tile.sectionTiles">Tiles & Grout</h4>
+              <h4 class="panel-section-title" data-i18n="tile.sectionTiles">Tiles</h4>
               <div class="panel-fields">
-                <div class="field">
-                  <label data-i18n="tile.reference">Reference / Name</label>
-                  <input id="tileReference" type="text" list="tileReferences" placeholder="e.g. Marble Carrara" />
-                  <datalist id="tileReferences"></datalist>
-                </div>
                 <div class="field-row">
                   <div class="field">
                     <label data-i18n="tile.preset">Preset</label>
@@ -564,6 +559,26 @@
                     <label>&nbsp;</label>
                     <button id="btnApplyTilePreset" class="btn small" data-i18n="tile.applyPreset">Apply Preset</button>
                   </div>
+                </div>
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="planning.editTileConfig">Edit</span>
+                  <input id="tileConfigEditToggle" type="checkbox" />
+                  <div class="toggle-slider"></div>
+                </label>
+                <div id="tileEditActions" class="tile-edit-actions hidden">
+                  <div class="tile-edit-actions-text" data-i18n="planning.tileEditActionsTitle">Save changes</div>
+                  <div class="tile-edit-actions-buttons">
+                    <button id="tileEditUpdateBtn" class="btn small" data-i18n="planning.tileEditUpdatePreset">Update preset</button>
+                    <button id="tileEditNewBtn" class="btn small" data-i18n="planning.tileEditSaveNew">Save new</button>
+                    <button id="tileEditDiscardBtn" class="btn ghost small" data-i18n="planning.tileEditDiscard">Discard</button>
+                  </div>
+                </div>
+                <div class="tile-config-fields">
+                <div class="field">
+                  <label data-i18n="tile.reference">Reference / Name</label>
+                  <input id="tileReference" type="text" list="tileReferences" placeholder="e.g. Marble Carrara" />
+                  <datalist id="tileReferences"></datalist>
+                  <div id="tileEditError" class="field-error hidden"></div>
                 </div>
                 <div class="field">
                   <label data-i18n="tile.shape">Tile Shape</label>
@@ -587,6 +602,33 @@
                 <div class="meta subtle" id="hexHint" style="display: none;">
                   <span data-i18n="tile.hexHint">For hexagons: width = flat-to-flat. Height auto-calculated.</span>
                 </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="pricing.pricePerM2">Price per m² (€)</label>
+                    <input id="tilePricePerM2" type="number" min="0" step="0.01" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="pricing.packSize">Pack size (m²)</label>
+                    <input id="tilePackM2" type="number" min="0" step="0.01" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label data-i18n="pricing.pricePerPack">Price per pack (€)</label>
+                  <input id="tilePricePerPack" type="number" min="0" step="0.01" disabled />
+                </div>
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="setup.useForSkirting">Use as skirting (cutout)</span>
+                  <input id="tileAllowSkirting" type="checkbox" />
+                  <div class="toggle-slider"></div>
+                </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Grout Settings -->
+            <div class="panel-section">
+              <h4 class="panel-section-title" data-i18n="tile.sectionGrout">Grout</h4>
+              <div class="panel-fields">
                 <div class="field-row">
                   <div class="field">
                     <label data-i18n="tile.grout">Grout</label>

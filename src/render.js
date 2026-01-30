@@ -1,5 +1,5 @@
 // src/render.js
-import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals } from "./calc.js";
+import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { t } from "./i18n.js";
@@ -687,7 +687,7 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
   });
 }
 
-export function renderTilePresetPicker(state) {
+export function renderTilePresetPicker(state, currentRoom) {
   const sel = document.getElementById("tilePresetSelect");
   if (!sel) return;
   const presets = state.tilePresets || [];
@@ -696,10 +696,17 @@ export function renderTilePresetPicker(state) {
   empty.value = "";
   empty.textContent = presets.length ? "–" : t("project.none");
   sel.appendChild(empty);
+  let matchId = "";
+  const ref = currentRoom?.tile?.reference;
+  if (ref) {
+    const match = presets.find(p => p?.name && p.name === ref);
+    if (match) matchId = match.id;
+  }
   presets.forEach(p => {
     const opt = document.createElement("option");
     opt.value = p.id;
     opt.textContent = p.name || t("project.none");
+    if (p.id === matchId) opt.selected = true;
     sel.appendChild(opt);
   });
 }
@@ -834,9 +841,21 @@ export function renderReferencePicker(state) {
 
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
+  const tileEditActive = document.body?.dataset?.tileEdit === "true";
+  const tileEditDirty = document.body?.dataset?.tileEditDirty === "true";
   renderReferencePicker(state);
-  renderTilePresetPicker(state);
+  renderTilePresetPicker(state, currentRoom);
   renderSkirtingPresetPicker(state);
+
+  const editToggle = document.getElementById("tileConfigEditToggle");
+  if (editToggle) editToggle.checked = tileEditActive;
+
+  const ref = currentRoom?.tile?.reference;
+  const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+  const editActions = document.getElementById("tileEditActions");
+  if (editActions) editActions.classList.toggle("hidden", !(tileEditActive && tileEditDirty));
+  const editUpdateBtn = document.getElementById("tileEditUpdateBtn");
+  if (editUpdateBtn) editUpdateBtn.style.display = preset ? "" : "none";
 
   document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
   document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
@@ -845,6 +864,35 @@ export function renderTilePatternForm(state) {
   document.getElementById("groutW").value = Math.round((currentRoom?.grout?.widthCm ?? 0) * 10);
   const groutColorValue = currentRoom?.grout?.colorHex ?? "#ffffff";
   document.getElementById("groutColor").value = groutColorValue;
+  const pricing = currentRoom ? getRoomPricing(state, currentRoom) : { pricePerM2: 0, packM2: 0 };
+  const pricePerM2 = document.getElementById("tilePricePerM2");
+  if (pricePerM2) pricePerM2.value = pricing.pricePerM2 ?? 0;
+  const packM2 = document.getElementById("tilePackM2");
+  if (packM2) packM2.value = pricing.packM2 ?? 0;
+  const pricePerPack = document.getElementById("tilePricePerPack");
+  if (pricePerPack) {
+    const packVal = Number(pricing.packM2) || 0;
+    const perM2 = Number(pricing.pricePerM2) || 0;
+    pricePerPack.value = packVal > 0 ? (packVal * perM2).toFixed(2) : "";
+  }
+  const allowSkirting = document.getElementById("tileAllowSkirting");
+  if (allowSkirting) allowSkirting.checked = Boolean(preset?.useForSkirting);
+
+  const editInputs = [
+    "tileReference",
+    "tileShape",
+    "tileW",
+    "tileH",
+    "tilePricePerM2",
+    "tilePackM2",
+    "tileAllowSkirting"
+  ];
+  editInputs.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !tileEditActive;
+  });
+  const tileConfigFields = document.querySelector(".tile-config-fields");
+  if (tileConfigFields) tileConfigFields.classList.toggle("is-readonly", !tileEditActive);
 
   // Update preset swatch selection
   document.querySelectorAll("#groutColorPresets .color-swatch").forEach(swatch => {

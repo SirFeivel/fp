@@ -2138,6 +2138,54 @@ body{
   gap: 4px;
 }
 
+.color-presets.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.tile-config-fields.is-readonly {
+  opacity: 0.55;
+  filter: grayscale(0.2);
+}
+
+.tile-edit-actions {
+  margin: 10px 0 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tile-edit-actions.hidden {
+  display: none;
+}
+
+.tile-edit-actions-text {
+  font-size: var(--fs-sm);
+  color: var(--text-soft);
+}
+
+.tile-edit-actions-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.field-error {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: #ff8a8a;
+}
+
+.field-error.hidden {
+  display: none;
+}
+
 .color-swatch {
   width: 22px;
   height: 22px;

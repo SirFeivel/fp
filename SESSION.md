@@ -1350,3 +1350,42 @@ Horizontal bar below preview showing key numbers:
 - `npm test` successful
 - `npm run build` not run
 - `npm run dev` not run
+
+## Session: Tile Preset Quick Apply (2026-01-30)
+### Goal
+- Move the tile preset selector to the top of the tile settings and apply on change.
+- Keep the selector in sync with room tile changes.
+
+### Branch
+`feature-planning-ui`
+
+### Plan
+1. Reorder tile preset selector above tile details
+2. Auto-apply presets on change and keep selection synced to room tile reference
+3. Verify render and state updates
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
+
+## Session: Tile Config Edit Flow (2026-01-30)
+### Goal
+- Make tile config read-only by default with an Edit mode.
+- Prompt to update/create preset or discard changes when editing.
+- Show pricing/packaging and allow-skirting toggle in planning settings.
+
+### Branch
+`feature-planning-ui`
+
+### Plan
+1. Add edit toggle and pricing/packaging inputs to planning tile section
+2. Sync preset selection with room state and auto-apply on change
+3. Prompt on edit completion to update/create/discard preset changes
+
+### Status
+- Complete
+- `npm test` successful
+- `npm run build` not run
+- `npm run dev` not run
