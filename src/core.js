@@ -55,6 +55,38 @@ export function degToRad(d) {
   return (d * Math.PI) / 180;
 }
 
+export const DEFAULT_PRICING = {
+  packM2: 1.44,
+  pricePerM2: 39.9,
+  reserveTiles: 0
+};
+
+export const DEFAULT_TILE_PRESET = {
+  shape: "rect",
+  widthCm: 40,
+  heightCm: 20,
+  groutWidthCm: 0.2,
+  groutColorHex: "#ffffff",
+  pricePerM2: 39.9,
+  packM2: 1.44,
+  useForSkirting: true
+};
+
+export const DEFAULT_SKIRTING_PRESET = {
+  name: "Standard Sockelleiste",
+  heightCm: 6,
+  lengthCm: 60,
+  pricePerPiece: 5
+};
+
+export const DEFAULT_SKIRTING_CONFIG = {
+  enabled: true,
+  type: "cutout",
+  heightCm: DEFAULT_SKIRTING_PRESET.heightCm,
+  boughtWidthCm: DEFAULT_SKIRTING_PRESET.lengthCm,
+  boughtPricePerPiece: DEFAULT_SKIRTING_PRESET.pricePerPiece
+};
+
 export function defaultState() {
   const floorId = uuid();
   const roomId = uuid();
@@ -69,23 +101,13 @@ export function defaultState() {
       {
         id: uuid(),
         name: "Standard",
-        shape: "rect",
-        widthCm: 40,
-        heightCm: 20,
-        groutWidthCm: 0.2,
-        groutColorHex: "#ffffff",
-        pricePerM2: 0,
-        packM2: 0,
-        useForSkirting: true
+        ...DEFAULT_TILE_PRESET
       }
     ],
     skirtingPresets: [
       {
         id: uuid(),
-        name: "Standard Sockelleiste",
-        heightCm: 6,
-        lengthCm: 60,
-        pricePerPiece: 5
+        ...DEFAULT_SKIRTING_PRESET
       }
     ],
 
@@ -109,8 +131,13 @@ export function defaultState() {
               }
             ],
             exclusions: [],
-            tile: { widthCm: 40, heightCm: 20, shape: "rect", reference: "Standard" },
-            grout: { widthCm: 0.2, colorHex: "#ffffff" },
+            tile: {
+              widthCm: DEFAULT_TILE_PRESET.widthCm,
+              heightCm: DEFAULT_TILE_PRESET.heightCm,
+              shape: DEFAULT_TILE_PRESET.shape,
+              reference: "Standard"
+            },
+            grout: { widthCm: DEFAULT_TILE_PRESET.groutWidthCm, colorHex: DEFAULT_TILE_PRESET.groutColorHex },
             pattern: {
               type: "grid",
               bondFraction: 0.5,
@@ -120,11 +147,7 @@ export function defaultState() {
               origin: { preset: "tl", xCm: 0, yCm: 0 }
             },
             skirting: {
-              enabled: true,
-              type: "cutout", // "cutout" | "bought"
-              heightCm: 6,
-              boughtWidthCm: 60,
-              boughtPricePerPiece: 5.0
+              ...DEFAULT_SKIRTING_CONFIG
             }
           }
         ]
@@ -134,7 +157,7 @@ export function defaultState() {
     selectedFloorId: floorId,
     selectedRoomId: roomId,
 
-    pricing: { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
+    pricing: { ...DEFAULT_PRICING },
 
     waste: {
       allowRotate: true
@@ -166,4 +189,27 @@ export function getCurrentFloor(state) {
   }
 
   return state.floors.find(f => f.id === state.selectedFloorId) || null;
+}
+
+export function getDefaultPricing(state) {
+  const pack = Number(state?.pricing?.packM2);
+  const price = Number(state?.pricing?.pricePerM2);
+  const reserve = Number(state?.pricing?.reserveTiles);
+  return {
+    packM2: Number.isFinite(pack) ? pack : DEFAULT_PRICING.packM2,
+    pricePerM2: Number.isFinite(price) ? price : DEFAULT_PRICING.pricePerM2,
+    reserveTiles: Number.isFinite(reserve) ? reserve : DEFAULT_PRICING.reserveTiles
+  };
+}
+
+export function getDefaultTilePresetTemplate(state) {
+  const preset = state?.tilePresets?.find(p => p?.name) || DEFAULT_TILE_PRESET;
+  return {
+    shape: preset.shape || DEFAULT_TILE_PRESET.shape,
+    widthCm: Number(preset.widthCm) || DEFAULT_TILE_PRESET.widthCm,
+    heightCm: Number(preset.heightCm) || DEFAULT_TILE_PRESET.heightCm,
+    groutWidthCm: Number(preset.groutWidthCm) || DEFAULT_TILE_PRESET.groutWidthCm,
+    groutColorHex: preset.groutColorHex || DEFAULT_TILE_PRESET.groutColorHex,
+    useForSkirting: Boolean(preset.useForSkirting)
+  };
 }

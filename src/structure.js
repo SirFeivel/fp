@@ -1,4 +1,4 @@
-import { uuid, deepClone, getCurrentRoom, getCurrentFloor } from './core.js';
+import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_CONFIG } from './core.js';
 import { t } from './i18n.js';
 
 export function createStructureController({
@@ -64,6 +64,15 @@ export function createStructureController({
     const state = store.getState();
     const next = deepClone(state);
 
+    const hasPreset = Boolean(next.tilePresets?.[0]?.name);
+    const defaultPreset = hasPreset ? getDefaultTilePresetTemplate(next) : {
+      shape: "rect",
+      widthCm: 0,
+      heightCm: 0,
+      groutWidthCm: 0.2,
+      groutColorHex: "#ffffff"
+    };
+    const presetName = hasPreset ? next.tilePresets[0].name : "";
     const newFloor = {
       id: uuid(),
       name: `Etage ${next.floors.length + 1}`,
@@ -74,8 +83,13 @@ export function createStructureController({
         exclusions: [],
         excludedTiles: [],
         excludedSkirts: [],
-        tile: { widthCm: 60, heightCm: 60, shape: "rect" },
-        grout: { widthCm: 0.2, colorHex: "#ffffff" },
+        tile: {
+          widthCm: defaultPreset.widthCm,
+          heightCm: defaultPreset.heightCm,
+          shape: defaultPreset.shape || "rect",
+          reference: presetName
+        },
+        grout: { widthCm: defaultPreset.groutWidthCm, colorHex: defaultPreset.groutColorHex },
         pattern: {
           type: "grid",
           bondFraction: 0.5,
@@ -84,13 +98,7 @@ export function createStructureController({
           offsetYcm: 0,
           origin: { preset: "tl", xCm: 0, yCm: 0 }
         },
-        skirting: {
-          enabled: false,
-          type: "cutout",
-          heightCm: 6,
-          boughtWidthCm: 60,
-          boughtPricePerPiece: 5.0
-        }
+        skirting: { ...DEFAULT_SKIRTING_CONFIG }
       }]
     };
 
@@ -130,6 +138,15 @@ export function createStructureController({
     const currentFloor = getCurrentFloor(next);
     if (!currentFloor) return;
 
+    const hasPreset = Boolean(next.tilePresets?.[0]?.name);
+    const defaultPreset = hasPreset ? getDefaultTilePresetTemplate(next) : {
+      shape: "rect",
+      widthCm: 0,
+      heightCm: 0,
+      groutWidthCm: 0.2,
+      groutColorHex: "#ffffff"
+    };
+    const presetName = hasPreset ? next.tilePresets[0].name : "";
     const newRoom = {
       id: uuid(),
       name: `Raum ${currentFloor.rooms.length + 1}`,
@@ -137,8 +154,13 @@ export function createStructureController({
       exclusions: [],
       excludedTiles: [],
       excludedSkirts: [],
-      tile: { widthCm: 60, heightCm: 60, shape: "rect", reference: "" },
-      grout: { widthCm: 0.2, colorHex: "#ffffff" },
+      tile: {
+        widthCm: defaultPreset.widthCm,
+        heightCm: defaultPreset.heightCm,
+        shape: defaultPreset.shape || "rect",
+        reference: presetName
+      },
+      grout: { widthCm: defaultPreset.groutWidthCm, colorHex: defaultPreset.groutColorHex },
       pattern: {
         type: "grid",
         bondFraction: 0.5,
@@ -147,13 +169,7 @@ export function createStructureController({
         offsetYcm: 0,
         origin: { preset: "tl", xCm: 0, yCm: 0 }
       },
-      skirting: {
-        enabled: false,
-        type: "cutout",
-        heightCm: 6,
-        boughtWidthCm: 60,
-        boughtPricePerPiece: 5.0
-      }
+      skirting: { ...DEFAULT_SKIRTING_CONFIG }
     };
 
     currentFloor.rooms.push(newRoom);

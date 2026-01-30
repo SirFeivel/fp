@@ -75,24 +75,34 @@ export function validateState(s) {
   const tileW = currentRoom?.tile?.widthCm;
   const tileH = currentRoom?.tile?.heightCm;
   const grout = currentRoom?.grout?.widthCm;
-  if (!n(tileW) || tileW <= 0)
-    errors.push({
-      title: t("validation.tileWidthInvalid"),
-      text: `${t("validation.currentValue")} "${tileW}". ${t("validation.tileWidthText")}`
+  const ref = currentRoom?.tile?.reference;
+  const preset = ref ? s.tilePresets?.find(p => p?.name && p.name === ref) : null;
+  const hasPresetAssigned = Boolean(preset);
+  if (!hasPresetAssigned) {
+    warns.push({
+      title: t("validation.tilePresetMissingTitle"),
+      text: t("validation.tilePresetMissingText")
     });
-  if (!n(tileH) || tileH <= 0)
-    errors.push({
-      title: t("validation.tileHeightInvalid"),
-      text: `${t("validation.currentValue")} "${tileH}". ${t("validation.tileHeightText")}`
-    });
-  if (!n(grout) || grout < 0)
-    errors.push({
-      title: t("validation.groutInvalid"),
-      text: `${t("validation.currentValue")} "${grout}". ${t("validation.groutText")}`
-    });
+  } else {
+    if (!n(tileW) || tileW <= 0)
+      errors.push({
+        title: t("validation.tileWidthInvalid"),
+        text: `${t("validation.currentValue")} "${tileW}". ${t("validation.tileWidthText")}`
+      });
+    if (!n(tileH) || tileH <= 0)
+      errors.push({
+        title: t("validation.tileHeightInvalid"),
+        text: `${t("validation.currentValue")} "${tileH}". ${t("validation.tileHeightText")}`
+      });
+    if (!n(grout) || grout < 0)
+      errors.push({
+        title: t("validation.groutInvalid"),
+        text: `${t("validation.currentValue")} "${grout}". ${t("validation.groutText")}`
+      });
+  }
 
   const patternType = currentRoom?.pattern?.type;
-  if (patternType === "herringbone" || patternType === "doubleHerringbone" || patternType === "basketweave") {
+  if (hasPresetAssigned && (patternType === "herringbone" || patternType === "doubleHerringbone" || patternType === "basketweave")) {
     if (n(tileW) && n(tileH) && tileW > 0 && tileH > 0) {
       const L = Math.max(tileW, tileH);
       const W = Math.min(tileW, tileH);
@@ -155,9 +165,8 @@ export function validateState(s) {
     }
   }
 
-  const preset = s.tilePresets?.find(p => p?.name && p.name === currentRoom?.tile?.reference);
   const cutoutAllowed = Boolean(preset?.useForSkirting);
-  if (skirting?.enabled && skirting?.type === "cutout" && !cutoutAllowed) {
+  if (hasPresetAssigned && skirting?.enabled && skirting?.type === "cutout" && !cutoutAllowed) {
     warns.push({
       title: t("skirting.cutoutNotAllowedTitle"),
       text: t("skirting.cutoutNotAllowedText")

@@ -2,7 +2,7 @@
 import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController, createSectionDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -584,20 +584,23 @@ function bindPresetCollection() {
   addTile?.addEventListener("click", () => {
     const next = deepClone(store.getState());
     const room = getCurrentRoom(next);
-    const base = room?.tile || { widthCm: 30, heightCm: 60, shape: "rect" };
-    const grout = room?.grout || { widthCm: 0.2, colorHex: "#ffffff" };
-    const pricing = room ? getRoomPricing(next, room) : { pricePerM2: 0, packM2: 0 };
+    const defaults = getDefaultTilePresetTemplate(next);
+    const base = room?.tile && room.tile.widthCm > 0 && room.tile.heightCm > 0
+      ? room.tile
+      : defaults;
+    const grout = room?.grout || { widthCm: defaults.groutWidthCm, colorHex: defaults.groutColorHex };
+    const pricing = room ? getRoomPricing(next, room) : getDefaultPricing(next);
     const preset = {
       id: uuid(),
       name: `${t("tile.preset")} ${next.tilePresets.length + 1}`,
-      shape: base.shape || "rect",
-      widthCm: Number(base.widthCm) || 0,
-      heightCm: Number(base.heightCm) || 0,
-      groutWidthCm: Number(grout.widthCm) || 0,
-      groutColorHex: grout.colorHex || "#ffffff",
+      shape: base.shape || defaults.shape || "rect",
+      widthCm: Number(base.widthCm) || defaults.widthCm || 0,
+      heightCm: Number(base.heightCm) || defaults.heightCm || 0,
+      groutWidthCm: Number(grout.widthCm) || defaults.groutWidthCm || 0,
+      groutColorHex: grout.colorHex || defaults.groutColorHex || "#ffffff",
       pricePerM2: Number(pricing.pricePerM2) || 0,
       packM2: Number(pricing.packM2) || 0,
-      useForSkirting: false
+      useForSkirting: Boolean(defaults.useForSkirting)
     };
     next.tilePresets.push(preset);
     selectedTilePresetId = preset.id;
@@ -750,9 +753,9 @@ function bindPresetCollection() {
     const preset = {
       id: uuid(),
       name: `${t("skirting.preset")} ${next.skirtingPresets.length + 1}`,
-      heightCm: Number(base.heightCm) || 0,
-      lengthCm: Number(base.boughtWidthCm) || 0,
-      pricePerPiece: Number(base.boughtPricePerPiece) || 0
+      heightCm: Number(base.heightCm) || DEFAULT_SKIRTING_PRESET.heightCm,
+      lengthCm: Number(base.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm,
+      pricePerPiece: Number(base.boughtPricePerPiece) || DEFAULT_SKIRTING_PRESET.pricePerPiece
     };
     next.skirtingPresets.push(preset);
     selectedSkirtingPresetId = preset.id;
@@ -1036,6 +1039,7 @@ function updateAllTranslations() {
   const settingsPanel = document.getElementById("settingsPanel");
   const btnCloseSettings = document.getElementById("btnCloseSettings");
   const quickOpenSettings = document.getElementById("quickOpenSettings");
+  const quickCreateTilePreset = document.getElementById("quickCreateTilePreset");
   const setSettingsPanelOpen = (open) => {
     if (!settingsPanel) return;
     settingsPanel.classList.toggle("hidden", !open);
@@ -1052,8 +1056,29 @@ function updateAllTranslations() {
       if (!settingsPanel.classList.contains("hidden") &&
           !settingsPanel.contains(e.target) &&
           e.target !== quickOpenSettings &&
-          !(quickOpenSettings && quickOpenSettings.contains(e.target))) {
+          !(quickOpenSettings && quickOpenSettings.contains(e.target)) &&
+          e.target !== quickCreateTilePreset &&
+          !(quickCreateTilePreset && quickCreateTilePreset.contains(e.target))) {
         setSettingsPanelOpen(false);
+      }
+    });
+  }
+
+  if (quickOpenSettings) {
+    quickOpenSettings.addEventListener("click", () => {
+      const isOpen = settingsPanel && !settingsPanel.classList.contains("hidden");
+      setSettingsPanelOpen(!isOpen);
+    });
+  }
+
+  if (quickCreateTilePreset) {
+    quickCreateTilePreset.addEventListener("click", () => {
+      setSettingsPanelOpen(true);
+      document.getElementById("planningTileSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const state = store.getState();
+      const hasPresets = (state.tilePresets?.length || 0) > 0;
+      if (!hasPresets) {
+        document.getElementById("btnCreateTilePreset")?.click();
       }
     });
   }
@@ -1099,12 +1124,6 @@ function updateAllTranslations() {
     const checked = Boolean(e.target.checked);
     syncRemovalCheckboxes(checked);
     removal.setRemovalMode(checked);
-  });
-
-  // Quick settings button opens settings panel
-  quickOpenSettings?.addEventListener("click", () => {
-    const isOpen = settingsPanel && !settingsPanel.classList.contains("hidden");
-    setSettingsPanelOpen(!isOpen);
   });
 
   // Exclusion dropdown
@@ -1160,6 +1179,11 @@ function updateAllTranslations() {
         const match = presets.find(p => p.name && p.name === room.tile?.reference);
         quickTilePreset.value = match ? match.id : (presets[0]?.id || "");
         quickTilePreset.disabled = presets.length === 0;
+        const quickGroup = document.getElementById("quickTilePresetGroup");
+        if (quickGroup) quickGroup.classList.toggle("no-presets", presets.length === 0);
+        const quickCreate = document.getElementById("quickCreateTilePreset");
+        if (quickCreate) quickCreate.classList.toggle("hidden", presets.length > 0);
+        quickTilePreset.classList.toggle("hidden", presets.length === 0);
       }
       if (quickPattern) quickPattern.value = room.pattern?.type || "grid";
       // Display grout in mm (state stores cm)

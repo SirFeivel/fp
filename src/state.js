@@ -7,6 +7,10 @@ import {
   safeParseJSON,
   uuid,
   getCurrentRoom,
+  DEFAULT_TILE_PRESET,
+  DEFAULT_PRICING,
+  DEFAULT_SKIRTING_CONFIG,
+  DEFAULT_SKIRTING_PRESET
 } from './core.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
@@ -33,7 +37,11 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     if (s.tile || s.grout || s.pattern) {
-      const globalTile = s.tile || { widthCm: 40, heightCm: 20, shape: "rect" };
+      const globalTile = s.tile || {
+        widthCm: DEFAULT_TILE_PRESET.widthCm,
+        heightCm: DEFAULT_TILE_PRESET.heightCm,
+        shape: DEFAULT_TILE_PRESET.shape
+      };
       const globalGrout = s.grout || { widthCm: 0.2 };
       const globalPattern = s.pattern || {
         type: "grid",
@@ -62,13 +70,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
               if (!room.pattern) room.pattern = deepClone(globalPattern);
               if (!room.skirting) {
-                room.skirting = {
-                  enabled: false,
-                  type: "cutout",
-                  heightCm: 6,
-                  boughtWidthCm: 60,
-                  boughtPricePerPiece: 5.0
-                };
+                room.skirting = { ...DEFAULT_SKIRTING_CONFIG, enabled: false };
               }
               if (!room.excludedTiles) room.excludedTiles = [];
               if (!room.excludedSkirts) room.excludedSkirts = [];
@@ -108,13 +110,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
             if (!room.skirting) {
-              room.skirting = {
-                enabled: false,
-                type: "cutout",
-                heightCm: 6,
-                boughtWidthCm: 60,
-                boughtPricePerPiece: 5.0
-              };
+              room.skirting = { ...DEFAULT_SKIRTING_CONFIG, enabled: false };
             } else if (room.skirting.type !== "cutout" && room.skirting.type !== "bought") {
               room.skirting.type = "cutout";
             }
@@ -160,7 +156,11 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               widthCm: oldState.room?.widthCm || 600,
               heightCm: oldState.room?.heightCm || 400,
               exclusions: oldState.exclusions || [],
-              tile: oldState.tile || { widthCm: 40, heightCm: 20, shape: "rect" },
+              tile: oldState.tile || {
+                widthCm: DEFAULT_TILE_PRESET.widthCm,
+                heightCm: DEFAULT_TILE_PRESET.heightCm,
+                shape: DEFAULT_TILE_PRESET.shape
+              },
               grout: oldState.grout || { widthCm: 0.2, colorHex: "#ffffff" },
               pattern: oldState.pattern || {
                 type: "grid",
@@ -176,7 +176,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       ],
       selectedFloorId: floorId,
       selectedRoomId: roomId,
-      pricing: oldState.pricing || { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
+      pricing: oldState.pricing || { ...DEFAULT_PRICING },
       waste: oldState.waste || { allowRotate: true },
       view: oldState.view || { showGrid: true, showNeeds: false }
     };

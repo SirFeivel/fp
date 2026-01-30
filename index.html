@@ -438,9 +438,10 @@
 
               <!-- Quick Controls Bar (floating) -->
               <div class="quick-controls">
-                <div class="quick-control-group">
+                <div class="quick-control-group" id="quickTilePresetGroup">
                   <span class="quick-label" data-i18n="planning.tile">Tile:</span>
                   <select id="quickTilePreset" class="quick-select quick-select-wide"></select>
+                  <button id="quickCreateTilePreset" class="btn small hidden quick-create-preset" data-i18n="tile.createPreset">Create preset</button>
                 </div>
                 <div class="quick-control-group">
                   <span class="quick-label" data-i18n="tile.pattern">Pattern:</span>
@@ -555,47 +556,26 @@
           </div>
           <div class="settings-panel-content">
             <!-- Tile Settings -->
-            <div class="panel-section">
+            <div class="panel-section" id="planningTileSection">
               <h4 class="panel-section-title" data-i18n="tile.sectionTiles">Tiles</h4>
               <div class="panel-fields">
-                <div class="field-row">
+                <div class="field-row" id="tilePresetRow">
                   <div class="field">
                     <label data-i18n="tile.preset">Preset</label>
                     <select id="tilePresetSelect"></select>
-                    <button id="btnCreateTilePreset" class="btn small hidden" data-i18n="tile.createPreset">Create preset</button>
                   </div>
-                  <div class="field">
-                    <label>&nbsp;</label>
-                    <button id="btnApplyTilePreset" class="btn small" data-i18n="tile.applyPreset">Apply Preset</button>
-                  </div>
+                </div>
+                <div id="tilePresetEmptyRow" class="tile-preset-empty hidden">
+                  <div class="tile-preset-empty-text" data-i18n="tile.presetEmptyHint">Create your first tile preset to start planning.</div>
+                  <button id="btnCreateTilePreset" class="btn small" data-i18n="tile.createPreset">Create preset</button>
                 </div>
                 <label class="toggle-switch">
                   <span class="toggle-label" data-i18n="planning.editTileConfig">Edit</span>
                   <input id="tileConfigEditToggle" type="checkbox" />
                   <div class="toggle-slider"></div>
                 </label>
-                <div id="tileEditActions" class="tile-edit-actions hidden">
-                  <div class="tile-edit-actions-text" data-i18n="planning.tileEditActionsTitle">Save changes</div>
-                  <div id="tileEditWarning" class="warnItem tile-edit-warning hidden">
-                    <div class="wTitle" data-i18n="planning.tileEditUpdateWarnTitle">Affects all rooms</div>
-                    <div class="wText" data-i18n="planning.tileEditUpdateWarnText">Updating this preset will update every room using it.</div>
-                  </div>
-                  <div id="tileEditNewPresetRow" class="tile-edit-new hidden">
-                    <label class="tile-edit-new-label" data-i18n="planning.tileEditNewLabel">New preset name</label>
-                    <div class="tile-edit-new-controls">
-                      <input id="tileEditNewName" type="text" />
-                      <button id="tileEditNewConfirmBtn" class="btn small tile-edit-btn new" data-i18n="planning.tileEditCreate">Create</button>
-                      <button id="tileEditNewCancelBtn" class="btn ghost small tile-edit-btn discard" data-i18n="planning.tileEditCancel">Cancel</button>
-                    </div>
-                  </div>
-                  <div class="tile-edit-actions-buttons">
-                    <button id="tileEditUpdateBtn" class="btn small tile-edit-btn update" data-i18n="planning.tileEditUpdatePreset">Update preset</button>
-                    <button id="tileEditNewBtn" class="btn small tile-edit-btn new" data-i18n="planning.tileEditSaveNew">Save new</button>
-                    <button id="tileEditDiscardBtn" class="btn ghost small tile-edit-btn discard" data-i18n="planning.tileEditDiscard">Discard</button>
-                  </div>
-                </div>
                 <div class="tile-config-fields">
-                <div class="field">
+                <div class="field" id="tileReferenceField">
                   <label data-i18n="tile.reference">Reference / Name</label>
                   <input id="tileReference" type="text" list="tileReferences" placeholder="e.g. Marble Carrara" />
                   <datalist id="tileReferences"></datalist>
@@ -642,6 +622,17 @@
                   <input id="tileAllowSkirting" type="checkbox" />
                   <div class="toggle-slider"></div>
                 </label>
+                </div>
+                <div id="tileEditActions" class="tile-edit-actions hidden">
+                  <div id="tileEditWarning" class="warnItem tile-edit-warning hidden">
+                    <div class="wTitle" data-i18n="planning.tileEditUpdateWarnTitle">Affects all rooms</div>
+                    <div class="wText" data-i18n="planning.tileEditUpdateWarnText">Updating this preset will update every room using it.</div>
+                  </div>
+                  <div class="tile-edit-actions-buttons">
+                    <button id="tileEditUpdateBtn" class="btn small tile-edit-btn update" data-i18n="planning.tileEditUpdatePreset">Update preset</button>
+                    <button id="tileEditSaveBtn" class="btn small tile-edit-btn new" data-i18n="planning.tileEditSaveNew">Save as new</button>
+                    <button id="tileEditDiscardBtn" class="btn ghost small tile-edit-btn discard" data-i18n="planning.tileEditDiscard">Discard</button>
+                  </div>
                 </div>
               </div>
             </div>

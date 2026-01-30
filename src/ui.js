@@ -1,5 +1,5 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom, uuid } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate } from "./core.js";
 import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
 import { computeProjectTotals } from "./calc.js";
@@ -51,7 +51,10 @@ export function bindUI({
   let tileEditDirty = false;
   let tileEditSnapshot = null;
   let tileEditUpdateArmed = false;
+  let tileEditCreateIntent = false;
+  let tileEditSuppressWarningReset = false;
   document.body.dataset.tileEditDirty = "false";
+  document.body.dataset.tileEditMode = "edit";
 
   const setTileEditError = (msg) => {
     const el = document.getElementById("tileEditError");
@@ -103,10 +106,32 @@ export function bindUI({
     return match?.id || "";
   };
 
-  const setTileEditNewRowOpen = (open) => {
-    const row = document.getElementById("tileEditNewPresetRow");
-    if (!row) return;
-    row.classList.toggle("hidden", !open);
+  const setTileEditMode = (mode) => {
+    document.body.dataset.tileEditMode = mode;
+  };
+
+  const normalizeTileValues = (values) => {
+    const widthCm = Number(values.widthCm) || 0;
+    let heightCm = Number(values.heightCm) || 0;
+    if (values.shape === "hex" && widthCm > 0) {
+      const sideLength = widthCm / Math.sqrt(3);
+      heightCm = sideLength * 2;
+    } else if (values.shape === "square" && widthCm > 0) {
+      heightCm = widthCm;
+    }
+    return { ...values, widthCm, heightCm };
+  };
+
+  const validateTilePresetValues = (values) => {
+    if (!(values.widthCm > 0) || !(values.heightCm > 0)) {
+      setTileEditError(t("planning.tileEditInvalidDims"));
+      return false;
+    }
+    if (values.pricePerM2 < 0 || values.packM2 < 0) {
+      setTileEditError(t("planning.tileEditInvalidPrice"));
+      return false;
+    }
+    return true;
   };
 
   const setTileEditWarning = (show) => {
@@ -116,6 +141,7 @@ export function bindUI({
   };
 
   const resetTileEditWarning = () => {
+    if (tileEditSuppressWarningReset) return;
     tileEditUpdateArmed = false;
     setTileEditWarning(false);
     const updateBtn = document.getElementById("tileEditUpdateBtn");
@@ -132,13 +158,19 @@ export function bindUI({
   const syncTileEditActions = () => {
     const actions = document.getElementById("tileEditActions");
     if (!actions) return;
-    actions.classList.toggle("hidden", !(tileEditActive && tileEditDirty));
+    if (document.body.dataset.tileEditMode === "create" && !tileEditCreateIntent) {
+      setTileEditMode("edit");
+    }
+    const mode = document.body.dataset.tileEditMode || "edit";
+    actions.classList.toggle("hidden", !tileEditActive);
     const state = store.getState();
     const room = getCurrentRoom(state);
     const ref = room?.tile?.reference;
     const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
     const updateBtn = document.getElementById("tileEditUpdateBtn");
-    if (updateBtn) updateBtn.style.display = preset ? "" : "none";
+    const saveBtn = document.getElementById("tileEditSaveBtn");
+    if (updateBtn) updateBtn.style.display = tileEditActive && mode !== "create" && preset ? "" : "none";
+    if (saveBtn) saveBtn.style.display = tileEditActive && (mode === "create" || preset) ? "" : "none";
   };
 
   const setTileEditActive = (active) => {
@@ -147,8 +179,11 @@ export function bindUI({
     if (!active) {
       tileEditDirty = false;
       document.body.dataset.tileEditDirty = "false";
+      tileEditCreateIntent = false;
       resetTileEditWarning();
-      setTileEditNewRowOpen(false);
+      setTileEditMode("edit");
+    } else if (!document.body.dataset.tileEditMode) {
+      setTileEditMode("edit");
     }
     renderAll();
     syncTileEditActions();
@@ -160,7 +195,9 @@ export function bindUI({
       document.body.dataset.tileEditDirty = "true";
       setTileEditError("");
       resetTileEditWarning();
-      setTileEditNewRowOpen(false);
+      if (document.body.dataset.tileEditMode === "create") {
+        // keep create mode
+      }
       syncTileEditActions();
     }
   };
@@ -297,11 +334,16 @@ export function bindUI({
   const applyTileEditChoice = (choice, overrideName) => {
     const state = store.getState();
     const next = structuredClone(state);
-    const values = readTileInputs();
+    const values = normalizeTileValues(readTileInputs());
     const grout = readGroutInputs();
-    const preset = tileEditSnapshot?.presetId
+    const currentRoom = getCurrentRoom(next);
+    const snapshotPreset = tileEditSnapshot?.presetId
       ? next.tilePresets?.find(p => p.id === tileEditSnapshot.presetId)
       : null;
+    const refPreset = currentRoom?.tile?.reference
+      ? next.tilePresets?.find(p => p?.name && p.name === currentRoom.tile.reference)
+      : null;
+    const preset = snapshotPreset || refPreset;
     const hasPreset = Boolean(preset);
 
     if (choice === "discard") {
@@ -309,14 +351,16 @@ export function bindUI({
       store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
       document.body.dataset.tileEditDirty = "false";
+      tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
       resetTileEditWarning();
-      setTileEditNewRowOpen(false);
+      setTileEditMode("edit");
       return;
     }
 
     if (choice === "new" || (choice === "update" && !hasPreset)) {
+      if (!validateTilePresetValues(values)) return;
       const nameResult = resolvePresetName(next, {
         presetId: null,
         refRaw: overrideName ?? values.refRaw,
@@ -328,14 +372,16 @@ export function bindUI({
       store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
       document.body.dataset.tileEditDirty = "false";
+      tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
       resetTileEditWarning();
-      setTileEditNewRowOpen(false);
+      setTileEditMode("edit");
       return;
     }
 
     if (choice === "update") {
+      if (!validateTilePresetValues(values)) return;
       const nameResult = resolvePresetName(next, {
         presetId: preset?.id || null,
         refRaw: values.refRaw,
@@ -352,10 +398,11 @@ export function bindUI({
       store.commit(t("tile.presetChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       tileEditDirty = false;
       document.body.dataset.tileEditDirty = "false";
+      tileEditCreateIntent = false;
       setTileEditActive(false);
       setTileEditError("");
       resetTileEditWarning();
-      setTileEditNewRowOpen(false);
+      setTileEditMode("edit");
       return;
     }
   };
@@ -414,6 +461,7 @@ export function bindUI({
   }
 
   function commitFromTilePatternInputs(label) {
+    if (document.body.dataset.tileEditMode === "create") return;
     const state = store.getState();
     const next = structuredClone(state);
 
@@ -722,11 +770,6 @@ export function bindUI({
     store.commit(t("tile.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   };
 
-  document.getElementById("btnApplyTilePreset")?.addEventListener("click", () => {
-    const sel = document.getElementById("tilePresetSelect");
-    applyTilePreset(sel?.value);
-  });
-
   document.getElementById("tilePresetSelect")?.addEventListener("change", (e) => {
     if (!e.target.value) {
       renderAll();
@@ -742,26 +785,21 @@ export function bindUI({
       setTileEditActive(false);
     }
     resetTileEditWarning();
-    setTileEditNewRowOpen(false);
+    tileEditCreateIntent = false;
+    setTileEditMode("edit");
     setTileEditError("");
     applyTilePreset(e.target.value);
   });
 
   document.getElementById("btnCreateTilePreset")?.addEventListener("click", () => {
-    if (!tileEditActive) {
-      tileEditDirty = false;
-      document.body.dataset.tileEditDirty = "false";
-      setTileEditError("");
-      snapshotTileEditState();
-      setTileEditActive(true);
-    }
-    if (!tileEditDirty) markTileEditDirty();
-    const baseName = getCurrentRoom(store.getState())?.tile?.reference || "";
-    const input = document.getElementById("tileReference");
-    if (input && baseName) {
-      input.value = baseName;
-    }
-    setTileEditNewRowOpen(true);
+    tileEditDirty = false;
+    document.body.dataset.tileEditDirty = "false";
+    setTileEditError("");
+    snapshotTileEditState();
+    if (!tileEditActive) setTileEditActive(true);
+    tileEditCreateIntent = true;
+    setTileEditMode("create");
+    openTileEditNewPreset();
     syncTileEditActions();
   });
 
@@ -771,6 +809,8 @@ export function bindUI({
       document.body.dataset.tileEditDirty = "false";
       setTileEditError("");
       snapshotTileEditState();
+      tileEditCreateIntent = false;
+      setTileEditMode("edit");
       setTileEditActive(true);
     } else {
       finishTileEdit();
@@ -780,59 +820,73 @@ export function bindUI({
 
   const openTileEditNewPreset = () => {
     const state = store.getState();
-    const values = readTileInputs();
+    const values = normalizeTileValues(readTileInputs());
     const base = values.ref || tileEditSnapshot?.presetName || `${t("tile.preset")} ${state.tilePresets?.length + 1}`;
     const suggested = getUniqueName(state.tilePresets || [], base);
-    const input = document.getElementById("tileEditNewName");
-    if (input) {
-      input.value = suggested;
-      input.focus();
-      input.select();
+    const refInput = document.getElementById("tileReference");
+    if (refInput) {
+      refInput.value = suggested;
+      refInput.focus();
+      refInput.select();
     }
-    setTileEditNewRowOpen(true);
+    const defaults = getDefaultTilePresetTemplate(state);
+    const pricingDefaults = getDefaultPricing(state);
+    const shape = document.getElementById("tileShape")?.value || defaults.shape || "rect";
+    const tileW = document.getElementById("tileW");
+    const tileH = document.getElementById("tileH");
+    const pricePerM2 = document.getElementById("tilePricePerM2");
+    const packM2 = document.getElementById("tilePackM2");
+    const allowSkirting = document.getElementById("tileAllowSkirting");
+    const defaultW = values.widthCm > 0 ? values.widthCm : (Number(defaults.widthCm) || 40);
+    const defaultH = values.heightCm > 0 ? values.heightCm : (Number(defaults.heightCm) || 20);
+    if (tileW && (!values.widthCm || values.widthCm <= 0)) tileW.value = String(defaultW);
+    if (tileH && (!values.heightCm || values.heightCm <= 0)) {
+      if (shape === "square") {
+        tileH.value = String(defaultW);
+      } else if (shape === "hex") {
+        const sideLength = defaultW / Math.sqrt(3);
+        tileH.value = String((sideLength * 2).toFixed(2));
+      } else {
+        tileH.value = String(defaultH);
+      }
+    }
+    if (pricePerM2 && (pricePerM2.value === "" || Number(pricePerM2.value) < 0)) {
+      pricePerM2.value = String(pricingDefaults.pricePerM2 ?? 0);
+    }
+    if (packM2 && (packM2.value === "" || Number(packM2.value) < 0)) {
+      packM2.value = String(pricingDefaults.packM2 ?? 0);
+    }
+    if (allowSkirting) allowSkirting.checked = Boolean(defaults.useForSkirting);
+    syncTileEditActions();
   };
 
   document.getElementById("tileEditUpdateBtn")?.addEventListener("click", () => {
     setTileEditError("");
-    setTileEditNewRowOpen(false);
+    setTileEditMode("edit");
     if (!tileEditUpdateArmed) {
       armTileEditWarning();
       return;
     }
     applyTileEditChoice("update");
   });
-  document.getElementById("tileEditNewBtn")?.addEventListener("click", () => {
+  document.getElementById("tileEditUpdateBtn")?.addEventListener("mousedown", () => {
+    tileEditSuppressWarningReset = true;
+    setTimeout(() => {
+      tileEditSuppressWarningReset = false;
+    }, 0);
+  });
+  document.getElementById("tileEditSaveBtn")?.addEventListener("click", () => {
     setTileEditError("");
-    resetTileEditWarning();
-    openTileEditNewPreset();
+    applyTileEditChoice("new");
   });
   document.getElementById("tileEditDiscardBtn")?.addEventListener("click", () => {
     setTileEditError("");
-    setTileEditNewRowOpen(false);
     applyTileEditChoice("discard");
-  });
-
-  document.getElementById("tileEditNewConfirmBtn")?.addEventListener("click", () => {
-    const input = document.getElementById("tileEditNewName");
-    const name = input?.value ?? "";
-    applyTileEditChoice("new", name);
-  });
-  document.getElementById("tileEditNewCancelBtn")?.addEventListener("click", () => {
-    setTileEditNewRowOpen(false);
-  });
-  document.getElementById("tileEditNewName")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      document.getElementById("tileEditNewConfirmBtn")?.click();
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      document.getElementById("tileEditNewCancelBtn")?.click();
-    }
   });
 
   document.getElementById("tileReference")?.addEventListener("change", (e) => {
     setTileEditError("");
+    if (document.body.dataset.tileEditMode === "create") return;
     const newRef = e.target.value;
     if (!newRef) return;
 

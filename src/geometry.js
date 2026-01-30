@@ -1,5 +1,5 @@
 import polygonClipping from "polygon-clipping";
-import { degToRad, getCurrentRoom } from "./core.js";
+import { degToRad, getCurrentRoom, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import {
   CIRCLE_APPROXIMATION_STEPS,
   TILE_MARGIN_MULTIPLIER,
@@ -139,11 +139,11 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
   if (!avail.mp) return [];
 
   const skirting = room.skirting || {};
-  const tileW = Number(room.tile?.widthCm) || 60;
-  const tileH = Number(room.tile?.heightCm) || 60;
+  const tileW = Number(room.tile?.widthCm) || DEFAULT_TILE_PRESET.widthCm;
+  const tileH = Number(room.tile?.heightCm) || DEFAULT_TILE_PRESET.heightCm;
   const longSide = Math.max(tileW, tileH);
   const pieceLength = skirting.type === "bought"
-    ? (Number(skirting.boughtWidthCm) || 60)
+    ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
     : longSide;
 
   const segments = [];

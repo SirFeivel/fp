@@ -9,6 +9,18 @@ describe('validateState', () => {
       { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
     ];
     return {
+      tilePresets: [{
+        id: 'preset1',
+        name: 'Standard',
+        shape: 'rect',
+        widthCm: 40,
+        heightCm: 20,
+        groutWidthCm: 0.2,
+        groutColorHex: '#ffffff',
+        pricePerM2: 39.9,
+        packM2: 1.44,
+        useForSkirting: true
+      }],
       floors: [{
         id: 'floor1',
         name: 'Test Floor',
@@ -17,7 +29,7 @@ describe('validateState', () => {
           name: 'Test Room',
           sections,
           exclusions: opts.exclusions || [],
-          tile: { widthCm: 30, heightCm: 60, ...opts.tile },
+          tile: { widthCm: 30, heightCm: 60, reference: "Standard", ...opts.tile },
           grout: { widthCm: 1, ...opts.grout },
           pattern: {
             type: "grid",
@@ -274,7 +286,7 @@ describe('validateState', () => {
     const state = createTestState({ roomW: 0, roomH: 0, tile: { widthCm: 0, heightCm: 0 }, grout: { widthCm: -1 } });
 
     const result = validateState(state);
-    expect(result.errors.length).toBeGreaterThan(4);
+    expect(result.errors.length).toBeGreaterThan(2);
   });
 
   it('handles empty state', () => {

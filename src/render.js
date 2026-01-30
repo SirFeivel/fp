@@ -393,7 +393,11 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
   document.getElementById("roomName").value = currentRoom?.name ?? "";
-  document.getElementById("tileReference").value = currentRoom?.tile?.reference ?? "";
+  const isCreateMode = document.body?.dataset?.tileEditMode === "create";
+  const tileRefEl = document.getElementById("tileReference");
+  if (tileRefEl && !isCreateMode) {
+    tileRefEl.value = currentRoom?.tile?.reference ?? "";
+  }
   const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
   const planningRoomSkirtingEnabled = document.getElementById("planningRoomSkirtingEnabled");
   if (roomSkirtingEnabled) roomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
@@ -693,6 +697,10 @@ export function renderTilePresetPicker(state, currentRoom) {
   const presets = state.tilePresets || [];
   sel.innerHTML = "";
   sel.disabled = presets.length === 0;
+  const presetRow = document.getElementById("tilePresetRow");
+  const emptyRow = document.getElementById("tilePresetEmptyRow");
+  if (presetRow) presetRow.classList.toggle("hidden", presets.length === 0);
+  if (emptyRow) emptyRow.classList.toggle("hidden", presets.length > 0);
   let matchId = "";
   const ref = currentRoom?.tile?.reference;
   if (ref) {
@@ -706,8 +714,6 @@ export function renderTilePresetPicker(state, currentRoom) {
     if (p.id === matchId) opt.selected = true;
     sel.appendChild(opt);
   });
-  const createBtn = document.getElementById("btnCreateTilePreset");
-  if (createBtn) createBtn.classList.toggle("hidden", presets.length > 0);
 }
 
 export function renderSkirtingPresetPicker(state) {
@@ -842,6 +848,7 @@ export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
   const tileEditActive = document.body?.dataset?.tileEdit === "true";
   const tileEditDirty = document.body?.dataset?.tileEditDirty === "true";
+  const tileEditMode = document.body?.dataset?.tileEditMode || "edit";
   renderReferencePicker(state);
   renderTilePresetPicker(state, currentRoom);
   renderSkirtingPresetPicker(state);
@@ -852,22 +859,35 @@ export function renderTilePatternForm(state) {
   const ref = currentRoom?.tile?.reference;
   const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
   const editActions = document.getElementById("tileEditActions");
-  if (editActions) editActions.classList.toggle("hidden", !(tileEditActive && tileEditDirty));
+  if (editActions) editActions.classList.toggle("hidden", !tileEditActive);
   const editUpdateBtn = document.getElementById("tileEditUpdateBtn");
-  if (editUpdateBtn) editUpdateBtn.style.display = preset ? "" : "none";
+  const editSaveBtn = document.getElementById("tileEditSaveBtn");
+  if (editUpdateBtn) editUpdateBtn.style.display = tileEditActive && tileEditMode !== "create" && preset ? "" : "none";
+  if (editSaveBtn) editSaveBtn.style.display = tileEditActive && (tileEditMode === "create" || preset) ? "" : "none";
+  if (editSaveBtn) {
+    editSaveBtn.textContent = tileEditMode === "create"
+      ? t("planning.tileEditSaveCreate")
+      : t("planning.tileEditSaveNew");
+  }
 
-  document.getElementById("tileShape").value = currentRoom?.tile?.shape ?? "rect";
-  document.getElementById("tileW").value = currentRoom?.tile?.widthCm ?? "";
-  document.getElementById("tileH").value = currentRoom?.tile?.heightCm ?? "";
+  const isCreateMode = tileEditMode === "create";
+  const tileShapeEl = document.getElementById("tileShape");
+  if (tileShapeEl) tileShapeEl.value = currentRoom?.tile?.shape ?? "rect";
+  const tileWEl = document.getElementById("tileW");
+  const tileHEl = document.getElementById("tileH");
+  if (!isCreateMode) {
+    if (tileWEl) tileWEl.value = currentRoom?.tile?.widthCm ?? "";
+    if (tileHEl) tileHEl.value = currentRoom?.tile?.heightCm ?? "";
+  }
   // Display grout in mm (state stores cm)
   document.getElementById("groutW").value = Math.round((currentRoom?.grout?.widthCm ?? 0) * 10);
   const groutColorValue = currentRoom?.grout?.colorHex ?? "#ffffff";
   document.getElementById("groutColor").value = groutColorValue;
   const pricing = currentRoom ? getRoomPricing(state, currentRoom) : { pricePerM2: 0, packM2: 0 };
   const pricePerM2 = document.getElementById("tilePricePerM2");
-  if (pricePerM2) pricePerM2.value = pricing.pricePerM2 ?? 0;
+  if (pricePerM2 && !isCreateMode) pricePerM2.value = pricing.pricePerM2 ?? 0;
   const packM2 = document.getElementById("tilePackM2");
-  if (packM2) packM2.value = pricing.packM2 ?? 0;
+  if (packM2 && !isCreateMode) packM2.value = pricing.packM2 ?? 0;
   const pricePerPack = document.getElementById("tilePricePerPack");
   if (pricePerPack) {
     const packVal = Number(pricing.packM2) || 0;
@@ -875,7 +895,7 @@ export function renderTilePatternForm(state) {
     pricePerPack.value = packVal > 0 ? (packVal * perM2).toFixed(2) : "";
   }
   const allowSkirting = document.getElementById("tileAllowSkirting");
-  if (allowSkirting) allowSkirting.checked = Boolean(preset?.useForSkirting);
+  if (allowSkirting && !isCreateMode) allowSkirting.checked = Boolean(preset?.useForSkirting);
 
   const editInputs = [
     "tileReference",
@@ -890,6 +910,14 @@ export function renderTilePatternForm(state) {
     const el = document.getElementById(id);
     if (el) el.disabled = !tileEditActive;
   });
+  const refInput = document.getElementById("tileReference");
+  if (refInput) {
+    if (tileEditActive) {
+      refInput.removeAttribute("list");
+    } else {
+      refInput.setAttribute("list", "tileReferences");
+    }
+  }
   const tileConfigFields = document.querySelector(".tile-config-fields");
   if (tileConfigFields) tileConfigFields.classList.toggle("is-readonly", !tileEditActive);
 
