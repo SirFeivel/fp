@@ -161,6 +161,16 @@
           </span>
           <span data-i18n="nav.commercial">Commercial</span>
         </button>
+        <button class="main-nav-tab" data-main-tab="export">
+          <span class="main-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v12"></path>
+              <path d="M8 11l4 4 4-4"></path>
+              <path d="M4 17h16v4H4z"></path>
+            </svg>
+          </span>
+          <span data-i18n="export.tab">Export</span>
+        </button>
       </div>
       <div class="main-nav-context">
         <span id="navContextInfo" class="nav-context-text"></span>
@@ -882,6 +892,109 @@
               <button id="btnExportCommercial" class="btn primary" style="width: 100%;">
                 <span data-i18n="commercial.export">Export Summary</span>
               </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== EXPORT TAB ========== -->
+      <section class="main-panel" data-main-panel="export">
+        <div class="export-container">
+          <div class="section-card export-card">
+            <div class="section-header">
+              <h3 class="section-title" data-i18n="export.roomPlans">Room Plans (PDF)</h3>
+            </div>
+            <div class="card-content">
+              <div class="export-rooms">
+                <div class="export-rooms-header">
+                  <div class="export-actions">
+                    <button id="exportSelectAllRooms" class="btn small" data-i18n="export.selectAll">Select All</button>
+                    <button id="exportClearRooms" class="btn small ghost" data-i18n="export.clear">Clear</button>
+                  </div>
+                </div>
+                <div id="exportRoomsList" class="export-rooms-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card export-card">
+            <div class="section-header">
+              <h3 class="section-title" data-i18n="export.commercial">Commercial Summary</h3>
+            </div>
+            <div class="card-content">
+              <div class="export-options">
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="export.pageSize">Page Size</label>
+                    <select id="exportPageSize">
+                      <option value="A4">A4</option>
+                      <option value="A3">A3</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="export.orientation">Orientation</label>
+                    <select id="exportOrientation">
+                      <option value="portrait" data-i18n="export.portrait">Portrait</option>
+                      <option value="landscape" data-i18n="export.landscape">Landscape</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label data-i18n="export.scale">Scale</label>
+                    <select id="exportScale">
+                      <option value="fit" data-i18n="export.fitToPage">Fit to Page</option>
+                      <option value="1:20">1:20</option>
+                      <option value="1:50">1:50</option>
+                      <option value="1:100">1:100</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="toggle-grid">
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="export.includeGrid">Include Grid</span>
+                    <input id="exportIncludeGrid" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="export.includeSkirting">Include Skirting</span>
+                    <input id="exportIncludeSkirting" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="export.includeExclusions">Include Exclusions</span>
+                    <input id="exportIncludeExclusions" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="export.includeLegend">Include Legend</span>
+                    <input id="exportIncludeLegend" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                  <label class="toggle-switch">
+                    <span class="toggle-label" data-i18n="export.includeMetrics">Include Metrics</span>
+                    <input id="exportIncludeMetrics" type="checkbox" checked />
+                    <div class="toggle-slider"></div>
+                  </label>
+                </div>
+
+                <div class="field">
+                  <label data-i18n="export.notes">Notes</label>
+                  <textarea id="exportNotes" rows="3" placeholder=""></textarea>
+                </div>
+
+                <div id="exportProgress" class="export-progress hidden">
+                  <div class="export-progress-bar">
+                    <div id="exportProgressFill" class="export-progress-fill"></div>
+                  </div>
+                  <div id="exportStatus" class="export-status">–</div>
+                </div>
+
+                <div class="export-buttons">
+                  <button id="btnExportRoomsPdf" class="btn primary" data-i18n="export.exportPdf">Export PDF</button>
+                  <button id="btnExportCommercialPdf" class="btn" data-i18n="export.exportPdf">Export PDF</button>
+                  <button id="btnExportCommercialXlsx" class="btn" data-i18n="export.exportXlsx">Export Excel</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1507,6 +1507,139 @@ body{
   gap: 20px;
 }
 
+/* ==================== EXPORT TAB ==================== */
+.export-container {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 20px;
+}
+
+.export-card .card-content {
+  padding: 16px 20px;
+}
+
+.export-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-rooms-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.export-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.export-rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.export-room-group {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.06);
+}
+
+.export-room-group-title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.export-room-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0,0,0,0.15);
+}
+
+.export-room-item:last-child {
+  border-bottom: none;
+}
+
+.export-room-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-room-name {
+  font-weight: 600;
+}
+
+.export-room-meta {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-progress-bar {
+  height: 8px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.export-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #7ac7ff;
+  transition: width 0.2s ease;
+}
+
+.export-status {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.export-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-buttons .btn {
+  width: 100%;
+}
+
 /* ==================== SECTION CARDS ==================== */
 .section-card{
   border:1px solid var(--line);
@@ -2495,7 +2628,8 @@ hr{
   }
 
   .setup-container,
-  .commercial-container {
+  .commercial-container,
+  .export-container {
     padding: 12px;
   }
 
@@ -2505,6 +2639,22 @@ hr{
 
   .planning-preview {
     padding: 12px;
+  }
+
+  .export-container {
+    grid-template-columns: 1fr;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .export-buttons {
+    grid-template-columns: 1fr;
   }
 
   .toolbar-text {
