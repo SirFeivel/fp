@@ -78,12 +78,17 @@ export function bindUI({
           ? selectedTypeRaw
           : "cutout";
       const ref = nextRoom.tile?.reference;
-      const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
-      const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
-      nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
+    const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    const prevCutoutAllowed = Boolean(preset?.useForSkirting);
+    const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
+    nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
       nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
       nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);
       nextRoom.skirting.boughtPricePerPiece = Number(document.getElementById("skirtingPricePerPiece")?.value);
+    }
+
+    if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled) {
+      nextRoom.skirting.type = "cutout";
     }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });

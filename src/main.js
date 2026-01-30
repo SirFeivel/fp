@@ -31,6 +31,7 @@ import {
 } from "./render.js";
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
+import { enforceCutoutForPresetRooms } from "./skirting_rules.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -524,6 +525,7 @@ function bindPresetCollection() {
     if (groutColor) p.groutColorHex = groutColor.value || p.groutColorHex;
     if (pricePerM2) p.pricePerM2 = Number(pricePerM2.value);
     if (packM2) p.packM2 = Number(packM2.value);
+    const prevUseForSkirting = Boolean(p.useForSkirting);
     if (useSkirting) p.useForSkirting = Boolean(useSkirting.checked);
 
     if (prevName && p.name && prevName !== p.name) {
@@ -536,6 +538,10 @@ function bindPresetCollection() {
         next.materials[p.name] = next.materials[prevName];
         delete next.materials[prevName];
       }
+    }
+
+    if (!prevUseForSkirting && p.useForSkirting && p.name) {
+      enforceCutoutForPresetRooms(next, p.name);
     }
 
     commitViaStore(t("tile.presetChanged"), next);

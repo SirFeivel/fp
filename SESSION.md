@@ -1156,3 +1156,54 @@ Horizontal bar below preview showing key numbers:
 - Complete
 - `npm test` and `npm run build` successful
 - `npm run dev` started successfully
+
+## Session: Commercial Packs Split (2026-01-30)
+### Goal
+- Show packs used for flooring vs skirting in the commercial summary.
+
+### Branch
+`feature-commercial-skirting-packs`
+
+### Plan
+1. Split floor vs skirting tiles/area/packs in totals
+2. Aggregate split packs per material
+3. Add columns to commercial materials table
+4. Add tests for the split
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
+
+## Session: Default Skirting Enabled & Presets (2026-01-30)
+### Goal
+- On reset, enable room skirting, keep cutout type, and include a default store-bought skirting preset (60×6).
+
+### Branch
+`feature-default-skirting-presets`
+
+### Plan
+1. Enable skirting by default in initial room state
+2. Add a default skirting preset (60 cm length, 6 cm height)
+3. Add tests for default skirting enabled and preset presence
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
+
+## Session: Auto Switch Back to Cutout (2026-01-30)
+### Goal
+- When a tile preset is re-enabled for skirting, rooms using it switch back to cutout.
+
+### Branch
+`feature-cutout-switch-back`
+
+### Plan
+1. Update tile preset commit to flip skirting.type back to cutout for affected rooms
+2. Add a test for the switch-back behavior
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
