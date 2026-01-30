@@ -1,6 +1,9 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect } from 'vitest';
 import { tilesForPreview } from './geometry.js';
-import { getCurrentRoom } from './core.js';
+import { createRemovalController } from './removal.js';
 
 describe('Tile Removal', () => {
   it('identifies excluded tiles when includeExcluded is true', () => {
@@ -43,5 +46,45 @@ describe('Tile Removal', () => {
     const excludedTile = resRemoval.tiles.find(t => t.id === targetId);
     expect(excludedTile).toBeDefined();
     expect(excludedTile.excluded).toBe(true);
+  });
+
+  it('toggles a tile exclusion via removal handler', () => {
+    const state = {
+      floors: [{
+        id: 'f1',
+        rooms: [{
+          id: 'r1',
+          name: 'Room 1',
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+          tile: { widthCm: 50, heightCm: 50, shape: 'rect' },
+          pattern: { type: 'grid' },
+          excludedTiles: []
+        }]
+      }],
+      selectedFloorId: 'f1',
+      selectedRoomId: 'r1',
+      view: { removalMode: true }
+    };
+
+    const availableMP = [[[ [0,0], [100,0], [100,100], [0,100], [0,0] ]]];
+    const initial = tilesForPreview(state, availableMP, true);
+    const targetId = initial.tiles[0].id;
+
+    const store = {
+      getState: () => state,
+      commit: (_label, next) => {
+        state.floors = next.floors;
+        state.selectedFloorId = next.selectedFloorId;
+        state.selectedRoomId = next.selectedRoomId;
+        state.view = next.view;
+      }
+    };
+
+    const removal = createRemovalController(store, () => {});
+    const path = document.createElement('path');
+    path.setAttribute('data-tileid', targetId);
+
+    removal.handlePlanClick({ target: path, stopPropagation() {}, preventDefault() {} });
+    expect(state.floors[0].rooms[0].excludedTiles).toContain(targetId);
   });
 });

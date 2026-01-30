@@ -813,6 +813,23 @@ Horizontal bar below preview showing key numbers:
 - Improve UX by allowing toggling excluded segments back ON.
 - Ensure stable skirting IDs and better hit areas for interaction.
 
+## Session: Removal Mode Broken (2026-01-30)
+### Goal
+- Restore removal mode toggle and click-to-exclude for tiles and skirting.
+
+### Branch
+`feature-fix-removal-mode`
+
+### Plan
+1. Wire removal mode toggle to update state directly
+2. Bind removal click handling on the SVG in pointerdown
+3. Add a small test for the toggle/click flow
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
+
 ### Plan
 1. Create branch `bugfix/skirting-exclusion` ✓
 2. Normalize skirting segment IDs by sorting points (direction independence) ✓

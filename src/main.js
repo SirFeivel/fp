@@ -927,12 +927,22 @@ function updateAllTranslations() {
     }
   });
 
-  quickRemovalMode?.addEventListener("change", (e) => {
+  const syncRemovalCheckboxes = (checked) => {
     const mainRemovalMode = document.getElementById("removalMode");
-    if (mainRemovalMode) {
-      mainRemovalMode.checked = e.target.checked;
-      mainRemovalMode.dispatchEvent(new Event("change", { bubbles: true }));
-    }
+    if (mainRemovalMode) mainRemovalMode.checked = checked;
+    if (quickRemovalMode) quickRemovalMode.checked = checked;
+  };
+
+  quickRemovalMode?.addEventListener("change", (e) => {
+    const checked = Boolean(e.target.checked);
+    syncRemovalCheckboxes(checked);
+    removal.setRemovalMode(checked);
+  });
+
+  document.getElementById("removalMode")?.addEventListener("change", (e) => {
+    const checked = Boolean(e.target.checked);
+    syncRemovalCheckboxes(checked);
+    removal.setRemovalMode(checked);
   });
 
   // Quick settings button opens settings panel

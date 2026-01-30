@@ -423,7 +423,7 @@ export function bindUI({
     }
   });
   document.addEventListener("change", (e) => {
-    if (e.target.id === 'showGrid' || e.target.id === 'showSkirting' || e.target.id === 'removalMode') {
+    if (e.target.id === 'showGrid' || e.target.id === 'showSkirting') {
       const val = e.target.checked;
       document.querySelectorAll('#' + e.target.id).forEach(el => el.checked = val);
       commitFromRoomInputs(t("room.viewChanged"));

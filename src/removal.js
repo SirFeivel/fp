@@ -11,6 +11,16 @@ export function createRemovalController(store, renderAll) {
     store.commit(t("removal.modeToggled"), next, { onRender: renderAll });
   }
 
+  function setRemovalMode(enabled) {
+    const state = store.getState();
+    const current = Boolean(state.view?.removalMode);
+    if (current === Boolean(enabled)) return;
+    const next = structuredClone(state);
+    next.view = next.view || {};
+    next.view.removalMode = Boolean(enabled);
+    store.commit(t("removal.modeToggled"), next, { onRender: renderAll });
+  }
+
   function handlePlanClick(e) {
     const state = store.getState();
     if (!state.view?.removalMode) return;
@@ -49,7 +59,7 @@ export function createRemovalController(store, renderAll) {
   }
 
   // Bind to the SVG plan (delegated to support fullscreen)
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     const svg = e.target.closest("svg");
     if (svg && (svg.id === "planSvg" || svg.id === "planSvgFullscreen")) {
       handlePlanClick(e);
@@ -57,6 +67,8 @@ export function createRemovalController(store, renderAll) {
   }, true);
 
   return {
-    toggleRemovalMode
+    toggleRemovalMode,
+    setRemovalMode,
+    handlePlanClick
   };
 }
