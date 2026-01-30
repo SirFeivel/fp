@@ -11,28 +11,40 @@ export function initFullscreen(dragController, onShow) {
     const overlay = document.createElement('div');
     overlay.className = 'fullscreen-overlay';
     const toolbarOriginal = document.querySelector('.plan-toolbar');
-    const toolbarHtml = toolbarOriginal ? toolbarOriginal.innerHTML : '';
 
-    overlay.innerHTML = `
-      <div class="fullscreen-header">
-        <button id="btnExitFullscreen" class="btn small" title="Exit Fullscreen">✕</button>
-      </div>
-      <div class="fullscreen-content">
-        <div class="plan-toolbar">${toolbarHtml}</div>
-        <svg id="planSvgFullscreen" xmlns="http://www.w3.org/2000/svg"></svg>
-      </div>
-    `;
+    const header = document.createElement('div');
+    header.className = 'fullscreen-header';
+    const exitBtn = document.createElement('button');
+    exitBtn.id = 'btnExitFullscreen';
+    exitBtn.className = 'btn small';
+    exitBtn.title = 'Exit Fullscreen';
+    exitBtn.textContent = '✕';
+    header.appendChild(exitBtn);
+
+    const content = document.createElement('div');
+    content.className = 'fullscreen-content';
+
+    if (toolbarOriginal) {
+      const toolbarClone = toolbarOriginal.cloneNode(true);
+      content.appendChild(toolbarClone);
+    }
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'planSvgFullscreen';
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    content.appendChild(svg);
+
+    overlay.replaceChildren(header, content);
 
     document.body.appendChild(overlay);
 
     if (onShow) onShow();
 
-    const btnExit = document.getElementById('btnExitFullscreen');
     const closeFullscreen = () => {
       document.body.removeChild(overlay);
     };
 
-    btnExit.addEventListener('click', closeFullscreen);
+    exitBtn.addEventListener('click', closeFullscreen);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {

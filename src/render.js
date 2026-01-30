@@ -653,13 +653,16 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
       roomNameEl.textContent = `${roomName} · ${t("skirting.wholeRoom")}`;
       const roomToggle = document.createElement("label");
       roomToggle.className = "toggle-switch skirting-room-toggle";
-      roomToggle.innerHTML = `
-        <input type="checkbox" ${roomEnabled ? "checked" : ""} data-room-id="${room.id}">
-        <div class="toggle-slider"></div>
-      `;
+      const roomInput = document.createElement("input");
+      roomInput.type = "checkbox";
+      roomInput.checked = roomEnabled;
+      roomInput.dataset.roomId = room.id;
+      const roomSlider = document.createElement("div");
+      roomSlider.className = "toggle-slider";
       roomRow.appendChild(roomNameEl);
+      roomToggle.appendChild(roomInput);
+      roomToggle.appendChild(roomSlider);
       roomRow.appendChild(roomToggle);
-      const roomInput = roomToggle.querySelector("input");
       roomInput.addEventListener("change", () => {
         onToggleRoom?.(room.id, Boolean(roomInput.checked));
       });
@@ -676,13 +679,18 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
         secNameEl.textContent = `${t("room.section")}: ${secName}`;
         const secToggle = document.createElement("label");
         secToggle.className = "toggle-switch skirting-room-toggle";
-        secToggle.innerHTML = `
-          <input type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""} data-room-id="${room.id}" data-sec-id="${sec.id}" ${roomEnabled ? "" : "disabled"}>
-          <div class="toggle-slider"></div>
-        `;
+        const secInput = document.createElement("input");
+        secInput.type = "checkbox";
+        secInput.checked = sec.skirtingEnabled !== false;
+        secInput.dataset.roomId = room.id;
+        secInput.dataset.secId = sec.id;
+        if (!roomEnabled) secInput.disabled = true;
+        const secSlider = document.createElement("div");
+        secSlider.className = "toggle-slider";
         secRow.appendChild(secNameEl);
+        secToggle.appendChild(secInput);
+        secToggle.appendChild(secSlider);
         secRow.appendChild(secToggle);
-        const secInput = secToggle.querySelector("input");
         secInput.addEventListener("change", () => {
           onToggleSection?.(room.id, sec.id, Boolean(secInput.checked));
         });
@@ -2096,89 +2104,212 @@ export function renderCommercialTab(state) {
   const proj = computeProjectTotals(state);
 
   // 1. Render Rooms Table
-  let roomsHtml = `<table class="commercial-table">
-    <thead>
-      <tr>
-        <th>${t("tabs.floor")}</th>
-        <th>${t("tabs.room")}</th>
-        <th>${t("tile.reference")}</th>
-        <th style="text-align:right">${t("metrics.netArea")}</th>
-        <th style="text-align:right">${t("metrics.totalTiles")}</th>
-        <th style="text-align:right">${t("metrics.price")}</th>
-      </tr>
-    </thead>
-    <tbody>`;
-
+  roomsListEl.replaceChildren();
+  const roomsTable = document.createElement("table");
+  roomsTable.className = "commercial-table";
+  const roomsThead = document.createElement("thead");
+  const roomsHeadRow = document.createElement("tr");
+  const roomsHeaders = [
+    { label: t("tabs.floor") },
+    { label: t("tabs.room") },
+    { label: t("tile.reference") },
+    { label: t("metrics.netArea"), align: "right" },
+    { label: t("metrics.totalTiles"), align: "right" },
+    { label: t("metrics.price"), align: "right" }
+  ];
+  roomsHeaders.forEach(({ label, align }) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    if (align) th.style.textAlign = align;
+    roomsHeadRow.appendChild(th);
+  });
+  roomsThead.appendChild(roomsHeadRow);
+  roomsTable.appendChild(roomsThead);
+  const roomsTbody = document.createElement("tbody");
   for (const r of proj.rooms) {
-    roomsHtml += `<tr>
-      <td class="subtle">${escapeHTML(r.floorName)}</td>
-      <td class="room-name">${escapeHTML(r.name)}</td>
-      <td class="material-ref">${escapeHTML(r.reference || "-")}</td>
-      <td style="text-align:right">${r.netAreaM2.toFixed(2)} m²</td>
-      <td style="text-align:right">${r.totalTiles}</td>
-      <td style="text-align:right">${r.totalCost.toFixed(2)} €</td>
-    </tr>`;
+    const tr = document.createElement("tr");
+    const floorTd = document.createElement("td");
+    floorTd.className = "subtle";
+    floorTd.textContent = r.floorName || "";
+    const roomTd = document.createElement("td");
+    roomTd.className = "room-name";
+    roomTd.textContent = r.name || "";
+    const refTd = document.createElement("td");
+    refTd.className = "material-ref";
+    refTd.textContent = r.reference || "-";
+    const areaTd = document.createElement("td");
+    areaTd.style.textAlign = "right";
+    areaTd.textContent = `${r.netAreaM2.toFixed(2)} m²`;
+    const tilesTd = document.createElement("td");
+    tilesTd.style.textAlign = "right";
+    tilesTd.textContent = String(r.totalTiles);
+    const costTd = document.createElement("td");
+    costTd.style.textAlign = "right";
+    costTd.textContent = `${r.totalCost.toFixed(2)} €`;
+    tr.append(floorTd, roomTd, refTd, areaTd, tilesTd, costTd);
+    roomsTbody.appendChild(tr);
   }
-  roomsHtml += `</tbody></table>`;
-  roomsListEl.innerHTML = roomsHtml;
+  roomsTable.appendChild(roomsTbody);
+  roomsListEl.appendChild(roomsTable);
 
   // 2. Render Consolidated Materials Table
-  let matsHtml = `<table class="commercial-table">
-    <thead>
-      <tr>
-        <th>${t("tile.reference")}</th>
-        <th style="text-align:right">${t("commercial.totalM2")}</th>
-        <th style="text-align:right">${t("commercial.totalTiles")}</th>
-        <th style="text-align:right">${t("commercial.totalPacks")}</th>
-        <th style="text-align:right">${t("commercial.packsFloor")}</th>
-        <th style="text-align:right">${t("commercial.packsSkirting")}</th>
-        <th style="text-align:right">${t("commercial.amountOverride")}</th>
-        <th style="text-align:right">${t("commercial.pricePerM2")}</th>
-        <th style="text-align:right">${t("commercial.pricePerPack")}</th>
-        <th style="text-align:right">${t("commercial.packSize")}</th>
-        <th style="text-align:right">${t("commercial.totalCost")}</th>
-      </tr>
-    </thead>
-    <tbody>`;
-
+  materialsListEl.replaceChildren();
+  const matsTable = document.createElement("table");
+  matsTable.className = "commercial-table";
+  const matsThead = document.createElement("thead");
+  const matsHeadRow = document.createElement("tr");
+  const matsHeaders = [
+    { label: t("tile.reference") },
+    { label: t("commercial.totalM2"), align: "right" },
+    { label: t("commercial.totalTiles"), align: "right" },
+    { label: t("commercial.totalPacks"), align: "right" },
+    { label: t("commercial.packsFloor"), align: "right" },
+    { label: t("commercial.packsSkirting"), align: "right" },
+    { label: t("commercial.amountOverride"), align: "right" },
+    { label: t("commercial.pricePerM2"), align: "right" },
+    { label: t("commercial.pricePerPack"), align: "right" },
+    { label: t("commercial.packSize"), align: "right" },
+    { label: t("commercial.totalCost"), align: "right" }
+  ];
+  matsHeaders.forEach(({ label, align }) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    if (align) th.style.textAlign = align;
+    matsHeadRow.appendChild(th);
+  });
+  matsThead.appendChild(matsHeadRow);
+  matsTable.appendChild(matsThead);
+  const matsTbody = document.createElement("tbody");
   for (const m of proj.materials) {
     const ref = m.reference || "";
     const pricePerPack = (m.pricePerM2 * m.packM2).toFixed(2);
-    matsHtml += `<tr>
-      <td class="material-ref">${escapeHTML(ref || t("commercial.defaultMaterial"))}</td>
-      <td style="text-align:right">${m.netAreaM2.toFixed(2)} m²</td>
-      <td style="text-align:right">${m.totalTiles}</td>
-      <td style="text-align:right"><strong>${m.totalPacks || 0}</strong></td>
-      <td style="text-align:right">${m.floorPacks || 0}</td>
-      <td style="text-align:right">${m.skirtingPacks || 0}</td>
-      <td style="text-align:right">
-        <input type="number" step="1" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="extraPacks" value="${m.extraPacks}" style="width:40px" />
-      </td>
-      <td style="text-align:right">
-        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="pricePerM2" value="${m.pricePerM2.toFixed(2)}" style="width:60px" /> €
-      </td>
-      <td style="text-align:right">
-        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="pricePerPack" value="${pricePerPack}" style="width:60px" /> €
-      </td>
-      <td style="text-align:right">
-        <input type="number" step="0.01" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="packM2" value="${m.packM2}" /> m²
-      </td>
-      <td style="text-align:right"><strong>${m.adjustedCost.toFixed(2)} €</strong></td>
-    </tr>`;
+    const tr = document.createElement("tr");
+    const refTd = document.createElement("td");
+    refTd.className = "material-ref";
+    refTd.textContent = ref || t("commercial.defaultMaterial");
+    const areaTd = document.createElement("td");
+    areaTd.style.textAlign = "right";
+    areaTd.textContent = `${m.netAreaM2.toFixed(2)} m²`;
+    const tilesTd = document.createElement("td");
+    tilesTd.style.textAlign = "right";
+    tilesTd.textContent = String(m.totalTiles);
+    const packsTd = document.createElement("td");
+    packsTd.style.textAlign = "right";
+    const packsStrong = document.createElement("strong");
+    packsStrong.textContent = String(m.totalPacks || 0);
+    packsTd.appendChild(packsStrong);
+    const floorPacksTd = document.createElement("td");
+    floorPacksTd.style.textAlign = "right";
+    floorPacksTd.textContent = String(m.floorPacks || 0);
+    const skirtingPacksTd = document.createElement("td");
+    skirtingPacksTd.style.textAlign = "right";
+    skirtingPacksTd.textContent = String(m.skirtingPacks || 0);
+    const extraTd = document.createElement("td");
+    extraTd.style.textAlign = "right";
+    const extraInput = document.createElement("input");
+    extraInput.type = "number";
+    extraInput.step = "1";
+    extraInput.className = "commercial-edit";
+    extraInput.dataset.ref = ref;
+    extraInput.dataset.prop = "extraPacks";
+    extraInput.value = String(m.extraPacks);
+    extraInput.style.width = "40px";
+    extraTd.appendChild(extraInput);
+    const priceM2Td = document.createElement("td");
+    priceM2Td.style.textAlign = "right";
+    const priceM2Input = document.createElement("input");
+    priceM2Input.type = "number";
+    priceM2Input.step = "0.01";
+    priceM2Input.className = "commercial-edit";
+    priceM2Input.dataset.ref = ref;
+    priceM2Input.dataset.prop = "pricePerM2";
+    priceM2Input.value = m.pricePerM2.toFixed(2);
+    priceM2Input.style.width = "60px";
+    const priceM2Unit = document.createElement("span");
+    priceM2Unit.textContent = " €";
+    priceM2Td.append(priceM2Input, priceM2Unit);
+    const pricePackTd = document.createElement("td");
+    pricePackTd.style.textAlign = "right";
+    const pricePackInput = document.createElement("input");
+    pricePackInput.type = "number";
+    pricePackInput.step = "0.01";
+    pricePackInput.className = "commercial-edit";
+    pricePackInput.dataset.ref = ref;
+    pricePackInput.dataset.prop = "pricePerPack";
+    pricePackInput.value = pricePerPack;
+    pricePackInput.style.width = "60px";
+    const pricePackUnit = document.createElement("span");
+    pricePackUnit.textContent = " €";
+    pricePackTd.append(pricePackInput, pricePackUnit);
+    const packSizeTd = document.createElement("td");
+    packSizeTd.style.textAlign = "right";
+    const packSizeInput = document.createElement("input");
+    packSizeInput.type = "number";
+    packSizeInput.step = "0.01";
+    packSizeInput.className = "commercial-edit";
+    packSizeInput.dataset.ref = ref;
+    packSizeInput.dataset.prop = "packM2";
+    packSizeInput.value = String(m.packM2);
+    const packSizeUnit = document.createElement("span");
+    packSizeUnit.textContent = " m²";
+    packSizeTd.append(packSizeInput, packSizeUnit);
+    const costTd = document.createElement("td");
+    costTd.style.textAlign = "right";
+    const costStrong = document.createElement("strong");
+    costStrong.textContent = `${m.adjustedCost.toFixed(2)} €`;
+    costTd.appendChild(costStrong);
+    tr.append(
+      refTd,
+      areaTd,
+      tilesTd,
+      packsTd,
+      floorPacksTd,
+      skirtingPacksTd,
+      extraTd,
+      priceM2Td,
+      pricePackTd,
+      packSizeTd,
+      costTd
+    );
+    matsTbody.appendChild(tr);
   }
-  
-  // Grand Total Row
-  matsHtml += `<tr style="border-top: 2px solid var(--line2); font-weight:bold;">
-    <td>${t("commercial.grandTotal")}</td>
-    <td style="text-align:right">${proj.totalNetAreaM2.toFixed(2)} m²</td>
-    <td style="text-align:right">${proj.totalTiles}</td>
-    <td style="text-align:right">${proj.totalPacks}</td>
-    <td style="text-align:right">–</td>
-    <td style="text-align:right">–</td>
-    <td colspan="4"></td>
-    <td style="text-align:right; color:var(--accent);">${proj.totalCost.toFixed(2)} €</td>
-  </tr>`;
-
-  matsHtml += `</tbody></table>`;
-  materialsListEl.innerHTML = matsHtml;
+  const totalRow = document.createElement("tr");
+  totalRow.style.borderTop = "2px solid var(--line2)";
+  totalRow.style.fontWeight = "bold";
+  const totalLabel = document.createElement("td");
+  totalLabel.textContent = t("commercial.grandTotal");
+  const totalArea = document.createElement("td");
+  totalArea.style.textAlign = "right";
+  totalArea.textContent = `${proj.totalNetAreaM2.toFixed(2)} m²`;
+  const totalTiles = document.createElement("td");
+  totalTiles.style.textAlign = "right";
+  totalTiles.textContent = String(proj.totalTiles);
+  const totalPacks = document.createElement("td");
+  totalPacks.style.textAlign = "right";
+  totalPacks.textContent = String(proj.totalPacks);
+  const totalFloor = document.createElement("td");
+  totalFloor.style.textAlign = "right";
+  totalFloor.textContent = "–";
+  const totalSkirting = document.createElement("td");
+  totalSkirting.style.textAlign = "right";
+  totalSkirting.textContent = "–";
+  const totalSpacer = document.createElement("td");
+  totalSpacer.colSpan = 4;
+  const totalCost = document.createElement("td");
+  totalCost.style.textAlign = "right";
+  totalCost.style.color = "var(--accent)";
+  totalCost.textContent = `${proj.totalCost.toFixed(2)} €`;
+  totalRow.append(
+    totalLabel,
+    totalArea,
+    totalTiles,
+    totalPacks,
+    totalFloor,
+    totalSkirting,
+    totalSpacer,
+    totalCost
+  );
+  matsTbody.appendChild(totalRow);
+  matsTable.appendChild(matsTbody);
+  materialsListEl.appendChild(matsTable);
 }

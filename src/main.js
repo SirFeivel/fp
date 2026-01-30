@@ -195,7 +195,13 @@ function renderAll(lastLabel, options) {
       const div = document.createElement("div");
       div.className = "warnItem";
       div.style.border = "2px solid rgba(255,107,107,0.5)";
-      div.innerHTML = `<div class="wTitle">${t("errors.renderFailed")}</div><div class="wText">${t("errors.reloadPage")} ${error.message}</div>`;
+      const title = document.createElement("div");
+      title.className = "wTitle";
+      title.textContent = t("errors.renderFailed");
+      const text = document.createElement("div");
+      text.className = "wText";
+      text.textContent = `${t("errors.reloadPage")} ${error.message}`;
+      div.replaceChildren(title, text);
       errorDiv.prepend(div);
     }
   }
