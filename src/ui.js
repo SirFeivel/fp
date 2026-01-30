@@ -67,9 +67,14 @@ export function bindUI({
       nextRoom.skirting = nextRoom.skirting || {};
       const roomSkirtingEnabled = document.getElementById("roomSkirtingEnabled");
       if (roomSkirtingEnabled) nextRoom.skirting.enabled = Boolean(roomSkirtingEnabled.checked);
-      const selectedType = document.getElementById("skirtingType")?.value;
-      const preset = next.tilePresets?.find(p => p?.name && p.name === nextRoom.tile?.reference);
-      const cutoutAllowed = Boolean(preset?.useForSkirting);
+      const selectedTypeRaw = document.getElementById("skirtingType")?.value;
+      const selectedType =
+        selectedTypeRaw === "bought" || selectedTypeRaw === "cutout"
+          ? selectedTypeRaw
+          : "cutout";
+      const ref = nextRoom.tile?.reference;
+      const preset = ref ? next.tilePresets?.find(p => p?.name && p.name === ref) : null;
+      const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
       nextRoom.skirting.type = selectedType === "cutout" && !cutoutAllowed ? "bought" : selectedType;
       nextRoom.skirting.heightCm = Number(document.getElementById("skirtingHeight")?.value);
       nextRoom.skirting.boughtWidthCm = Number(document.getElementById("skirtingBoughtWidth")?.value);

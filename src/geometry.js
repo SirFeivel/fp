@@ -136,9 +136,12 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
   if (!avail.mp) return [];
 
   const skirting = room.skirting || {};
+  const tileW = Number(room.tile?.widthCm) || 60;
+  const tileH = Number(room.tile?.heightCm) || 60;
+  const longSide = Math.max(tileW, tileH);
   const pieceLength = skirting.type === "bought"
     ? (Number(skirting.boughtWidthCm) || 60)
-    : (Number(room.tile?.widthCm) || 60);
+    : longSide;
 
   const segments = [];
   for (const poly of area.mp) {

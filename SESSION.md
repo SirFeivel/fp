@@ -1088,3 +1088,54 @@ Horizontal bar below preview showing key numbers:
 - Commercial table now correctly displays translated labels instead of raw keys.
 - Added translation keys for "totalTiles", "grandTotal", and "defaultMaterial".
 - All 376 tests pass.
+## Session: Skirting Cutout Uses Long Side (2026-01-30)
+### Goal
+- Ensure cutout skirting always uses the tile’s long side for strip length and the short side for strip count.
+
+### Branch
+`feature-skirting-cutout-long-side`
+
+### Plan
+1. Update cutout skirting length to use max(tile width, height)
+2. Update strips-per-tile to use min(tile width, height), capped at 2
+3. Keep bought skirting logic unchanged
+4. Add tests for 60×30 @ 6cm (2 strips) and 28×11 @ 6cm (1 strip)
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
+
+## Session: Skirting Default Cutout (2026-01-30)
+### Goal
+- Make self-cut (cutout) skirting the default when type is missing or empty.
+
+### Branch
+`feature-skirting-default-cutout`
+
+### Plan
+1. Default skirting type to "cutout" in state normalization/migrations
+2. Treat empty/unknown skirting type as "cutout" on UI commits
+3. Add a test to lock the default behavior
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully
+
+## Session: Default Standard Tile Preset (2026-01-30)
+### Goal
+- Add a built-in "Standard" tile preset and reference it by default to allow cutout skirting in a fresh project.
+
+### Branch
+`feature-skirting-default-cutout`
+
+### Plan
+1. Add a "Standard" preset to default state
+2. Set default room tile reference to "Standard"
+3. Add a test for the default preset/reference
+
+### Status
+- Complete
+- `npm test` and `npm run build` successful
+- `npm run dev` started successfully

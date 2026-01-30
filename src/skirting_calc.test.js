@@ -35,6 +35,54 @@ describe('computeSkirtingNeeds', () => {
     expect(result.totalCost).toBeCloseTo(4 * (60 * 30 / 10000) * 100); // 4 tiles * 0.18m2 * 100€ = 72€
   });
 
+  it('uses the long side for cutout strip length (30x60)', () => {
+    const state = {
+      ...baseState,
+      floors: [{
+        ...baseState.floors[0],
+        rooms: [{
+          ...baseState.floors[0].rooms[0],
+          tile: { widthCm: 30, heightCm: 60 },
+          skirting: {
+            enabled: true,
+            type: 'cutout',
+            heightCm: 6
+          }
+        }]
+      }]
+    };
+    // Long side 60, short side 30, height 6 -> strips per tile: 2 (cap).
+    // Each 100cm segment needs ceil(100/60) = 2 strips.
+    // 4 segments * 2 strips = 8 strips => 4 tiles.
+    const result = computeSkirtingNeeds(state);
+    expect(result.stripsPerTile).toBe(2);
+    expect(result.additionalTiles).toBe(4);
+  });
+
+  it('yields 1 strip when short side only allows one (28x11)', () => {
+    const state = {
+      ...baseState,
+      floors: [{
+        ...baseState.floors[0],
+        rooms: [{
+          ...baseState.floors[0].rooms[0],
+          tile: { widthCm: 28, heightCm: 11 },
+          skirting: {
+            enabled: true,
+            type: 'cutout',
+            heightCm: 6
+          }
+        }]
+      }]
+    };
+    // Long side 28, short side 11, height 6 -> strips per tile: 1.
+    // Each 100cm segment needs ceil(100/28) = 4 strips.
+    // 4 segments * 4 strips = 16 strips => 16 tiles.
+    const result = computeSkirtingNeeds(state);
+    expect(result.stripsPerTile).toBe(1);
+    expect(result.additionalTiles).toBe(16);
+  });
+
   it('yields 1 strip if tile height only allows for one', () => {
     const state = {
       ...baseState,

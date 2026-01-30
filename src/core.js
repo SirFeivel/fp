@@ -65,7 +65,20 @@ export function defaultState() {
     project: { name: "Projekt" },
 
     materials: {},
-    tilePresets: [],
+    tilePresets: [
+      {
+        id: uuid(),
+        name: "Standard",
+        shape: "rect",
+        widthCm: 40,
+        heightCm: 20,
+        groutWidthCm: 0.2,
+        groutColorHex: "#ffffff",
+        pricePerM2: 0,
+        packM2: 0,
+        useForSkirting: true
+      }
+    ],
     skirtingPresets: [],
 
     floors: [
@@ -88,7 +101,7 @@ export function defaultState() {
               }
             ],
             exclusions: [],
-            tile: { widthCm: 40, heightCm: 20, shape: "rect", reference: "" },
+            tile: { widthCm: 40, heightCm: 20, shape: "rect", reference: "Standard" },
             grout: { widthCm: 0.2, colorHex: "#ffffff" },
             pattern: {
               type: "grid",

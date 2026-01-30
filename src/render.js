@@ -407,8 +407,9 @@ export function renderRoomForm(state) {
     document.getElementById("skirtingBoughtWidth").value = skirting.boughtWidthCm || "";
     document.getElementById("skirtingPricePerPiece").value = skirting.boughtPricePerPiece || "";
 
-    const preset = state.tilePresets?.find(p => p?.name && p.name === currentRoom?.tile?.reference);
-    const cutoutAllowed = Boolean(preset?.useForSkirting);
+    const ref = currentRoom?.tile?.reference;
+    const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
     const skirtingTypeEl = document.getElementById("skirtingType");
     const cutoutHint = document.getElementById("skirtingCutoutHint");
     const cutoutOption = skirtingTypeEl?.querySelector('option[value="cutout"]');

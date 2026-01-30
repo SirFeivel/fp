@@ -61,17 +61,20 @@ export function computeSkirtingNeeds(state, roomOverride = null) {
   const th = Number(room.tile?.heightCm) || 1;
   const h = Number(skirting.heightCm) || 1;
 
-  // Requirement: "long side, practical max of 2 strips (only outer stripes)"
-  // 0 when configured skirt height is higher than tile height, 1 if not sufficient for 2, or 2 max.
+  const longSide = Math.max(tw, th);
+  const shortSide = Math.min(tw, th);
+
+  // Requirement: use the long side for strip length, short side for strip count.
+  // 0 when configured skirt height is higher than the short side, 1 if not sufficient for 2, or 2 max.
   let stripsPerTile = 0;
-  if (h <= th) {
-    stripsPerTile = Math.min(2, Math.floor(th / h));
+  if (h <= shortSide) {
+    stripsPerTile = Math.min(2, Math.floor(shortSide / h));
   }
 
   let totalStripsNeeded = 0;
   if (stripsPerTile > 0) {
     for (const seg of segments) {
-      totalStripsNeeded += Math.ceil(seg.length / tw);
+      totalStripsNeeded += Math.ceil(seg.length / longSide);
     }
   }
 

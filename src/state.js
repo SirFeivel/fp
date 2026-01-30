@@ -103,6 +103,26 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
     if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
 
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        if (floor.rooms && Array.isArray(floor.rooms)) {
+          for (const room of floor.rooms) {
+            if (!room.skirting) {
+              room.skirting = {
+                enabled: false,
+                type: "cutout",
+                heightCm: 6,
+                boughtWidthCm: 60,
+                boughtPricePerPiece: 5.0
+              };
+            } else if (room.skirting.type !== "cutout" && room.skirting.type !== "bought") {
+              room.skirting.type = "cutout";
+            }
+          }
+        }
+      }
+    }
+
     if (s.floors && Array.isArray(s.floors) && Array.isArray(s.tilePresets)) {
       const presetsByName = new Map(
         s.tilePresets.filter(p => p?.name).map(p => [p.name, p])
@@ -111,7 +131,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         floor.rooms?.forEach(room => {
           const ref = room.tile?.reference;
           const preset = ref ? presetsByName.get(ref) : null;
-          const cutoutAllowed = Boolean(preset?.useForSkirting);
+          const cutoutAllowed = ref ? Boolean(preset?.useForSkirting) : true;
           if (!cutoutAllowed && room.skirting?.type === "cutout") {
             room.skirting.type = "bought";
           }
