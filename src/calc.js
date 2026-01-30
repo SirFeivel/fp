@@ -454,10 +454,37 @@ class OffcutPool {
   }
 }
 
+const metricsCache = new Map();
+
+export function clearMetricsCache(roomId = null) {
+  if (roomId) {
+    metricsCache.delete(roomId);
+    return;
+  }
+  metricsCache.clear();
+}
+
+function getMetricsKey(state, room) {
+  return JSON.stringify({
+    tile: room.tile,
+    grout: room.grout,
+    pattern: room.pattern,
+    exclusions: room.exclusions,
+    sections: room.sections,
+    waste: state?.waste,
+  });
+}
+
 export function computePlanMetrics(state, roomOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
   if (!currentRoom) {
     return { ok: false, error: "Kein Raum ausgewählt.", data: null };
+  }
+
+  const cacheKey = getMetricsKey(state, currentRoom);
+  const cached = metricsCache.get(currentRoom.id);
+  if (cached && cached.key === cacheKey) {
+    return cached.result;
   }
 
   const tw = Number(currentRoom.tile?.widthCm);
@@ -664,7 +691,7 @@ export function computePlanMetrics(state, roomOverride = null) {
   const priceTotal = installedAreaM2 * pricePerM2;
   const packs = packM2 > 0 ? Math.ceil(installedAreaM2 / packM2) : null;
 
-  return {
+  const result = {
     ok: true,
     error: null,
     data: {
@@ -724,6 +751,9 @@ export function computePlanMetrics(state, roomOverride = null) {
       },
     },
   };
+
+  metricsCache.set(currentRoom.id, { key: cacheKey, result });
+  return result;
 }
 
 /**

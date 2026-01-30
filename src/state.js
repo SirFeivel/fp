@@ -13,6 +13,7 @@ import {
   DEFAULT_SKIRTING_CONFIG,
   DEFAULT_SKIRTING_PRESET
 } from './core.js';
+import { clearMetricsCache } from './calc.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
@@ -376,6 +377,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     const entry = undoStack.pop();
     redoStack.push(entry);
     state = normalizeState(deepClone(entry.before));
+    clearMetricsCache();
     autosaveSession(updateMetaCb);
     onRender?.(`Undo: ${entry.label}`);
   }
@@ -385,6 +387,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     const entry = redoStack.pop();
     undoStack.push(entry);
     state = normalizeState(deepClone(entry.after));
+    clearMetricsCache();
     autosaveSession(updateMetaCb);
     onRender?.(`Redo: ${entry.label}`);
   }
