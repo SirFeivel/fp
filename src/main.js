@@ -363,7 +363,13 @@ function updateSectionInline({ id, key, value }) {
     return;
   }
 
-  // Handle other inline edits (width, height, x, y) if needed
+  // Handle dimension edits
+  if (key === "widthCm") {
+    sec.widthCm = Math.max(1, value);
+  } else if (key === "heightCm") {
+    sec.heightCm = Math.max(1, value);
+  }
+
   commitViaStore(t("room.sectionChanged") || "Section changed", next);
 }
 

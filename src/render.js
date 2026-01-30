@@ -1212,28 +1212,58 @@ export function renderPlanSvg({
         gSec.appendChild(handle);
       });
 
-      // Dimension labels
-      addPillLabel(`${fmtCm(section.widthCm)} cm`, section.x + section.widthCm / 2, section.y - pad, {
-        anchor: "middle",
-        parent: gSec
-      });
-      addPillLabel(`${fmtCm(section.heightCm)} cm`, section.x + section.widthCm + pad, section.y + section.heightCm / 2, {
-        anchor: "middle",
-        angle: 90,
-        parent: gSec
-      });
+      // Editable dimension labels (matching exclusion pattern)
+      const addSectionEditableLabel = (text, value, key, x, y, anchor = "middle", angle = 0) => {
+        let finalAngle = angle;
+        if (finalAngle > 90 || finalAngle < -90) {
+          finalAngle += 180;
+        }
+        const labelGroup = addPillLabel(text, x, y, {
+          anchor,
+          angle: finalAngle,
+          parent: gSec
+        });
+        if (!onSectionInlineEdit) return;
+        const openEdit = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          labelGroup.style.display = "none";
+          startSvgEdit({
+            svg,
+            x,
+            y,
+            angle: finalAngle,
+            value,
+            textStyle: labelBaseStyle,
+            onCommit: (nextVal) => {
+              labelGroup.style.display = "";
+              onSectionInlineEdit({ id: section.id, key, value: nextVal });
+            },
+            onCancel: () => {
+              labelGroup.style.display = "";
+            },
+            anchor
+          });
+        };
+        labelGroup.addEventListener("pointerdown", openEdit);
+        labelGroup.addEventListener("click", openEdit);
+      };
 
-      // Delete button (X icon) - only if more than one section
+      addSectionEditableLabel(`${fmtCm(section.widthCm)} cm`, section.widthCm, "widthCm", section.x + section.widthCm / 2, section.y - pad, "middle", 0);
+      addSectionEditableLabel(`${fmtCm(section.heightCm)} cm`, section.heightCm, "heightCm", section.x + section.widthCm + pad, section.y + section.heightCm / 2, "middle", 90);
+
+      // Delete button (X icon) - matching exclusion style
       if (sections.length > 1) {
         const removeBtnX = section.x + section.widthCm + 12;
         const removeBtnY = section.y - pad;
-        const removeGroup = svgEl("g", { cursor: "pointer" });
+        const removeGroup = svgEl("g");
         const crossStyle = {
-          stroke: "rgba(122,162,255,0.95)",
+          stroke: "rgba(239,68,68,0.95)",
           "stroke-width": 1.6,
-          "stroke-linecap": "round"
+          "stroke-linecap": "round",
+          cursor: "pointer"
         };
-        const crossSize = 3;
+        const crossSize = 2;
         removeGroup.appendChild(svgEl("line", {
           ...crossStyle,
           x1: removeBtnX - crossSize,
@@ -1650,10 +1680,11 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
   const gEx = svgEl("g");
   for (const ex of exclusions) {
     const isSel = ex.id === selectedExclId;
+    // Match section styling pattern: selected has higher opacity, unselected is more subtle
     const common = {
-      fill: isSel ? "rgba(239,68,68,0.25)" : "rgba(239,68,68,0.15)",
-      stroke: isSel ? "rgba(239,68,68,0.95)" : "rgba(239,68,68,0.55)",
-      "stroke-width": isSel ? 2 : 1,
+      fill: isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)",
+      stroke: isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)",
+      "stroke-width": isSel ? 2 : 1.2,
       cursor: "move",
       "data-exid": ex.id
     };
@@ -1736,19 +1767,9 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           };
 
       const pad = 10;
-      const removeBtnR = 5;
-      let removeBtnX = box.maxX + 6;
-      let removeBtnY = box.minY - pad;
-      if (ex.type === "rect") {
-        removeBtnX = ex.x + ex.w + 12;
-        removeBtnY = ex.y - pad;
-      } else if (ex.type === "circle") {
-        removeBtnX = ex.cx + ex.r + 6;
-        removeBtnY = ex.cy - ex.r - pad;
-      } else if (ex.type === "tri") {
-        removeBtnX = box.maxX + 6;
-        removeBtnY = box.maxY + pad;
-      }
+      // Consistent delete button position: top-right corner (matching section pattern)
+      const removeBtnX = box.maxX + 12;
+      const removeBtnY = box.minY - pad;
       const removeGroup = svgEl("g");
       const crossStyle = {
         stroke: "rgba(239,68,68,0.95)",
@@ -1756,7 +1777,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         "stroke-linecap": "round",
         cursor: "pointer"
       };
-      const crossSize = removeBtnR * 0.4;
+      const crossSize = 2;
       removeGroup.appendChild(svgEl("line", {
         ...crossStyle,
         x1: removeBtnX - crossSize,
@@ -1779,17 +1800,6 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         }
       });
       gEx.appendChild(removeGroup);
-
-      const posAnchorX = bounds.minX + 12;
-      const posAnchorY = bounds.minY + 14;
-
-      if (selectedExclId && ex.id === selectedExclId) {
-        const bounds = getRoomBounds(currentRoom);
-        const left = box.minX - bounds.minX;
-        const top = box.minY - bounds.minY;
-        addEditableLabel(`x ${fmtCm(left)} cm`, left, "x", posAnchorX, posAnchorY, "start");
-        addEditableLabel(`y ${fmtCm(top)} cm`, top, "y", posAnchorX, posAnchorY + 12, "start");
-      }
 
       if (ex.type === "rect") {
         // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
@@ -1860,7 +1870,6 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           { key: "side-c", p1: ex.p3, p2: ex.p1 }
         ];
 
-        let triLabelMaxY = null;
         sides.forEach(side => {
           const midX = (side.p1.x + side.p2.x) / 2;
           const midY = (side.p1.y + side.p2.y) / 2;
@@ -1874,13 +1883,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           const y = midY + ny * offset;
           const angle = Math.atan2(dy, dx) * 180 / Math.PI;
           addEditableLabel(`${fmtCm(len)} cm`, len, side.key, x, y, "middle", angle);
-          triLabelMaxY = triLabelMaxY === null ? y : Math.max(triLabelMaxY, y);
         });
-
-        if (triLabelMaxY !== null) {
-          const dy = triLabelMaxY - removeBtnY;
-          removeGroup.setAttribute("transform", `translate(0 ${dy})`);
-        }
       }
     }
   }
