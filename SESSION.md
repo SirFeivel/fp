@@ -1,3 +1,22 @@
+## Session: Stabilisation v2 Execution (2026-01-30)
+### Goal
+- Execute Stabilisation Plan v2 phases 1–8 and merge into main.
+
+### Branches
+- `stabilisation/phase-1-security`
+- `stabilisation/phase-2-render-pipeline`
+- `stabilisation/phase-3-defaults`
+- `stabilisation/phase-4-normalization`
+- `stabilisation/phase-5-ui-state`
+- `stabilisation/phase-6-performance`
+- `stabilisation/phase-7-errors`
+- `stabilisation/phase-8-tests`
+
+### Status
+- All phases merged into `main` (fast-forward).
+- Tests: `npm run test` (398 passed).
+- Build: `npm run build` successful.
+
 ## Session: Tile Collection Setup (2026-01-29)
 ### Goal
 - Let users define a reusable tile collection in Setup
