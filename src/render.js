@@ -1155,6 +1155,7 @@ export function renderPlanSvg({
   skipTiles = false,
   svgOverride = null,
   includeExclusions = true,
+  exportStyle = null,
   // Section-related callbacks
   selectedSectionId = null,
   setSelectedSection = null,
@@ -1165,6 +1166,7 @@ export function renderPlanSvg({
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
+  const isExportBW = exportStyle === "bw";
 
   if (!currentRoom) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -1178,7 +1180,7 @@ export function renderPlanSvg({
   };
 
   const labelBaseStyle = {
-    fill: "rgba(231,238,252,0.95)",
+    fill: isExportBW ? "#111111" : "rgba(231,238,252,0.95)",
     "font-size": 9,
     "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
     "text-anchor": "middle",
@@ -1261,7 +1263,7 @@ export function renderPlanSvg({
     y: baseViewBox.minY - bgPadding,
     width: baseViewBox.width + 2 * bgPadding,
     height: baseViewBox.height + 2 * bgPadding,
-    fill: "#081022"
+    fill: isExportBW ? "#ffffff" : "#081022"
   }));
 
   const suppressDetails = Boolean(selectedExclId);
@@ -1274,16 +1276,16 @@ export function renderPlanSvg({
       const isMajor = (x - minX) % major === 0;
       g.appendChild(svgEl("line", {
         x1: x, y1: minY, x2: x, y2: maxY,
-        stroke: isMajor ? "#1f2b46" : "#14203a",
-        "stroke-width": isMajor ? 0.8 : 0.4
+        stroke: isExportBW ? (isMajor ? "#d0d0d0" : "#e6e6e6") : (isMajor ? "#1f2b46" : "#14203a"),
+        "stroke-width": isMajor ? 0.6 : 0.3
       }));
     }
     for (let y = minY; y <= maxY; y += minor) {
       const isMajor = (y - minY) % major === 0;
       g.appendChild(svgEl("line", {
         x1: minX, y1: y, x2: maxX, y2: y,
-        stroke: isMajor ? "#1f2b46" : "#14203a",
-        "stroke-width": isMajor ? 0.8 : 0.4
+        stroke: isExportBW ? (isMajor ? "#d0d0d0" : "#e6e6e6") : (isMajor ? "#1f2b46" : "#14203a"),
+        "stroke-width": isMajor ? 0.6 : 0.3
       }));
     }
     svg.appendChild(g);
@@ -1300,9 +1302,9 @@ export function renderPlanSvg({
       y: section.y,
       width: section.widthCm,
       height: section.heightCm,
-      fill: isSectionSelected ? "rgba(122,162,255,0.15)" : "rgba(122,162,255,0.06)",
-      stroke: isSectionSelected ? "rgba(122,162,255,1)" : "rgba(122,162,255,0.8)",
-      "stroke-width": isSectionSelected ? 2 : 1.2,
+      fill: isExportBW ? "none" : (isSectionSelected ? "rgba(122,162,255,0.15)" : "rgba(122,162,255,0.06)"),
+      stroke: isExportBW ? "#111111" : (isSectionSelected ? "rgba(122,162,255,1)" : "rgba(122,162,255,0.8)"),
+      "stroke-width": isExportBW ? 1.2 : (isSectionSelected ? 2 : 1.2),
       cursor: sections.length > 1 ? "move" : "default",
       "data-secid": section.id
     });
@@ -1699,23 +1701,24 @@ export function renderPlanSvg({
 
       for (const tile of t.tiles) {
         const isExcluded = tile.excluded;
-        const attrs = {
-          d: tile.d,
-          // Tile fill stays white - only grout (stroke) gets the color
-          fill: isExcluded 
-            ? "rgba(239,68,68,0.25)" 
-            : (tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)"),
-          stroke: isExcluded
-            ? "rgba(239,68,68,0.8)"
-            : (tile.isFull
-                ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
-                : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`),
-          "stroke-width": isExcluded ? 2.0 : (tile.isFull ? 0.5 : 1.2)
-        };
-        if (isExcluded) {
-          attrs["stroke-dasharray"] = "4 2";
-          attrs["class"] = "tile-excluded";
-        }
+      const attrs = {
+        d: tile.d,
+        fill: isExportBW ? "none" : (isExcluded 
+          ? "rgba(239,68,68,0.25)" 
+          : (tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)")),
+        stroke: isExportBW
+          ? "#222222"
+          : (isExcluded
+              ? "rgba(239,68,68,0.8)"
+              : (tile.isFull
+                  ? `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.50)`
+                  : `rgba(${groutRgb.r},${groutRgb.g},${groutRgb.b},0.90)`)),
+        "stroke-width": isExportBW ? 0.5 : (isExcluded ? 2.0 : (tile.isFull ? 0.5 : 1.2))
+      };
+      if (isExcluded) {
+        attrs["stroke-dasharray"] = "4 2";
+        attrs["class"] = "tile-excluded";
+      }
         if (tile.id) attrs["data-tileid"] = tile.id;
         g.appendChild(svgEl("path", attrs));
       }
@@ -1755,7 +1758,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 }
 
   // union overlay
-  if (!skipTiles) {
+  if (!skipTiles && !isExportBW) {
     const u = computeExclusionsUnion(displayExclusions);
     if (u.error) setLastUnionError(u.error);
     else setLastUnionError(null);
@@ -1780,8 +1783,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     if (segments.length > 0) {
       const gSkirting = svgEl("g", { 
         fill: "none", 
-        stroke: "var(--accent)", 
-        "stroke-width": 4, 
+        stroke: isExportBW ? "#111111" : "var(--accent)", 
+        "stroke-width": isExportBW ? 2 : 4, 
         opacity: 0.6,
         "stroke-linejoin": "round",
         "pointer-events": isRemovalMode ? "auto" : "none"
@@ -1812,14 +1815,14 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
         const attrs = {
           d,
-          "stroke-dasharray": excluded ? "none" : `${pieceLength - gap} ${gap}`,
+          "stroke-dasharray": isExportBW ? "8 4" : (excluded ? "none" : `${pieceLength - gap} ${gap}`),
           "stroke-linecap": "butt"
         };
         if (id) attrs["data-skirtid"] = id;
         if (excluded) {
-          attrs.stroke = "rgba(239,68,68,0.8)";
-          attrs["stroke-width"] = 8;
-          attrs["class"] = "skirt-excluded";
+          attrs.stroke = isExportBW ? "#111111" : "rgba(239,68,68,0.8)";
+          attrs["stroke-width"] = isExportBW ? 2 : 8;
+          if (!isExportBW) attrs["class"] = "skirt-excluded";
         }
 
         // Pieces (dashed line) - show gaps to background for better recognition
@@ -1842,12 +1845,15 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     const isSel = ex.id === selectedExclId;
     // Match section styling pattern: selected has higher opacity, unselected is more subtle
     const common = {
-      fill: isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)",
-      stroke: isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)",
-      "stroke-width": isSel ? 2 : 1.2,
+      fill: isExportBW ? "none" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
+      stroke: isExportBW ? "#111111" : (isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)"),
+      "stroke-width": isExportBW ? 1.2 : (isSel ? 2 : 1.2),
       cursor: "move",
       "data-exid": ex.id
     };
+    if (isExportBW) {
+      common["stroke-dasharray"] = "6 4";
+    }
 
     let shapeEl;
     if (ex.type === "rect") {

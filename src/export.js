@@ -183,7 +183,8 @@ export function renderPlanSvgForExport(state, roomId, options) {
     metrics: null,
     skipTiles: false,
     svgOverride: svg,
-    includeExclusions: options.includeExclusions !== false
+    includeExclusions: options.includeExclusions !== false,
+    exportStyle: "bw"
   });
 
   return { svg, container: tmp };
@@ -472,12 +473,13 @@ function drawTable(doc, title, headers, rows, startY, pageHeight) {
 }
 
 export async function exportCommercialXlsx(state, options) {
-  const XLSX = await import("xlsx");
+  const XLSXModule = await import("xlsx");
+  const XLSX = XLSXModule.default || XLSXModule;
   const model = buildCommercialExportModel(state);
 
   const wb = XLSX.utils.book_new();
 
-  const summarySheet = XLSX.utils.json_to_sheet([
+  const summaryRows = [
     {
       totalAreaM2: model.summary.totalAreaM2,
       totalTiles: model.summary.totalTiles,
@@ -485,11 +487,35 @@ export async function exportCommercialXlsx(state, options) {
       totalCost: model.summary.totalCost,
       grandTotal: model.summary.grandTotal
     }
-  ]);
+  ];
 
-  const materialsSheet = XLSX.utils.json_to_sheet(model.materials || []);
-  const roomsSheet = XLSX.utils.json_to_sheet(model.rooms || []);
-  const skirtingSheet = XLSX.utils.json_to_sheet(model.skirting || []);
+  const materialRows = (model.materials || []).map((m) => ({
+    reference: m.reference || t("commercial.defaultMaterial"),
+    totalPacks: m.totalPacks || 0,
+    totalCost: Number(m.adjustedCost || m.totalCost || 0)
+  }));
+
+  const roomRows = (model.rooms || []).map((r) => ({
+    room: `${r.floor} / ${r.room}`,
+    areaM2: r.areaM2,
+    tiles: r.tiles,
+    packs: r.packs,
+    skirtingLengthCm: r.skirtingLengthCm,
+    cost: r.cost
+  }));
+
+  const skirtingRows = (model.skirting || []).map((s) => ({
+    room: `${s.floor} / ${s.room}`,
+    lengthCm: s.skirtingLengthCm,
+    pieces: s.skirtingPieces,
+    cost: s.skirtingCost,
+    type: s.skirtingType
+  }));
+
+  const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+  const materialsSheet = XLSX.utils.json_to_sheet(materialRows);
+  const roomsSheet = XLSX.utils.json_to_sheet(roomRows);
+  const skirtingSheet = XLSX.utils.json_to_sheet(skirtingRows);
 
   const sheetName = (label) => sanitizeFilename(label).slice(0, 31) || "Sheet";
 
