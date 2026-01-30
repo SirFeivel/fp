@@ -159,6 +159,14 @@ export function renderPlanSvgForExport(state, roomId, options) {
   tmp.appendChild(svg);
 
   const scopedState = cloneStateWithView(state, options);
+  let roomFloorId = scopedState.selectedFloorId;
+  for (const floor of scopedState.floors || []) {
+    if (floor.rooms?.some(r => r.id === roomId)) {
+      roomFloorId = floor.id;
+      break;
+    }
+  }
+  scopedState.selectedFloorId = roomFloorId;
   scopedState.selectedRoomId = roomId;
 
   renderPlanSvg({
