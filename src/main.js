@@ -16,6 +16,7 @@ import { getRoomBounds } from "./geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
+import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 
 import {
   renderWarnings,
@@ -32,7 +33,8 @@ import {
   renderTilePresets,
   renderSkirtingPresets,
   renderSectionProps,
-  renderCommercialTab
+  renderCommercialTab,
+  renderExportTab
 } from "./render.js";
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
@@ -48,6 +50,7 @@ let selectedTilePresetId = null;
 let selectedSkirtingPresetId = null;
 let lastUnionError = null;
 let lastTileError = null;
+const exportSelection = new Set();
 
 function updateMeta() {
   const last = store.getLastSavedAt();
@@ -115,6 +118,7 @@ const RenderScope = {
   SETUP: "setup",
   PLANNING: "planning",
   COMMERCIAL: "commercial",
+  EXPORT: "export",
   PLAN_AND_COMMERCIAL: "plan_and_commercial",
   ALL: "all"
 };
@@ -159,8 +163,13 @@ function resolveRenderScope(label, opts) {
     t("room.viewChanged")
   ]);
 
+  const exportOnly = new Set([
+    t("export.selectionChanged")
+  ]);
+
   if (planCommercial.has(label)) return RenderScope.PLAN_AND_COMMERCIAL;
   if (planningOnly.has(label)) return RenderScope.PLANNING;
+  if (exportOnly.has(label)) return RenderScope.EXPORT;
   if (setupAll.has(label)) return RenderScope.ALL;
   return RenderScope.ALL;
 }
@@ -227,6 +236,53 @@ function renderPlanningSection(state, opts) {
   });
 }
 
+function getExportOptionsFromUi() {
+  return {
+    roomIds: Array.from(exportSelection),
+    pageSize: document.getElementById("exportPageSize")?.value || "A4",
+    orientation: document.getElementById("exportOrientation")?.value || "portrait",
+    scale: document.getElementById("exportScale")?.value || "fit",
+    includeGrid: Boolean(document.getElementById("exportIncludeGrid")?.checked),
+    includeSkirting: Boolean(document.getElementById("exportIncludeSkirting")?.checked),
+    includeExclusions: Boolean(document.getElementById("exportIncludeExclusions")?.checked),
+    includeLegend: Boolean(document.getElementById("exportIncludeLegend")?.checked),
+    includeMetrics: Boolean(document.getElementById("exportIncludeMetrics")?.checked),
+    notes: document.getElementById("exportNotes")?.value || ""
+  };
+}
+
+function setExportStatus(message, isError = false) {
+  const status = document.getElementById("exportStatus");
+  if (!status) return;
+  status.textContent = message || "–";
+  status.style.color = isError ? "#ff6b6b" : "";
+}
+
+function setExportProgress(current, total) {
+  const fill = document.getElementById("exportProgressFill");
+  if (!fill || !total) return;
+  const pct = Math.min(100, Math.round((current / total) * 100));
+  fill.style.width = `${pct}%`;
+}
+
+function toggleExportProgress(show) {
+  const wrap = document.getElementById("exportProgress");
+  if (!wrap) return;
+  wrap.classList.toggle("hidden", !show);
+  if (!show) setExportProgress(0, 1);
+}
+
+function renderExportSection(state) {
+  if (exportSelection.size === 0) {
+    for (const floor of state.floors || []) {
+      for (const room of floor.rooms || []) {
+        exportSelection.add(room.id);
+      }
+    }
+  }
+  renderExportTab(state, exportSelection);
+}
+
 function renderCommercialSection(state) {
   renderCommercialTab(state);
 }
@@ -250,6 +306,9 @@ function renderByScope(state, scope, label, opts) {
     case RenderScope.COMMERCIAL:
       renderCommercialSection(state);
       break;
+    case RenderScope.EXPORT:
+      renderExportSection(state);
+      break;
     case RenderScope.PLAN_AND_COMMERCIAL:
       renderPlanningSection(state, opts);
       renderCommercialSection(state);
@@ -259,6 +318,7 @@ function renderByScope(state, scope, label, opts) {
       renderSetupSection(state);
       renderPlanningSection(state, opts);
       renderCommercialSection(state);
+      renderExportSection(state);
       break;
   }
   renderCommon(state, label);
@@ -293,6 +353,14 @@ function renderAll(lastLabel, options) {
       errorDiv.prepend(div);
     }
   }
+}
+
+function updateExportSelectionFromList() {
+  exportSelection.clear();
+  const inputs = document.querySelectorAll("#exportRoomsList input[type=\"checkbox\"][data-room-id]");
+  inputs.forEach((input) => {
+    if (input.checked) exportSelection.add(input.dataset.roomId);
+  });
 }
 
 // commit helper
@@ -1188,6 +1256,73 @@ function updateAllTranslations() {
       }
     });
   }
+
+  // Export UI
+  const exportRoomsList = document.getElementById("exportRoomsList");
+  exportRoomsList?.addEventListener("change", () => {
+    updateExportSelectionFromList();
+    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+  });
+
+  document.getElementById("exportSelectAllRooms")?.addEventListener("click", () => {
+    document.querySelectorAll("#exportRoomsList input[type=\"checkbox\"][data-room-id]").forEach((input) => {
+      input.checked = true;
+    });
+    updateExportSelectionFromList();
+    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+  });
+
+  document.getElementById("exportClearRooms")?.addEventListener("click", () => {
+    document.querySelectorAll("#exportRoomsList input[type=\"checkbox\"][data-room-id]").forEach((input) => {
+      input.checked = false;
+    });
+    updateExportSelectionFromList();
+    renderAll(t("export.selectionChanged"), { scope: RenderScope.EXPORT });
+  });
+
+  document.getElementById("btnExportRoomsPdf")?.addEventListener("click", async () => {
+    updateExportSelectionFromList();
+    const options = getExportOptionsFromUi();
+    if (!options.roomIds.length) {
+      setExportStatus(t("export.noRoomsSelected"), true);
+      return;
+    }
+
+    toggleExportProgress(true);
+    setExportStatus(t("export.exporting"));
+    try {
+      await exportRoomsPdf(store.getState(), options, ({ current, total }) => {
+        setExportProgress(current, total);
+        setExportStatus(t("export.exportingRoom").replace("{0}", String(current)).replace("{1}", String(total)));
+      });
+      setExportStatus(t("export.success"));
+    } catch (err) {
+      console.error("Export failed:", err);
+      setExportStatus(`${t("export.error")}: ${err.message}`, true);
+    } finally {
+      toggleExportProgress(false);
+    }
+  });
+
+  document.getElementById("btnExportCommercialPdf")?.addEventListener("click", async () => {
+    try {
+      await exportCommercialPdf(store.getState(), getExportOptionsFromUi());
+      setExportStatus(t("export.success"));
+    } catch (err) {
+      console.error("Export failed:", err);
+      setExportStatus(`${t("export.error")}: ${err.message}`, true);
+    }
+  });
+
+  document.getElementById("btnExportCommercialXlsx")?.addEventListener("click", async () => {
+    try {
+      await exportCommercialXlsx(store.getState(), getExportOptionsFromUi());
+      setExportStatus(t("export.success"));
+    } catch (err) {
+      console.error("Export failed:", err);
+      setExportStatus(`${t("export.error")}: ${err.message}`, true);
+    }
+  });
 
   // Planning Floor Selector
   const planningFloorSelect = document.getElementById("planningFloorSelect");

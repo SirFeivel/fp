@@ -396,7 +396,8 @@ const translations = {
       noRoomsSelected: "Keine Räume ausgewählt",
       noTileConfigured: "Keine Fliese konfiguriert",
       plansTitle: "Raumpläne",
-      commercialTitle: "Kaufmännisch"
+      commercialTitle: "Kaufmännisch",
+      selectionChanged: "Export-Auswahl geändert"
     },
     pdf: {
       projectName: "Projekt",
@@ -846,7 +847,8 @@ const translations = {
       noRoomsSelected: "No rooms selected",
       noTileConfigured: "No tile configured",
       plansTitle: "Room Plans",
-      commercialTitle: "Commercial"
+      commercialTitle: "Commercial",
+      selectionChanged: "Export selection changed"
     },
     pdf: {
       projectName: "Project",
