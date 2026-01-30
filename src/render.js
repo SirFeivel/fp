@@ -1153,6 +1153,8 @@ export function renderPlanSvg({
   setLastTileError,
   metrics, // optional; if omitted we compute it here
   skipTiles = false,
+  svgOverride = null,
+  includeExclusions = true,
   // Section-related callbacks
   selectedSectionId = null,
   setSelectedSection = null,
@@ -1161,7 +1163,7 @@ export function renderPlanSvg({
   onSectionInlineEdit = null,
   onAddSectionAtEdge = null
 }) {
-  const svg = document.getElementById("planSvg");
+  const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
 
   if (!currentRoom) {
@@ -1217,12 +1219,15 @@ export function renderPlanSvg({
   const maxX = bounds.maxX;
   const maxY = bounds.maxY;
   const exclusions = currentRoom.exclusions || [];
+  const displayExclusions = includeExclusions ? exclusions : [];
 
-  const resizeOverlay = document.getElementById("resizeMetrics");
-  if (resizeOverlay) {
-    resizeOverlay.classList.add("hidden");
+  if (!svgOverride) {
+    const resizeOverlay = document.getElementById("resizeMetrics");
+    if (resizeOverlay) {
+      resizeOverlay.classList.add("hidden");
+    }
+    closeSvgEdit(false);
   }
-  closeSvgEdit(false);
 
   const sections = getRoomSections(currentRoom);
 
@@ -1236,12 +1241,15 @@ export function renderPlanSvg({
     height: h + 2 * viewBoxPadding
   };
 
-  // Store base viewBox for zoom/pan calculations
-  setBaseViewBox(state.selectedRoomId, baseViewBox);
+  let vb = baseViewBox;
+  if (!svgOverride) {
+    // Store base viewBox for zoom/pan calculations
+    setBaseViewBox(state.selectedRoomId, baseViewBox);
 
-  // Calculate effective viewBox with zoom/pan applied
-  const effectiveViewBox = calculateEffectiveViewBox(state.selectedRoomId);
-  const vb = effectiveViewBox || baseViewBox;
+    // Calculate effective viewBox with zoom/pan applied
+    const effectiveViewBox = calculateEffectiveViewBox(state.selectedRoomId);
+    vb = effectiveViewBox || baseViewBox;
+  }
 
   svg.setAttribute("viewBox", `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -1748,7 +1756,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
   // union overlay
   if (!skipTiles) {
-    const u = computeExclusionsUnion(exclusions);
+    const u = computeExclusionsUnion(displayExclusions);
     if (u.error) setLastUnionError(u.error);
     else setLastUnionError(null);
 
@@ -1830,7 +1838,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
   // exclusion shapes
   const gEx = svgEl("g");
-  for (const ex of exclusions) {
+  for (const ex of displayExclusions) {
     const isSel = ex.id === selectedExclId;
     // Match section styling pattern: selected has higher opacity, unselected is more subtle
     const common = {
