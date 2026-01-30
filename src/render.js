@@ -1983,6 +1983,8 @@ export function renderCommercialTab(state) {
         <th style="text-align:right">${t("commercial.totalM2")}</th>
         <th style="text-align:right">${t("commercial.totalTiles")}</th>
         <th style="text-align:right">${t("commercial.totalPacks")}</th>
+        <th style="text-align:right">${t("commercial.packsFloor")}</th>
+        <th style="text-align:right">${t("commercial.packsSkirting")}</th>
         <th style="text-align:right">${t("commercial.amountOverride")}</th>
         <th style="text-align:right">${t("commercial.pricePerM2")}</th>
         <th style="text-align:right">${t("commercial.pricePerPack")}</th>
@@ -2000,6 +2002,8 @@ export function renderCommercialTab(state) {
       <td style="text-align:right">${m.netAreaM2.toFixed(2)} m²</td>
       <td style="text-align:right">${m.totalTiles}</td>
       <td style="text-align:right"><strong>${m.totalPacks || 0}</strong></td>
+      <td style="text-align:right">${m.floorPacks || 0}</td>
+      <td style="text-align:right">${m.skirtingPacks || 0}</td>
       <td style="text-align:right">
         <input type="number" step="1" class="commercial-edit" data-ref="${escapeHTML(ref)}" data-prop="extraPacks" value="${m.extraPacks}" style="width:40px" />
       </td>
@@ -2022,6 +2026,8 @@ export function renderCommercialTab(state) {
     <td style="text-align:right">${proj.totalNetAreaM2.toFixed(2)} m²</td>
     <td style="text-align:right">${proj.totalTiles}</td>
     <td style="text-align:right">${proj.totalPacks}</td>
+    <td style="text-align:right">–</td>
+    <td style="text-align:right">–</td>
     <td colspan="4"></td>
     <td style="text-align:right; color:var(--accent);">${proj.totalCost.toFixed(2)} €</td>
   </tr>`;

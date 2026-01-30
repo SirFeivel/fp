@@ -91,4 +91,33 @@ describe('computeProjectTotals', () => {
     expect(result.roomCount).toBe(0);
     expect(result.totalTiles).toBe(0);
   });
+
+  it('splits packs between floor and cutout skirting', () => {
+    const state = {
+      meta: { version: 4 },
+      pricing: { packM2: 1, pricePerM2: 10, reserveTiles: 0 },
+      floors: [
+        {
+          id: 'f1',
+          rooms: [
+            {
+              id: 'r1',
+              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+              tile: { widthCm: 50, heightCm: 50 },
+              grout: { widthCm: 0 },
+              pattern: { type: 'grid' },
+              skirting: { enabled: true, type: 'cutout', heightCm: 10 }
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = computeProjectTotals(state);
+    const mat = result.materials[0];
+
+    expect(mat.totalPacks).toBe(2);
+    expect(mat.floorPacks).toBe(1);
+    expect(mat.skirtingPacks).toBe(1);
+  });
 });

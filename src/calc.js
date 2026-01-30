@@ -740,22 +740,36 @@ export function computeGrandTotals(state, roomOverride = null) {
   const d = metrics.data;
   const tileAreaM2 = (d.material.tileAreaCm2) / 10000;
   
-  let totalTiles = d.tiles.purchasedTilesWithReserve;
+  const floorTiles = d.tiles.purchasedTilesWithReserve;
+  const floorAreaM2 = floorTiles * tileAreaM2;
+  const floorPacks = d.pricing.packM2 > 0 ? Math.ceil(floorAreaM2 / d.pricing.packM2) : null;
+
+  let totalTiles = floorTiles;
   let totalCost = d.pricing.priceTotal;
+  let skirtingTiles = 0;
 
   if (skirting.enabled) {
     totalCost += skirting.totalCost;
     if (skirting.type === "cutout") {
-      totalTiles += skirting.additionalTiles;
+      skirtingTiles = skirting.additionalTiles;
+      totalTiles += skirtingTiles;
     }
   }
 
   // Recalculate area and packs based on total tiles needed (floor + cutout skirting)
+  const skirtingAreaM2 = skirtingTiles * tileAreaM2;
+  const skirtingPacks = d.pricing.packM2 > 0 ? Math.ceil(skirtingAreaM2 / d.pricing.packM2) : null;
   const totalAreaM2 = totalTiles * tileAreaM2;
   const totalPacks = d.pricing.packM2 > 0 ? Math.ceil(totalAreaM2 / d.pricing.packM2) : null;
 
   return {
     ok: true,
+    floorTiles,
+    floorAreaM2,
+    floorPacks,
+    skirtingTiles,
+    skirtingAreaM2,
+    skirtingPacks,
     totalTiles,
     totalAreaM2,
     totalPacks,
@@ -776,6 +790,8 @@ export function computeProjectTotals(state) {
   let totalPurchasedAreaM2 = 0;
   let totalNetAreaM2 = 0;
   let roomCount = 0;
+  let totalFloorAreaM2 = 0;
+  let totalSkirtingAreaM2 = 0;
 
   const rooms = [];
   const byMaterial = {};
@@ -790,6 +806,8 @@ export function computeProjectTotals(state) {
             totalCost += grand.totalCost;
             totalPurchasedAreaM2 += grand.totalAreaM2;
             totalNetAreaM2 += grand.netAreaM2;
+            totalFloorAreaM2 += grand.floorAreaM2;
+            totalSkirtingAreaM2 += grand.skirtingAreaM2;
             roomCount++;
 
             const roomInfo = {
@@ -802,6 +820,8 @@ export function computeProjectTotals(state) {
               netAreaM2: grand.netAreaM2,
               totalCost: grand.totalCost,
               totalPacks: grand.totalPacks,
+              floorPacks: grand.floorPacks,
+              skirtingPacks: grand.skirtingPacks,
             };
             rooms.push(roomInfo);
 
@@ -814,6 +834,10 @@ export function computeProjectTotals(state) {
                 totalAreaM2: 0,
                 netAreaM2: 0,
                 totalCost: 0,
+                floorAreaM2: 0,
+                skirtingAreaM2: 0,
+                floorTiles: 0,
+                skirtingTiles: 0,
                 pricePerM2: pricing.pricePerM2,
                 packM2: pricing.packM2,
                 extraPacks: (state.materials && state.materials[ref]?.extraPacks) || 0,
@@ -823,6 +847,10 @@ export function computeProjectTotals(state) {
             byMaterial[ref].totalAreaM2 += grand.totalAreaM2;
             byMaterial[ref].netAreaM2 += grand.netAreaM2;
             byMaterial[ref].totalCost += grand.totalCost;
+            byMaterial[ref].floorAreaM2 += grand.floorAreaM2;
+            byMaterial[ref].skirtingAreaM2 += grand.skirtingAreaM2;
+            byMaterial[ref].floorTiles += grand.floorTiles;
+            byMaterial[ref].skirtingTiles += grand.skirtingTiles;
           }
         }
       }
@@ -830,10 +858,12 @@ export function computeProjectTotals(state) {
   }
 
   const materials = Object.values(byMaterial).map(m => {
+    const floorPacks = m.packM2 > 0 ? Math.ceil(m.floorAreaM2 / m.packM2) : 0;
+    const skirtingPacks = m.packM2 > 0 ? Math.ceil(m.skirtingAreaM2 / m.packM2) : 0;
     const basePacks = m.packM2 > 0 ? Math.ceil(m.totalAreaM2 / m.packM2) : 0;
     const totalPacks = basePacks + m.extraPacks;
     const adjustedCost = m.totalCost + (m.extraPacks * m.packM2 * m.pricePerM2);
-    return { ...m, totalPacks, adjustedCost };
+    return { ...m, floorPacks, skirtingPacks, totalPacks, adjustedCost };
   });
 
   const totalPacks = materials.reduce((sum, m) => sum + (m.totalPacks || 0), 0);
@@ -844,6 +874,8 @@ export function computeProjectTotals(state) {
     totalCost: totalCostAdjusted,
     totalPurchasedAreaM2,
     totalNetAreaM2,
+    totalFloorAreaM2,
+    totalSkirtingAreaM2,
     totalPacks,
     roomCount,
     rooms,

@@ -45,4 +45,15 @@ describe("state normalization", () => {
     expect(preset).toBeDefined();
     expect(preset.useForSkirting).toBe(true);
   });
+
+  it("enables skirting by default and includes a skirting preset", () => {
+    const store = createStateStore(defaultState, validateStateFn);
+    const state = store.getState();
+    const room = state.floors[0].rooms[0];
+    const preset = state.skirtingPresets.find(p => p.lengthCm === 60 && p.heightCm === 6);
+
+    expect(room.skirting.enabled).toBe(true);
+    expect(room.skirting.type).toBe("cutout");
+    expect(preset).toBeDefined();
+  });
 });

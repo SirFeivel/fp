@@ -79,7 +79,15 @@ export function defaultState() {
         useForSkirting: true
       }
     ],
-    skirtingPresets: [],
+    skirtingPresets: [
+      {
+        id: uuid(),
+        name: "Standard Sockelleiste",
+        heightCm: 6,
+        lengthCm: 60,
+        pricePerPiece: 5
+      }
+    ],
 
     floors: [
       {
@@ -112,7 +120,7 @@ export function defaultState() {
               origin: { preset: "tl", xCm: 0, yCm: 0 }
             },
             skirting: {
-              enabled: false,
+              enabled: true,
               type: "cutout", // "cutout" | "bought"
               heightCm: 6,
               boughtWidthCm: 60,
