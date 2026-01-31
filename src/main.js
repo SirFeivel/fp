@@ -436,7 +436,8 @@ const zoomPanController = createZoomPanController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getCurrentRoomId: () => store.getState().selectedRoomId,
   onViewportChange: () => renderAll({ mode: "zoom" }),
-  getSelectedExclId: () => selectedExclId
+  getSelectedExclId: () => selectedExclId,
+  getSelectedSectionId: () => selectedSectionId
 });
 
 function setRoomSkirtingEnabled(enabled) {

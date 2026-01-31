@@ -32,6 +32,22 @@
 - Tests: `npm run test`
 - Build: `npm run build`
 
+## Session: Section Arrow Pan Direction Fix (2026-01-31)
+### Goal
+- Prevent arrow-key panning from conflicting when a section is selected.
+
+### Branch
+`fix/section-arrow-pan`
+
+### Plan
+1. Gate arrow-key pan when a section is selected
+2. Add a unit test to verify arrow keys do not pan with selected section
+
+### Status
+- Completed
+- Tests: `npm run test`
+- Build: `npm run build`
+
 ## Session: Setup Project Section (2026-01-31)
 ### Goal
 - Add a Project section at the top of Setup with editable project name, save/load, and delete with warning.
