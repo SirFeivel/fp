@@ -632,41 +632,43 @@
                 <div class="quick-actions">
                   <button id="pgCreateGroup" class="quick-btn" title="Create pattern group from selected room" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="10" height="10" rx="1"></rect>
+                      <rect x="11" y="11" width="10" height="10" rx="1"></rect>
+                    </svg>
+                  </button>
+                  <button id="pgAddToGroup" class="quick-btn" title="Add selected room to group" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
                       <line x1="12" y1="8" x2="12" y2="16"></line>
                       <line x1="8" y1="12" x2="16" y2="12"></line>
                     </svg>
-                    <span>New Group</span>
-                  </button>
-                  <button id="pgAddToGroup" class="quick-btn" title="Add selected room to group" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
-                    <span>Add to Group</span>
                   </button>
                   <button id="pgRemoveFromGroup" class="quick-btn" title="Remove selected room from group" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18.84 12.25a5 5 0 0 0-7.47-.59L8 15.03"></path>
-                      <path d="M5.16 11.75a5 5 0 0 0 7.47.59L16 8.97"></path>
-                      <line x1="2" y1="2" x2="22" y2="22"></line>
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="8" y1="12" x2="16" y2="12"></line>
                     </svg>
-                    <span>Remove</span>
                   </button>
                   <button id="pgSetOrigin" class="quick-btn" title="Set selected room as origin" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
                       <circle cx="12" cy="12" r="3"></circle>
                     </svg>
-                    <span>Set Origin</span>
                   </button>
                   <button id="pgDissolveGroup" class="quick-btn danger" title="Dissolve pattern group" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
                       <path d="m19 6-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"></path>
                     </svg>
-                    <span>Dissolve</span>
                   </button>
+                </div>
+                <div class="quick-control-divider"></div>
+                <!-- Quick Toggles -->
+                <div class="quick-toggles">
+                  <label class="quick-toggle" title="Show Grid">
+                    <input id="pgShowGrid" type="checkbox" />
+                    <span class="quick-toggle-icon">▦</span>
+                  </label>
                 </div>
                 <div class="quick-control-divider"></div>
                 <!-- Zoom Controls -->
