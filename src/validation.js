@@ -6,6 +6,7 @@
 import { t } from "./i18n.js";
 import { getCurrentRoom } from "./core.js";
 import { getRoomSections, computeCompositeBounds, validateSections as validateSectionsGeometry } from "./composite.js";
+import { getRoomBounds } from "./geometry.js";
 
 /**
  * Calculate bounding box for an exclusion shape
@@ -54,21 +55,27 @@ export function validateState(s) {
       text: t("validation.selectRoom")
     });
   } else {
+    // Check if room is free-form (has polygonVertices) or sections-based
+    const isFreeForm = currentRoom.polygonVertices && currentRoom.polygonVertices.length >= 3;
     const sections = getRoomSections(currentRoom);
-    if (sections.length === 0) {
+
+    if (!isFreeForm && sections.length === 0) {
+      // Only show error if room has neither valid polygon nor sections
       errors.push({
         title: t("validation.roomWidthInvalid"),
         text: t("validation.roomWidthText")
       });
-    } else {
+    } else if (!isFreeForm && sections.length > 0) {
+      // Validate sections for sections-based rooms
       const sectionsValidation = validateSectionsGeometry(sections);
       errors.push(...sectionsValidation.errors);
       warns.push(...sectionsValidation.warnings);
     }
+    // Free-form rooms with valid polygonVertices pass validation
   }
 
-  const sections = getRoomSections(currentRoom);
-  const bounds = computeCompositeBounds(sections);
+  // Use getRoomBounds which handles both free-form and sections-based rooms
+  const bounds = getRoomBounds(currentRoom);
   const roomW = bounds.width;
   const roomH = bounds.height;
 

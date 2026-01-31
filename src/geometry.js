@@ -32,7 +32,8 @@ export function roomPolygon(room) {
     if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
       ring.push([ring[0][0], ring[0][1]]);
     }
-    return [[[ring]]];
+    // Return in polygon-clipping MultiPolygon format: [Polygon[Ring[Point]]]
+    return [[ring]];
   }
 
   const sections = getRoomSections(room);

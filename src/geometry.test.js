@@ -137,6 +137,80 @@ describe('roomPolygon', () => {
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);
   });
+
+  it('creates correct polygon for free-form room with polygonVertices', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 50, y: 100 }
+      ]
+    };
+    const result = roomPolygon(room);
+
+    // Should return MultiPolygon format: [Polygon[Ring[Point]]]
+    expect(result).toEqual([
+      [
+        [
+          [0, 0],
+          [100, 0],
+          [50, 100],
+          [0, 0]  // Closed ring
+        ]
+      ]
+    ]);
+  });
+
+  it('closes free-form polygon ring if not already closed', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 200, y: 0 },
+        { x: 200, y: 150 },
+        { x: 0, y: 150 }
+      ]
+    };
+    const result = roomPolygon(room);
+
+    // Last point should equal first point (closed ring)
+    const ring = result[0][0];
+    expect(ring[ring.length - 1]).toEqual(ring[0]);
+  });
+
+  it('does not double-close already closed free-form polygon', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+        { x: 0, y: 0 }  // Already closed
+      ]
+    };
+    const result = roomPolygon(room);
+
+    const ring = result[0][0];
+    // Should have exactly 5 points, not 6
+    expect(ring.length).toBe(5);
+  });
+
+  it('prefers polygonVertices over sections when both exist', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 25, y: 50 }
+      ],
+      sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }]
+    };
+    const result = roomPolygon(room);
+
+    // Should use polygonVertices (triangle), not sections (rectangle)
+    expect(result[0][0].length).toBe(4);  // Triangle has 3 points + closing point
+    expect(result[0][0][0]).toEqual([0, 0]);
+    expect(result[0][0][1]).toEqual([50, 0]);
+    expect(result[0][0][2]).toEqual([25, 50]);
+  });
 });
 
 describe('multiPolygonToPathD', () => {
