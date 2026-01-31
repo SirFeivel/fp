@@ -2503,14 +2503,11 @@ function updateAllTranslations() {
       floorShowTilesEl.checked = showFloorTiles;
     }
 
-    // Disable room controls when tiles are shown (for performance)
-    if (floorAddRoom) floorAddRoom.disabled = showFloorTiles;
-    if (floorDrawRoom) floorDrawRoom.disabled = showFloorTiles;
+    // Room controls - only disable delete if no selection or last room
     if (floorDeleteRoom) {
-      // Delete is also disabled if no room selected or last room
       const hasSelection = !!state.selectedRoomId;
       const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
-      floorDeleteRoom.disabled = showFloorTiles || !hasSelection || !hasMultipleRooms;
+      floorDeleteRoom.disabled = !hasSelection || !hasMultipleRooms;
     }
   }
 
