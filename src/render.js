@@ -2759,13 +2759,19 @@ export function renderFloorCanvas({
   // Clear existing content
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  if (!floor || !floor.rooms?.length) {
+  if (!floor) {
     svg.setAttribute("viewBox", "0 0 100 100");
     return;
   }
 
-  // Get floor bounds encompassing all rooms
-  const bounds = getFloorBounds(floor);
+  // Get floor bounds - use default if no rooms yet (for background tracing)
+  let bounds;
+  if (floor.rooms?.length) {
+    bounds = getFloorBounds(floor);
+  } else {
+    // No rooms yet - use a default canvas size for background tracing
+    bounds = { minX: 0, minY: 0, maxX: 1000, maxY: 800, width: 1000, height: 800 };
+  }
   const padding = 80; // Padding around the floor
 
   const baseViewBox = {
@@ -2804,13 +2810,20 @@ export function renderFloorCanvas({
       x: bg.position?.x || 0,
       y: bg.position?.y || 0,
       opacity: bg.opacity ?? 0.5,
-      "pointer-events": bg.locked ? "none" : "all"
+      "pointer-events": bg.locked ? "none" : "all",
+      preserveAspectRatio: "xMinYMin meet"
     };
 
     // Apply scale if calibrated
     if (bg.scale?.calibrated && bg.scale.pixelsPerCm) {
       const scale = 1 / bg.scale.pixelsPerCm;
       imgAttrs.transform = `scale(${scale})`;
+    } else {
+      // Without calibration, use a default size based on floor bounds
+      const defaultWidth = bounds.maxX - bounds.minX + 200;
+      const defaultHeight = bounds.maxY - bounds.minY + 200;
+      imgAttrs.width = defaultWidth;
+      imgAttrs.height = defaultHeight;
     }
 
     const imgEl = svgEl("image", imgAttrs);
