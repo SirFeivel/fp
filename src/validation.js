@@ -49,12 +49,23 @@ export function validateState(s) {
   const n = (v) => typeof v === "number" && Number.isFinite(v);
 
   const currentRoom = getCurrentRoom(s);
+  const planningMode = s.view?.planningMode || "room";
 
+  // In floor or pattern groups view, no room selection is fine
   if (!currentRoom) {
-    errors.push({
-      title: t("validation.noRoomSelected"),
-      text: t("validation.selectRoom")
-    });
+    if (planningMode === "room") {
+      // Only show error if we're in room view but have no room
+      const floor = getCurrentFloor(s);
+      if (floor?.rooms?.length > 0) {
+        errors.push({
+          title: t("validation.noRoomSelected"),
+          text: t("validation.selectRoom")
+        });
+      }
+      // If no rooms exist, that's ok - user needs to create one
+    }
+    // Return early - no room-level validation needed
+    return { errors, warns };
   } else {
     // Check if room is free-form (has polygonVertices) or sections-based
     const isFreeForm = currentRoom.polygonVertices && currentRoom.polygonVertices.length >= 3;

@@ -1122,6 +1122,27 @@ body{
   font-size: var(--fs-sm);
 }
 
+/* Pattern Groups Quick Controls specific */
+.pattern-groups-controls .quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pattern-groups-controls .quick-btn span {
+  font-size: var(--fs-sm);
+}
+
+.pattern-groups-controls .quick-btn:disabled {
+  opacity: 0.4;
+}
+
+.pattern-groups-controls #pgStatusLabel {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  min-width: 120px;
+}
+
 /* Calibration Panel */
 .calibration-panel {
   position: absolute;

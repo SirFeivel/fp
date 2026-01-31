@@ -13,7 +13,7 @@ import {
   renderRoomForm,
   renderPlanSvg
 } from './render.js';
-import { defaultState } from './core.js';
+import { defaultStateWithRoom } from './core.js';
 import { validateState } from './validation.js';
 import { t } from './i18n.js';
 
@@ -36,7 +36,7 @@ describe('render.js smoke tests', () => {
       <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
       <div id="tipsPanel" class="hidden"><div id="tipsList"></div></div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const validateState = vi.fn(() => ({ errors: [], warns: [] }));
 
     renderWarnings(state, validateState);
@@ -56,7 +56,7 @@ describe('render.js smoke tests', () => {
       <div id="warningsPanel" class="hidden"><div id="warningsList"></div></div>
       <div id="tipsPanel" class="hidden"><div id="tipsList"></div></div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     room.pattern.type = 'herringbone';
     room.tile.widthCm = 25;
@@ -105,7 +105,7 @@ describe('render.js smoke tests', () => {
         <div id="metricSkirtingStripsPerTile"></div>
       </div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     room.skirting.enabled = true;
     room.skirting.type = 'bought';
@@ -141,7 +141,7 @@ describe('render.js smoke tests', () => {
       <div id="boughtWidthWrap"></div>
       <div id="boughtPriceWrap"></div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     room.skirting.type = 'bought';
     room.skirting.heightCm = 8;
@@ -213,7 +213,7 @@ describe('render.js smoke tests', () => {
 
   it('renderSkirtingRoomList renders room and section toggles', () => {
     document.body.innerHTML = '<div id="skirtingRoomsList"></div>';
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     state.floors[0].name = "Floor 1";
     const room = state.floors[0].rooms[0];
     room.name = "Living";
@@ -230,7 +230,7 @@ describe('render.js smoke tests', () => {
 
   it('renderPlanSvg renders skirting paths when enabled', () => {
     document.body.innerHTML = '<svg id="planSvg"></svg>';
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     state.view.showSkirting = true;
     const room = state.floors[0].rooms[0];
     room.skirting.enabled = true;
@@ -261,7 +261,7 @@ describe('render.js smoke tests', () => {
       <div id="grandTotalBox" style="display:block"></div>
       <div id="skirtingMetricsBox" style="display:none"></div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     room.pattern.type = 'herringbone';
     room.tile.widthCm = 25;
@@ -286,7 +286,7 @@ describe('render.js smoke tests', () => {
       <div id="commercialRoomsList"></div>
       <div id="commercialMaterialsList"></div>
     `;
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     room.tile.reference = "TEST-REF";
     

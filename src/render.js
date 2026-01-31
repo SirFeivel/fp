@@ -18,46 +18,8 @@ import {
 } from "./geometry.js";
 import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
-import { getFloorBounds, findPatternLinkedGroups } from "./floor_geometry.js";
-
-/**
- * Compute shared origin for a room if it's part of a linked group.
- * Returns origin in floor coordinates, or null if room is not linked.
- */
-function computeLinkedOriginForRoom(room, floor) {
-  if (!floor?.rooms || floor.rooms.length < 2) return null;
-
-  const linkedGroups = findPatternLinkedGroups(floor.rooms);
-
-  // Find the group containing this room
-  const group = linkedGroups.find(g => g.includes(room.id));
-  if (!group || group.length < 2) return null;
-
-  // Get all rooms in the group
-  const groupRooms = group.map(id => floor.rooms.find(r => r.id === id)).filter(Boolean);
-
-  // Sort by position for consistent reference room selection
-  groupRooms.sort((a, b) => {
-    const posA = a.floorPosition || { x: 0, y: 0 };
-    const posB = b.floorPosition || { x: 0, y: 0 };
-    return posA.x - posB.x || posA.y - posB.y;
-  });
-
-  // Reference room is the first (top-left-most) room
-  const refRoom = groupRooms[0];
-  const refPos = refRoom.floorPosition || { x: 0, y: 0 };
-  const refBounds = getRoomBounds(refRoom);
-
-  // Global origin in floor coordinates (top-left of reference room)
-  const globalOrigin = { x: refPos.x + refBounds.minX, y: refPos.y + refBounds.minY };
-
-  // Convert to this room's local coordinates
-  const roomPos = room.floorPosition || { x: 0, y: 0 };
-  return {
-    x: globalOrigin.x - roomPos.x,
-    y: globalOrigin.y - roomPos.y
-  };
-}
+import { getFloorBounds } from "./floor_geometry.js";
+import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup } from "./pattern-groups.js";
 
 let activeSvgEdit = null;
 
@@ -1940,11 +1902,11 @@ export function renderPlanSvg({
     else setLastTileError(null);
 
     if (avail.mp) {
-      // Check if room is in a linked group and compute shared origin
+      // Check if room is in a pattern group and compute shared origin
       const currentFloor = state.floors?.find(f => f.id === state.selectedFloorId);
-      const linkedOrigin = computeLinkedOriginForRoom(currentRoom, currentFloor);
+      const patternGroupOrigin = computePatternGroupOrigin(currentRoom, currentFloor);
 
-      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: linkedOrigin });
+      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: patternGroupOrigin });
       if (t.error) setLastTileError(t.error);
       else setLastTileError(null);
 
@@ -1953,9 +1915,10 @@ export function renderPlanSvg({
       const g = svgEl("g", { opacity: 1, "pointer-events": isRemovalMode ? "auto" : "none" });
       svg.appendChild(g);
 
-      // Get grout color from state - use default white if grout width is 0
-      const groutWidth = currentRoom?.grout?.widthCm || 0;
-      const groutHex = groutWidth > 0 ? (currentRoom?.grout?.colorHex || "#ffffff") : "#ffffff";
+      // Get effective settings (from origin room if in pattern group)
+      const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
+      const groutWidth = effectiveSettings.grout?.widthCm || 0;
+      const groutHex = groutWidth > 0 ? (effectiveSettings.grout?.colorHex || "#ffffff") : "#ffffff";
       const groutRgb = hexToRgb(groutHex);
 
     for (const tile of t.tiles) {
@@ -2821,16 +2784,19 @@ export function renderFloorCanvas({
       }));
 
       // Render tiles preview if enabled and room has tile config
-      if (state.view?.showFloorTiles && room.tile?.widthCm > 0 && room.tile?.heightCm > 0) {
+      // Use effective settings (from origin room if in pattern group)
+      const effectiveSettings = getEffectiveTileSettings(room, floor);
+      const effectiveTile = effectiveSettings.tile;
+      if (state.view?.showFloorTiles && effectiveTile?.widthCm > 0 && effectiveTile?.heightCm > 0) {
         try {
           // Compute available area (room polygon minus exclusions)
           const avail = computeAvailableArea(room, room.exclusions || []);
           if (avail.mp) {
             const roomState = { ...state, selectedRoomId: room.id };
-            // Use shared origin for linked rooms
-            const linkedOrigin = computeLinkedOriginForRoom(room, floor);
-            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: linkedOrigin });
-            const groutColor = room.grout?.colorHex || "#ffffff";
+            // Use shared origin for pattern group
+            const patternGroupOrigin = computePatternGroupOrigin(room, floor);
+            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: patternGroupOrigin });
+            const groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
 
             if (result.error) {
               console.warn(`Floor tiles error for room ${room.name || room.id}:`, result.error);
@@ -2845,7 +2811,7 @@ export function renderFloorCanvas({
                 d: tile.d,
                 fill: "rgba(100, 116, 139, 0.5)",
                 stroke: groutColor,
-                "stroke-width": room.grout?.widthCm || 0.2
+                "stroke-width": effectiveSettings.grout?.widthCm || 0.2
               }));
             }
 
@@ -3204,5 +3170,223 @@ export function renderFloorCanvas({
     } else {
       scaleIndicator.classList.add("hidden");
     }
+  }
+}
+
+/**
+ * Renders the Pattern Groups view - shows all rooms with group visualization.
+ * Similar to floor view but focuses on pattern group management.
+ */
+export function renderPatternGroupsCanvas({
+  state,
+  floor,
+  selectedRoomId,
+  activeGroupId = null,
+  onRoomClick,
+  onRoomDoubleClick,
+  svgOverride = null
+}) {
+  const svg = svgOverride || document.getElementById("planSvg");
+  if (!svg) return;
+
+  // Clear existing content
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  if (!floor || !floor.rooms?.length) {
+    svg.setAttribute("viewBox", "0 0 100 100");
+    return;
+  }
+
+  // Get floor bounds encompassing all rooms
+  const bounds = getFloorBounds(floor);
+  const padding = 80;
+
+  const baseViewBox = {
+    minX: bounds.minX - padding,
+    minY: bounds.minY - padding,
+    width: bounds.width + 2 * padding,
+    height: bounds.height + 2 * padding
+  };
+
+  // Use floor-specific viewport key (shared with floor view)
+  const viewportKey = `floor:${floor.id}`;
+  setBaseViewBox(viewportKey, baseViewBox);
+
+  const effectiveViewBox = calculateEffectiveViewBox(viewportKey) || baseViewBox;
+  const viewBox = effectiveViewBox;
+
+  svg.setAttribute("viewBox", `${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+  // Background
+  const bgPadding = Math.max(viewBox.width, viewBox.height) * 2;
+  svg.appendChild(svgEl("rect", {
+    x: viewBox.minX - bgPadding,
+    y: viewBox.minY - bgPadding,
+    width: viewBox.width + 2 * bgPadding,
+    height: viewBox.height + 2 * bgPadding,
+    fill: "#081022"
+  }));
+
+  // Render grid
+  if (state.view?.showGrid) {
+    const gridGroup = svgEl("g", { opacity: 0.5 });
+    const minor = 10, major = 100;
+    const gridBounds = {
+      minX: Math.floor(bounds.minX / major) * major - major,
+      minY: Math.floor(bounds.minY / major) * major - major,
+      maxX: Math.ceil(bounds.maxX / major) * major + major,
+      maxY: Math.ceil(bounds.maxY / major) * major + major
+    };
+
+    for (let x = gridBounds.minX; x <= gridBounds.maxX; x += minor) {
+      const isMajor = x % major === 0;
+      gridGroup.appendChild(svgEl("line", {
+        x1: x, y1: gridBounds.minY, x2: x, y2: gridBounds.maxY,
+        stroke: isMajor ? "#1f2b46" : "#14203a",
+        "stroke-width": isMajor ? 0.6 : 0.3
+      }));
+    }
+    for (let y = gridBounds.minY; y <= gridBounds.maxY; y += minor) {
+      const isMajor = y % major === 0;
+      gridGroup.appendChild(svgEl("line", {
+        x1: gridBounds.minX, y1: y, x2: gridBounds.maxX, y2: y,
+        stroke: isMajor ? "#1f2b46" : "#14203a",
+        "stroke-width": isMajor ? 0.6 : 0.3
+      }));
+    }
+    svg.appendChild(gridGroup);
+  }
+
+  // Render each room
+  for (const room of floor.rooms) {
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    const roomGroup = svgEl("g", {
+      transform: `translate(${pos.x}, ${pos.y})`,
+      "data-roomid": room.id,
+      cursor: "pointer"
+    });
+
+    const isSelected = room.id === selectedRoomId;
+    const patternGroup = getRoomPatternGroup(floor, room.id);
+    const isInGroup = !!patternGroup;
+    const isOrigin = patternGroup?.originRoomId === room.id;
+    const isActiveGroup = isInGroup && patternGroup.id === activeGroupId;
+
+    // Get room polygon
+    const roomPoly = roomPolygon(room);
+    if (roomPoly && roomPoly.length > 0) {
+      const pathD = multiPolygonToPathD(roomPoly);
+
+      // Determine colors based on group membership and active state
+      let fillColor, strokeColor, strokeWidth;
+
+      if (isActiveGroup) {
+        // Active group - blue
+        fillColor = isOrigin ? "rgba(59, 130, 246, 0.35)" : "rgba(59, 130, 246, 0.2)";
+        strokeColor = "#3b82f6";
+        strokeWidth = isOrigin ? 4 : 3;
+      } else if (isInGroup) {
+        // Grouped but not active - neutral with thicker outline
+        fillColor = "rgba(100, 116, 139, 0.2)";
+        strokeColor = "rgba(148, 163, 184, 0.8)";
+        strokeWidth = 3;
+      } else {
+        // Independent room - neutral gray, thin outline
+        fillColor = "rgba(100, 116, 139, 0.15)";
+        strokeColor = "rgba(148, 163, 184, 0.5)";
+        strokeWidth = 2;
+      }
+
+      // Room fill
+      roomGroup.appendChild(svgEl("path", {
+        d: pathD,
+        fill: fillColor,
+        stroke: strokeColor,
+        "stroke-width": strokeWidth
+      }));
+
+      // Add selection highlight ring for selected room (visible over any group color)
+      if (isSelected) {
+        // Outer glow/selection ring
+        roomGroup.appendChild(svgEl("path", {
+          d: pathD,
+          fill: "none",
+          stroke: "#ffffff",
+          "stroke-width": 6,
+          "stroke-opacity": 0.6
+        }));
+        // Inner bright border
+        roomGroup.appendChild(svgEl("path", {
+          d: pathD,
+          fill: "none",
+          stroke: "#3b82f6",
+          "stroke-width": 3,
+          "stroke-dasharray": "8,4"
+        }));
+      }
+
+      // Add origin marker for origin rooms
+      if (isOrigin) {
+        const roomBounds = getRoomBounds(room);
+        const markerX = roomBounds.minX + 15;
+        const markerY = roomBounds.minY + 15;
+        const markerColor = isActiveGroup ? "#3b82f6" : "rgba(148, 163, 184, 0.8)";
+        const markerFill = isActiveGroup ? "rgba(59, 130, 246, 0.35)" : "rgba(100, 116, 139, 0.3)";
+
+        // Target/origin icon
+        roomGroup.appendChild(svgEl("circle", {
+          cx: markerX, cy: markerY, r: 10,
+          fill: markerFill,
+          stroke: markerColor,
+          "stroke-width": 2
+        }));
+        roomGroup.appendChild(svgEl("circle", {
+          cx: markerX, cy: markerY, r: 4,
+          fill: markerColor
+        }));
+      }
+    }
+
+    // Room label
+    const roomBounds = getRoomBounds(room);
+    const labelX = roomBounds.width / 2 + roomBounds.minX;
+    const labelY = roomBounds.height / 2 + roomBounds.minY;
+
+    const labelColor = isActiveGroup
+      ? "#3b82f6"
+      : (isSelected ? "#94a3b8" : "rgba(148, 163, 184, 0.8)");
+
+    const fontSize = Math.min(14, Math.max(9, roomBounds.width / 12));
+
+    const textEl = svgEl("text", {
+      x: labelX,
+      y: labelY,
+      fill: labelColor,
+      "font-size": fontSize,
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      "font-weight": isOrigin ? "700" : (isInGroup ? "600" : "500"),
+      "text-anchor": "middle",
+      "dominant-baseline": "middle"
+    });
+    textEl.appendChild(document.createTextNode(room.name || t("tabs.room")));
+    roomGroup.appendChild(textEl);
+
+    // Event handlers
+    if (onRoomClick) {
+      roomGroup.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onRoomClick(room.id);
+      });
+    }
+
+    if (onRoomDoubleClick) {
+      roomGroup.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        onRoomDoubleClick(room.id);
+      });
+    }
+
+    svg.appendChild(roomGroup);
   }
 }

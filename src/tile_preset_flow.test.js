@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { bindUI } from "./ui.js";
-import { defaultState } from "./core.js";
+import { defaultStateWithRoom, defaultState } from "./core.js";
 
 const setupDom = () => {
   document.body.innerHTML = `
@@ -55,7 +55,7 @@ const createStore = (initial) => {
 
 describe("tile preset lifecycle flow", () => {
   it("handles empty -> create -> save as new -> update with warning", () => {
-    const base = defaultState();
+    const base = defaultStateWithRoom();
     base.tilePresets = [];
     base.floors[0].rooms[0].tile.reference = "";
     const store = createStore(base);

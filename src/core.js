@@ -125,9 +125,67 @@ export const DEFAULT_SKIRTING_CONFIG = {
   boughtPricePerPiece: DEFAULT_SKIRTING_PRESET.pricePerPiece
 };
 
+/**
+ * Creates a default room object with all required properties.
+ * Use this to add rooms to a floor.
+ */
+export function createDefaultRoom(name = "Raum", widthCm = 600, heightCm = 400) {
+  const roomId = uuid();
+  return {
+    id: roomId,
+    name,
+    floorPosition: { x: 0, y: 0 },
+    patternLink: {
+      mode: "independent",
+      linkedRoomId: null
+    },
+    sections: [
+      {
+        id: uuid(),
+        label: "Hauptbereich",
+        x: 0,
+        y: 0,
+        widthCm,
+        heightCm,
+        skirtingEnabled: true
+      }
+    ],
+    exclusions: [],
+    tile: {
+      widthCm: DEFAULT_TILE_PRESET.widthCm,
+      heightCm: DEFAULT_TILE_PRESET.heightCm,
+      shape: DEFAULT_TILE_PRESET.shape,
+      reference: "Standard"
+    },
+    grout: { widthCm: DEFAULT_TILE_PRESET.groutWidthCm, colorHex: DEFAULT_TILE_PRESET.groutColorHex },
+    pattern: {
+      type: "grid",
+      bondFraction: 0.5,
+      rotationDeg: 0,
+      offsetXcm: 0,
+      offsetYcm: 0,
+      origin: { preset: "tl", xCm: 0, yCm: 0 }
+    },
+    skirting: {
+      ...DEFAULT_SKIRTING_CONFIG
+    }
+  };
+}
+
+/**
+ * Returns a default state with one room (for backwards compatibility in tests).
+ */
+export function defaultStateWithRoom() {
+  const state = defaultState();
+  const room = createDefaultRoom();
+  state.floors[0].rooms.push(room);
+  state.selectedRoomId = room.id;
+  state.view.planningMode = "room";
+  return state;
+}
+
 export function defaultState() {
   const floorId = uuid();
-  const roomId = uuid();
 
   return {
     meta: { version: 7, updatedAt: nowISO() },
@@ -166,53 +224,13 @@ export function defaultState() {
           enabled: false
         },
         walls: [],
-        rooms: [
-          {
-            id: roomId,
-            name: "Raum",
-            // Room position on floor (v7)
-            floorPosition: { x: 0, y: 0 },
-            patternLink: {
-              mode: "independent",
-              linkedRoomId: null
-            },
-            sections: [
-              {
-                id: uuid(),
-                label: "Hauptbereich",
-                x: 0,
-                y: 0,
-                widthCm: 600,
-                heightCm: 400,
-                skirtingEnabled: true
-              }
-            ],
-            exclusions: [],
-            tile: {
-              widthCm: DEFAULT_TILE_PRESET.widthCm,
-              heightCm: DEFAULT_TILE_PRESET.heightCm,
-              shape: DEFAULT_TILE_PRESET.shape,
-              reference: "Standard"
-            },
-            grout: { widthCm: DEFAULT_TILE_PRESET.groutWidthCm, colorHex: DEFAULT_TILE_PRESET.groutColorHex },
-            pattern: {
-              type: "grid",
-              bondFraction: 0.5,
-              rotationDeg: 0,
-              offsetXcm: 0,
-              offsetYcm: 0,
-              origin: { preset: "tl", xCm: 0, yCm: 0 }
-            },
-            skirting: {
-              ...DEFAULT_SKIRTING_CONFIG
-            }
-          }
-        ]
+        patternGroups: [],
+        rooms: []
       }
     ],
 
     selectedFloorId: floorId,
-    selectedRoomId: roomId,
+    selectedRoomId: null,
 
     pricing: { ...DEFAULT_PRICING },
 
@@ -223,7 +241,7 @@ export function defaultState() {
       showNeeds: false,
       showSkirting: true,
       showFloorTiles: false,
-      planningMode: "room"  // "room" | "floor"
+      planningMode: "floor"  // Start in floor view to add rooms
     }
   };
 }

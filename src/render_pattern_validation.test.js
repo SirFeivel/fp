@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderPlanSvg } from './render.js';
-import { defaultState, getCurrentRoom } from './core.js';
+import { defaultStateWithRoom, getCurrentRoom } from './core.js';
 import { validateState } from './validation.js';
 
 describe('renderPlanSvg pattern validation', () => {
@@ -12,7 +12,7 @@ describe('renderPlanSvg pattern validation', () => {
 
   beforeEach(() => {
     document.body.innerHTML = '<svg id="planSvg"></svg>';
-    state = defaultState();
+    state = defaultStateWithRoom();
     currentRoom = getCurrentRoom(state);
   });
 

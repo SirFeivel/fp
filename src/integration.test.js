@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createStateStore } from "./state.js";
-import { defaultState, deepClone } from "./core.js";
+import { defaultStateWithRoom, defaultState, deepClone } from "./core.js";
 import { computePlanMetrics, computeSkirtingNeeds } from "./calc.js";
 
 const validateStateFn = () => ({ errors: [], warns: [] });
@@ -26,7 +26,7 @@ try {
 
 describe("integration flow", () => {
   it("updates metrics when tile size changes", () => {
-    const store = createStateStore(defaultState, validateStateFn);
+    const store = createStateStore(defaultStateWithRoom, validateStateFn);
     const base = computePlanMetrics(store.getState());
 
     const next = deepClone(store.getState());
@@ -40,7 +40,7 @@ describe("integration flow", () => {
   });
 
   it("reduces installed area when adding an exclusion", () => {
-    const store = createStateStore(defaultState, validateStateFn);
+    const store = createStateStore(defaultStateWithRoom, validateStateFn);
     const base = computePlanMetrics(store.getState());
 
     const next = deepClone(store.getState());
@@ -61,7 +61,7 @@ describe("integration flow", () => {
   });
 
   it("reflects skirting toggle in skirting needs", () => {
-    const store = createStateStore(defaultState, validateStateFn);
+    const store = createStateStore(defaultStateWithRoom, validateStateFn);
     const withSkirting = computeSkirtingNeeds(store.getState());
 
     const next = deepClone(store.getState());
@@ -75,7 +75,7 @@ describe("integration flow", () => {
   });
 
   it("undo/redo restores state", () => {
-    const store = createStateStore(defaultState, validateStateFn);
+    const store = createStateStore(defaultStateWithRoom, validateStateFn);
     const initial = store.getState();
 
     const next = deepClone(initial);
@@ -92,11 +92,11 @@ describe("integration flow", () => {
   });
 
   it("round-trips export/import JSON", () => {
-    const original = defaultState();
+    const original = defaultStateWithRoom();
     const raw = JSON.stringify(original);
     const parsed = JSON.parse(raw);
 
-    const store = createStateStore(defaultState, validateStateFn);
+    const store = createStateStore(defaultStateWithRoom, validateStateFn);
     store.setStateDirect(parsed);
 
     const state = store.getState();

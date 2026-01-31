@@ -36,6 +36,7 @@ const translations = {
       editTileConfig: "Bearbeiten",
       done: "Fertig",
       floorView: "Etage",
+      patternGroups: "Gruppen",
       roomView: "Raum",
       tileEditActionsTitle: "Änderungen speichern",
       tileEditUpdatePreset: "Preset aktualisieren",
@@ -88,7 +89,25 @@ const translations = {
     },
     view: {
       switchedToFloor: "Etagenansicht",
-      switchedToRoom: "Raumansicht"
+      switchedToRoom: "Raumansicht",
+      switchedToPatternGroups: "Mustergruppen"
+    },
+    patternGroups: {
+      selectRoom: "Raum auswählen",
+      roomIndependent: "Raum ist unabhängig",
+      roomIsOrigin: "Ursprungsraum",
+      roomInGroup: "In Gruppe mit",
+      created: "Mustergruppe erstellt",
+      roomAdded: "Raum zur Gruppe hinzugefügt",
+      roomRemoved: "Raum aus Gruppe entfernt",
+      dissolved: "Mustergruppe aufgelöst",
+      originChanged: "Ursprungsraum geändert",
+      dissolveConfirm: "Die Mustergruppe wird aufgelöst. Alle Räume werden unabhängig. Fortfahren?",
+      origin: "⊙ Ursprung",
+      member: "◦ Mitglied",
+      targetGroup: "Zielgruppe",
+      noGroups: "Keine Gruppen",
+      groupSelected: "Gruppe ausgewählt"
     },
     settings: {
       save: "Projekt speichern",
@@ -575,6 +594,7 @@ const translations = {
       editTileConfig: "Edit",
       done: "Done",
       floorView: "Floor",
+      patternGroups: "Groups",
       roomView: "Room",
       tileEditActionsTitle: "Save changes",
       tileEditUpdatePreset: "Update preset",
@@ -627,7 +647,25 @@ const translations = {
     },
     view: {
       switchedToFloor: "Floor view",
-      switchedToRoom: "Room view"
+      switchedToRoom: "Room view",
+      switchedToPatternGroups: "Pattern Groups"
+    },
+    patternGroups: {
+      selectRoom: "Select a room",
+      roomIndependent: "Room is independent",
+      roomIsOrigin: "Origin room",
+      roomInGroup: "In group with",
+      created: "Pattern group created",
+      roomAdded: "Room added to group",
+      roomRemoved: "Room removed from group",
+      dissolved: "Pattern group dissolved",
+      originChanged: "Origin room changed",
+      dissolveConfirm: "This will dissolve the pattern group. All rooms will become independent. Continue?",
+      origin: "⊙ Origin",
+      member: "◦ Member",
+      targetGroup: "Target Group",
+      noGroups: "No groups",
+      groupSelected: "Group selected"
     },
     settings: {
       save: "Save Project",

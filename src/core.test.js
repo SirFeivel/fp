@@ -93,28 +93,26 @@ describe('defaultState', () => {
     const state = defaultState();
     expect(state.meta.version).toBe(7);
     expect(state.floors).toHaveLength(1);
-    expect(state.floors[0].rooms).toHaveLength(1);
-    expect(state.floors[0].rooms[0].sections).toHaveLength(1);
+    expect(state.floors[0].rooms).toHaveLength(0); // No rooms by default
+    expect(state.view.planningMode).toBe('floor'); // Starts in floor view
   });
 
-  it('should include grout with colorHex', () => {
+  it('should include tile presets', () => {
     const state = defaultState();
-    const room = getCurrentRoom(state);
-    expect(room.grout).toBeDefined();
-    expect(room.grout.widthCm).toBe(0.2);
-    expect(room.grout.colorHex).toBe('#ffffff');
+    expect(state.tilePresets).toHaveLength(1);
+    expect(state.tilePresets[0].name).toBe('Standard');
+    expect(state.tilePresets[0].shape).toBe('rect');
   });
 
-  it('should include tile with shape', () => {
+  it('should include skirting presets', () => {
     const state = defaultState();
-    const room = getCurrentRoom(state);
-    expect(room.tile).toBeDefined();
-    expect(room.tile.shape).toBe('rect');
+    expect(state.skirtingPresets).toHaveLength(1);
+    expect(state.skirtingPresets[0].heightCm).toBe(6);
   });
 
-  it('should have selected floor and room matching created ids', () => {
+  it('should have selected floor but no room', () => {
     const state = defaultState();
     expect(state.selectedFloorId).toBe(state.floors[0].id);
-    expect(state.selectedRoomId).toBe(state.floors[0].rooms[0].id);
+    expect(state.selectedRoomId).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ import {
   buildCommercialMaterialsTable,
   buildCommercialXlsxWorkbook
 } from "./export.js";
-import { defaultState } from "./core.js";
+import { defaultStateWithRoom } from "./core.js";
 import { computeProjectTotals } from "./calc.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,7 +20,7 @@ describe("export helpers", () => {
   });
 
   it("builds room export model", () => {
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const room = state.floors[0].rooms[0];
     const model = buildRoomExportModel(state, room.id);
     expect(model.projectName).toBe(state.project.name);
@@ -33,7 +33,7 @@ describe("export helpers", () => {
   });
 
   it("builds commercial export model", () => {
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const model = buildCommercialExportModel(state);
     expect(model.summary.totalTiles).toBeGreaterThan(0);
     expect(Array.isArray(model.rooms)).toBe(true);
@@ -55,7 +55,7 @@ describe("export helpers", () => {
   });
 
   it("builds commercial rooms table matching UI columns", () => {
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const proj = computeProjectTotals(state);
     const table = buildCommercialRoomsTable(proj);
     expect(table.columns.length).toBe(6);
@@ -67,7 +67,7 @@ describe("export helpers", () => {
   });
 
   it("builds commercial materials table with totals row", () => {
-    const state = defaultState();
+    const state = defaultStateWithRoom();
     const proj = computeProjectTotals(state);
     const table = buildCommercialMaterialsTable(proj);
     expect(table.columns.length).toBe(11);

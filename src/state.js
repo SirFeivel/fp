@@ -15,6 +15,7 @@ import {
   showUserWarning
 } from './core.js';
 import { clearMetricsCache } from './calc.js';
+import { areRoomsAdjacent } from './floor_geometry.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
@@ -125,6 +126,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
         if (!floor.walls) floor.walls = [];
+        if (!floor.patternGroups) floor.patternGroups = [];
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
@@ -186,6 +188,54 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               }
             }
           }
+        }
+
+        // Validate pattern groups
+        if (floor.patternGroups && Array.isArray(floor.patternGroups)) {
+          const roomIds = new Set(floor.rooms?.map(r => r.id) || []);
+          const roomsById = new Map(floor.rooms?.map(r => [r.id, r]) || []);
+
+          floor.patternGroups = floor.patternGroups.filter(group => {
+            if (!group || !group.id || !group.originRoomId || !Array.isArray(group.memberRoomIds)) {
+              return false;
+            }
+            // Filter out invalid room IDs
+            group.memberRoomIds = group.memberRoomIds.filter(id => roomIds.has(id));
+            // Origin must be in members
+            if (!group.memberRoomIds.includes(group.originRoomId)) {
+              return false;
+            }
+
+            // Check connectivity: only keep rooms connected to origin through adjacent rooms
+            const originRoom = roomsById.get(group.originRoomId);
+            if (!originRoom) return false;
+
+            // BFS to find all rooms connected to origin
+            const connected = new Set([group.originRoomId]);
+            const queue = [group.originRoomId];
+
+            while (queue.length > 0) {
+              const currentId = queue.shift();
+              const currentRoom = roomsById.get(currentId);
+              if (!currentRoom) continue;
+
+              // Check adjacency with other members
+              for (const memberId of group.memberRoomIds) {
+                if (connected.has(memberId)) continue;
+                const memberRoom = roomsById.get(memberId);
+                if (memberRoom && areRoomsAdjacent(currentRoom, memberRoom)) {
+                  connected.add(memberId);
+                  queue.push(memberId);
+                }
+              }
+            }
+
+            // Only keep connected members
+            group.memberRoomIds = group.memberRoomIds.filter(id => connected.has(id));
+
+            // Need at least 1 member (origin room) for a valid group
+            return group.memberRoomIds.length >= 1;
+          });
         }
       }
     }
@@ -322,6 +372,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
       if (!floor.offcutSharing) {
         floor.offcutSharing = { enabled: false };
+      }
+      if (!floor.patternGroups) {
+        floor.patternGroups = [];
       }
       if (!floor.walls) {
         floor.walls = [];

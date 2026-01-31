@@ -13,7 +13,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
-import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, findPatternLinkedGroups } from "./floor_geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -33,6 +33,7 @@ import {
   renderSkirtingRoomList,
   renderPlanSvg,
   renderFloorCanvas,
+  renderPatternGroupsCanvas,
   renderSectionsList,
   renderTilePresets,
   renderSkirtingPresets,
@@ -43,6 +44,15 @@ import {
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
 import { enforceCutoutForPresetRooms } from "./skirting_rules.js";
+import {
+  getRoomPatternGroup,
+  createPatternGroup,
+  addRoomToPatternGroup,
+  removeRoomFromPatternGroup,
+  dissolvePatternGroup,
+  changePatternGroupOrigin,
+  canJoinPatternGroup
+} from "./pattern-groups.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -106,6 +116,10 @@ function setSelectedSection(id) {
 function setSelectedSectionId(id) {
   selectedSectionId = id || null;
 }
+
+// Track target pattern group for "Add to Group" action
+// Set when clicking on a room that belongs to a group
+let activeTargetGroupId = null;
 
 // Handle section selection - deselects exclusion when selecting section
 function handleSectionSelect(id) {
@@ -192,7 +206,9 @@ function renderSetupSection(state) {
 
 function renderPlanningSection(state, opts) {
   const isDrag = opts?.mode === "drag";
-  const isFloorView = state.view?.planningMode === "floor";
+  const planningMode = state.view?.planningMode || "room";
+  const isFloorView = planningMode === "floor";
+  const isPatternGroupsView = planningMode === "patternGroups";
 
   // Always render room-related UI (forms, lists) even in floor view
   renderRoomForm(state);
@@ -337,6 +353,46 @@ function renderPlanningSection(state, opts) {
         store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
     });
+  } else if (isPatternGroupsView) {
+    // Pattern Groups view - similar to floor view but with group visualization
+    const floor = getCurrentFloor(state);
+    console.log("[PatternGroups] Rendering canvas, floor:", floor?.id, "rooms:", floor?.rooms?.length, "selectedRoomId:", state.selectedRoomId);
+    renderPatternGroupsCanvas({
+      state,
+      floor,
+      selectedRoomId: state.selectedRoomId,
+      activeGroupId: activeTargetGroupId,
+      onRoomClick: (roomId) => {
+        console.log("[PatternGroups] Room clicked:", roomId);
+        const next = deepClone(store.getState());
+        next.selectedRoomId = roomId;
+
+        // Auto-select the group if the clicked room belongs to one
+        const currentFloor = getCurrentFloor(next);
+        if (currentFloor?.patternGroups) {
+          const groupContainingRoom = currentFloor.patternGroups.find(
+            g => g.memberRoomIds.includes(roomId)
+          );
+          if (groupContainingRoom) {
+            activeTargetGroupId = groupContainingRoom.id;
+          }
+        }
+
+        store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+        updatePatternGroupsControlsState();
+      },
+      onRoomDoubleClick: (roomId) => {
+        // Double-click opens room in Room View
+        const currentState = store.getState();
+        if (currentState.selectedRoomId !== roomId) {
+          const next = deepClone(currentState);
+          next.selectedRoomId = roomId;
+          store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+        }
+        switchToRoomView();
+      }
+    });
+    updatePatternGroupsControlsState();
   } else {
     const metrics = isDrag ? null : computePlanMetrics(state);
     if (metrics) console.log("metrics", metrics);
@@ -495,7 +551,7 @@ function updateExportSelectionFromList() {
   });
 }
 
-// View toggle functions for Floor/Room planning modes
+// View toggle functions for Floor/Room/PatternGroups planning modes
 function switchToFloorView() {
   const state = store.getState();
   if (state.view?.planningMode === "floor") return; // Already in floor view
@@ -506,9 +562,23 @@ function switchToFloorView() {
   store.commit(t("view.switchedToFloor"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
+function switchToPatternGroupsView() {
+  const state = store.getState();
+  if (state.view?.planningMode === "patternGroups") return; // Already in pattern groups view
+
+  const next = deepClone(state);
+  next.view = next.view || {};
+  next.view.planningMode = "patternGroups";
+  store.commit(t("view.switchedToPatternGroups") || "Switched to Pattern Groups", next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
 function switchToRoomView(skipValidation = false) {
   const state = store.getState();
-  if (state.view?.planningMode !== "floor") return; // Already in room view
+  console.log("[ViewSwitch] switchToRoomView called, current mode:", state.view?.planningMode);
+  if (state.view?.planningMode === "room") {
+    console.log("[ViewSwitch] Already in room view, returning");
+    return;
+  }
 
   // Validate floor connectivity before leaving floor planner
   if (!skipValidation) {
@@ -539,16 +609,22 @@ function switchToRoomView(skipValidation = false) {
 
 function updateViewToggleUI(planningMode) {
   const floorBtn = document.getElementById("floorViewBtn");
+  const patternGroupsBtn = document.getElementById("patternGroupsViewBtn");
   const roomBtn = document.getElementById("roomViewBtn");
   const floorControls = document.getElementById("floorQuickControls");
+  const patternGroupsControls = document.getElementById("patternGroupsQuickControls");
   const roomControls = document.getElementById("roomQuickControls");
 
   const isFloorView = planningMode === "floor";
+  const isPatternGroupsView = planningMode === "patternGroups";
+  const isRoomView = !isFloorView && !isPatternGroupsView;
 
   if (floorBtn) floorBtn.classList.toggle("active", isFloorView);
-  if (roomBtn) roomBtn.classList.toggle("active", !isFloorView);
+  if (patternGroupsBtn) patternGroupsBtn.classList.toggle("active", isPatternGroupsView);
+  if (roomBtn) roomBtn.classList.toggle("active", isRoomView);
   if (floorControls) floorControls.style.display = isFloorView ? "" : "none";
-  if (roomControls) roomControls.style.display = isFloorView ? "none" : "";
+  if (patternGroupsControls) patternGroupsControls.style.display = isPatternGroupsView ? "" : "none";
+  if (roomControls) roomControls.style.display = isRoomView ? "" : "none";
 }
 
 function updateFloorControlsState(state) {
@@ -565,9 +641,11 @@ function updateFloorControlsState(state) {
 
 function initViewToggle() {
   const floorBtn = document.getElementById("floorViewBtn");
+  const patternGroupsBtn = document.getElementById("patternGroupsViewBtn");
   const roomBtn = document.getElementById("roomViewBtn");
 
   floorBtn?.addEventListener("click", () => switchToFloorView());
+  patternGroupsBtn?.addEventListener("click", () => switchToPatternGroupsView());
   roomBtn?.addEventListener("click", () => switchToRoomView());
 
   // Initialize UI state from current state
@@ -575,12 +653,101 @@ function initViewToggle() {
   updateViewToggleUI(state.view?.planningMode || "room");
 }
 
+// Pattern Groups view controls
+function updatePatternGroupsControlsState() {
+  const state = store.getState();
+  const floor = getCurrentFloor(state);
+  const roomId = state.selectedRoomId;
+  const room = floor?.rooms?.find(r => r.id === roomId);
+  const group = room ? getRoomPatternGroup(floor, roomId) : null;
+
+  console.log("[PatternGroups] updateControlsState - roomId:", roomId, "room found:", !!room, "group:", group?.id);
+
+  const createBtn = document.getElementById("pgCreateGroup");
+  const addBtn = document.getElementById("pgAddToGroup");
+  const removeBtn = document.getElementById("pgRemoveFromGroup");
+  const setOriginBtn = document.getElementById("pgSetOrigin");
+  const dissolveBtn = document.getElementById("pgDissolveGroup");
+  const statusLabel = document.getElementById("pgStatusLabel");
+
+  console.log("[PatternGroups] Buttons found - create:", !!createBtn, "add:", !!addBtn);
+
+  // Update button states based on selection and group membership
+  const hasRoom = !!room;
+  const isInGroup = !!group;
+  const isOrigin = isInGroup && group.originRoomId === roomId;
+
+  console.log("[PatternGroups] Button state - hasRoom:", hasRoom, "isInGroup:", isInGroup, "create disabled:", !hasRoom || isInGroup);
+
+  // Create: enabled if room selected and NOT in any group
+  if (createBtn) createBtn.disabled = !hasRoom || isInGroup;
+
+  // Add to group: enabled if room selected, NOT in any group, and can join active target group
+  let canAdd = false;
+  if (hasRoom && !isInGroup && activeTargetGroupId) {
+    canAdd = canJoinPatternGroup(floor, activeTargetGroupId, roomId);
+  }
+  if (addBtn) addBtn.disabled = !canAdd;
+
+  // Remove: enabled if room is in a group (but not if it's the origin - that dissolves)
+  if (removeBtn) removeBtn.disabled = !isInGroup;
+
+  // Set origin: enabled if room is in a group but not already the origin
+  if (setOriginBtn) setOriginBtn.disabled = !isInGroup || isOrigin;
+
+  // Dissolve: enabled if room is in a group
+  if (dissolveBtn) dissolveBtn.disabled = !isInGroup;
+
+  // Update status label
+  if (statusLabel) {
+    if (!hasRoom) {
+      statusLabel.textContent = t("patternGroups.selectRoom") || "Select a room";
+    } else if (!isInGroup) {
+      statusLabel.textContent = t("patternGroups.roomIndependent") || "Room is independent";
+    } else if (isOrigin) {
+      statusLabel.textContent = t("patternGroups.roomIsOrigin") || `Origin room (Group: ${group.memberRoomIds.length} rooms)`;
+    } else {
+      const originRoom = floor.rooms.find(r => r.id === group.originRoomId);
+      statusLabel.textContent = t("patternGroups.roomInGroup") || `In group with ${originRoom?.name || "origin"}`;
+    }
+  }
+}
+
+function initPatternGroupsControls() {
+  // Zoom controls for pattern groups view
+  document.getElementById("pgZoomIn")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (floor) {
+      zoomPanController.zoomIn(`floor:${floor.id}`);
+      renderAll(t("zoom.in"));
+    }
+  });
+
+  document.getElementById("pgZoomOut")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (floor) {
+      zoomPanController.zoomOut(`floor:${floor.id}`);
+      renderAll(t("zoom.out"));
+    }
+  });
+
+  document.getElementById("pgZoomReset")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (floor) {
+      zoomPanController.resetZoom(`floor:${floor.id}`);
+      renderAll(t("zoom.reset"));
+    }
+  });
+}
+
 function initBackgroundControls() {
   const bgUpload = document.getElementById("bgUpload");
   const bgUploadBtn = document.getElementById("bgUploadBtn");
   const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
   const bgOpacitySlider = document.getElementById("bgOpacitySlider");
-  const floorLinkPatterns = document.getElementById("floorLinkPatterns");
 
   // Upload button triggers hidden file input
   bgUploadBtn?.addEventListener("click", () => {
@@ -728,41 +895,6 @@ function initBackgroundControls() {
   bgOpacitySlider?.addEventListener("input", (e) => {
     const opacity = parseInt(e.target.value, 10) / 100;
     backgroundController.updateOpacity(opacity);
-  });
-
-  // Pattern linking toggle - per-room setting
-  floorLinkPatterns?.addEventListener("change", (e) => {
-    const state = store.getState();
-    const next = deepClone(state);
-    const room = getCurrentRoom(next);
-    const floor = getCurrentFloor(next);
-
-    if (room && floor?.rooms) {
-      room.patternLinking = room.patternLinking || {};
-      room.patternLinking.enabled = e.target.checked;
-
-      if (!e.target.checked) {
-        // Turning OFF - recalculate and turn off any rooms that become isolated
-        const newGroups = findPatternLinkedGroups(floor.rooms);
-
-        // Find rooms that are now in groups of size 1 (isolated)
-        for (const group of newGroups) {
-          if (group.length === 1) {
-            const isolatedRoom = floor.rooms.find(r => r.id === group[0]);
-            if (isolatedRoom && isolatedRoom.patternLinking?.enabled !== false) {
-              isolatedRoom.patternLinking = isolatedRoom.patternLinking || {};
-              isolatedRoom.patternLinking.enabled = false;
-            }
-          }
-        }
-      }
-      // Turning ON - just set enabled=true, linking happens automatically if neighbor has it enabled
-
-      store.commit(t("room.patternLinkingChanged") || "Pattern linking changed", next, {
-        onRender: renderAll,
-        updateMetaCb: updateMeta
-      });
-    }
   });
 
   // Floor tiles toggle - shows/hides tile rendering for whole floor
@@ -1476,6 +1608,7 @@ function updateAllTranslations() {
   initFullscreen(dragController, renderAll);
   initViewToggle();
   initBackgroundControls();
+  initPatternGroupsControls();
 
   // Initialize zoom/pan controller
   zoomPanController.attach();
@@ -1504,6 +1637,12 @@ function updateAllTranslations() {
 
   document.getElementById("roomSelect")?.addEventListener("change", (e) => {
     structure.selectRoom(e.target.value);
+  });
+
+  // Pattern groups dropdown in quick controls bar
+  document.getElementById("pgGroupSelect")?.addEventListener("change", (e) => {
+    activeTargetGroupId = e.target.value || null;
+    renderAll(t("patternGroups.groupSelected") || "Group selected");
   });
 
   document.getElementById("floorName")?.addEventListener("change", () => {
@@ -2033,6 +2172,113 @@ function updateAllTranslations() {
     });
   });
 
+  // Pattern Groups View - Button handlers (same pattern as floor view buttons)
+  const pgCreateGroupBtn = document.getElementById("pgCreateGroup");
+  console.log("[PatternGroups] Init - pgCreateGroup button found:", !!pgCreateGroupBtn);
+  pgCreateGroupBtn?.addEventListener("click", () => {
+    console.log("[PatternGroups] pgCreateGroup click handler fired");
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+    const roomId = next.selectedRoomId;
+
+    if (!floor || !roomId) {
+      console.log("[PatternGroups] Create aborted - no floor or roomId");
+      return;
+    }
+
+    const group = createPatternGroup(floor, roomId);
+    console.log("[PatternGroups] Group created:", group);
+    if (group) {
+      store.commit(t("patternGroups.created") || "Pattern group created", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
+  });
+
+  document.getElementById("pgAddToGroup")?.addEventListener("click", () => {
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+    const roomId = next.selectedRoomId;
+
+    if (!floor || !roomId || !activeTargetGroupId) return;
+
+    // Add to the active target group (selected in dropdown)
+    if (canJoinPatternGroup(floor, activeTargetGroupId, roomId)) {
+      if (addRoomToPatternGroup(floor, activeTargetGroupId, roomId)) {
+        store.commit(t("patternGroups.roomAdded") || "Room added to group", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      }
+    }
+  });
+
+  document.getElementById("pgRemoveFromGroup")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const roomId = state.selectedRoomId;
+
+    if (!floor || !roomId) return;
+
+    const group = getRoomPatternGroup(floor, roomId);
+    if (!group) return;
+
+    if (group.originRoomId === roomId) {
+      const confirmMsg = t("patternGroups.dissolveConfirm") ||
+        "Removing the origin room will dissolve the entire group. Continue?";
+      if (!confirm(confirmMsg)) return;
+    }
+
+    const next = deepClone(state);
+    const nextFloor = next.floors?.find(f => f.id === next.selectedFloorId);
+    const result = removeRoomFromPatternGroup(nextFloor, group.id, roomId);
+
+    if (result.success) {
+      const msg = result.dissolved
+        ? (t("patternGroups.dissolved") || "Pattern group dissolved")
+        : (t("patternGroups.roomRemoved") || "Room removed from group");
+      store.commit(msg, next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
+  });
+
+  document.getElementById("pgSetOrigin")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const roomId = state.selectedRoomId;
+
+    if (!floor || !roomId) return;
+
+    const group = getRoomPatternGroup(floor, roomId);
+    if (!group || group.originRoomId === roomId) return;
+
+    const next = deepClone(state);
+    const nextFloor = next.floors?.find(f => f.id === next.selectedFloorId);
+    const nextGroup = nextFloor.patternGroups.find(g => g.id === group.id);
+
+    if (changePatternGroupOrigin(nextFloor, nextGroup.id, roomId)) {
+      store.commit(t("patternGroups.originChanged") || "Origin room changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
+  });
+
+  document.getElementById("pgDissolveGroup")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const roomId = state.selectedRoomId;
+
+    if (!floor || !roomId) return;
+
+    const group = getRoomPatternGroup(floor, roomId);
+    if (!group) return;
+
+    const confirmMsg = t("patternGroups.dissolveConfirm") ||
+      "This will dissolve the pattern group. All rooms will become independent. Continue?";
+    if (!confirm(confirmMsg)) return;
+
+    const next = deepClone(state);
+    const nextFloor = next.floors?.find(f => f.id === next.selectedFloorId);
+
+    if (dissolvePatternGroup(nextFloor, group.id)) {
+      store.commit(t("patternGroups.dissolved") || "Pattern group dissolved", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
+  });
+
   function syncQuickControls() {
     const state = store.getState();
     const room = state.floors
@@ -2188,13 +2434,11 @@ function updateAllTranslations() {
   function syncBackgroundControls() {
     const state = store.getState();
     const floor = getCurrentFloor(state);
-    const room = getCurrentRoom(state);
     const hasBackground = Boolean(floor?.layout?.background?.dataUrl);
     const showFloorTiles = state.view?.showFloorTiles || false;
 
     const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
     const bgOpacitySlider = document.getElementById("bgOpacitySlider");
-    const floorLinkPatterns = document.getElementById("floorLinkPatterns");
     const floorShowTilesEl = document.getElementById("floorShowTiles");
     const floorAddRoom = document.getElementById("floorAddRoom");
     const floorDrawRoom = document.getElementById("floorDrawRoom");
@@ -2222,17 +2466,51 @@ function updateAllTranslations() {
       const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
       floorDeleteRoom.disabled = showFloorTiles || !hasSelection || !hasMultipleRooms;
     }
+  }
 
-    // Pattern linking - show per-room setting (enabled/disabled)
-    // Actual linking only happens when adjacent rooms both have it enabled
-    if (floorLinkPatterns) {
-      if (room && !showFloorTiles) {
-        floorLinkPatterns.checked = room.patternLinking?.enabled !== false;
-        floorLinkPatterns.disabled = false;
-      } else {
-        floorLinkPatterns.checked = room?.patternLinking?.enabled !== false;
-        floorLinkPatterns.disabled = !room || showFloorTiles;
-      }
+  // Sync the pattern groups dropdown (in quick controls bar)
+  function syncGroupDropdown() {
+    const state = store.getState();
+    const groupSelect = document.getElementById("pgGroupSelect");
+
+    if (!groupSelect) return;
+
+    const floor = getCurrentFloor(state);
+    const groups = floor?.patternGroups || [];
+
+    groupSelect.innerHTML = "";
+
+    if (groups.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("patternGroups.noGroups") || "No groups";
+      groupSelect.appendChild(opt);
+      groupSelect.disabled = true;
+      activeTargetGroupId = null;
+      return;
+    }
+
+    groupSelect.disabled = false;
+
+    for (const group of groups) {
+      const originRoom = floor.rooms?.find(r => r.id === group.originRoomId);
+      const opt = document.createElement("option");
+      opt.value = group.id;
+      opt.textContent = `${originRoom?.name || "Group"} (${group.memberRoomIds.length})`;
+      if (group.id === activeTargetGroupId) opt.selected = true;
+      groupSelect.appendChild(opt);
+    }
+
+    // Auto-select first group if none selected
+    if (!activeTargetGroupId && groups.length > 0) {
+      activeTargetGroupId = groups[0].id;
+      groupSelect.value = activeTargetGroupId;
+    }
+
+    // Ensure selection is valid
+    if (activeTargetGroupId && !groups.find(g => g.id === activeTargetGroupId)) {
+      activeTargetGroupId = groups[0]?.id || null;
+      if (activeTargetGroupId) groupSelect.value = activeTargetGroupId;
     }
   }
 
@@ -2247,6 +2525,14 @@ function updateAllTranslations() {
     const state = store.getState();
     updateViewToggleUI(state.view?.planningMode || "room");
     updateFloorControlsState(state);
+    // Update pattern groups controls if in that view
+    if (state.view?.planningMode === "patternGroups") {
+      updatePatternGroupsControlsState();
+      syncGroupDropdown();
+    } else {
+      // Reset group dropdown state when not in pattern groups view
+      syncGroupDropdown();
+    }
   };
 
   function commitQuickTilePreset() {

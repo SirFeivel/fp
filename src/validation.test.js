@@ -289,8 +289,21 @@ describe('validateState', () => {
     expect(result.errors.length).toBeGreaterThan(2);
   });
 
-  it('handles empty state', () => {
+  it('handles empty state without errors in floor view', () => {
     const state = {};
+
+    const result = validateState(state);
+    // Empty state in floor view is valid - no rooms to validate
+    expect(result.errors.length).toBe(0);
+  });
+
+  it('shows error when room view has no room selected but rooms exist', () => {
+    const state = {
+      view: { planningMode: "room" },
+      floors: [{ id: "f1", rooms: [{ id: "r1", name: "Room" }] }],
+      selectedFloorId: "f1",
+      selectedRoomId: null
+    };
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
