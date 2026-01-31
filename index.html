@@ -193,10 +193,48 @@
       <!-- ========== SETUP TAB ========== -->
       <section class="main-panel active" data-main-panel="setup">
         <div class="setup-flow">
-          <!-- Floor Section -->
+          <!-- Project Section -->
           <div class="setup-block">
             <div class="setup-block-header">
               <span class="setup-block-number">1</span>
+              <h3 class="setup-block-title" data-i18n="setup.projectTitle">Project</h3>
+            </div>
+            <div class="setup-block-content">
+              <div class="field">
+                <label data-i18n="setup.projectOpenExistingTitle">Open Existing Project</label>
+                <div class="inline-select-row">
+                  <select id="projectSelect" class="inline-select"></select>
+                  <button id="btnDeleteProject" class="btn-inline danger" title="Delete Project" aria-label="Delete Project">×</button>
+                </div>
+              </div>
+              <div id="projectDeleteWarning" class="warnItem preset-delete-warning hidden">
+                <div class="wTitle" data-i18n="project.deleteConfirmTitle">Delete project?</div>
+                <div class="wText" data-i18n="project.deleteConfirmText">This will remove the saved project from this browser.</div>
+                <div class="preset-delete-actions">
+                  <button id="btnConfirmDeleteProject" class="btn small tile-edit-btn discard" data-i18n="project.deleteConfirm">Delete project</button>
+                  <button id="btnCancelDeleteProject" class="btn ghost small tile-edit-btn" data-i18n="project.deleteCancel">Cancel</button>
+                </div>
+              </div>
+              <div class="field">
+                <label data-i18n="setup.projectSaveNewTitle">Save New Project</label>
+                <div class="inline-select-row">
+                  <input id="projectName" type="text" data-i18n-placeholder="project.namePlaceholder" placeholder="e.g. Bathroom Ground Floor" />
+                  <button id="btnSaveProject" class="btn-inline" title="Save Project" aria-label="Save Project">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floor Section -->
+          <div class="setup-block">
+            <div class="setup-block-header">
+              <span class="setup-block-number">2</span>
               <h3 class="setup-block-title" data-i18n="setup.floorTitle">Floor</h3>
             </div>
             <div class="setup-block-content">
@@ -215,7 +253,7 @@
           <!-- Room Section -->
           <div class="setup-block">
             <div class="setup-block-header">
-              <span class="setup-block-number">2</span>
+              <span class="setup-block-number">3</span>
               <h3 class="setup-block-title" data-i18n="setup.roomTitle">Room</h3>
             </div>
             <div class="setup-block-content">
@@ -274,7 +312,7 @@
           <!-- Tile Collection -->
           <div class="setup-block">
             <div class="setup-block-header">
-              <span class="setup-block-number">3</span>
+              <span class="setup-block-number">4</span>
               <h3 class="setup-block-title" data-i18n="setup.tileCollection">Tile Collection</h3>
             </div>
             <div class="setup-block-content">
@@ -409,8 +447,6 @@
 
         <!-- Hidden elements for compatibility -->
         <input id="fileImport" type="file" accept="application/json" style="display: none;" />
-        <input id="projectName" type="hidden" />
-        <select id="projectSelect" style="display: none;"></select>
         <span id="sessionStatus" style="display: none;"></span>
         <span id="lastSaved" style="display: none;"></span>
       </section>

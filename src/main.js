@@ -175,6 +175,11 @@ function resolveRenderScope(label, opts) {
 }
 
 function renderSetupSection(state) {
+  const projectNameEl = document.getElementById("projectName");
+  if (projectNameEl) {
+    projectNameEl.value = state.project?.name ?? "";
+  }
+  refreshProjectSelect();
   structure.renderFloorSelect();
   structure.renderFloorName();
   structure.renderRoomSelect();

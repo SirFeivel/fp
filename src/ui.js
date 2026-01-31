@@ -461,6 +461,14 @@ export function bindUI({
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
+  function commitFromProjectInputs(label) {
+    const state = store.getState();
+    const next = structuredClone(state);
+    next.project = next.project || {};
+    next.project.name = document.getElementById("projectName")?.value ?? "";
+    store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
+  }
+
   function commitFromTilePatternInputs(label) {
     if (tileEditMode === "create") return;
     const state = store.getState();
@@ -677,6 +685,7 @@ export function bindUI({
   });
 
   document.getElementById("btnSaveProject")?.addEventListener("click", () => {
+    commitFromProjectInputs(t("project.changed"));
     const state = store.getState();
     const name =
       document.getElementById("projectName")?.value.trim() ||
@@ -686,10 +695,28 @@ export function bindUI({
     renderAll(t("project.saved"));
   });
 
-  document.getElementById("btnLoadProject")?.addEventListener("click", () => {
+  document.getElementById("btnDeleteProject")?.addEventListener("click", () => {
+    const warningEl = document.getElementById("projectDeleteWarning");
     const id = document.getElementById("projectSelect")?.value;
     if (!id) return;
-
+    warningEl?.classList.remove("hidden");
+  });
+  document.getElementById("btnConfirmDeleteProject")?.addEventListener("click", () => {
+    const warningEl = document.getElementById("projectDeleteWarning");
+    const id = document.getElementById("projectSelect")?.value;
+    if (!id) return;
+    store.deleteProjectById(id);
+    store.autosaveSession(updateMeta);
+    warningEl?.classList.add("hidden");
+    renderAll(t("project.deleted"));
+  });
+  document.getElementById("btnCancelDeleteProject")?.addEventListener("click", () => {
+    document.getElementById("projectDeleteWarning")?.classList.add("hidden");
+  });
+  document.getElementById("projectSelect")?.addEventListener("change", () => {
+    document.getElementById("projectDeleteWarning")?.classList.add("hidden");
+    const id = document.getElementById("projectSelect")?.value;
+    if (!id) return;
     const res = store.loadProjectById(id);
     if (!res.ok) {
       alert(t("project.notFound"));
@@ -700,15 +727,12 @@ export function bindUI({
     renderAll(`${t("project.loaded")}: ${res.name}`);
   });
 
-  document.getElementById("btnDeleteProject")?.addEventListener("click", () => {
-    const id = document.getElementById("projectSelect")?.value;
-    if (!id) return;
-    store.deleteProjectById(id);
-    store.autosaveSession(updateMeta);
-    renderAll(t("project.deleted"));
-  });
-
   // Room inputs
+  wireInputCommit(document.getElementById("projectName"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("project.changed"),
+    commitFn: commitFromProjectInputs
+  });
   wireInputCommit(document.getElementById("roomName"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("room.changed"),

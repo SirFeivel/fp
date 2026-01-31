@@ -11,6 +11,9 @@ const translations = {
       commercial: "Kosten"
     },
     setup: {
+      projectTitle: "Projekt",
+      projectOpenExistingTitle: "Bestehendes Projekt öffnen",
+      projectSaveNewTitle: "Neues Projekt speichern",
       floorTitle: "Etage",
       roomTitle: "Raum",
       tileCollection: "Fliesenkollektion",
@@ -80,6 +83,11 @@ const translations = {
       savedProjects: "Laden",
       load: "Projekt laden",
       delete: "Projekt löschen",
+      deleteConfirmTitle: "Projekt löschen?",
+      deleteConfirmText: "Dieses gespeicherte Projekt wird aus diesem Browser entfernt.",
+      deleteConfirm: "Projekt löschen",
+      deleteCancel: "Abbrechen",
+      changed: "Projekt geändert",
       saved: "Projekt gespeichert",
       loaded: "Projekt geladen",
       deleted: "Projekt gelöscht",
@@ -496,6 +504,9 @@ const translations = {
       commercial: "Commercial"
     },
     setup: {
+      projectTitle: "Project",
+      projectOpenExistingTitle: "Open Existing Project",
+      projectSaveNewTitle: "Save New Project",
       floorTitle: "Floor",
       roomTitle: "Room",
       tileCollection: "Tile Collection",
@@ -565,6 +576,11 @@ const translations = {
       savedProjects: "Load",
       load: "Load Project",
       delete: "Delete Project",
+      deleteConfirmTitle: "Delete project?",
+      deleteConfirmText: "This will remove the saved project from this browser.",
+      deleteConfirm: "Delete project",
+      deleteCancel: "Cancel",
+      changed: "Project changed",
       saved: "Project saved",
       loaded: "Project loaded",
       deleted: "Project deleted",

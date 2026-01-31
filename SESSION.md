@@ -1,3 +1,37 @@
+## Session: Setup Project Section Adjustments (2026-01-31)
+### Goal
+- Reorder Project controls in Setup and update labels.
+- Remove Load button and load on selection.
+
+### Branch
+`feature/setup-project-section`
+
+### Plan
+1. Reorder Project UI controls and update labels
+2. Add i18n strings for new headers
+3. Update wiring to load on dropdown change and remove Load button handler
+
+### Status
+- Completed
+
+## Session: Setup Project Section (2026-01-31)
+### Goal
+- Add a Project section at the top of Setup with editable project name, save/load, and delete with warning.
+- Renumber Setup sections to start with Project.
+
+### Branch
+`feature/setup-project-section`
+
+### Plan
+1. Add Project setup block and renumber Setup sections
+2. Add i18n strings for the new Project section and delete warning
+3. Wire project name/select rendering and update project actions
+
+### Status
+- Completed
+- Tests: `npm run test`
+- Build: `npm run build`
+
 ## Session: Stabilisation v2 Execution (2026-01-30)
 ### Goal
 - Execute Stabilisation Plan v2 phases 1–8 and merge into main.

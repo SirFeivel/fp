@@ -67,7 +67,11 @@ describe('Square and Rectangle Tile UI logic', () => {
       </div>
       <select id="exclList"></select>
       <select id="sectionsList"></select>
-      <select id="projectSelect"></select>
+      <select id="projectSelect">
+        <option value="">– none –</option>
+        <option value="p1">Project 1</option>
+      </select>
+      <div id="projectDeleteWarning" class="hidden"></div>
       <div id="lastSaved"></div>
       <div id="sessionStatus"></div>
     `;
@@ -88,6 +92,7 @@ describe('Square and Rectangle Tile UI logic', () => {
       })),
       commit: vi.fn(),
       markDirty: vi.fn(),
+      loadProjectById: vi.fn(() => ({ ok: true, name: 'Project 1' })),
       loadProjects: vi.fn(() => []),
       getLastSavedAt: vi.fn(() => null)
     };
@@ -105,7 +110,10 @@ describe('Square and Rectangle Tile UI logic', () => {
       updateMeta,
       excl: { getSelectedExcl: () => null },
       sections: { getSelectedSection: () => null },
-      defaultStateFn: () => ({})
+      defaultStateFn: () => ({}),
+      setSelectedExcl: vi.fn(),
+      setSelectedSection: vi.fn(),
+      resetErrors: vi.fn()
     });
   });
 
@@ -117,6 +125,15 @@ describe('Square and Rectangle Tile UI logic', () => {
     tileShape.dispatchEvent(new Event('change'));
 
     expect(tileHeightField.style.display).toBe('none');
+  });
+
+  it('loads project on select change', () => {
+    const projectSelect = document.getElementById('projectSelect');
+    projectSelect.value = 'p1';
+    projectSelect.dispatchEvent(new Event('change'));
+
+    expect(store.loadProjectById).toHaveBeenCalledWith('p1');
+    expect(renderAll).toHaveBeenCalled();
   });
 
   it('filters patterns for Square tile shape', () => {
