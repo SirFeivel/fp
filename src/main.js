@@ -2177,6 +2177,7 @@ function updateAllTranslations() {
     const group = createPatternGroup(floor, roomId);
     console.log("[PatternGroups] Group created:", group);
     if (group) {
+      activeTargetGroupId = group.id;
       store.commit(t("patternGroups.created") || "Pattern group created", next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
   });
