@@ -50,6 +50,7 @@ let selectedTilePresetId = null;
 let selectedSkirtingPresetId = null;
 let lastUnionError = null;
 let lastTileError = null;
+let lastExclDragAt = 0;
 const exportSelection = new Set();
 
 function updateMeta() {
@@ -409,7 +410,13 @@ const dragController = createExclusionDragController({
   setSelectedIdOnly: setSelectedId, // Set ID without triggering render (for drag start)
   getSelectedId: () => selectedExclId,
   getMoveLabel: () => t("exclusions.moved"),
-  getResizeLabel: () => t("exclusions.resized")
+  getResizeLabel: () => t("exclusions.resized"),
+  onDragStart: () => {
+    lastExclDragAt = Date.now();
+  },
+  onDragEnd: () => {
+    lastExclDragAt = Date.now();
+  }
 });
 
 const sectionDragController = createSectionDragController({
@@ -1042,6 +1049,7 @@ function updateAllTranslations() {
 
   document.addEventListener("click", (e) => {
     if (isInlineEditing()) return;
+    if (Date.now() - lastExclDragAt < 250) return;
     const inPlan = e.target.closest("#planSvg, #planSvgFullscreen");
     if (!inPlan) return;
     const inInteractive = e.target.closest("[data-exid], [data-secid], [data-resize-handle], [data-inline-edit], [data-add-btn]");

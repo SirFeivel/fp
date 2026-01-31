@@ -14,6 +14,24 @@
 ### Status
 - Completed
 
+## Session: Exclusion Arrow Key Nudge Fix (2026-01-31)
+### Goal
+- Ensure exclusion selection persists after drag/resize so arrow-key nudging works in planning.
+- Avoid pan/selection interference by suppressing click-deselect right after a drag.
+
+### Branch
+`fix/exclusion-arrow-nudge`
+
+### Plan
+1. Add drag start/end callbacks to exclusion drag controller
+2. Use a short suppression window to avoid click deselection after dragging
+3. Add tests for drag callbacks
+
+### Status
+- Completed
+- Tests: `npm run test`
+- Build: `npm run build`
+
 ## Session: Setup Project Section (2026-01-31)
 ### Goal
 - Add a Project section at the top of Setup with editable project name, save/load, and delete with warning.

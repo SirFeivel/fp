@@ -46,7 +46,7 @@ describe('createExclusionDragController', () => {
     pointerUpHandler = null;
   });
 
-  function createMockController(initialExclusions = []) {
+  function createMockController(initialExclusions = [], { onDragStart, onDragEnd } = {}) {
     const state = {
       floors: [{
         id: 'floor1',
@@ -97,7 +97,9 @@ describe('createExclusionDragController', () => {
       setSelectedExcl,
       setSelectedIdOnly,
       getSelectedId,
-      getMoveLabel
+      getMoveLabel,
+      onDragStart,
+      onDragEnd
     });
 
     return {
@@ -183,6 +185,31 @@ describe('createExclusionDragController', () => {
 
       expect(mockSvg.addEventListener).toHaveBeenCalledWith('pointermove', expect.any(Function));
       expect(mockSvg.addEventListener).toHaveBeenCalledWith('pointerup', expect.any(Function), { once: true });
+    });
+
+    it('invokes drag callbacks on start and end', () => {
+      const exclusions = [{ id: 'ex1', type: 'rect', x: 10, y: 20, w: 50, h: 30 }];
+      const onDragStart = vi.fn();
+      const onDragEnd = vi.fn();
+      const { controller } = createMockController(exclusions, { onDragStart, onDragEnd });
+
+      const mockEvent = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        currentTarget: { getAttribute: () => 'ex1' },
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100
+      };
+
+      mockSvg._transformedX = 100;
+      mockSvg._transformedY = 100;
+
+      controller.onExclPointerDown(mockEvent);
+      expect(onDragStart).toHaveBeenCalledWith('ex1');
+
+      pointerUpHandler({});
+      expect(onDragEnd).toHaveBeenCalledWith({ id: 'ex1', moved: false, type: 'drag' });
     });
 
     it('does nothing when no id attribute', () => {

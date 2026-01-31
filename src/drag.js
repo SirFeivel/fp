@@ -257,7 +257,9 @@ export function createExclusionDragController({
   setSelectedIdOnly, // (id|null) => void - sets ID without triggering render
   getSelectedId, // () => id|null
   getMoveLabel, // () => translated label for "moved" action
-  getResizeLabel // () => translated label for "resized" action
+  getResizeLabel, // () => translated label for "resized" action
+  onDragStart, // (id) => void
+  onDragEnd // ({ id, moved, type }) => void
 }) {
   let drag = null;
   let resize = null; // For resize operations
@@ -355,6 +357,9 @@ export function createExclusionDragController({
       if (render) render();
     }
 
+    if (onDragEnd) {
+      onDragEnd({ id: drag.id, moved: hasMoved, type: "drag" });
+    }
     drag = null;
     dragStartState = null;
   }
@@ -382,6 +387,9 @@ export function createExclusionDragController({
     // Enter drag mode - skip tile rendering
     if (render) {
       render({ mode: "drag" });
+    }
+    if (onDragStart) {
+      onDragStart(id);
     }
 
     // Find exclusion from state directly
@@ -627,6 +635,9 @@ export function createExclusionDragController({
       render();
     }
 
+    if (onDragEnd) {
+      onDragEnd({ id: resize.id, moved: hasResized, type: "resize" });
+    }
     resize = null;
     dragStartState = null;
   }
