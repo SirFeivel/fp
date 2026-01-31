@@ -172,27 +172,18 @@ export function removeRoomFromPatternGroup(floor, groupId, roomId) {
   // If removing origin room, dissolve the entire group
   if (group.originRoomId === roomId) {
     floor.patternGroups.splice(groupIndex, 1);
-    return { success: true, dissolved: true };
+    return { success: true, dissolved: true, removedRoomIds: group.memberRoomIds };
   }
 
-  // Remove the room from members
-  group.memberRoomIds = group.memberRoomIds.filter(id => id !== roomId);
+  // Get disconnected rooms before removal
+  const disconnectedRooms = getDisconnectedRoomsOnRemoval(floor, groupId, roomId);
 
-  // If only one room left, dissolve the group
-  if (group.memberRoomIds.length < 2) {
-    floor.patternGroups.splice(groupIndex, 1);
-    return { success: true, dissolved: true };
-  }
+  // Remove the room and all disconnected rooms from members
+  const roomsToRemove = new Set([roomId, ...disconnectedRooms]);
+  group.memberRoomIds = group.memberRoomIds.filter(id => !roomsToRemove.has(id));
 
-  // Validate connectivity - removed room might have been a bridge
-  const stillConnected = validatePatternGroupConnectivity(floor, groupId);
-  if (!stillConnected) {
-    // Group became disconnected, dissolve it
-    floor.patternGroups.splice(groupIndex, 1);
-    return { success: true, dissolved: true };
-  }
-
-  return { success: true, dissolved: false };
+  // Group persists even with just the origin
+  return { success: true, dissolved: false, removedRoomIds: Array.from(roomsToRemove) };
 }
 
 /**
@@ -229,6 +220,49 @@ export function changePatternGroupOrigin(floor, groupId, newOriginRoomId) {
 
   group.originRoomId = newOriginRoomId;
   return true;
+}
+
+/**
+ * Get rooms that would become disconnected from origin if a room is removed
+ * @param {Object} floor - Floor object
+ * @param {string} groupId - Pattern group ID
+ * @param {string} roomIdToRemove - Room ID to simulate removal
+ * @returns {string[]} Array of room IDs that would become disconnected (excludes the removed room)
+ */
+export function getDisconnectedRoomsOnRemoval(floor, groupId, roomIdToRemove) {
+  if (!floor?.patternGroups || !floor?.rooms || !groupId || !roomIdToRemove) return [];
+
+  const group = floor.patternGroups.find(g => g.id === groupId);
+  if (!group) return [];
+
+  // Simulate removal - get remaining members
+  const remainingMembers = group.memberRoomIds.filter(id => id !== roomIdToRemove);
+  if (remainingMembers.length <= 1) return []; // Only origin left, nothing disconnected
+
+  // Flood-fill from origin to find connected rooms
+  const visited = new Set();
+  const queue = [group.originRoomId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (visited.has(currentId) || currentId === roomIdToRemove) continue;
+    visited.add(currentId);
+
+    const currentRoom = floor.rooms.find(r => r.id === currentId);
+    if (!currentRoom) continue;
+
+    for (const memberId of remainingMembers) {
+      if (visited.has(memberId) || memberId === roomIdToRemove) continue;
+
+      const memberRoom = floor.rooms.find(r => r.id === memberId);
+      if (memberRoom && areRoomsAdjacent(currentRoom, memberRoom)) {
+        queue.push(memberId);
+      }
+    }
+  }
+
+  // Disconnected rooms are those not visited (excluding the removed room)
+  return remainingMembers.filter(id => !visited.has(id) && id !== group.originRoomId);
 }
 
 /**

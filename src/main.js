@@ -51,7 +51,8 @@ import {
   removeRoomFromPatternGroup,
   dissolvePatternGroup,
   changePatternGroupOrigin,
-  canJoinPatternGroup
+  canJoinPatternGroup,
+  getDisconnectedRoomsOnRemoval
 } from "./pattern-groups.js";
 
 // Store
@@ -693,8 +694,8 @@ function updatePatternGroupsControlsState() {
   }
   if (addBtn) addBtn.disabled = !canAdd;
 
-  // Remove: enabled if room is in a group (but not if it's the origin - that dissolves)
-  if (removeBtn) removeBtn.disabled = !isInGroup;
+  // Remove: enabled if room is in a group but not the origin (removing origin dissolves group)
+  if (removeBtn) removeBtn.disabled = !isInGroup || isOrigin;
 
   // Set origin: enabled if room is in a group but not already the origin
   if (setOriginBtn) setOriginBtn.disabled = !isInGroup || isOrigin;
@@ -2208,10 +2209,16 @@ function updateAllTranslations() {
     const group = getRoomPatternGroup(floor, roomId);
     if (!group) return;
 
-    if (group.originRoomId === roomId) {
-      const confirmMsg = t("patternGroups.dissolveConfirm") ||
-        "Removing the origin room will dissolve the entire group. Continue?";
-      if (!confirm(confirmMsg)) return;
+    // Check for disconnected rooms before removal
+    const disconnectedRooms = getDisconnectedRoomsOnRemoval(floor, group.id, roomId);
+    if (disconnectedRooms.length > 0) {
+      const roomNames = disconnectedRooms.map(id => {
+        const room = floor.rooms?.find(r => r.id === id);
+        return room?.name || id;
+      }).join(", ");
+      const confirmMsg = t("patternGroups.removeDisconnectWarning") ||
+        `Removing this room will also disconnect: ${roomNames}. Continue?`;
+      if (!confirm(confirmMsg.replace("{rooms}", roomNames))) return;
     }
 
     const next = deepClone(state);
@@ -2219,9 +2226,7 @@ function updateAllTranslations() {
     const result = removeRoomFromPatternGroup(nextFloor, group.id, roomId);
 
     if (result.success) {
-      const msg = result.dissolved
-        ? (t("patternGroups.dissolved") || "Pattern group dissolved")
-        : (t("patternGroups.roomRemoved") || "Room removed from group");
+      const msg = t("patternGroups.roomRemoved") || "Room removed from group";
       store.commit(msg, next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
   });

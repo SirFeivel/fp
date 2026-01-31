@@ -11,7 +11,8 @@ import {
   dissolvePatternGroup,
   changePatternGroupOrigin,
   validatePatternGroupConnectivity,
-  getEffectiveTileSettings
+  getEffectiveTileSettings,
+  getDisconnectedRoomsOnRemoval
 } from "./pattern-groups.js";
 
 // Helper to create a floor with rooms
@@ -238,7 +239,7 @@ describe("pattern-groups", () => {
       expect(floor.patternGroups).toHaveLength(0);
     });
 
-    it("dissolves group when only one room would remain", () => {
+    it("keeps group with just origin when last member is removed", () => {
       const floor = createTestFloor([
         { id: "room-a", floorPosition: { x: 0, y: 0 }, widthCm: 300 },
         { id: "room-b", floorPosition: { x: 300, y: 0 }, widthCm: 300 }
@@ -248,8 +249,9 @@ describe("pattern-groups", () => {
 
       const result = removeRoomFromPatternGroup(floor, group.id, "room-b");
       expect(result.success).toBe(true);
-      expect(result.dissolved).toBe(true);
-      expect(floor.patternGroups).toHaveLength(0);
+      expect(result.dissolved).toBe(false);
+      expect(floor.patternGroups).toHaveLength(1);
+      expect(floor.patternGroups[0].memberRoomIds).toEqual(["room-a"]);
     });
   });
 
@@ -298,6 +300,70 @@ describe("pattern-groups", () => {
       const group = createPatternGroup(floor, "room-a");
       const result = changePatternGroupOrigin(floor, group.id, "room-c");
       expect(result).toBe(false);
+    });
+  });
+
+  describe("getDisconnectedRoomsOnRemoval", () => {
+    it("returns empty array when no rooms would be disconnected", () => {
+      const floor = createTestFloor([
+        { id: "room-a", floorPosition: { x: 0, y: 0 }, widthCm: 300 },
+        { id: "room-b", floorPosition: { x: 300, y: 0 }, widthCm: 300 },
+        { id: "room-c", floorPosition: { x: 600, y: 0 }, widthCm: 300 }
+      ]);
+      const group = createPatternGroup(floor, "room-a");
+      addRoomToPatternGroup(floor, group.id, "room-b");
+      addRoomToPatternGroup(floor, group.id, "room-c");
+
+      // Removing room-c doesn't disconnect anyone
+      const disconnected = getDisconnectedRoomsOnRemoval(floor, group.id, "room-c");
+      expect(disconnected).toEqual([]);
+    });
+
+    it("returns disconnected rooms when bridge room is removed", () => {
+      const floor = createTestFloor([
+        { id: "room-a", floorPosition: { x: 0, y: 0 }, widthCm: 300 },
+        { id: "room-b", floorPosition: { x: 300, y: 0 }, widthCm: 300 },
+        { id: "room-c", floorPosition: { x: 600, y: 0 }, widthCm: 300 }
+      ]);
+      const group = createPatternGroup(floor, "room-a");
+      addRoomToPatternGroup(floor, group.id, "room-b");
+      addRoomToPatternGroup(floor, group.id, "room-c");
+
+      // Removing room-b disconnects room-c from origin
+      const disconnected = getDisconnectedRoomsOnRemoval(floor, group.id, "room-b");
+      expect(disconnected).toEqual(["room-c"]);
+    });
+
+    it("returns empty array when only origin would remain", () => {
+      const floor = createTestFloor([
+        { id: "room-a", floorPosition: { x: 0, y: 0 }, widthCm: 300 },
+        { id: "room-b", floorPosition: { x: 300, y: 0 }, widthCm: 300 }
+      ]);
+      const group = createPatternGroup(floor, "room-a");
+      addRoomToPatternGroup(floor, group.id, "room-b");
+
+      const disconnected = getDisconnectedRoomsOnRemoval(floor, group.id, "room-b");
+      expect(disconnected).toEqual([]);
+    });
+  });
+
+  describe("removeRoomFromPatternGroup - bridge removal", () => {
+    it("removes bridge room and all disconnected rooms", () => {
+      const floor = createTestFloor([
+        { id: "room-a", floorPosition: { x: 0, y: 0 }, widthCm: 300 },
+        { id: "room-b", floorPosition: { x: 300, y: 0 }, widthCm: 300 },
+        { id: "room-c", floorPosition: { x: 600, y: 0 }, widthCm: 300 }
+      ]);
+      const group = createPatternGroup(floor, "room-a");
+      addRoomToPatternGroup(floor, group.id, "room-b");
+      addRoomToPatternGroup(floor, group.id, "room-c");
+
+      const result = removeRoomFromPatternGroup(floor, group.id, "room-b");
+      expect(result.success).toBe(true);
+      expect(result.dissolved).toBe(false);
+      expect(result.removedRoomIds).toContain("room-b");
+      expect(result.removedRoomIds).toContain("room-c");
+      expect(floor.patternGroups[0].memberRoomIds).toEqual(["room-a"]);
     });
   });
 
