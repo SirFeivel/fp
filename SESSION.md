@@ -48,6 +48,22 @@
 - Tests: `npm run test`
 - Build: `npm run build`
 
+## Session: Tile Reference Edit Actions Fix (2026-01-31)
+### Goal
+- Keep Update/Save actions visible when changing the tile reference name in edit mode.
+
+### Branch
+`fix/tile-reference-edit-flow`
+
+### Plan
+1. Track whether edit started from a preset and use that to keep actions visible
+2. Add a test for the rename flow action visibility
+
+### Status
+- Completed
+- Tests: `npm run test`
+- Build: `npm run build`
+
 ## Session: Setup Project Section (2026-01-31)
 ### Goal
 - Add a Project section at the top of Setup with editable project name, save/load, and delete with warning.

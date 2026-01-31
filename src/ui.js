@@ -165,14 +165,11 @@ export function bindUI({
     }
     const mode = tileEditMode;
     actions.classList.toggle("hidden", !tileEditActive);
-    const state = store.getState();
-    const room = getCurrentRoom(state);
-    const ref = room?.tile?.reference;
-    const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    const hasPreset = getUiState().tileEditHasPreset === true;
     const updateBtn = document.getElementById("tileEditUpdateBtn");
     const saveBtn = document.getElementById("tileEditSaveBtn");
-    if (updateBtn) updateBtn.style.display = tileEditActive && mode !== "create" && preset ? "" : "none";
-    if (saveBtn) saveBtn.style.display = tileEditActive && (mode === "create" || preset) ? "" : "none";
+    if (updateBtn) updateBtn.style.display = tileEditActive && mode !== "create" && hasPreset ? "" : "none";
+    if (saveBtn) saveBtn.style.display = tileEditActive && (mode === "create" || hasPreset) ? "" : "none";
   };
 
   const setTileEditActive = (active) => {
@@ -182,6 +179,7 @@ export function bindUI({
       tileEditDirty = false;
       setUiState({ tileEditDirty });
       tileEditCreateIntent = false;
+      setUiState({ tileEditHasPreset: false });
       resetTileEditWarning();
       setTileEditMode("edit");
     }
@@ -208,6 +206,7 @@ export function bindUI({
     if (!room) return;
     const ref = room.tile?.reference;
     const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
+    setUiState({ tileEditHasPreset: Boolean(preset) });
     tileEditSnapshot = {
       roomId: room.id,
       tile: structuredClone(room.tile || {}),
@@ -821,6 +820,7 @@ export function bindUI({
     setUiState({ tileEditDirty });
     setTileEditError("");
     snapshotTileEditState();
+    setUiState({ tileEditHasPreset: false });
     if (!tileEditActive) setTileEditActive(true);
     tileEditCreateIntent = true;
     setTileEditMode("create");

@@ -853,6 +853,7 @@ export function renderTilePatternForm(state) {
   const tileEditActive = uiState.tileEditActive;
   const tileEditDirty = uiState.tileEditDirty;
   const tileEditMode = uiState.tileEditMode || "edit";
+  const tileEditHasPreset = uiState.tileEditHasPreset === true;
   renderReferencePicker(state);
   renderTilePresetPicker(state, currentRoom);
   renderSkirtingPresetPicker(state);
@@ -866,8 +867,9 @@ export function renderTilePatternForm(state) {
   if (editActions) editActions.classList.toggle("hidden", !tileEditActive);
   const editUpdateBtn = document.getElementById("tileEditUpdateBtn");
   const editSaveBtn = document.getElementById("tileEditSaveBtn");
-  if (editUpdateBtn) editUpdateBtn.style.display = tileEditActive && tileEditMode !== "create" && preset ? "" : "none";
-  if (editSaveBtn) editSaveBtn.style.display = tileEditActive && (tileEditMode === "create" || preset) ? "" : "none";
+  const hasPreset = tileEditHasPreset || Boolean(preset);
+  if (editUpdateBtn) editUpdateBtn.style.display = tileEditActive && tileEditMode !== "create" && hasPreset ? "" : "none";
+  if (editSaveBtn) editSaveBtn.style.display = tileEditActive && (tileEditMode === "create" || hasPreset) ? "" : "none";
   if (editSaveBtn) {
     editSaveBtn.textContent = tileEditMode === "create"
       ? t("planning.tileEditSaveCreate")

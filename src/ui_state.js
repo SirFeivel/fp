@@ -3,6 +3,7 @@ const uiState = {
   tileEditActive: false,
   tileEditDirty: false,
   tileEditMode: "edit",
+  tileEditHasPreset: false,
   inlineEditing: false
 };
 
