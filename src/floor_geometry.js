@@ -340,3 +340,141 @@ export function findNearestNonOverlappingPosition(room, otherRooms, desiredX, de
 
   return pushResult;
 }
+
+/**
+ * Check if a room at a given position would be connected to at least one other room
+ * @param {Object} room - Room to check
+ * @param {Array} otherRooms - Other rooms on the floor
+ * @param {number} x - X position to check
+ * @param {number} y - Y position to check
+ * @returns {boolean}
+ */
+export function isRoomConnected(room, otherRooms, x, y) {
+  // Single room is always valid (nothing to connect to)
+  if (otherRooms.length === 0) return true;
+
+  const testRoom = {
+    ...room,
+    floorPosition: { x, y }
+  };
+
+  // Check if adjacent to at least one other room
+  return otherRooms.some(other => areRoomsAdjacent(testRoom, other));
+}
+
+/**
+ * Find the nearest valid position for a room that is both non-overlapping AND connected
+ * @param {Object} room - Room being moved
+ * @param {Array} otherRooms - Other rooms on the floor
+ * @param {number} desiredX - Desired X position
+ * @param {number} desiredY - Desired Y position
+ * @param {number} snapThreshold - Max distance to snap (cm), default 100
+ * @returns {Object} { x, y } - Best valid position
+ */
+export function findNearestConnectedPosition(room, otherRooms, desiredX, desiredY, snapThreshold = 100) {
+  // Single room can go anywhere (no connectivity requirement)
+  if (otherRooms.length === 0) {
+    return { x: desiredX, y: desiredY };
+  }
+
+  // Check if desired position is already valid (non-overlapping AND connected)
+  if (!wouldRoomOverlap(room, otherRooms, desiredX, desiredY) &&
+      isRoomConnected(room, otherRooms, desiredX, desiredY)) {
+    return { x: desiredX, y: desiredY };
+  }
+
+  // Find snap positions (edges of other rooms)
+  const snapPositions = findRoomSnapPositions(room, otherRooms);
+
+  let bestPos = null;
+  let bestDist = Infinity;
+
+  for (const pos of snapPositions) {
+    // Check this position is valid: no overlap AND connected
+    if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
+        isRoomConnected(room, otherRooms, pos.x, pos.y)) {
+      const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
+      if (dist < bestDist && dist <= snapThreshold) {
+        bestDist = dist;
+        bestPos = pos;
+      }
+    }
+  }
+
+  // If found a valid snap position, use it
+  if (bestPos) {
+    return bestPos;
+  }
+
+  // No valid position found - try to find closest connected position
+  // by iterating through edge-aligned positions more thoroughly
+  const roomBounds = getRoomBounds(room);
+  const roomWidth = roomBounds.width;
+  const roomHeight = roomBounds.height;
+
+  // Generate more snap candidates along each edge of each room
+  for (const other of otherRooms) {
+    const ob = getRoomAbsoluteBounds(other);
+
+    // Positions along right edge of other room
+    for (let y = ob.top - roomHeight + 1; y < ob.bottom; y += 10) {
+      const pos = { x: ob.right, y };
+      if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
+          isRoomConnected(room, otherRooms, pos.x, pos.y)) {
+        const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPos = pos;
+        }
+      }
+    }
+
+    // Positions along left edge of other room
+    for (let y = ob.top - roomHeight + 1; y < ob.bottom; y += 10) {
+      const pos = { x: ob.left - roomWidth, y };
+      if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
+          isRoomConnected(room, otherRooms, pos.x, pos.y)) {
+        const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPos = pos;
+        }
+      }
+    }
+
+    // Positions along bottom edge of other room
+    for (let x = ob.left - roomWidth + 1; x < ob.right; x += 10) {
+      const pos = { x, y: ob.bottom };
+      if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
+          isRoomConnected(room, otherRooms, pos.x, pos.y)) {
+        const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPos = pos;
+        }
+      }
+    }
+
+    // Positions along top edge of other room
+    for (let x = ob.left - roomWidth + 1; x < ob.right; x += 10) {
+      const pos = { x, y: ob.top - roomHeight };
+      if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
+          isRoomConnected(room, otherRooms, pos.x, pos.y)) {
+        const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPos = pos;
+        }
+      }
+    }
+  }
+
+  // Return best position found, or fall back to current position if nothing valid
+  if (bestPos) {
+    return bestPos;
+  }
+
+  // Last resort: return original position (room stays where it was)
+  const originalPos = room.floorPosition || { x: 0, y: 0 };
+  return { x: originalPos.x, y: originalPos.y };
+}

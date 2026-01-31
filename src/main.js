@@ -13,6 +13,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
+import { getRoomAbsoluteBounds } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -1901,13 +1902,19 @@ function updateAllTranslations() {
       floorPosition: { x: 0, y: 0 }
     };
 
-    // Position new room next to currently selected room
-    const selectedRoom = nextFloor.rooms.find(r => r.id === state.selectedRoomId);
-    if (selectedRoom) {
-      const pos = selectedRoom.floorPosition || { x: 0, y: 0 };
-      const bounds = getRoomBounds(selectedRoom);
-      newRoom.floorPosition.x = pos.x + bounds.width + 50; // 50cm gap
-      newRoom.floorPosition.y = pos.y; // Same Y position
+    // Position new room adjacent to the rightmost existing room
+    if (nextFloor.rooms.length > 0) {
+      let maxRight = -Infinity;
+      let topAtMaxRight = 0;
+      for (const room of nextFloor.rooms) {
+        const bounds = getRoomAbsoluteBounds(room);
+        if (bounds.right > maxRight) {
+          maxRight = bounds.right;
+          topAtMaxRight = bounds.top;
+        }
+      }
+      newRoom.floorPosition.x = maxRight;
+      newRoom.floorPosition.y = topAtMaxRight;
     }
 
     nextFloor.rooms.push(newRoom);

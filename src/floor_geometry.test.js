@@ -11,7 +11,9 @@ import {
   doRoomsOverlap,
   wouldRoomOverlap,
   findRoomSnapPositions,
-  findNearestNonOverlappingPosition
+  findNearestNonOverlappingPosition,
+  isRoomConnected,
+  findNearestConnectedPosition
 } from './floor_geometry.js';
 
 describe('getFloorBounds', () => {
@@ -307,6 +309,43 @@ describe('getRoomAbsoluteBounds', () => {
     expect(bounds.top).toBe(50);
     expect(bounds.bottom).toBe(200);
   });
+
+  it('returns correct bounds for freeform room with polygonVertices', () => {
+    const room = {
+      floorPosition: { x: 600, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 361, y: 0 },
+        { x: 361, y: 151 },
+        { x: 0, y: 151 }
+      ]
+    };
+    const bounds = getRoomAbsoluteBounds(room);
+    expect(bounds.left).toBe(600);
+    expect(bounds.right).toBe(961);
+    expect(bounds.top).toBe(0);
+    expect(bounds.bottom).toBe(151);
+  });
+
+  it('returns correct bounds for freeform room with negative Y floorPosition', () => {
+    // This simulates a freeform room drawn at negative Y coordinates
+    const room = {
+      floorPosition: { x: 600, y: -48 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 361, y: 0 },
+        { x: 361, y: 151 },
+        { x: 0, y: 151 }
+      ]
+    };
+    const bounds = getRoomAbsoluteBounds(room);
+    expect(bounds.left).toBe(600);
+    expect(bounds.right).toBe(961);
+    expect(bounds.top).toBe(-48);  // Should be floorPosition.y + minY = -48 + 0 = -48
+    expect(bounds.bottom).toBe(103);  // Should be -48 + 151 = 103
+    expect(bounds.width).toBe(361);
+    expect(bounds.height).toBe(151);
+  });
 });
 
 describe('doRoomsOverlap', () => {
@@ -433,6 +472,132 @@ describe('findNearestNonOverlappingPosition', () => {
     // Trying to move to exact same position as other room
     const result = findNearestNonOverlappingPosition(room, otherRooms, 50, 50, 10);
     // Should not overlap at the resulting position
+    expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
+  });
+});
+
+describe('isRoomConnected', () => {
+  it('returns true for single room (no other rooms)', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    expect(isRoomConnected(room, [], 0, 0)).toBe(true);
+  });
+
+  it('returns true when room is adjacent to another room', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 100, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Room at x=0 is adjacent to room at x=100 (they share an edge at x=100)
+    expect(isRoomConnected(room, otherRooms, 0, 0)).toBe(true);
+  });
+
+  it('returns false when room is not adjacent to any other room', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 300, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Room at x=0 with width 100 ends at x=100, other room starts at x=300
+    // They don't share an edge
+    expect(isRoomConnected(room, otherRooms, 0, 0)).toBe(false);
+  });
+
+  it('detects connection when moving room to adjacent position', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Room moved to x=100 would be adjacent to room at x=200
+    expect(isRoomConnected(room, otherRooms, 100, 0)).toBe(true);
+  });
+});
+
+describe('findNearestConnectedPosition', () => {
+  it('returns desired position for single room', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const result = findNearestConnectedPosition(room, [], 50, 50);
+    expect(result).toEqual({ x: 50, y: 50 });
+  });
+
+  it('returns desired position when already connected and non-overlapping', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 100, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Desired position x=0 is adjacent to other room at x=100
+    const result = findNearestConnectedPosition(room, otherRooms, 0, 0);
+    expect(result).toEqual({ x: 0, y: 0 });
+  });
+
+  it('snaps to connected position when desired position would be disconnected', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Trying to move to x=-100 would disconnect from other room
+    const result = findNearestConnectedPosition(room, otherRooms, -100, 0);
+    // Result should be connected
+    expect(isRoomConnected(room, otherRooms, result.x, result.y)).toBe(true);
+    // And not overlapping
+    expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
+  });
+
+  it('prevents free-floating rooms', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 100, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Trying to move far away (free-floating)
+    const result = findNearestConnectedPosition(room, otherRooms, 500, 500);
+    // Result must be connected
+    expect(isRoomConnected(room, otherRooms, result.x, result.y)).toBe(true);
+    // And not overlapping
+    expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
+  });
+
+  it('finds valid position along edges when direct snap not available', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 50 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 0, y: 50 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 200 }]
+    }];
+    // Room is currently connected (shares edge at y=50)
+    // Trying to move to an invalid position
+    const result = findNearestConnectedPosition(room, otherRooms, 300, 300);
+    // Should find a valid connected position
+    expect(isRoomConnected(room, otherRooms, result.x, result.y)).toBe(true);
     expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
   });
 });

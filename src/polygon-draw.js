@@ -1,13 +1,159 @@
 // src/polygon-draw.js
 // Controller for drawing room polygons by clicking vertices
 
-import { svgEl } from "./geometry.js";
+import { svgEl, roomPolygon } from "./geometry.js";
 import { uuid } from "./core.js";
 import { t } from "./i18n.js";
 
 const MIN_POINTS = 3;
 const CLOSE_THRESHOLD_PX = 15; // Pixels to detect closing click on first point
 const SNAP_GRID_CM = 0.5; // Grid snap increment in cm
+
+/**
+ * Get all edges of existing rooms in floor coordinates
+ * Returns array of { roomId, edge: { p1: {x,y}, p2: {x,y} } }
+ */
+function getRoomEdges(floor) {
+  const edges = [];
+  if (!floor?.rooms) return edges;
+
+  for (const room of floor.rooms) {
+    const pos = room.floorPosition || { x: 0, y: 0 };
+
+    // Get room polygon (handles both freeform and sections-based rooms)
+    const mp = roomPolygon(room);
+    if (!mp || mp.length === 0) continue;
+
+    // Extract edges from the polygon
+    // MultiPolygon format: [Polygon[Ring[Point]]]
+    for (const polygon of mp) {
+      for (const ring of polygon) {
+        for (let i = 0; i < ring.length - 1; i++) {
+          const p1 = { x: ring[i][0] + pos.x, y: ring[i][1] + pos.y };
+          const p2 = { x: ring[i + 1][0] + pos.x, y: ring[i + 1][1] + pos.y };
+          edges.push({ roomId: room.id, edge: { p1, p2 } });
+        }
+      }
+    }
+  }
+
+  return edges;
+}
+
+/**
+ * Find the closest point on a line segment to a given point
+ */
+function closestPointOnSegment(point, p1, p2) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    // Segment is a point
+    return { x: p1.x, y: p1.y, t: 0 };
+  }
+
+  // Project point onto line, clamped to segment
+  let t = ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  return {
+    x: p1.x + t * dx,
+    y: p1.y + t * dy,
+    t
+  };
+}
+
+/**
+ * Find the nearest point on any room edge to the mouse position
+ * Returns { point: {x,y}, roomId, edge, distance } or null
+ */
+function findNearestEdgePoint(mousePoint, edges) {
+  let nearest = null;
+  let minDist = Infinity;
+
+  for (const { roomId, edge } of edges) {
+    const closest = closestPointOnSegment(mousePoint, edge.p1, edge.p2);
+    const dist = Math.hypot(closest.x - mousePoint.x, closest.y - mousePoint.y);
+
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = {
+        point: { x: closest.x, y: closest.y },
+        roomId,
+        edge,
+        distance: dist
+      };
+    }
+  }
+
+  return nearest;
+}
+
+/**
+ * Find the nearest point on edges of a specific room
+ */
+function findNearestEdgePointOnRoom(mousePoint, edges, roomId) {
+  const roomEdges = edges.filter(e => e.roomId === roomId);
+  return findNearestEdgePoint(mousePoint, roomEdges);
+}
+
+/**
+ * Check if a point is inside a polygon using ray casting algorithm
+ */
+function isPointInPolygon(point, polygon) {
+  let inside = false;
+  const n = polygon.length;
+
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+
+    if (((yi > point.y) !== (yj > point.y)) &&
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+/**
+ * Check if a point is inside any existing room
+ * Returns the room ID if inside a room, null otherwise
+ */
+function isPointInsideAnyRoom(point, floor) {
+  if (!floor?.rooms) return null;
+
+  for (const room of floor.rooms) {
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    const mp = roomPolygon(room);
+    if (!mp || mp.length === 0) continue;
+
+    // Transform point to room-local coordinates
+    const localPoint = { x: point.x - pos.x, y: point.y - pos.y };
+
+    // Check each polygon in the multipolygon
+    for (const polygon of mp) {
+      // Check outer ring (first ring)
+      if (polygon.length > 0 && isPointInPolygon(localPoint, polygon[0])) {
+        // Check if point is in any hole (subsequent rings)
+        let inHole = false;
+        for (let i = 1; i < polygon.length; i++) {
+          if (isPointInPolygon(localPoint, polygon[i])) {
+            inHole = true;
+            break;
+          }
+        }
+        if (!inHole) {
+          return room.id;
+        }
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * Snap a value to the nearest grid increment
@@ -59,6 +205,15 @@ export function createPolygonDrawController({
   let previewGroup = null;
   let onComplete = null;
 
+  // Edge snapping state
+  let edgeSnapMode = false; // True when existing rooms exist and we need to snap first two points
+  let roomEdges = []; // Cached edges of all rooms
+  let snapTargetRoomId = null; // Room ID that first point was placed on (second point must be on same room)
+  let currentEdgeSnapPoint = null; // Current snapped point for preview
+  let cachedFloor = null; // Cached floor for inside-room checks
+  let isMouseInsideRoom = false; // True when mouse is inside an existing room
+  let currentMousePoint = null; // Current mouse position for preview
+
   function pointerToSvgXY(svg, clientX, clientY) {
     const pt = svg.createSVGPoint();
     pt.x = clientX;
@@ -77,13 +232,34 @@ export function createPolygonDrawController({
     isDrawing = true;
     points = [];
     onComplete = completeCb;
+    snapTargetRoomId = null;
+    currentEdgeSnapPoint = null;
+    isMouseInsideRoom = false;
+    currentMousePoint = null;
+
+    // Check if there are existing rooms - if so, enable edge snap mode
+    const floor = getCurrentFloor();
+    cachedFloor = floor;
+    const hasExistingRooms = floor?.rooms?.length > 0;
+    edgeSnapMode = hasExistingRooms;
+
+    if (edgeSnapMode) {
+      // Cache all room edges for snapping
+      roomEdges = getRoomEdges(floor);
+    } else {
+      roomEdges = [];
+    }
 
     // Create preview group for visualization
     previewGroup = svgEl("g", { class: "polygon-draw-preview" });
     svg.appendChild(previewGroup);
 
     // Add hint overlay
-    updateHint("Click to place first corner point (Shift for 15° angles)");
+    if (edgeSnapMode) {
+      updateHint("Click on an existing room edge to start • Move along edge to position");
+    } else {
+      updateHint("Click to place first corner point (Shift for 15° angles)");
+    }
 
     // Change cursor
     svg.classList.add("drawing-polygon");
@@ -92,6 +268,7 @@ export function createPolygonDrawController({
     svg.addEventListener("click", handleClick);
     svg.addEventListener("mousemove", handleMouseMove);
     svg.addEventListener("contextmenu", handleRightClick);
+    svg.addEventListener("wheel", handleWheel, { passive: true });
     document.addEventListener("keydown", handleKeyDown);
 
     return true;
@@ -101,6 +278,15 @@ export function createPolygonDrawController({
     const svg = getSvg();
 
     isDrawing = false;
+
+    // Reset edge snap state
+    edgeSnapMode = false;
+    roomEdges = [];
+    snapTargetRoomId = null;
+    currentEdgeSnapPoint = null;
+    cachedFloor = null;
+    isMouseInsideRoom = false;
+    currentMousePoint = null;
 
     if (previewGroup) {
       previewGroup.remove();
@@ -112,6 +298,7 @@ export function createPolygonDrawController({
       svg.removeEventListener("click", handleClick);
       svg.removeEventListener("mousemove", handleMouseMove);
       svg.removeEventListener("contextmenu", handleRightClick);
+      svg.removeEventListener("wheel", handleWheel);
     }
     document.removeEventListener("keydown", handleKeyDown);
 
@@ -150,9 +337,44 @@ export function createPolygonDrawController({
       }
     }
 
-    // Snap point to grid, with optional angle constraint
+    // Edge snapping for first two points when in edge snap mode
+    if (edgeSnapMode && points.length < 2) {
+      let edgePoint;
+
+      if (points.length === 0) {
+        // First point: snap to any room edge
+        const nearest = findNearestEdgePoint(svgPoint, roomEdges);
+        if (!nearest) return; // No edges available
+        edgePoint = nearest.point;
+        snapTargetRoomId = nearest.roomId;
+      } else {
+        // Second point: must be on same room's edge
+        const nearest = findNearestEdgePointOnRoom(svgPoint, roomEdges, snapTargetRoomId);
+        if (!nearest) return;
+        edgePoint = nearest.point;
+      }
+
+      points.push(edgePoint);
+      currentEdgeSnapPoint = null;
+      updatePreview();
+
+      if (points.length === 1) {
+        updateHint("Click on the same room edge for second point • This defines the shared wall");
+      } else if (points.length === 2) {
+        updateHint("Now draw freely • Shift for 15° angles • Right-click to undo");
+      }
+      return;
+    }
+
+    // Normal snapping for subsequent points
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
     const snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+
+    // Reject clicks inside existing rooms
+    if (cachedFloor && isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null) {
+      // Point is inside a room - don't add it
+      return;
+    }
 
     // Add snapped point
     points.push(snappedPoint);
@@ -166,12 +388,37 @@ export function createPolygonDrawController({
   }
 
   function handleMouseMove(e) {
-    if (!isDrawing || points.length === 0) return;
+    if (!isDrawing) return;
 
     const svg = getSvg();
     if (!svg) return;
 
     const svgPoint = pointerToSvgXY(svg, e.clientX, e.clientY);
+
+    // Edge snapping mode for first two points
+    if (edgeSnapMode && points.length < 2) {
+      let nearest;
+      if (points.length === 0) {
+        // First point: snap to any room edge
+        nearest = findNearestEdgePoint(svgPoint, roomEdges);
+      } else {
+        // Second point: snap only to the same room's edges
+        nearest = findNearestEdgePointOnRoom(svgPoint, roomEdges, snapTargetRoomId);
+      }
+
+      if (nearest) {
+        currentEdgeSnapPoint = nearest.point;
+      } else {
+        currentEdgeSnapPoint = null;
+      }
+
+      updatePreview();
+      return;
+    }
+
+    // No preview until we have at least one point
+    if (points.length === 0) return;
+
     const lastPoint = points[points.length - 1];
 
     // When we have enough points to close and Shift is held,
@@ -210,6 +457,10 @@ export function createPolygonDrawController({
       snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
     }
 
+    // Check if the snapped point is inside any existing room
+    currentMousePoint = snappedPoint;
+    isMouseInsideRoom = cachedFloor ? isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null : false;
+
     updatePreview(snappedPoint);
   }
 
@@ -246,17 +497,37 @@ export function createPolygonDrawController({
     if (points.length > 0) {
       // Remove last point
       points.pop();
-      updatePreview();
 
-      if (points.length === 0) {
-        updateHint("Click to place first corner point");
-      } else if (points.length < MIN_POINTS) {
-        updateHint("Click to add more points • Right-click or Escape to cancel");
+      // Reset edge snap state if we're back to needing first point
+      if (edgeSnapMode) {
+        if (points.length === 0) {
+          snapTargetRoomId = null;
+          updateHint("Click on an existing room edge to start • Move along edge to position");
+        } else if (points.length === 1) {
+          updateHint("Click on the same room edge for second point • This defines the shared wall");
+        }
+      } else {
+        if (points.length === 0) {
+          updateHint("Click to place first corner point");
+        } else if (points.length < MIN_POINTS) {
+          updateHint("Click to add more points • Right-click or Escape to cancel");
+        }
       }
+
+      updatePreview();
     } else {
       // Cancel drawing
       stopDrawing(true);
     }
+  }
+
+  function handleWheel() {
+    if (!isDrawing) return;
+    // After wheel zoom, the render cycle clears the SVG and removes our previewGroup.
+    // Schedule updatePreview after the zoom-pan controller finishes its render.
+    requestAnimationFrame(() => {
+      updatePreview();
+    });
   }
 
   function handleKeyDown(e) {
@@ -311,6 +582,45 @@ export function createPolygonDrawController({
     // Clear previous preview
     previewGroup.innerHTML = "";
 
+    // Edge snap mode preview (before any points or with one point)
+    if (edgeSnapMode && points.length < 2 && currentEdgeSnapPoint) {
+      // Draw the edge snap marker (green circle)
+      const snapCircle = svgEl("circle", {
+        cx: currentEdgeSnapPoint.x,
+        cy: currentEdgeSnapPoint.y,
+        r: 8,
+        fill: "#22c55e",
+        stroke: "#fff",
+        "stroke-width": 2,
+        class: "edge-snap-marker"
+      });
+      previewGroup.appendChild(snapCircle);
+
+      // If we have one point, draw line from first point to snap point
+      if (points.length === 1) {
+        const linePath = svgEl("path", {
+          d: `M ${points[0].x} ${points[0].y} L ${currentEdgeSnapPoint.x} ${currentEdgeSnapPoint.y}`,
+          fill: "none",
+          stroke: "#22c55e",
+          "stroke-width": 2,
+          "stroke-dasharray": "5,5"
+        });
+        previewGroup.appendChild(linePath);
+
+        // Draw first point
+        const firstCircle = svgEl("circle", {
+          cx: points[0].x,
+          cy: points[0].y,
+          r: 6,
+          fill: "#22c55e",
+          stroke: "#fff",
+          "stroke-width": 2
+        });
+        previewGroup.appendChild(firstCircle);
+      }
+      return;
+    }
+
     if (points.length === 0) return;
 
     // Draw lines between points
@@ -357,11 +667,13 @@ export function createPolygonDrawController({
     // Draw vertex circles
     points.forEach((p, i) => {
       const isFirst = i === 0;
+      // First two points in edge snap mode are green (shared edge)
+      const isSharedEdge = edgeSnapMode && i < 2;
       const circle = svgEl("circle", {
         cx: p.x,
         cy: p.y,
         r: isFirst && points.length >= MIN_POINTS ? 8 : 5,
-        fill: isFirst ? "#22c55e" : "#3b82f6",
+        fill: isSharedEdge ? "#22c55e" : (isFirst ? "#22c55e" : "#3b82f6"),
         stroke: "#fff",
         "stroke-width": 2,
         class: isFirst ? "close-target" : ""
@@ -371,13 +683,15 @@ export function createPolygonDrawController({
 
     // Draw mouse position marker
     if (mousePoint) {
+      // Show red marker if inside a room, blue otherwise
+      const isInvalid = isMouseInsideRoom;
       const mouseCircle = svgEl("circle", {
         cx: mousePoint.x,
         cy: mousePoint.y,
-        r: 4,
-        fill: "rgba(59, 130, 246, 0.5)",
-        stroke: "#3b82f6",
-        "stroke-width": 1
+        r: isInvalid ? 6 : 4,
+        fill: isInvalid ? "rgba(239, 68, 68, 0.7)" : "rgba(59, 130, 246, 0.5)",
+        stroke: isInvalid ? "#dc2626" : "#3b82f6",
+        "stroke-width": isInvalid ? 2 : 1
       });
       previewGroup.appendChild(mouseCircle);
     }

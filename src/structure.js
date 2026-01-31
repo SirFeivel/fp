@@ -1,5 +1,6 @@
 import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_CONFIG } from './core.js';
 import { t } from './i18n.js';
+import { getRoomAbsoluteBounds } from './floor_geometry.js';
 
 export function createStructureController({
   store,
@@ -125,6 +126,31 @@ export function createStructureController({
     store.commit(t("structure.floorDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
+  /**
+   * Find a position for a new room that is adjacent to existing rooms
+   */
+  function findConnectedPositionForNewRoom(newRoom, existingRooms) {
+    // If no existing rooms, place at origin
+    if (!existingRooms || existingRooms.length === 0) {
+      return { x: 0, y: 0 };
+    }
+
+    // Find the rightmost edge of all existing rooms
+    let maxRight = -Infinity;
+    let topAtMaxRight = 0;
+
+    for (const room of existingRooms) {
+      const bounds = getRoomAbsoluteBounds(room);
+      if (bounds.right > maxRight) {
+        maxRight = bounds.right;
+        topAtMaxRight = bounds.top;
+      }
+    }
+
+    // Place new room to the right of the rightmost room
+    return { x: maxRight, y: topAtMaxRight };
+  }
+
   function addRoom() {
     const state = store.getState();
     const next = deepClone(state);
@@ -159,6 +185,10 @@ export function createStructureController({
       },
       skirting: { ...DEFAULT_SKIRTING_CONFIG }
     };
+
+    // Find a connected position for the new room
+    const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms);
+    newRoom.floorPosition = connectedPos;
 
     currentFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
