@@ -314,6 +314,14 @@ export function renderWarnings(state, validateState) {
     }
   }
 
+  // Add floor view hint when in floor planning mode
+  if (state.view?.planningMode === "floor") {
+    tips.push({
+      title: t("warnings.tip"),
+      text: t("floor.hintDragRooms") || "Drag rooms to position • Double-click to edit room"
+    });
+  }
+
   const createWarnItem = (title, text, className) => {
     const div = document.createElement("div");
     div.className = className;
@@ -2712,6 +2720,36 @@ export function renderFloorCanvas({
     svg.appendChild(imgEl);
   }
 
+  // Render grid if enabled
+  if (state.view?.showGrid) {
+    const gridGroup = svgEl("g", { opacity: 0.5 });
+    const minor = 10, major = 100;
+    const gridBounds = {
+      minX: Math.floor(bounds.minX / major) * major - major,
+      minY: Math.floor(bounds.minY / major) * major - major,
+      maxX: Math.ceil(bounds.maxX / major) * major + major,
+      maxY: Math.ceil(bounds.maxY / major) * major + major
+    };
+
+    for (let x = gridBounds.minX; x <= gridBounds.maxX; x += minor) {
+      const isMajor = x % major === 0;
+      gridGroup.appendChild(svgEl("line", {
+        x1: x, y1: gridBounds.minY, x2: x, y2: gridBounds.maxY,
+        stroke: isMajor ? "#1f2b46" : "#14203a",
+        "stroke-width": isMajor ? 0.6 : 0.3
+      }));
+    }
+    for (let y = gridBounds.minY; y <= gridBounds.maxY; y += minor) {
+      const isMajor = y % major === 0;
+      gridGroup.appendChild(svgEl("line", {
+        x1: gridBounds.minX, y1: y, x2: gridBounds.maxX, y2: y,
+        stroke: isMajor ? "#1f2b46" : "#14203a",
+        "stroke-width": isMajor ? 0.6 : 0.3
+      }));
+    }
+    svg.appendChild(gridGroup);
+  }
+
   // Render each room
   for (const room of floor.rooms) {
     const pos = room.floorPosition || { x: 0, y: 0 };
@@ -3099,20 +3137,6 @@ export function renderFloorCanvas({
 
     svg.appendChild(markerGroup);
   }
-
-  // Add floor view hint text at the top
-  const hintY = viewBox.minY + 15;
-  const hintX = viewBox.minX + viewBox.width / 2;
-  const hintText = svgEl("text", {
-    x: hintX,
-    y: hintY,
-    fill: "rgba(150, 180, 220, 0.7)",
-    "font-size": 12,
-    "font-family": "system-ui, -apple-system, sans-serif",
-    "text-anchor": "middle"
-  });
-  hintText.textContent = t("floor.hintDragRooms") || "Drag rooms to position • Double-click to edit room";
-  svg.appendChild(hintText);
 
   // Update scale indicator if background is calibrated
   const scaleIndicator = document.getElementById("floorScaleIndicator");

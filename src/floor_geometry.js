@@ -1007,6 +1007,96 @@ export function findConnectedRoomGroups(rooms, minSharedLength = 10) {
 }
 
 /**
+ * Find pattern-linked room groups.
+ * Rooms are in the same linked group if:
+ * 1. They are physically adjacent (share >= minSharedLength of wall)
+ * 2. BOTH rooms have patternLinking.enabled !== false (defaults to true)
+ *
+ * This is used for continuous tile pattern across rooms.
+ * If a room has linking disabled, it breaks the chain - rooms on either side
+ * become separate groups even if they would otherwise be connected through it.
+ *
+ * @param {Array} rooms - Array of room objects
+ * @param {number} minSharedLength - Minimum shared edge length to consider adjacent
+ * @returns {Array} Array of groups, each group is array of room IDs
+ */
+export function findPatternLinkedGroups(rooms, minSharedLength = 10) {
+  if (!rooms || rooms.length === 0) return [];
+
+  // Filter to only rooms with linking enabled (defaults to true if not set)
+  const linkableRooms = rooms.filter(r => r.patternLinking?.enabled !== false);
+
+  if (linkableRooms.length === 0) {
+    // All rooms have linking disabled - each is its own group
+    return rooms.map(r => [r.id]);
+  }
+
+  if (linkableRooms.length === 1) {
+    // Only one linkable room
+    const groups = [[linkableRooms[0].id]];
+    // Add non-linkable rooms as individual groups
+    for (const room of rooms) {
+      if (room.patternLinking?.enabled === false) {
+        groups.push([room.id]);
+      }
+    }
+    return groups;
+  }
+
+  const visited = new Set();
+  const groups = [];
+
+  // Build adjacency map only between linkable rooms
+  const adjacencyMap = new Map();
+  for (const room of linkableRooms) {
+    adjacencyMap.set(room.id, []);
+  }
+
+  for (let i = 0; i < linkableRooms.length; i++) {
+    for (let j = i + 1; j < linkableRooms.length; j++) {
+      if (areRoomsAdjacent(linkableRooms[i], linkableRooms[j], 1, minSharedLength)) {
+        adjacencyMap.get(linkableRooms[i].id).push(linkableRooms[j].id);
+        adjacencyMap.get(linkableRooms[j].id).push(linkableRooms[i].id);
+      }
+    }
+  }
+
+  // Flood-fill to find connected groups among linkable rooms
+  for (const room of linkableRooms) {
+    if (visited.has(room.id)) continue;
+
+    const group = [];
+    const queue = [room.id];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      if (visited.has(currentId)) continue;
+
+      visited.add(currentId);
+      group.push(currentId);
+
+      const neighbors = adjacencyMap.get(currentId) || [];
+      for (const neighborId of neighbors) {
+        if (!visited.has(neighborId)) {
+          queue.push(neighborId);
+        }
+      }
+    }
+
+    groups.push(group);
+  }
+
+  // Add non-linkable rooms as individual groups
+  for (const room of rooms) {
+    if (room.patternLinking?.enabled === false) {
+      groups.push([room.id]);
+    }
+  }
+
+  return groups;
+}
+
+/**
  * Validate floor connectivity - all rooms should be in one connected group
  * @param {Object} floor - Floor object with rooms array
  * @param {number} minSharedLength - Minimum shared edge length

@@ -13,7 +13,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
-import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, findPatternLinkedGroups } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -730,17 +730,35 @@ function initBackgroundControls() {
     backgroundController.updateOpacity(opacity);
   });
 
-  // Pattern linking toggle
+  // Pattern linking toggle - per-room setting
   floorLinkPatterns?.addEventListener("change", (e) => {
     const state = store.getState();
     const next = deepClone(state);
+    const room = getCurrentRoom(next);
     const floor = getCurrentFloor(next);
 
-    if (floor) {
-      floor.patternLinking = floor.patternLinking || { enabled: false, globalOrigin: { x: 0, y: 0 } };
-      floor.patternLinking.enabled = e.target.checked;
+    if (room && floor?.rooms) {
+      room.patternLinking = room.patternLinking || {};
+      room.patternLinking.enabled = e.target.checked;
 
-      store.commit(t("floor.patternLinkingChanged") || "Pattern linking changed", next, {
+      if (!e.target.checked) {
+        // Turning OFF - recalculate and turn off any rooms that become isolated
+        const newGroups = findPatternLinkedGroups(floor.rooms);
+
+        // Find rooms that are now in groups of size 1 (isolated)
+        for (const group of newGroups) {
+          if (group.length === 1) {
+            const isolatedRoom = floor.rooms.find(r => r.id === group[0]);
+            if (isolatedRoom && isolatedRoom.patternLinking?.enabled !== false) {
+              isolatedRoom.patternLinking = isolatedRoom.patternLinking || {};
+              isolatedRoom.patternLinking.enabled = false;
+            }
+          }
+        }
+      }
+      // Turning ON - just set enabled=true, linking happens automatically if neighbor has it enabled
+
+      store.commit(t("room.patternLinkingChanged") || "Pattern linking changed", next, {
         onRender: renderAll,
         updateMetaCb: updateMeta
       });
@@ -1847,14 +1865,6 @@ function updateAllTranslations() {
         e.target !== quickAddExclusion) {
       exclDropdown.classList.add("hidden");
     }
-    // Close room dropdown
-    const roomDropdown = document.getElementById("roomDropdown");
-    const floorAddRoomBtn = document.getElementById("floorAddRoomBtn");
-    if (roomDropdown && !roomDropdown.classList.contains("hidden") &&
-        !roomDropdown.contains(e.target) &&
-        e.target !== floorAddRoomBtn) {
-      roomDropdown.classList.add("hidden");
-    }
   });
 
   // Exclusion dropdown items
@@ -1895,18 +1905,8 @@ function updateAllTranslations() {
     zoomPanController.reset();
   });
 
-  // Floor view room dropdown (like exclusion dropdown)
-  const floorAddRoomBtn = document.getElementById("floorAddRoomBtn");
-  const roomDropdown = document.getElementById("roomDropdown");
-
-  floorAddRoomBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    roomDropdown?.classList.toggle("hidden");
-  });
-
-  // Floor view room management
+  // Floor view room management - Add rectangle room
   document.getElementById("floorAddRoom")?.addEventListener("click", () => {
-    roomDropdown?.classList.add("hidden");
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -1981,15 +1981,14 @@ function updateAllTranslations() {
 
   // Draw Room button - start polygon drawing mode
   document.getElementById("floorDrawRoom")?.addEventListener("click", () => {
-    roomDropdown?.classList.add("hidden");
     const state = store.getState();
     if (state.view?.planningMode !== "floor") return;
 
-    const addRoomBtn = document.getElementById("floorAddRoomBtn");
-    if (addRoomBtn) addRoomBtn.classList.add("active");
+    const drawRoomBtn = document.getElementById("floorDrawRoom");
+    if (drawRoomBtn) drawRoomBtn.classList.add("active");
 
     polygonDrawController.startDrawing((polygonPoints) => {
-      if (addRoomBtn) addRoomBtn.classList.remove("active");
+      if (drawRoomBtn) drawRoomBtn.classList.remove("active");
 
       // Create room from polygon
       const newRoom = polygonDrawController.createRoomFromPolygon(polygonPoints);
@@ -2174,6 +2173,7 @@ function updateAllTranslations() {
   function syncBackgroundControls() {
     const state = store.getState();
     const floor = getCurrentFloor(state);
+    const room = getCurrentRoom(state);
     const hasBackground = Boolean(floor?.layout?.background?.dataUrl);
 
     const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
@@ -2188,8 +2188,16 @@ function updateAllTranslations() {
       }
     }
 
+    // Pattern linking - show per-room setting (enabled/disabled)
+    // Actual linking only happens when adjacent rooms both have it enabled
     if (floorLinkPatterns) {
-      floorLinkPatterns.checked = floor?.patternLinking?.enabled || false;
+      if (room) {
+        floorLinkPatterns.checked = room.patternLinking?.enabled !== false;
+        floorLinkPatterns.disabled = false;
+      } else {
+        floorLinkPatterns.checked = false;
+        floorLinkPatterns.disabled = true;
+      }
     }
   }
 

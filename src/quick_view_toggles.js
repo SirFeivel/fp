@@ -3,6 +3,7 @@
 export function wireQuickViewToggleHandlers() {
   const quickShowGrid = document.getElementById("quickShowGrid");
   const quickShowSkirting = document.getElementById("quickShowSkirting");
+  const floorShowGrid = document.getElementById("floorShowGrid");
 
   quickShowGrid?.addEventListener("change", (e) => {
     const mainShowGrid = document.getElementById("showGrid");
@@ -19,14 +20,25 @@ export function wireQuickViewToggleHandlers() {
       mainShowSkirting.dispatchEvent(new Event("change", { bubbles: true }));
     }
   });
+
+  // Floor view grid toggle - syncs with main showGrid
+  floorShowGrid?.addEventListener("change", (e) => {
+    const mainShowGrid = document.getElementById("showGrid");
+    if (mainShowGrid) {
+      mainShowGrid.checked = e.target.checked;
+      mainShowGrid.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
 }
 
 export function syncQuickViewToggleStates() {
   const quickShowGrid = document.getElementById("quickShowGrid");
   const quickShowSkirting = document.getElementById("quickShowSkirting");
+  const floorShowGrid = document.getElementById("floorShowGrid");
   const mainShowGrid = document.getElementById("showGrid");
   const mainShowSkirting = document.getElementById("showSkirting");
 
   if (quickShowGrid && mainShowGrid) quickShowGrid.checked = mainShowGrid.checked;
   if (quickShowSkirting && mainShowSkirting) quickShowSkirting.checked = mainShowSkirting.checked;
+  if (floorShowGrid && mainShowGrid) floorShowGrid.checked = mainShowGrid.checked;
 }

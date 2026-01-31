@@ -20,6 +20,7 @@ import {
   findPositionOnFreeEdge,
   subtractOverlappingAreas,
   findConnectedRoomGroups,
+  findPatternLinkedGroups,
   validateFloorConnectivity
 } from './floor_geometry.js';
 
@@ -1130,5 +1131,174 @@ describe('subtractOverlappingAreas', () => {
 
     const result2 = subtractOverlappingAreas({}, null);
     expect(result2.modifiedRoomIds).toHaveLength(0);
+  });
+});
+
+describe('findPatternLinkedGroups', () => {
+  it('returns empty array for empty input', () => {
+    expect(findPatternLinkedGroups([])).toEqual([]);
+    expect(findPatternLinkedGroups(null)).toEqual([]);
+  });
+
+  it('links all rooms by default (patternLinking not set)', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toContain('r1');
+    expect(groups[0]).toContain('r2');
+  });
+
+  it('links rooms with patternLinking.enabled = true', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: true }
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: true }
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(2);
+  });
+
+  it('breaks chain when room has patternLinking.enabled = false', () => {
+    // Three rooms in a row: A - B - C
+    // B has linking disabled, so A and C should be separate groups
+    const rooms = [
+      {
+        id: 'A',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: true }
+      },
+      {
+        id: 'B',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: false }
+      },
+      {
+        id: 'C',
+        floorPosition: { x: 200, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: true }
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    // Should be 3 groups: A alone, B alone, C alone (since A and C aren't adjacent)
+    expect(groups).toHaveLength(3);
+
+    // Each room should be in its own group
+    const groupIds = groups.map(g => g.sort().join(','));
+    expect(groupIds).toContain('A');
+    expect(groupIds).toContain('B');
+    expect(groupIds).toContain('C');
+  });
+
+  it('keeps adjacent linked rooms together when middle room breaks chain', () => {
+    // Four rooms: A - B - C - D
+    // B has linking disabled
+    // A is alone, B is alone, C-D should be linked (they are adjacent and both have linking enabled)
+    const rooms = [
+      {
+        id: 'A',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'B',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: false }
+      },
+      {
+        id: 'C',
+        floorPosition: { x: 200, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'D',
+        floorPosition: { x: 300, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+
+    // Find each group
+    const findGroupWith = (id) => groups.find(g => g.includes(id));
+
+    // A should be alone (adjacent to B which is disabled)
+    expect(findGroupWith('A')).toEqual(['A']);
+
+    // B should be alone (disabled)
+    expect(findGroupWith('B')).toEqual(['B']);
+
+    // C and D should be together
+    const cdGroup = findGroupWith('C');
+    expect(cdGroup).toContain('C');
+    expect(cdGroup).toContain('D');
+    expect(cdGroup).toHaveLength(2);
+  });
+
+  it('handles all rooms with linking disabled', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: false }
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        patternLinking: { enabled: false }
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveLength(1);
+    expect(groups[1]).toHaveLength(1);
+  });
+
+  it('does not link non-adjacent rooms even with linking enabled', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 500, y: 500 }, // Far away, not adjacent
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(2);
   });
 });
