@@ -6,10 +6,11 @@ import { deepClone, getCurrentFloor } from "./core.js";
 
 /**
  * Creates a background controller for handling floor background images.
- * Supports image upload, calibration, and opacity control.
+ * Supports image upload, calibration (3 measurements), and opacity control.
  */
 export function createBackgroundController({ store, renderAll, updateMeta }) {
   let calibrationState = null;
+  const REQUIRED_MEASUREMENTS = 3;
 
   /**
    * Reads a file as a data URL.
@@ -152,9 +153,16 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
 
   /**
    * Starts calibration mode.
-   * User needs to click two points on the image and provide the known distance.
+   * User needs to make 3 measurements for accuracy.
+   * @param {SVGElement} svg - The SVG element to calibrate on
+   * @param {Object} callbacks - Callback functions for UI updates
+   * @param {Function} callbacks.onStepStart - Called when a new step starts (stepNumber, totalSteps)
+   * @param {Function} callbacks.onLineDrawn - Called when line is drawn, expects length input (pixelDistance, stepNumber)
+   * @param {Function} callbacks.onMeasurementAdded - Called when a measurement is confirmed (measurements array)
+   * @param {Function} callbacks.onComplete - Called when calibration completes (success, avgPixelsPerCm)
+   * @param {Function} callbacks.onCancel - Called when calibration is cancelled
    */
-  function startCalibration(svg, onComplete) {
+  function startCalibration(svg, callbacks = {}) {
     if (calibrationState) {
       cancelCalibration();
     }
@@ -163,9 +171,11 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       svg,
       startPoint: null,
       endPoint: null,
-      line: null,
-      markers: [],
-      onComplete
+      currentLine: null,
+      currentMarkers: [],
+      measurements: [], // Array of { pixelDistance, lengthCm, pixelsPerCm }
+      callbacks,
+      waitingForInput: false
     };
 
     // Change cursor
@@ -175,6 +185,9 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     calibrationState.clickHandler = (e) => handleCalibrationClick(e);
     svg.addEventListener("click", calibrationState.clickHandler);
 
+    // Notify UI that step 1 is starting
+    callbacks.onStepStart?.(1, REQUIRED_MEASUREMENTS);
+
     return true;
   }
 
@@ -182,7 +195,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
    * Handles click during calibration.
    */
   function handleCalibrationClick(e) {
-    if (!calibrationState) return;
+    if (!calibrationState || calibrationState.waitingForInput) return;
 
     const svg = calibrationState.svg;
     const rect = svg.getBoundingClientRect();
@@ -200,26 +213,31 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
 
       // Draw marker
       const marker = createCalibrationMarker(svg, svgX, svgY);
-      calibrationState.markers.push(marker);
+      calibrationState.currentMarkers.push(marker);
     } else {
-      // Second click - set end point and calculate
+      // Second click - set end point and show input
       calibrationState.endPoint = { x: svgX, y: svgY };
 
       // Draw marker
       const marker = createCalibrationMarker(svg, svgX, svgY);
-      calibrationState.markers.push(marker);
+      calibrationState.currentMarkers.push(marker);
 
       // Draw line
       const line = createCalibrationLine(svg, calibrationState.startPoint, calibrationState.endPoint);
-      calibrationState.line = line;
+      calibrationState.currentLine = line;
 
       // Calculate pixel distance
       const dx = calibrationState.endPoint.x - calibrationState.startPoint.x;
       const dy = calibrationState.endPoint.y - calibrationState.startPoint.y;
       const pixelDistance = Math.sqrt(dx * dx + dy * dy);
 
-      // Prompt user for known length
-      promptForKnownLength(pixelDistance);
+      // Store current pixel distance and wait for input
+      calibrationState.currentPixelDistance = pixelDistance;
+      calibrationState.waitingForInput = true;
+
+      // Notify UI to show input field
+      const stepNumber = calibrationState.measurements.length + 1;
+      calibrationState.callbacks.onLineDrawn?.(pixelDistance, stepNumber);
     }
   }
 
@@ -279,30 +297,73 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
   }
 
   /**
-   * Prompts the user for the known length and completes calibration.
+   * Confirms the current measurement with the user-provided length.
+   * Called from UI when user enters the known length.
    */
-  function promptForKnownLength(pixelDistance) {
-    const knownLength = prompt(t("floor.calibratePrompt") || "Enter the known length in cm:");
+  function confirmMeasurement(lengthCm) {
+    if (!calibrationState || !calibrationState.waitingForInput) return false;
 
-    if (knownLength === null) {
-      cancelCalibration();
-      return;
+    const parsedLength = parseFloat(lengthCm);
+    if (!Number.isFinite(parsedLength) || parsedLength <= 0) {
+      return false;
     }
 
-    const lengthCm = parseFloat(knownLength);
-    if (!Number.isFinite(lengthCm) || lengthCm <= 0) {
-      alert(t("floor.calibrateInvalidLength") || "Please enter a valid positive number.");
-      cancelCalibration();
-      return;
+    const pixelDistance = calibrationState.currentPixelDistance;
+    const pixelsPerCm = pixelDistance / parsedLength;
+
+    // Add measurement
+    calibrationState.measurements.push({
+      pixelDistance,
+      lengthCm: parsedLength,
+      pixelsPerCm
+    });
+
+    // Clear current line/markers for next measurement
+    clearCurrentMeasurement();
+
+    // Notify UI of measurement added
+    calibrationState.callbacks.onMeasurementAdded?.(calibrationState.measurements);
+
+    // Check if we have enough measurements
+    if (calibrationState.measurements.length >= REQUIRED_MEASUREMENTS) {
+      completeCalibration();
+    } else {
+      // Prepare for next measurement
+      calibrationState.waitingForInput = false;
+      calibrationState.startPoint = null;
+      calibrationState.endPoint = null;
+
+      // Notify UI that next step is starting
+      const nextStep = calibrationState.measurements.length + 1;
+      calibrationState.callbacks.onStepStart?.(nextStep, REQUIRED_MEASUREMENTS);
     }
 
-    completeCalibration(pixelDistance, lengthCm);
+    return true;
   }
 
   /**
-   * Completes calibration with the calculated scale.
+   * Clears the current measurement's visual elements.
    */
-  function completeCalibration(pixelDistance, knownLengthCm) {
+  function clearCurrentMeasurement() {
+    if (!calibrationState) return;
+
+    // Remove current markers
+    calibrationState.currentMarkers.forEach(m => m.remove());
+    calibrationState.currentMarkers = [];
+
+    // Remove current line
+    if (calibrationState.currentLine) {
+      calibrationState.currentLine.remove();
+      calibrationState.currentLine = null;
+    }
+  }
+
+  /**
+   * Completes calibration with the average of all measurements.
+   */
+  function completeCalibration() {
+    if (!calibrationState) return;
+
     const state = store.getState();
     const next = deepClone(state);
     const floor = getCurrentFloor(next);
@@ -312,38 +373,44 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       return;
     }
 
-    const pixelsPerCm = pixelDistance / knownLengthCm;
+    // Calculate average pixelsPerCm from all measurements
+    const measurements = calibrationState.measurements;
+    const avgPixelsPerCm = measurements.reduce((sum, m) => sum + m.pixelsPerCm, 0) / measurements.length;
+
+    // Calculate total reference values for display
+    const totalPixels = measurements.reduce((sum, m) => sum + m.pixelDistance, 0);
+    const totalCm = measurements.reduce((sum, m) => sum + m.lengthCm, 0);
 
     floor.layout.background.scale = {
       calibrated: true,
-      pixelsPerCm,
-      referenceLengthCm: knownLengthCm,
-      referencePixels: pixelDistance
+      pixelsPerCm: avgPixelsPerCm,
+      measurements: measurements.length,
+      referenceLengthCm: totalCm / measurements.length,
+      referencePixels: totalPixels / measurements.length
     };
 
+    const callbacks = calibrationState.callbacks;
+
     cleanupCalibration();
+    calibrationState = null;
 
     store.commit(t("floor.calibrateSuccess") || "Calibration successful", next, {
       onRender: renderAll,
       updateMetaCb: updateMeta
     });
 
-    if (calibrationState?.onComplete) {
-      calibrationState.onComplete(true);
-    }
-
-    calibrationState = null;
+    // Notify UI of completion
+    callbacks.onComplete?.(true, avgPixelsPerCm);
   }
 
   /**
    * Cancels calibration mode.
    */
   function cancelCalibration() {
+    const callbacks = calibrationState?.callbacks;
     cleanupCalibration();
-    if (calibrationState?.onComplete) {
-      calibrationState.onComplete(false);
-    }
     calibrationState = null;
+    callbacks?.onCancel?.();
   }
 
   /**
@@ -352,7 +419,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
   function cleanupCalibration() {
     if (!calibrationState) return;
 
-    const { svg, clickHandler, markers, line } = calibrationState;
+    const { svg, clickHandler, currentMarkers, currentLine } = calibrationState;
 
     // Remove event listener
     if (clickHandler) {
@@ -362,11 +429,24 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     // Reset cursor
     svg.style.cursor = "";
 
-    // Remove markers
-    markers.forEach(m => m.remove());
+    // Remove current markers
+    currentMarkers.forEach(m => m.remove());
 
-    // Remove line
-    if (line) line.remove();
+    // Remove current line
+    if (currentLine) currentLine.remove();
+  }
+
+  /**
+   * Gets the current calibration step info.
+   */
+  function getCalibrationProgress() {
+    if (!calibrationState) return null;
+    return {
+      currentStep: calibrationState.measurements.length + 1,
+      totalSteps: REQUIRED_MEASUREMENTS,
+      measurements: calibrationState.measurements,
+      waitingForInput: calibrationState.waitingForInput
+    };
   }
 
   /**
@@ -400,6 +480,8 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     updatePosition,
     startCalibration,
     cancelCalibration,
-    isCalibrating
+    confirmMeasurement,
+    isCalibrating,
+    getCalibrationProgress
   };
 }

@@ -2864,4 +2864,18 @@ export function renderFloorCanvas({
   });
   hintText.textContent = t("floor.hintDragRooms") || "Drag rooms to position • Double-click to edit room";
   svg.appendChild(hintText);
+
+  // Update scale indicator if background is calibrated
+  const scaleIndicator = document.getElementById("floorScaleIndicator");
+  const scaleText = document.getElementById("floorScaleText");
+  if (scaleIndicator && scaleText) {
+    const bg = floor.layout?.background;
+    if (bg?.scale?.calibrated && bg.scale.pixelsPerCm) {
+      scaleIndicator.classList.remove("hidden");
+      scaleText.textContent = t("floor.calibrateScale")
+        .replace("{px}", bg.scale.pixelsPerCm.toFixed(2));
+    } else {
+      scaleIndicator.classList.add("hidden");
+    }
+  }
 }

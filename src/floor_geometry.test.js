@@ -6,7 +6,12 @@ import {
   floorToRoom,
   translateMultiPolygon,
   areRoomsAdjacent,
-  findAdjacentRooms
+  findAdjacentRooms,
+  getRoomAbsoluteBounds,
+  doRoomsOverlap,
+  wouldRoomOverlap,
+  findRoomSnapPositions,
+  findNearestNonOverlappingPosition
 } from './floor_geometry.js';
 
 describe('getFloorBounds', () => {
@@ -275,5 +280,159 @@ describe('findAdjacentRooms', () => {
     };
     const adjacent = findAdjacentRooms(floor, 'r1');
     expect(adjacent).toEqual([]);
+  });
+});
+
+describe('getRoomAbsoluteBounds', () => {
+  it('returns absolute bounds for room at origin', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    const bounds = getRoomAbsoluteBounds(room);
+    expect(bounds.left).toBe(0);
+    expect(bounds.right).toBe(200);
+    expect(bounds.top).toBe(0);
+    expect(bounds.bottom).toBe(150);
+  });
+
+  it('returns absolute bounds for room with offset', () => {
+    const room = {
+      floorPosition: { x: 100, y: 50 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    const bounds = getRoomAbsoluteBounds(room);
+    expect(bounds.left).toBe(100);
+    expect(bounds.right).toBe(300);
+    expect(bounds.top).toBe(50);
+    expect(bounds.bottom).toBe(200);
+  });
+});
+
+describe('doRoomsOverlap', () => {
+  it('detects overlapping rooms', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 50 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    expect(doRoomsOverlap(roomA, roomB)).toBe(true);
+  });
+
+  it('returns false for adjacent rooms (touching but not overlapping)', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    const roomB = {
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    };
+    expect(doRoomsOverlap(roomA, roomB)).toBe(false);
+  });
+
+  it('returns false for separated rooms', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 300, y: 300 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    expect(doRoomsOverlap(roomA, roomB)).toBe(false);
+  });
+});
+
+describe('wouldRoomOverlap', () => {
+  it('detects overlap at proposed position', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 150, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Moving room to x=100 would overlap with other room at x=150
+    expect(wouldRoomOverlap(room, otherRooms, 100, 0)).toBe(true);
+  });
+
+  it('returns false when no overlap at proposed position', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    expect(wouldRoomOverlap(room, otherRooms, 50, 0)).toBe(false);
+  });
+});
+
+describe('findRoomSnapPositions', () => {
+  it('generates snap positions at edges of other rooms', () => {
+    const room = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 150 }]
+    }];
+    const positions = findRoomSnapPositions(room, otherRooms);
+    // Should have positions for all 4 edges × 2 alignment options = 8 positions
+    expect(positions.length).toBe(8);
+    // Check that snap to left edge of other room exists (room's right touches other's left)
+    const leftSnap = positions.find(p => p.x === 100); // 200 - 100 (room width)
+    expect(leftSnap).toBeDefined();
+  });
+});
+
+describe('findNearestNonOverlappingPosition', () => {
+  it('returns desired position when no overlap', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 300, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    const result = findNearestNonOverlappingPosition(room, otherRooms, 50, 50);
+    expect(result).toEqual({ x: 50, y: 50 });
+  });
+
+  it('snaps to adjacent position when overlap detected', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 150, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Trying to move to x=100 would overlap - should snap to x=50 (adjacent left) or x=150 (adjacent right)
+    const result = findNearestNonOverlappingPosition(room, otherRooms, 100, 0);
+    // Should not overlap at the resulting position
+    expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
+  });
+
+  it('pushes room out of overlap when no snap within threshold', () => {
+    const room = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const otherRooms = [{
+      floorPosition: { x: 50, y: 50 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    // Trying to move to exact same position as other room
+    const result = findNearestNonOverlappingPosition(room, otherRooms, 50, 50, 10);
+    // Should not overlap at the resulting position
+    expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 import { deepClone, getCurrentRoom } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { getRoomSections } from "./composite.js";
+import { findNearestNonOverlappingPosition } from "./floor_geometry.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -1346,9 +1347,20 @@ export function createRoomDragController({
       const room = floor?.rooms?.find(r => r.id === drag.roomId);
 
       if (room) {
+        const desiredX = drag.startPos.x + drag.currentDx;
+        const desiredY = drag.startPos.y + drag.currentDy;
+
+        // Get other rooms to check for overlap
+        const otherRooms = floor.rooms.filter(r => r.id !== drag.roomId);
+
+        // Find non-overlapping position (snaps to edges if needed)
+        const snappedPos = findNearestNonOverlappingPosition(
+          room, otherRooms, desiredX, desiredY
+        );
+
         room.floorPosition = room.floorPosition || { x: 0, y: 0 };
-        room.floorPosition.x = drag.startPos.x + drag.currentDx;
-        room.floorPosition.y = drag.startPos.y + drag.currentDy;
+        room.floorPosition.x = snappedPos.x;
+        room.floorPosition.y = snappedPos.y;
 
         commit(getMoveLabel?.() || "Room moved", next);
       }

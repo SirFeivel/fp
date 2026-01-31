@@ -517,17 +517,125 @@ function initBackgroundControls() {
     e.target.value = "";
   });
 
+  // Calibration panel elements
+  const calibrationPanel = document.getElementById("calibrationPanel");
+  const calibrationStep = document.getElementById("calibrationStep");
+  const calibrationInstruction = document.getElementById("calibrationInstruction");
+  const calibrationInputSection = document.getElementById("calibrationInputSection");
+  const calibrationLengthInput = document.getElementById("calibrationLengthInput");
+  const calibrationMeasurements = document.getElementById("calibrationMeasurements");
+  const calibrationSuccess = document.getElementById("calibrationSuccess");
+  const calibrationScaleResult = document.getElementById("calibrationScaleResult");
+  const btnConfirmCalibrationLength = document.getElementById("btnConfirmCalibrationLength");
+  const btnCancelCalibration = document.getElementById("btnCancelCalibration");
+  const btnCloseCalibration = document.getElementById("btnCloseCalibration");
+
+  function showCalibrationPanel() {
+    calibrationPanel?.classList.remove("hidden");
+    calibrationSuccess?.classList.add("hidden");
+    calibrationInputSection?.classList.add("hidden");
+    if (calibrationMeasurements) calibrationMeasurements.innerHTML = "";
+  }
+
+  function hideCalibrationPanel() {
+    calibrationPanel?.classList.add("hidden");
+  }
+
+  function updateCalibrationStep(step, total) {
+    if (calibrationStep) {
+      calibrationStep.textContent = t("floor.calibrateStep")
+        .replace("{n}", step)
+        .replace("{total}", total);
+    }
+    if (calibrationInstruction) {
+      calibrationInstruction.textContent = t("floor.calibrateDrawLine");
+    }
+    calibrationInputSection?.classList.add("hidden");
+  }
+
+  function showCalibrationInput() {
+    calibrationInputSection?.classList.remove("hidden");
+    if (calibrationLengthInput) {
+      calibrationLengthInput.value = "";
+      calibrationLengthInput.focus();
+    }
+  }
+
+  function addMeasurementDisplay(measurements) {
+    if (!calibrationMeasurements) return;
+    calibrationMeasurements.innerHTML = measurements.map((m, i) => `
+      <div class="calibration-measurement">
+        <span class="calibration-measurement-icon">✓</span>
+        <span class="calibration-measurement-text">${t("floor.calibrateMeasurement")
+          .replace("{n}", i + 1)
+          .replace("{cm}", m.lengthCm.toFixed(1))}</span>
+      </div>
+    `).join("");
+  }
+
+  function showCalibrationSuccess(avgPixelsPerCm) {
+    calibrationInputSection?.classList.add("hidden");
+    calibrationSuccess?.classList.remove("hidden");
+    if (calibrationScaleResult) {
+      calibrationScaleResult.textContent = t("floor.calibrateScale")
+        .replace("{px}", avgPixelsPerCm.toFixed(2));
+    }
+  }
+
   // Calibration button
   bgCalibrateBtn?.addEventListener("click", () => {
     const svg = document.getElementById("planSvg");
     if (!svg) return;
 
-    backgroundController.startCalibration(svg, (success) => {
-      if (success) {
-        // Calibration complete
-        console.log("Calibration successful");
+    showCalibrationPanel();
+
+    backgroundController.startCalibration(svg, {
+      onStepStart: (step, total) => {
+        updateCalibrationStep(step, total);
+      },
+      onLineDrawn: (pixelDistance, stepNumber) => {
+        showCalibrationInput();
+      },
+      onMeasurementAdded: (measurements) => {
+        addMeasurementDisplay(measurements);
+      },
+      onComplete: (success, avgPixelsPerCm) => {
+        if (success) {
+          showCalibrationSuccess(avgPixelsPerCm);
+        } else {
+          hideCalibrationPanel();
+        }
+      },
+      onCancel: () => {
+        hideCalibrationPanel();
       }
     });
+  });
+
+  // Confirm measurement button
+  btnConfirmCalibrationLength?.addEventListener("click", () => {
+    const value = calibrationLengthInput?.value;
+    if (value && backgroundController.confirmMeasurement(parseFloat(value))) {
+      // Measurement confirmed, UI will be updated via callbacks
+    }
+  });
+
+  // Handle Enter key in input
+  calibrationLengthInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      btnConfirmCalibrationLength?.click();
+    }
+  });
+
+  // Cancel calibration button
+  btnCancelCalibration?.addEventListener("click", () => {
+    backgroundController.cancelCalibration();
+    hideCalibrationPanel();
+  });
+
+  // Close calibration success
+  btnCloseCalibration?.addEventListener("click", () => {
+    hideCalibrationPanel();
   });
 
   // Opacity slider
@@ -1718,16 +1826,13 @@ function updateAllTranslations() {
       floorPosition: { x: 0, y: 0 }
     };
 
-    // Position new room offset from existing rooms
-    if (nextFloor.rooms.length > 0) {
-      // Find rightmost room edge
-      let maxX = 0;
-      for (const r of nextFloor.rooms) {
-        const pos = r.floorPosition || { x: 0, y: 0 };
-        const roomRight = pos.x + (r.widthCm || 300);
-        maxX = Math.max(maxX, roomRight);
-      }
-      newRoom.floorPosition.x = maxX + 50; // 50cm gap
+    // Position new room next to currently selected room
+    const selectedRoom = nextFloor.rooms.find(r => r.id === state.selectedRoomId);
+    if (selectedRoom) {
+      const pos = selectedRoom.floorPosition || { x: 0, y: 0 };
+      const bounds = getRoomBounds(selectedRoom);
+      newRoom.floorPosition.x = pos.x + bounds.width + 50; // 50cm gap
+      newRoom.floorPosition.y = pos.y; // Same Y position
     }
 
     nextFloor.rooms.push(newRoom);
