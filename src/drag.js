@@ -1566,3 +1566,174 @@ export function createRoomResizeController({
 
   return { onRoomResizePointerDown };
 }
+
+/**
+ * Creates a drag controller for polygon vertices in floor view.
+ * Allows users to drag individual vertices of free-form rooms.
+ */
+export function createPolygonVertexDragController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getCurrentFloor,
+  getVertexMoveLabel
+}) {
+  let drag = null;
+  let dragStartState = null;
+
+  function snapToHalfCm(value) {
+    return Math.round(value / 0.5) * 0.5;
+  }
+
+  function onVertexPointerDown(e, roomId, vertexIndex) {
+    const svg = getSvg();
+    if (!svg) return;
+
+    const state = getState();
+    const floor = getCurrentFloor(state);
+    if (!floor) return;
+
+    const room = floor.rooms?.find(r => r.id === roomId);
+    if (!room || !room.polygonVertices) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    svg.setPointerCapture(e.pointerId);
+
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    dragStartState = deepClone(state);
+
+    drag = {
+      roomId,
+      vertexIndex,
+      startMouse,
+      startVertex: { ...room.polygonVertices[vertexIndex] },
+      roomPos: { ...pos },
+      currentDx: 0,
+      currentDy: 0
+    };
+
+    const vertex = room.polygonVertices[vertexIndex];
+    const absX = pos.x + vertex.x;
+    const absY = pos.y + vertex.y;
+    showResizeOverlay(`x: ${formatCm(absX)} cm  y: ${formatCm(absY)} cm`, e.clientX, e.clientY);
+
+    svg.addEventListener("pointermove", onPointerMove);
+    svg.addEventListener("pointerup", onPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onPointerUp, { once: true });
+  }
+
+  function onPointerMove(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    if (!svg) return;
+
+    const current = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const rawDx = current.x - drag.startMouse.x;
+    const rawDy = current.y - drag.startMouse.y;
+
+    // Snap to 0.5cm grid
+    drag.currentDx = snapToHalfCm(rawDx);
+    drag.currentDy = snapToHalfCm(rawDy);
+
+    const newLocalX = drag.startVertex.x + drag.currentDx;
+    const newLocalY = drag.startVertex.y + drag.currentDy;
+    const absX = drag.roomPos.x + newLocalX;
+    const absY = drag.roomPos.y + newLocalY;
+
+    // Update visual position of vertex handle
+    const handle = svg.querySelector(`[data-vertex-roomid="${drag.roomId}"][data-vertex-index="${drag.vertexIndex}"]`);
+    if (handle) {
+      handle.setAttribute("cx", absX);
+      handle.setAttribute("cy", absY);
+    }
+
+    // Update the room polygon path visual
+    const state = dragStartState;
+    const floor = getCurrentFloor(state);
+    const room = floor?.rooms?.find(r => r.id === drag.roomId);
+    if (room?.polygonVertices) {
+      const vertices = room.polygonVertices.map((v, i) => {
+        if (i === drag.vertexIndex) {
+          return { x: newLocalX, y: newLocalY };
+        }
+        return v;
+      });
+      const pos = room.floorPosition || { x: 0, y: 0 };
+      const pathD = vertices.map((v, i) =>
+        `${i === 0 ? "M" : "L"} ${pos.x + v.x} ${pos.y + v.y}`
+      ).join(" ") + " Z";
+
+      const roomPath = svg.querySelector(`[data-roomid="${drag.roomId}"] path`);
+      if (roomPath) {
+        roomPath.setAttribute("d", pathD);
+      }
+    }
+
+    showResizeOverlay(`x: ${formatCm(absX)} cm  y: ${formatCm(absY)} cm`, e.clientX, e.clientY);
+  }
+
+  function onPointerUp(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    if (svg) {
+      svg.releasePointerCapture(e.pointerId);
+      svg.removeEventListener("pointermove", onPointerMove);
+    }
+
+    hideResizeOverlay();
+
+    // Only commit if position actually changed
+    if (drag.currentDx !== 0 || drag.currentDy !== 0) {
+      const next = deepClone(dragStartState);
+      const floor = getCurrentFloor(next);
+      const room = floor?.rooms?.find(r => r.id === drag.roomId);
+
+      if (room?.polygonVertices && room.polygonVertices[drag.vertexIndex]) {
+        // Update vertex position (local coordinates)
+        room.polygonVertices[drag.vertexIndex].x = drag.startVertex.x + drag.currentDx;
+        room.polygonVertices[drag.vertexIndex].y = drag.startVertex.y + drag.currentDy;
+
+        // Recalculate bounding box and update room dimensions
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+        for (const v of room.polygonVertices) {
+          minX = Math.min(minX, v.x);
+          minY = Math.min(minY, v.y);
+          maxX = Math.max(maxX, v.x);
+          maxY = Math.max(maxY, v.y);
+        }
+
+        // If bounding box origin shifted, update floorPosition and normalize vertices
+        if (minX !== 0 || minY !== 0) {
+          room.floorPosition = room.floorPosition || { x: 0, y: 0 };
+          room.floorPosition.x += minX;
+          room.floorPosition.y += minY;
+          room.polygonVertices = room.polygonVertices.map(v => ({
+            x: v.x - minX,
+            y: v.y - minY
+          }));
+          maxX -= minX;
+          maxY -= minY;
+        }
+
+        room.widthCm = Math.round(maxX);
+        room.heightCm = Math.round(maxY);
+
+        commit(getVertexMoveLabel?.() || "Vertex moved", next);
+      }
+    } else {
+      render();
+    }
+
+    drag = null;
+    dragStartState = null;
+  }
+
+  return { onVertexPointerDown };
+}

@@ -7,6 +7,42 @@ import { t } from "./i18n.js";
 
 const MIN_POINTS = 3;
 const CLOSE_THRESHOLD_PX = 15; // Pixels to detect closing click on first point
+const SNAP_GRID_CM = 0.5; // Grid snap increment in cm
+
+/**
+ * Snap a value to the nearest grid increment
+ */
+function snapToGrid(value, gridSize = SNAP_GRID_CM) {
+  return Math.round(value / gridSize) * gridSize;
+}
+
+/**
+ * Snap a point to the grid, optionally constraining angle to 45° increments
+ */
+function snapPoint(point, lastPoint, shiftKey) {
+  let snapped = {
+    x: snapToGrid(point.x),
+    y: snapToGrid(point.y)
+  };
+
+  // If Shift held and we have a previous point, constrain angle to 15° increments
+  if (shiftKey && lastPoint) {
+    const dx = snapped.x - lastPoint.x;
+    const dy = snapped.y - lastPoint.y;
+    const angle = Math.atan2(dy, dx);
+    const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+    const dist = Math.hypot(dx, dy);
+    snapped = {
+      x: lastPoint.x + Math.cos(snappedAngle) * dist,
+      y: lastPoint.y + Math.sin(snappedAngle) * dist
+    };
+    // Re-snap to grid after angle constraint
+    snapped.x = snapToGrid(snapped.x);
+    snapped.y = snapToGrid(snapped.y);
+  }
+
+  return snapped;
+}
 
 /**
  * Creates a polygon drawing controller for floor view
@@ -47,7 +83,7 @@ export function createPolygonDrawController({
     svg.appendChild(previewGroup);
 
     // Add hint overlay
-    updateHint("Click to place first corner point");
+    updateHint("Click to place first corner point (Shift for 15° angles)");
 
     // Change cursor
     svg.classList.add("drawing-polygon");
@@ -114,14 +150,18 @@ export function createPolygonDrawController({
       }
     }
 
-    // Add new point
-    points.push(svgPoint);
+    // Snap point to grid, with optional angle constraint
+    const lastPoint = points.length > 0 ? points[points.length - 1] : null;
+    const snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+
+    // Add snapped point
+    points.push(snappedPoint);
     updatePreview();
 
     if (points.length === 1) {
-      updateHint("Click to add more points • Right-click or Escape to cancel");
+      updateHint("Click to add more points • Hold Shift for 15° angles • Right-click to undo");
     } else if (points.length >= MIN_POINTS) {
-      updateHint("Click near first point to close • Right-click to cancel • Enter to complete");
+      updateHint("Click near start to close • Shift for 15° • Right-click to undo • Enter to complete");
     }
   }
 
@@ -132,7 +172,69 @@ export function createPolygonDrawController({
     if (!svg) return;
 
     const svgPoint = pointerToSvgXY(svg, e.clientX, e.clientY);
-    updatePreview(svgPoint);
+    const lastPoint = points[points.length - 1];
+
+    // When we have enough points to close and Shift is held,
+    // find a point where BOTH edges are snapped:
+    // - Edge from lastPoint to newPoint (snapped angle)
+    // - Edge from newPoint to firstPoint (snapped angle)
+    let snappedPoint;
+    if (e.shiftKey && points.length >= MIN_POINTS) {
+      const firstPoint = points[0];
+
+      // Calculate snapped angles from both endpoints toward the mouse
+      const angleFromLast = Math.atan2(svgPoint.y - lastPoint.y, svgPoint.x - lastPoint.x);
+      const snappedAngleFromLast = Math.round(angleFromLast / (Math.PI / 12)) * (Math.PI / 12);
+
+      const angleFromFirst = Math.atan2(svgPoint.y - firstPoint.y, svgPoint.x - firstPoint.x);
+      const snappedAngleFromFirst = Math.round(angleFromFirst / (Math.PI / 12)) * (Math.PI / 12);
+
+      // Find intersection of two lines:
+      // Line 1: from lastPoint at snappedAngleFromLast
+      // Line 2: from firstPoint at snappedAngleFromFirst
+      const intersection = findLineIntersection(
+        lastPoint, snappedAngleFromLast,
+        firstPoint, snappedAngleFromFirst
+      );
+
+      if (intersection) {
+        snappedPoint = {
+          x: snapToGrid(intersection.x),
+          y: snapToGrid(intersection.y)
+        };
+      } else {
+        // Lines are parallel, fall back to normal snap
+        snappedPoint = snapPoint(svgPoint, lastPoint, true);
+      }
+    } else {
+      snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+    }
+
+    updatePreview(snappedPoint);
+  }
+
+  /**
+   * Find intersection point of two lines defined by point + angle
+   */
+  function findLineIntersection(p1, angle1, p2, angle2) {
+    const cos1 = Math.cos(angle1);
+    const sin1 = Math.sin(angle1);
+    const cos2 = Math.cos(angle2);
+    const sin2 = Math.sin(angle2);
+
+    // Check if lines are parallel
+    const det = cos1 * sin2 - sin1 * cos2;
+    if (Math.abs(det) < 0.0001) return null;
+
+    // Solve for intersection
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const t = (dx * sin2 - dy * cos2) / det;
+
+    return {
+      x: p1.x + t * cos1,
+      y: p1.y + t * sin1
+    };
   }
 
   function handleRightClick(e) {
@@ -194,7 +296,17 @@ export function createPolygonDrawController({
   }
 
   function updatePreview(mousePoint = null) {
-    if (!previewGroup) return;
+    if (!isDrawing) return;
+
+    const svg = getSvg();
+    if (!svg) return;
+
+    // Check if previewGroup was removed (e.g., by a render cycle during scroll/zoom)
+    // If so, re-create and re-attach it
+    if (!previewGroup || !previewGroup.parentNode) {
+      previewGroup = svgEl("g", { class: "polygon-draw-preview" });
+      svg.appendChild(previewGroup);
+    }
 
     // Clear previous preview
     previewGroup.innerHTML = "";

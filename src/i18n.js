@@ -170,6 +170,9 @@ const translations = {
       selected: "Raum ausgewählt",
       positionChanged: "Raumposition geändert",
       sizeChanged: "Raumgröße geändert",
+      vertexMoved: "Eckpunkt verschoben",
+      nameChanged: "Raumname geändert",
+      edgeChanged: "Kantenlänge geändert",
       newRoom: "Neuer Raum",
       added: "Raum hinzugefügt",
       deleted: "Raum gelöscht"
@@ -698,6 +701,9 @@ const translations = {
       selected: "Room selected",
       positionChanged: "Room position changed",
       sizeChanged: "Room size changed",
+      vertexMoved: "Vertex moved",
+      nameChanged: "Room name changed",
+      edgeChanged: "Edge length changed",
       newRoom: "New Room",
       added: "Room added",
       deleted: "Room deleted"

@@ -5,7 +5,7 @@ import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController, createSectionDragController, createRoomDragController, createRoomResizeController } from "./drag.js";
+import { createExclusionDragController, createSectionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
@@ -269,6 +269,68 @@ function renderPlanningSection(state, opts) {
         }
 
         store.commit(t("room.sizeChanged") || "Room size changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      },
+      onVertexPointerDown: (e, roomId, vertexIndex) => polygonVertexDragController.onVertexPointerDown(e, roomId, vertexIndex),
+      onRoomNameEdit: ({ id, name }) => {
+        const state = store.getState();
+        const next = deepClone(state);
+        const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+        const room = floor?.rooms?.find(r => r.id === id);
+        if (!room) return;
+
+        room.name = name;
+        store.commit(t("room.nameChanged") || "Room name changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      },
+      onPolygonEdgeEdit: ({ id, edgeIndex, length }) => {
+        const state = store.getState();
+        const next = deepClone(state);
+        const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+        const room = floor?.rooms?.find(r => r.id === id);
+        if (!room || !room.polygonVertices) return;
+
+        const vertices = room.polygonVertices;
+        const v1 = vertices[edgeIndex];
+        const v2 = vertices[(edgeIndex + 1) % vertices.length];
+
+        // Calculate current edge vector
+        const dx = v2.x - v1.x;
+        const dy = v2.y - v1.y;
+        const currentLength = Math.hypot(dx, dy);
+        if (currentLength < 0.01) return;
+
+        // Scale factor to achieve new length
+        const scale = length / currentLength;
+
+        // Move v2 to achieve new length (keep v1 fixed)
+        v2.x = v1.x + dx * scale;
+        v2.y = v1.y + dy * scale;
+
+        // Normalize vertices (ensure bounding box starts at 0,0)
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+        for (const v of vertices) {
+          minX = Math.min(minX, v.x);
+          minY = Math.min(minY, v.y);
+          maxX = Math.max(maxX, v.x);
+          maxY = Math.max(maxY, v.y);
+        }
+
+        if (minX !== 0 || minY !== 0) {
+          room.floorPosition = room.floorPosition || { x: 0, y: 0 };
+          room.floorPosition.x += minX;
+          room.floorPosition.y += minY;
+          for (const v of vertices) {
+            v.x -= minX;
+            v.y -= minY;
+          }
+          maxX -= minX;
+          maxY -= minY;
+        }
+
+        room.widthCm = Math.round(maxX);
+        room.heightCm = Math.round(maxY);
+
+        store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
     });
   } else {
@@ -781,6 +843,19 @@ const roomResizeController = createRoomResizeController({
     return floor || null;
   },
   getResizeLabel: () => t("room.sizeChanged") || "Room resized"
+});
+
+const polygonVertexDragController = createPolygonVertexDragController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getCurrentFloor: (state) => {
+    const s = state || store.getState();
+    const floor = s.floors?.find(f => f.id === s.selectedFloorId);
+    return floor || null;
+  },
+  getVertexMoveLabel: () => t("room.vertexMoved") || "Vertex moved"
 });
 
 const zoomPanController = createZoomPanController({

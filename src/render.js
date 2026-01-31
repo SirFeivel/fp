@@ -124,6 +124,102 @@ function startSvgEdit({ svg, x, y, angle = 0, value, onCommit, onCancel, textSty
   activeSvgEdit.onPointerDown = onPointerDown;
 }
 
+let activeSvgTextEdit = null;
+
+function closeSvgTextEdit(commit) {
+  if (!activeSvgTextEdit) return;
+  const { group, onCommit, onCancel, buffer, onKeyDown, onPointerDown } = activeSvgTextEdit;
+  if (commit && buffer.trim()) {
+    onCommit(buffer);
+  } else if (!commit && onCancel) {
+    onCancel();
+  }
+  if (onKeyDown) document.removeEventListener("keydown", onKeyDown);
+  if (onPointerDown) document.removeEventListener("pointerdown", onPointerDown, true);
+  group.remove();
+  activeSvgTextEdit = null;
+  setInlineEditing(false);
+}
+
+function updateTextEditDisplay() {
+  if (!activeSvgTextEdit) return;
+  const { textEl, buffer } = activeSvgTextEdit;
+  textEl.textContent = buffer + "|";
+}
+
+/**
+ * Start inline text editing for arbitrary text (not just numbers)
+ */
+function startSvgTextEdit({ svg, x, y, value, onCommit, onCancel, textStyle, anchor = "middle" }) {
+  closeSvgTextEdit(false);
+  closeSvgEdit(false);
+
+  const group = svgEl("g", { "data-inline-edit": "true" });
+  const textEl = svgEl("text", { ...textStyle, x, y, "text-anchor": anchor, "dominant-baseline": "middle" });
+  group.appendChild(textEl);
+  svg.appendChild(group);
+
+  activeSvgTextEdit = {
+    group,
+    textEl,
+    buffer: String(value ?? ""),
+    onCommit,
+    onCancel,
+    replaceOnType: true
+  };
+
+  updateTextEditDisplay();
+  setInlineEditing(true);
+
+  const onKeyDown = (e) => {
+    if (!activeSvgTextEdit) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      closeSvgTextEdit(true);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeSvgTextEdit(false);
+      return;
+    }
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      if (activeSvgTextEdit.replaceOnType) {
+        activeSvgTextEdit.buffer = "";
+        activeSvgTextEdit.replaceOnType = false;
+      } else {
+        activeSvgTextEdit.buffer = activeSvgTextEdit.buffer.slice(0, -1);
+      }
+      updateTextEditDisplay();
+      return;
+    }
+    // Accept any printable character
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (activeSvgTextEdit.replaceOnType) {
+        activeSvgTextEdit.buffer = e.key;
+        activeSvgTextEdit.replaceOnType = false;
+      } else {
+        activeSvgTextEdit.buffer += e.key;
+      }
+      updateTextEditDisplay();
+    }
+  };
+
+  const onPointerDown = (e) => {
+    if (!activeSvgTextEdit) return;
+    if (e.composedPath().includes(group)) return;
+    closeSvgTextEdit(true);
+  };
+
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("pointerdown", onPointerDown, true);
+
+  activeSvgTextEdit.onKeyDown = onKeyDown;
+  activeSvgTextEdit.onPointerDown = onPointerDown;
+}
+
 /**
  * Convert hex color to RGB components
  */
@@ -2544,6 +2640,9 @@ export function renderFloorCanvas({
   onRoomPointerDown,
   onRoomResizePointerDown,
   onRoomInlineEdit,
+  onVertexPointerDown,
+  onRoomNameEdit,
+  onPolygonEdgeEdit,
   svgOverride = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
@@ -2668,13 +2767,13 @@ export function renderFloorCanvas({
     const labelX = roomBounds.width / 2 + roomBounds.minX;
     const labelY = roomBounds.height / 2 + roomBounds.minY;
 
-    const labelGroup = svgEl("g");
+    const labelGroup = svgEl("g", { cursor: isSelected ? "text" : "pointer" });
 
     // Background pill for label
     const labelText = room.name || t("tabs.room");
     const fontSize = Math.min(16, Math.max(10, roomBounds.width / 10));
 
-    labelGroup.appendChild(svgEl("text", {
+    const textEl = svgEl("text", {
       x: labelX,
       y: labelY,
       fill: isSelected ? "#3b82f6" : "rgba(231, 238, 252, 0.9)",
@@ -2683,7 +2782,46 @@ export function renderFloorCanvas({
       "font-weight": isSelected ? "600" : "500",
       "text-anchor": "middle",
       "dominant-baseline": "middle"
-    }).appendChild(document.createTextNode(labelText)));
+    });
+    textEl.appendChild(document.createTextNode(labelText));
+    labelGroup.appendChild(textEl);
+
+    // Add click handler for inline name editing (matching exclusion label pattern)
+    if (isSelected && onRoomNameEdit) {
+      const openNameEdit = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Hide the label group
+        labelGroup.style.display = "none";
+
+        // Start text editing mode - use absolute coordinates
+        const absX = pos.x + labelX;
+        const absY = pos.y + labelY;
+        startSvgTextEdit({
+          svg,
+          x: absX,
+          y: absY,
+          value: room.name || "",
+          textStyle: {
+            fill: "#3b82f6",
+            "font-size": fontSize,
+            "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+            "font-weight": "600"
+          },
+          onCommit: (newName) => {
+            labelGroup.style.display = "";
+            if (newName && newName.trim() !== (room.name || "").trim()) {
+              onRoomNameEdit({ id: room.id, name: newName.trim() });
+            }
+          },
+          onCancel: () => {
+            labelGroup.style.display = "";
+          }
+        });
+      };
+      labelGroup.addEventListener("pointerdown", openNameEdit);
+      labelGroup.addEventListener("click", openNameEdit);
+    }
 
     roomGroup.appendChild(labelGroup);
 
@@ -2807,6 +2945,115 @@ export function renderFloorCanvas({
       const heightLabelX = pos.x + roomBounds.maxX + pad;
       const heightLabelY = pos.y + roomBounds.minY + roomBounds.height / 2;
       addRoomEditableLabel(`${fmtCm(roomBounds.height)} cm`, roomBounds.height, "heightCm", heightLabelX, heightLabelY, "middle", 90);
+    }
+
+    // Add vertex handles for selected free-form rooms (polygonVertices)
+    if (isSelected && onVertexPointerDown && room.polygonVertices?.length > 0) {
+      const vertexHandleRadius = 6;
+
+      for (let i = 0; i < room.polygonVertices.length; i++) {
+        const vertex = room.polygonVertices[i];
+        const absX = pos.x + vertex.x;
+        const absY = pos.y + vertex.y;
+
+        const handle = svgEl("circle", {
+          cx: absX,
+          cy: absY,
+          r: vertexHandleRadius,
+          fill: "#3b82f6",
+          stroke: "#fff",
+          "stroke-width": 2,
+          cursor: "move",
+          "data-vertex-roomid": room.id,
+          "data-vertex-index": i
+        });
+
+        handle.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          onVertexPointerDown(e, room.id, i);
+        });
+
+        svg.appendChild(handle);
+      }
+
+      // Editable edge length labels for free-form rooms
+      const edgeLabelStyle = {
+        fill: "#3b82f6",
+        "font-size": 11,
+        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        "font-weight": 500,
+        "text-anchor": "middle",
+        "dominant-baseline": "middle"
+      };
+
+      const fmtCm = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "0";
+        return n % 1 === 0 ? String(n) : n.toFixed(1);
+      };
+
+      for (let i = 0; i < room.polygonVertices.length; i++) {
+        const v1 = room.polygonVertices[i];
+        const v2 = room.polygonVertices[(i + 1) % room.polygonVertices.length];
+
+        // Calculate edge properties
+        const dx = v2.x - v1.x;
+        const dy = v2.y - v1.y;
+        const edgeLength = Math.hypot(dx, dy);
+        const midX = pos.x + (v1.x + v2.x) / 2;
+        const midY = pos.y + (v1.y + v2.y) / 2;
+
+        // Calculate angle for label rotation (perpendicular offset)
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        // Flip text if it would be upside down
+        if (angle > 90 || angle < -90) {
+          angle += 180;
+        }
+
+        // Offset label perpendicular to edge (outside the polygon)
+        const offsetDist = 12;
+        const perpX = -dy / edgeLength * offsetDist;
+        const perpY = dx / edgeLength * offsetDist;
+        const labelX = midX + perpX;
+        const labelY = midY + perpY;
+
+        const labelGroup = svgEl("g", { cursor: "text" });
+        labelGroup.setAttribute("transform", `rotate(${angle} ${labelX} ${labelY})`);
+        const textEl = svgEl("text", { ...edgeLabelStyle, x: labelX, y: labelY });
+        textEl.textContent = `${fmtCm(edgeLength)} cm`;
+        labelGroup.appendChild(textEl);
+        svg.appendChild(labelGroup);
+
+        // Add click handler for inline edge length editing
+        if (onPolygonEdgeEdit) {
+          const edgeIndex = i;
+          const openEdgeEdit = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            labelGroup.style.display = "none";
+            startSvgEdit({
+              svg,
+              x: labelX,
+              y: labelY,
+              angle,
+              value: edgeLength,
+              textStyle: edgeLabelStyle,
+              onCommit: (newLength) => {
+                labelGroup.style.display = "";
+                if (newLength > 0 && Math.abs(newLength - edgeLength) > 0.01) {
+                  onPolygonEdgeEdit({ id: room.id, edgeIndex, length: newLength });
+                }
+              },
+              onCancel: () => {
+                labelGroup.style.display = "";
+              },
+              anchor: "middle"
+            });
+          };
+          labelGroup.addEventListener("pointerdown", openEdgeEdit);
+          labelGroup.addEventListener("click", openEdgeEdit);
+        }
+      }
     }
   }
 
