@@ -1542,7 +1542,7 @@ export function renderPlanSvg({
 
     // Add resize handles and dimension labels for selected section
     if (isSectionSelected && sections.length > 1) {
-      const handleRadius = 4;
+      const handleRadius = 6;
       const handleStyle = {
         fill: "var(--accent, #3b82f6)",
         stroke: "#fff",
@@ -2106,7 +2106,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
     // Add resize handles for selected exclusion
     if (isSel && onResizeHandlePointerDown) {
-      const handleRadius = 4;
+      const handleRadius = 6;
       const handleStyle = {
         fill: "var(--accent, #3b82f6)",
         stroke: "#fff",
@@ -2852,7 +2852,7 @@ export function renderFloorCanvas({
 
     // Add resize handles for selected room (only for rectangle rooms with sections)
     if (isSelected && onRoomResizePointerDown && room.sections?.length > 0 && !room.polygonVertices) {
-      const handleSize = 10;
+      const handleRadius = 6;
       const handles = [
         { type: "nw", x: roomBounds.minX, y: roomBounds.minY, cursor: "nwse-resize" },
         { type: "ne", x: roomBounds.maxX, y: roomBounds.minY, cursor: "nesw-resize" },
@@ -2865,11 +2865,10 @@ export function renderFloorCanvas({
       ];
 
       for (const h of handles) {
-        const handle = svgEl("rect", {
-          x: pos.x + h.x - handleSize / 2,
-          y: pos.y + h.y - handleSize / 2,
-          width: handleSize,
-          height: handleSize,
+        const handle = svgEl("circle", {
+          cx: pos.x + h.x,
+          cy: pos.y + h.y,
+          r: handleRadius,
           fill: "#3b82f6",
           stroke: "#fff",
           "stroke-width": 1.5,

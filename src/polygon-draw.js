@@ -7,31 +7,145 @@ import { t } from "./i18n.js";
 
 const MIN_POINTS = 3;
 const CLOSE_THRESHOLD_PX = 15; // Pixels to detect closing click on first point
-const SNAP_GRID_CM = 0.5; // Grid snap increment in cm
+export const SNAP_GRID_CM = 0.5; // Grid snap increment in cm
+export const VERTEX_SNAP_THRESHOLD_CM = 2; // Distance threshold for vertex snapping
+export const EDGE_SNAP_THRESHOLD_CM = 2; // Distance threshold for edge snapping
 
 /**
- * Get all edges of existing rooms in floor coordinates
- * Returns array of { roomId, edge: { p1: {x,y}, p2: {x,y} } }
+ * Get all vertices (corners) of existing rooms in floor coordinates
+ * Returns array of { roomId, vertex: {x, y} }
+ * @param {Object} floor - Floor object with rooms array
+ * @returns {Array<{roomId: string, vertex: {x: number, y: number}}>}
  */
-function getRoomEdges(floor) {
-  const edges = [];
-  if (!floor?.rooms) return edges;
+export function getRoomVertices(floor) {
+  const vertices = [];
+  if (!floor?.rooms || !Array.isArray(floor.rooms)) return vertices;
 
   for (const room of floor.rooms) {
+    if (!room || !room.id) continue;
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     // Get room polygon (handles both freeform and sections-based rooms)
-    const mp = roomPolygon(room);
-    if (!mp || mp.length === 0) continue;
+    let mp;
+    try {
+      mp = roomPolygon(room);
+    } catch (e) {
+      // Skip rooms with invalid geometry
+      continue;
+    }
+    if (!mp || !Array.isArray(mp) || mp.length === 0) continue;
+
+    // Extract vertices from the polygon
+    // MultiPolygon format: [Polygon[Ring[Point]]]
+    for (const polygon of mp) {
+      if (!Array.isArray(polygon)) continue;
+      for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 2) continue;
+        // Skip the last point as it duplicates the first (closed ring)
+        for (let i = 0; i < ring.length - 1; i++) {
+          const pt = ring[i];
+          if (!Array.isArray(pt) || pt.length < 2) continue;
+          const x = Number(pt[0]);
+          const y = Number(pt[1]);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+          vertices.push({
+            roomId: room.id,
+            vertex: { x: x + pos.x, y: y + pos.y }
+          });
+        }
+      }
+    }
+  }
+
+  return vertices;
+}
+
+/**
+ * Find the nearest vertex to the mouse position
+ * @param {{x: number, y: number}} mousePoint - Current mouse position
+ * @param {Array<{roomId: string, vertex: {x: number, y: number}}>} vertices - Array of vertices
+ * @returns {{vertex: {x: number, y: number}, roomId: string, distance: number} | null}
+ */
+export function findNearestVertex(mousePoint, vertices) {
+  if (!mousePoint || !Array.isArray(vertices) || vertices.length === 0) {
+    return null;
+  }
+
+  const mx = Number(mousePoint.x);
+  const my = Number(mousePoint.y);
+  if (!Number.isFinite(mx) || !Number.isFinite(my)) return null;
+
+  let nearest = null;
+  let minDist = Infinity;
+
+  for (const item of vertices) {
+    if (!item?.vertex || !item?.roomId) continue;
+    const vx = Number(item.vertex.x);
+    const vy = Number(item.vertex.y);
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) continue;
+
+    const dist = Math.hypot(vx - mx, vy - my);
+
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = {
+        vertex: { x: vx, y: vy },
+        roomId: item.roomId,
+        distance: dist
+      };
+    }
+  }
+
+  return nearest;
+}
+
+/**
+ * Get all edges of existing rooms in floor coordinates
+ * @param {Object} floor - Floor object with rooms array
+ * @returns {Array<{roomId: string, edge: {p1: {x: number, y: number}, p2: {x: number, y: number}}}>}
+ */
+export function getRoomEdges(floor) {
+  const edges = [];
+  if (!floor?.rooms || !Array.isArray(floor.rooms)) return edges;
+
+  for (const room of floor.rooms) {
+    if (!room || !room.id) continue;
+    const pos = room.floorPosition || { x: 0, y: 0 };
+
+    // Get room polygon (handles both freeform and sections-based rooms)
+    let mp;
+    try {
+      mp = roomPolygon(room);
+    } catch (e) {
+      // Skip rooms with invalid geometry
+      continue;
+    }
+    if (!mp || !Array.isArray(mp) || mp.length === 0) continue;
 
     // Extract edges from the polygon
     // MultiPolygon format: [Polygon[Ring[Point]]]
     for (const polygon of mp) {
+      if (!Array.isArray(polygon)) continue;
       for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 2) continue;
         for (let i = 0; i < ring.length - 1; i++) {
-          const p1 = { x: ring[i][0] + pos.x, y: ring[i][1] + pos.y };
-          const p2 = { x: ring[i + 1][0] + pos.x, y: ring[i + 1][1] + pos.y };
-          edges.push({ roomId: room.id, edge: { p1, p2 } });
+          const pt1 = ring[i];
+          const pt2 = ring[i + 1];
+          if (!Array.isArray(pt1) || pt1.length < 2) continue;
+          if (!Array.isArray(pt2) || pt2.length < 2) continue;
+
+          const x1 = Number(pt1[0]), y1 = Number(pt1[1]);
+          const x2 = Number(pt2[0]), y2 = Number(pt2[1]);
+          if (!Number.isFinite(x1) || !Number.isFinite(y1)) continue;
+          if (!Number.isFinite(x2) || !Number.isFinite(y2)) continue;
+
+          edges.push({
+            roomId: room.id,
+            edge: {
+              p1: { x: x1 + pos.x, y: y1 + pos.y },
+              p2: { x: x2 + pos.x, y: y2 + pos.y }
+            }
+          });
         }
       }
     }
@@ -42,46 +156,74 @@ function getRoomEdges(floor) {
 
 /**
  * Find the closest point on a line segment to a given point
+ * @param {{x: number, y: number}} point - Query point
+ * @param {{x: number, y: number}} p1 - Segment start
+ * @param {{x: number, y: number}} p2 - Segment end
+ * @returns {{x: number, y: number, t: number} | null} - Closest point with parameter t
  */
-function closestPointOnSegment(point, p1, p2) {
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
+export function closestPointOnSegment(point, p1, p2) {
+  if (!point || !p1 || !p2) return null;
+
+  const px = Number(point.x), py = Number(point.y);
+  const x1 = Number(p1.x), y1 = Number(p1.y);
+  const x2 = Number(p2.x), y2 = Number(p2.y);
+
+  if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+  if (!Number.isFinite(x1) || !Number.isFinite(y1)) return null;
+  if (!Number.isFinite(x2) || !Number.isFinite(y2)) return null;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
   const lenSq = dx * dx + dy * dy;
 
   if (lenSq === 0) {
     // Segment is a point
-    return { x: p1.x, y: p1.y, t: 0 };
+    return { x: x1, y: y1, t: 0 };
   }
 
   // Project point onto line, clamped to segment
-  let t = ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lenSq;
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
   t = Math.max(0, Math.min(1, t));
 
   return {
-    x: p1.x + t * dx,
-    y: p1.y + t * dy,
+    x: x1 + t * dx,
+    y: y1 + t * dy,
     t
   };
 }
 
 /**
  * Find the nearest point on any room edge to the mouse position
- * Returns { point: {x,y}, roomId, edge, distance } or null
+ * @param {{x: number, y: number}} mousePoint - Current mouse position
+ * @param {Array<{roomId: string, edge: {p1: {x,y}, p2: {x,y}}}>} edges - Array of edges
+ * @returns {{point: {x: number, y: number}, roomId: string, edge: Object, distance: number} | null}
  */
-function findNearestEdgePoint(mousePoint, edges) {
+export function findNearestEdgePoint(mousePoint, edges) {
+  if (!mousePoint || !Array.isArray(edges) || edges.length === 0) {
+    return null;
+  }
+
+  const mx = Number(mousePoint.x);
+  const my = Number(mousePoint.y);
+  if (!Number.isFinite(mx) || !Number.isFinite(my)) return null;
+
   let nearest = null;
   let minDist = Infinity;
 
-  for (const { roomId, edge } of edges) {
-    const closest = closestPointOnSegment(mousePoint, edge.p1, edge.p2);
-    const dist = Math.hypot(closest.x - mousePoint.x, closest.y - mousePoint.y);
+  for (const item of edges) {
+    if (!item?.edge?.p1 || !item?.edge?.p2 || !item?.roomId) continue;
+
+    const closest = closestPointOnSegment({ x: mx, y: my }, item.edge.p1, item.edge.p2);
+    if (!closest) continue;
+
+    const dist = Math.hypot(closest.x - mx, closest.y - my);
 
     if (dist < minDist) {
       minDist = dist;
       nearest = {
         point: { x: closest.x, y: closest.y },
-        roomId,
-        edge,
+        roomId: item.roomId,
+        edge: item.edge,
         distance: dist
       };
     }
@@ -157,9 +299,16 @@ function isPointInsideAnyRoom(point, floor) {
 
 /**
  * Snap a value to the nearest grid increment
+ * @param {number} value - Value to snap
+ * @param {number} [gridSize=SNAP_GRID_CM] - Grid size
+ * @returns {number} - Snapped value
  */
-function snapToGrid(value, gridSize = SNAP_GRID_CM) {
-  return Math.round(value / gridSize) * gridSize;
+export function snapToGrid(value, gridSize = SNAP_GRID_CM) {
+  const v = Number(value);
+  const g = Number(gridSize);
+  if (!Number.isFinite(v)) return 0;
+  if (!Number.isFinite(g) || g <= 0) return v;
+  return Math.round(v / g) * g;
 }
 
 /**
@@ -191,6 +340,69 @@ function snapPoint(point, lastPoint, shiftKey) {
 }
 
 /**
+ * Try to snap a point to existing room geometry (vertices first, then edges)
+ * @param {{x: number, y: number}} point - Point to snap
+ * @param {Array} vertices - Array of room vertices
+ * @param {Array} edges - Array of room edges
+ * @param {{x: number, y: number} | null} lastPoint - Previous point for angle constraint
+ * @param {boolean} shiftKey - Whether shift key is held for angle constraint
+ * @param {number} [vertexThreshold=VERTEX_SNAP_THRESHOLD_CM] - Vertex snap threshold
+ * @param {number} [edgeThreshold=EDGE_SNAP_THRESHOLD_CM] - Edge snap threshold
+ * @returns {{point: {x: number, y: number}, type: 'vertex'|'edge'|'grid', roomId?: string}}
+ */
+export function snapToRoomGeometry(
+  point,
+  vertices,
+  edges,
+  lastPoint,
+  shiftKey,
+  vertexThreshold = VERTEX_SNAP_THRESHOLD_CM,
+  edgeThreshold = EDGE_SNAP_THRESHOLD_CM
+) {
+  // Validate input point
+  if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) {
+    return {
+      point: { x: 0, y: 0 },
+      type: "grid"
+    };
+  }
+
+  const normalizedPoint = { x: Number(point.x), y: Number(point.y) };
+
+  // First try vertex snapping (highest priority)
+  if (Array.isArray(vertices) && vertices.length > 0) {
+    const nearestVertex = findNearestVertex(normalizedPoint, vertices);
+    if (nearestVertex && Number.isFinite(nearestVertex.distance) &&
+        nearestVertex.distance <= vertexThreshold) {
+      return {
+        point: nearestVertex.vertex,
+        type: "vertex",
+        roomId: nearestVertex.roomId
+      };
+    }
+  }
+
+  // Then try edge snapping
+  if (Array.isArray(edges) && edges.length > 0) {
+    const nearestEdge = findNearestEdgePoint(normalizedPoint, edges);
+    if (nearestEdge && Number.isFinite(nearestEdge.distance) &&
+        nearestEdge.distance <= edgeThreshold) {
+      return {
+        point: nearestEdge.point,
+        type: "edge",
+        roomId: nearestEdge.roomId
+      };
+    }
+  }
+
+  // Fall back to grid snapping
+  return {
+    point: snapPoint(normalizedPoint, lastPoint, shiftKey),
+    type: "grid"
+  };
+}
+
+/**
  * Creates a polygon drawing controller for floor view
  */
 export function createPolygonDrawController({
@@ -208,8 +420,10 @@ export function createPolygonDrawController({
   // Edge snapping state
   let edgeSnapMode = false; // True when existing rooms exist and we need to snap first two points
   let roomEdges = []; // Cached edges of all rooms
+  let roomVertices = []; // Cached vertices of all rooms
   let snapTargetRoomId = null; // Room ID that first point was placed on (second point must be on same room)
   let currentEdgeSnapPoint = null; // Current snapped point for preview
+  let currentSnapType = null; // Type of current snap: 'vertex', 'edge', or 'grid'
   let cachedFloor = null; // Cached floor for inside-room checks
   let isMouseInsideRoom = false; // True when mouse is inside an existing room
   let currentMousePoint = null; // Current mouse position for preview
@@ -234,6 +448,7 @@ export function createPolygonDrawController({
     onComplete = completeCb;
     snapTargetRoomId = null;
     currentEdgeSnapPoint = null;
+    currentSnapType = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
 
@@ -244,10 +459,12 @@ export function createPolygonDrawController({
     edgeSnapMode = hasExistingRooms;
 
     if (edgeSnapMode) {
-      // Cache all room edges for snapping
+      // Cache all room edges and vertices for snapping
       roomEdges = getRoomEdges(floor);
+      roomVertices = getRoomVertices(floor);
     } else {
       roomEdges = [];
+      roomVertices = [];
     }
 
     // Create preview group for visualization
@@ -282,8 +499,10 @@ export function createPolygonDrawController({
     // Reset edge snap state
     edgeSnapMode = false;
     roomEdges = [];
+    roomVertices = [];
     snapTargetRoomId = null;
     currentEdgeSnapPoint = null;
+    currentSnapType = null;
     cachedFloor = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
@@ -366,9 +585,17 @@ export function createPolygonDrawController({
       return;
     }
 
-    // Normal snapping for subsequent points
+    // Normal snapping for subsequent points - try geometry snap, then grid
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
-    const snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+    let snappedPoint;
+
+    // Use geometry snapping if we have existing rooms
+    if (edgeSnapMode && roomVertices.length > 0) {
+      const snapResult = snapToRoomGeometry(svgPoint, roomVertices, roomEdges, lastPoint, e.shiftKey);
+      snappedPoint = snapResult.point;
+    } else {
+      snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+    }
 
     // Reject clicks inside existing rooms
     if (cachedFloor && isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null) {
@@ -378,6 +605,7 @@ export function createPolygonDrawController({
 
     // Add snapped point
     points.push(snappedPoint);
+    currentSnapType = null;
     updatePreview();
 
     if (points.length === 1) {
@@ -416,49 +644,65 @@ export function createPolygonDrawController({
       return;
     }
 
-    // No preview until we have at least one point
-    if (points.length === 0) return;
+    // No preview until we have at least one point (for free drawing without edge snap)
+    // But allow snapping preview even with 0 points if we have geometry
+    if (points.length === 0 && !edgeSnapMode) return;
 
-    const lastPoint = points[points.length - 1];
+    const lastPoint = points.length > 0 ? points[points.length - 1] : null;
 
     // When we have enough points to close and Shift is held,
     // find a point where BOTH edges are snapped:
     // - Edge from lastPoint to newPoint (snapped angle)
     // - Edge from newPoint to firstPoint (snapped angle)
     let snappedPoint;
-    if (e.shiftKey && points.length >= MIN_POINTS) {
-      const firstPoint = points[0];
+    let snapType = "grid";
 
-      // Calculate snapped angles from both endpoints toward the mouse
-      const angleFromLast = Math.atan2(svgPoint.y - lastPoint.y, svgPoint.x - lastPoint.x);
-      const snappedAngleFromLast = Math.round(angleFromLast / (Math.PI / 12)) * (Math.PI / 12);
-
-      const angleFromFirst = Math.atan2(svgPoint.y - firstPoint.y, svgPoint.x - firstPoint.x);
-      const snappedAngleFromFirst = Math.round(angleFromFirst / (Math.PI / 12)) * (Math.PI / 12);
-
-      // Find intersection of two lines:
-      // Line 1: from lastPoint at snappedAngleFromLast
-      // Line 2: from firstPoint at snappedAngleFromFirst
-      const intersection = findLineIntersection(
-        lastPoint, snappedAngleFromLast,
-        firstPoint, snappedAngleFromFirst
-      );
-
-      if (intersection) {
-        snappedPoint = {
-          x: snapToGrid(intersection.x),
-          y: snapToGrid(intersection.y)
-        };
-      } else {
-        // Lines are parallel, fall back to normal snap
-        snappedPoint = snapPoint(svgPoint, lastPoint, true);
+    // First try geometry snapping if we have existing rooms
+    if (edgeSnapMode && roomVertices.length > 0) {
+      const snapResult = snapToRoomGeometry(svgPoint, roomVertices, roomEdges, lastPoint, e.shiftKey);
+      if (snapResult.type !== "grid") {
+        snappedPoint = snapResult.point;
+        snapType = snapResult.type;
       }
-    } else {
-      snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+    }
+
+    // If no geometry snap, use angle constraint or grid snap
+    if (!snappedPoint) {
+      if (e.shiftKey && lastPoint && points.length >= MIN_POINTS) {
+        const firstPoint = points[0];
+
+        // Calculate snapped angles from both endpoints toward the mouse
+        const angleFromLast = Math.atan2(svgPoint.y - lastPoint.y, svgPoint.x - lastPoint.x);
+        const snappedAngleFromLast = Math.round(angleFromLast / (Math.PI / 12)) * (Math.PI / 12);
+
+        const angleFromFirst = Math.atan2(svgPoint.y - firstPoint.y, svgPoint.x - firstPoint.x);
+        const snappedAngleFromFirst = Math.round(angleFromFirst / (Math.PI / 12)) * (Math.PI / 12);
+
+        // Find intersection of two lines:
+        // Line 1: from lastPoint at snappedAngleFromLast
+        // Line 2: from firstPoint at snappedAngleFromFirst
+        const intersection = findLineIntersection(
+          lastPoint, snappedAngleFromLast,
+          firstPoint, snappedAngleFromFirst
+        );
+
+        if (intersection) {
+          snappedPoint = {
+            x: snapToGrid(intersection.x),
+            y: snapToGrid(intersection.y)
+          };
+        } else {
+          // Lines are parallel, fall back to normal snap
+          snappedPoint = snapPoint(svgPoint, lastPoint, true);
+        }
+      } else {
+        snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
+      }
     }
 
     // Check if the snapped point is inside any existing room
     currentMousePoint = snappedPoint;
+    currentSnapType = snapType;
     isMouseInsideRoom = cachedFloor ? isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null : false;
 
     updatePreview(snappedPoint);
@@ -683,17 +927,50 @@ export function createPolygonDrawController({
 
     // Draw mouse position marker
     if (mousePoint) {
-      // Show red marker if inside a room, blue otherwise
+      // Show red marker if inside a room, green if snapped to geometry, blue otherwise
       const isInvalid = isMouseInsideRoom;
+      const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge";
+
+      // Choose appearance based on state
+      let fillColor, strokeColor, radius, strokeWidth;
+      if (isInvalid) {
+        fillColor = "rgba(239, 68, 68, 0.7)";
+        strokeColor = "#dc2626";
+        radius = 6;
+        strokeWidth = 2;
+      } else if (isSnapped) {
+        // Green marker for geometry snaps
+        fillColor = "#22c55e";
+        strokeColor = "#fff";
+        radius = currentSnapType === "vertex" ? 8 : 6;
+        strokeWidth = 2;
+      } else {
+        fillColor = "rgba(59, 130, 246, 0.5)";
+        strokeColor = "#3b82f6";
+        radius = 4;
+        strokeWidth = 1;
+      }
+
       const mouseCircle = svgEl("circle", {
         cx: mousePoint.x,
         cy: mousePoint.y,
-        r: isInvalid ? 6 : 4,
-        fill: isInvalid ? "rgba(239, 68, 68, 0.7)" : "rgba(59, 130, 246, 0.5)",
-        stroke: isInvalid ? "#dc2626" : "#3b82f6",
-        "stroke-width": isInvalid ? 2 : 1
+        r: radius,
+        fill: fillColor,
+        stroke: strokeColor,
+        "stroke-width": strokeWidth
       });
       previewGroup.appendChild(mouseCircle);
+
+      // Add snap type indicator for vertex snaps (diamond shape)
+      if (currentSnapType === "vertex") {
+        const diamond = svgEl("path", {
+          d: `M ${mousePoint.x} ${mousePoint.y - 12} L ${mousePoint.x + 5} ${mousePoint.y - 7} L ${mousePoint.x} ${mousePoint.y - 2} L ${mousePoint.x - 5} ${mousePoint.y - 7} Z`,
+          fill: "#22c55e",
+          stroke: "#fff",
+          "stroke-width": 1
+        });
+        previewGroup.appendChild(diamond);
+      }
     }
   }
 

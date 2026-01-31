@@ -13,7 +13,14 @@ import {
   findRoomSnapPositions,
   findNearestNonOverlappingPosition,
   isRoomConnected,
-  findNearestConnectedPosition
+  findNearestConnectedPosition,
+  getSharedEdgeLength,
+  getRoomEdgesOnFloor,
+  getAllFreeEdges,
+  findPositionOnFreeEdge,
+  subtractOverlappingAreas,
+  findConnectedRoomGroups,
+  validateFloorConnectivity
 } from './floor_geometry.js';
 
 describe('getFloorBounds', () => {
@@ -231,6 +238,152 @@ describe('areRoomsAdjacent', () => {
       sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
     };
     expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
+  });
+
+  it('rejects corner-only contact (single point touch)', () => {
+    // Room A: 100x100 at origin
+    // Room B: 100x100 at (100, 100) - only touches at corner (100, 100)
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 100 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    // Should be false - only corner touch, no shared edge
+    expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
+  });
+
+  it('rejects rooms with shared edge less than minimum', () => {
+    // Room A: 100x100 at origin
+    // Room B: 100x100 at (100, 95) - shares only 5cm of edge
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 95 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    // Default minimum is 10cm, they share only 5cm
+    expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
+  });
+
+  it('accepts rooms with shared edge at minimum length', () => {
+    // Room A: 100x100 at origin
+    // Room B: 100x100 at (100, 90) - shares exactly 10cm of edge
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 90 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    // Should be true - shares exactly 10cm (from y=90 to y=100)
+    expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
+  });
+
+  it('allows custom minimum shared length', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 95 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    // With minSharedLength=5, should be adjacent (shares 5cm)
+    expect(areRoomsAdjacent(roomA, roomB, 1, 5)).toBe(true);
+    // With minSharedLength=6, should not be adjacent
+    expect(areRoomsAdjacent(roomA, roomB, 1, 6)).toBe(false);
+  });
+
+  it('detects adjacency for freeform rooms', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
+  });
+
+  it('rejects freeform rooms with corner-only contact', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 100 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    // Only touch at corner (100, 100)
+    expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
+  });
+});
+
+describe('getSharedEdgeLength', () => {
+  it('returns correct shared length for fully aligned edges', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const sharedLength = getSharedEdgeLength(roomA, roomB);
+    expect(sharedLength).toBe(100);
+  });
+
+  it('returns correct shared length for partially aligned edges', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 100, y: 50 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const sharedLength = getSharedEdgeLength(roomA, roomB);
+    expect(sharedLength).toBe(50); // Overlap from y=50 to y=100
+  });
+
+  it('returns zero for non-touching rooms', () => {
+    const roomA = {
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const roomB = {
+      floorPosition: { x: 200, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const sharedLength = getSharedEdgeLength(roomA, roomB);
+    expect(sharedLength).toBe(0);
   });
 });
 
@@ -599,5 +752,383 @@ describe('findNearestConnectedPosition', () => {
     // Should find a valid connected position
     expect(isRoomConnected(room, otherRooms, result.x, result.y)).toBe(true);
     expect(wouldRoomOverlap(room, otherRooms, result.x, result.y)).toBe(false);
+  });
+});
+
+describe('getAllFreeEdges', () => {
+  it('returns all edges for single room', () => {
+    const rooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    const freeEdges = getAllFreeEdges(rooms, 10);
+    // Single room has 4 free edges (all sides)
+    expect(freeEdges.length).toBe(4);
+    // Total free length should be perimeter (400cm)
+    const totalFree = freeEdges.reduce((sum, e) => sum + e.freeLength, 0);
+    expect(totalFree).toBe(400);
+  });
+
+  it('excludes shared edges between adjacent rooms', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+    const freeEdges = getAllFreeEdges(rooms, 10);
+    // Should have 6 free edges (not the shared edge between r1 and r2)
+    // r1: left (100), top (100), bottom (100) = 3 edges
+    // r2: right (100), top (100), bottom (100) = 3 edges
+    expect(freeEdges.length).toBe(6);
+  });
+
+  it('respects minimum length filter', () => {
+    const rooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 5 }]
+    }];
+    // With minLength=10, the 5cm edges should be excluded
+    const freeEdges = getAllFreeEdges(rooms, 10);
+    expect(freeEdges.length).toBe(2); // Only the 100cm edges
+  });
+});
+
+describe('findPositionOnFreeEdge', () => {
+  it('returns origin for empty floor', () => {
+    const newRoom = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const result = findPositionOnFreeEdge(newRoom, []);
+    expect(result).toEqual({ x: 0, y: 0, edge: null });
+  });
+
+  it('places new room to the right of single room', () => {
+    const newRoom = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const existingRooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    }];
+    const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
+    expect(result).not.toBeNull();
+    expect(result.x).toBe(200); // Right edge of existing room
+    expect(result.y).toBe(0); // Aligned to top
+  });
+
+  it('places new room below existing room when preferred', () => {
+    const newRoom = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const existingRooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    }];
+    const result = findPositionOnFreeEdge(newRoom, existingRooms, 'bottom');
+    expect(result).not.toBeNull();
+    expect(result.y).toBe(150); // Bottom edge of existing room
+  });
+
+  it('finds free edge when some edges are occupied', () => {
+    const newRoom = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    // Two rooms side by side - the right edge of r1 is occupied by r2
+    const existingRooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+    const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
+    expect(result).not.toBeNull();
+    // Should place to the right of r2 (the rightmost room)
+    expect(result.x).toBe(200);
+  });
+
+  it('returns connected and non-overlapping position', () => {
+    const newRoom = {
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    };
+    const existingRooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+    }];
+    const result = findPositionOnFreeEdge(newRoom, existingRooms);
+    expect(result).not.toBeNull();
+
+    // Verify the position is valid
+    const testRoom = { ...newRoom, floorPosition: { x: result.x, y: result.y } };
+    expect(wouldRoomOverlap(testRoom, existingRooms, result.x, result.y)).toBe(false);
+    expect(existingRooms.some(other => areRoomsAdjacent(testRoom, other))).toBe(true);
+  });
+});
+
+describe('findConnectedRoomGroups', () => {
+  it('returns empty array for no rooms', () => {
+    const groups = findConnectedRoomGroups([]);
+    expect(groups).toEqual([]);
+  });
+
+  it('returns single group for one room', () => {
+    const rooms = [{
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+    const groups = findConnectedRoomGroups(rooms);
+    expect(groups).toEqual([['r1']]);
+  });
+
+  it('groups connected rooms together', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r3',
+        floorPosition: { x: 200, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+    const groups = findConnectedRoomGroups(rooms);
+    expect(groups.length).toBe(1);
+    expect(groups[0].sort()).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  it('separates disconnected rooms into different groups', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r3',
+        floorPosition: { x: 500, y: 0 }, // Disconnected - 300cm gap
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+    const groups = findConnectedRoomGroups(rooms);
+    expect(groups.length).toBe(2);
+    // One group with r1 and r2, another with just r3
+    const groupSizes = groups.map(g => g.length).sort();
+    expect(groupSizes).toEqual([1, 2]);
+  });
+
+  it('detects corner-only contact as disconnected', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 100 }, // Only touches at corner (100, 100)
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }
+    ];
+    const groups = findConnectedRoomGroups(rooms);
+    expect(groups.length).toBe(2); // Not connected - corner only
+  });
+});
+
+describe('validateFloorConnectivity', () => {
+  it('returns valid for empty floor', () => {
+    const result = validateFloorConnectivity({ rooms: [] });
+    expect(result.valid).toBe(true);
+  });
+
+  it('returns valid for single room', () => {
+    const floor = {
+      rooms: [{
+        id: 'r1',
+        name: 'Room 1',
+        floorPosition: { x: 0, y: 0 },
+        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      }]
+    };
+    const result = validateFloorConnectivity(floor);
+    expect(result.valid).toBe(true);
+  });
+
+  it('returns valid for all connected rooms', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'r1',
+          name: 'Room 1',
+          floorPosition: { x: 0, y: 0 },
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        },
+        {
+          id: 'r2',
+          name: 'Room 2',
+          floorPosition: { x: 100, y: 0 },
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        }
+      ]
+    };
+    const result = validateFloorConnectivity(floor);
+    expect(result.valid).toBe(true);
+    expect(result.groups.length).toBe(1);
+  });
+
+  it('returns invalid for disconnected rooms', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'r1',
+          name: 'Room 1',
+          floorPosition: { x: 0, y: 0 },
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        },
+        {
+          id: 'r2',
+          name: 'Room 2',
+          floorPosition: { x: 500, y: 0 }, // Disconnected
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        }
+      ]
+    };
+    const result = validateFloorConnectivity(floor);
+    expect(result.valid).toBe(false);
+    expect(result.groups.length).toBe(2);
+    expect(result.groupDetails).toBeDefined();
+    expect(result.message).toContain('disconnected');
+  });
+
+  it('provides room names in group details', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'r1',
+          name: 'Kitchen',
+          floorPosition: { x: 0, y: 0 },
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        },
+        {
+          id: 'r2',
+          name: 'Bedroom',
+          floorPosition: { x: 500, y: 0 },
+          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        }
+      ]
+    };
+    const result = validateFloorConnectivity(floor);
+    expect(result.valid).toBe(false);
+    const allNames = result.groupDetails.flatMap(g => g.roomNames);
+    expect(allNames).toContain('Kitchen');
+    expect(allNames).toContain('Bedroom');
+  });
+});
+
+describe('subtractOverlappingAreas', () => {
+  it('returns empty arrays for no overlap', () => {
+    const newRoom = {
+      id: 'new',
+      floorPosition: { x: 200, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    const existingRooms = [{
+      id: 'r1',
+      name: 'Room 1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+
+    const result = subtractOverlappingAreas(newRoom, existingRooms);
+    expect(result.modifiedRoomIds).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('subtracts overlapping area from existing room', () => {
+    // New room overlaps right half of existing room
+    const newRoom = {
+      id: 'new',
+      floorPosition: { x: 50, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+    const existingRooms = [{
+      id: 'r1',
+      name: 'Room 1',
+      floorPosition: { x: 0, y: 0 },
+      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+    }];
+
+    const result = subtractOverlappingAreas(newRoom, existingRooms);
+    expect(result.modifiedRoomIds).toContain('r1');
+    expect(result.errors).toHaveLength(0);
+
+    // The existing room should now have polygonVertices (was converted from sections)
+    expect(existingRooms[0].polygonVertices).toBeDefined();
+    // The room should be narrower (left half only)
+    expect(existingRooms[0].widthCm).toBeLessThan(100);
+  });
+
+  it('handles empty existing rooms array', () => {
+    const newRoom = {
+      id: 'new',
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
+
+    const result = subtractOverlappingAreas(newRoom, []);
+    expect(result.modifiedRoomIds).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles null inputs gracefully', () => {
+    const result1 = subtractOverlappingAreas(null, []);
+    expect(result1.modifiedRoomIds).toHaveLength(0);
+
+    const result2 = subtractOverlappingAreas({}, null);
+    expect(result2.modifiedRoomIds).toHaveLength(0);
   });
 });

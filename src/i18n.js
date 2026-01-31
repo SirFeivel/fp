@@ -80,7 +80,8 @@ const translations = {
       addRoom: "Raum hinzufügen",
       drawRoom: "Zeichnen",
       deleteRoom: "Löschen",
-      cannotDeleteLastRoom: "Der letzte Raum kann nicht gelöscht werden"
+      cannotDeleteLastRoom: "Der letzte Raum kann nicht gelöscht werden",
+      disconnectedRoomsWarning: "Warnung: Einige Räume sind nicht verbunden!\n\nRäume müssen mindestens 10cm Wand teilen, um als verbunden zu gelten.\n\nMöchten Sie trotzdem fortfahren?"
     },
     view: {
       switchedToFloor: "Etagenansicht",
@@ -373,7 +374,9 @@ const translations = {
       rotationText: "MVP: 0..315 in 45°-Schritten.",
       invalid: "ist ungültig.",
       exclOutside: "liegt teilweise außerhalb.",
-      currentValue: "Aktueller Wert:"
+      currentValue: "Aktueller Wert:",
+      disconnectedRoomsTitle: "Nicht verbundene Räume",
+      disconnectedRoomsText: "Einige Räume sind nicht verbunden. Räume müssen mindestens 10cm Wand teilen."
     },
     metrics: {
       title: "Berechnung",
@@ -611,7 +614,8 @@ const translations = {
       addRoom: "Add Room",
       drawRoom: "Draw",
       deleteRoom: "Delete",
-      cannotDeleteLastRoom: "Cannot delete the last room"
+      cannotDeleteLastRoom: "Cannot delete the last room",
+      disconnectedRoomsWarning: "Warning: Some rooms are not connected!\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?"
     },
     view: {
       switchedToFloor: "Floor view",
@@ -904,7 +908,9 @@ const translations = {
       rotationText: "MVP: 0..315 in 45° steps.",
       invalid: "is invalid.",
       exclOutside: "is partially outside.",
-      currentValue: "Current value:"
+      currentValue: "Current value:",
+      disconnectedRoomsTitle: "Disconnected Rooms",
+      disconnectedRoomsText: "Some rooms are not connected. Rooms must share at least 10cm of wall."
     },
     metrics: {
       title: "Calculation",

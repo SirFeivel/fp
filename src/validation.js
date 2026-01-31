@@ -4,9 +4,10 @@
  */
 
 import { t } from "./i18n.js";
-import { getCurrentRoom } from "./core.js";
+import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomSections, computeCompositeBounds, validateSections as validateSectionsGeometry } from "./composite.js";
 import { getRoomBounds } from "./geometry.js";
+import { validateFloorConnectivity } from "./floor_geometry.js";
 
 /**
  * Calculate bounding box for an exclusion shape
@@ -197,6 +198,18 @@ export function validateState(s) {
           });
         }
       }
+    }
+  }
+
+  // Floor-level validation: check room connectivity
+  const currentFloor = getCurrentFloor(s);
+  if (currentFloor && currentFloor.rooms && currentFloor.rooms.length > 1) {
+    const connectivityResult = validateFloorConnectivity(currentFloor);
+    if (!connectivityResult.valid) {
+      warns.push({
+        title: t("validation.disconnectedRoomsTitle") || "Disconnected Rooms",
+        text: t("validation.disconnectedRoomsText") || "Some rooms are not connected. Rooms must share at least 10cm of wall."
+      });
     }
   }
 

@@ -13,7 +13,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds } from "./geometry.js";
-import { getRoomAbsoluteBounds } from "./floor_geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -237,12 +237,15 @@ function renderPlanningSection(state, opts) {
         store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onRoomDoubleClick: (roomId) => {
-        // Switch to room view for this room
-        const next = deepClone(store.getState());
-        next.selectedRoomId = roomId;
-        next.view = next.view || {};
-        next.view.planningMode = "room";
-        store.commit(t("view.switchedToRoom"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+        // Select the room first, then switch to room view with validation
+        const currentState = store.getState();
+        if (currentState.selectedRoomId !== roomId) {
+          const next = deepClone(currentState);
+          next.selectedRoomId = roomId;
+          store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+        }
+        // Use switchToRoomView which includes connectivity validation
+        switchToRoomView();
       },
       onRoomPointerDown: (e, roomId) => roomDragController.onRoomPointerDown(e, roomId),
       onRoomResizePointerDown: (e, roomId, handleType) => roomResizeController.onRoomResizePointerDown(e, roomId, handleType),
@@ -503,9 +506,30 @@ function switchToFloorView() {
   store.commit(t("view.switchedToFloor"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
-function switchToRoomView() {
+function switchToRoomView(skipValidation = false) {
   const state = store.getState();
   if (state.view?.planningMode !== "floor") return; // Already in room view
+
+  // Validate floor connectivity before leaving floor planner
+  if (!skipValidation) {
+    const currentFloor = getCurrentFloor(state);
+    if (currentFloor && currentFloor.rooms.length > 1) {
+      const validation = validateFloorConnectivity(currentFloor);
+      if (!validation.valid) {
+        // Show warning dialog
+        const groupInfo = validation.groupDetails
+          .map((g, i) => `  Group ${i + 1}: ${g.roomNames.join(", ")}`)
+          .join("\n");
+
+        const message = t("floor.disconnectedRoomsWarning") ||
+          `Warning: Some rooms are not connected!\n\n${groupInfo}\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?`;
+
+        if (!confirm(message)) {
+          return; // User cancelled, stay in floor view
+        }
+      }
+    }
+  }
 
   const next = deepClone(state);
   next.view = next.view || {};
@@ -1902,19 +1926,26 @@ function updateAllTranslations() {
       floorPosition: { x: 0, y: 0 }
     };
 
-    // Position new room adjacent to the rightmost existing room
+    // Position new room on a free edge of existing rooms
     if (nextFloor.rooms.length > 0) {
-      let maxRight = -Infinity;
-      let topAtMaxRight = 0;
-      for (const room of nextFloor.rooms) {
-        const bounds = getRoomAbsoluteBounds(room);
-        if (bounds.right > maxRight) {
-          maxRight = bounds.right;
-          topAtMaxRight = bounds.top;
+      const position = findPositionOnFreeEdge(newRoom, nextFloor.rooms, 'right');
+      if (position) {
+        newRoom.floorPosition.x = position.x;
+        newRoom.floorPosition.y = position.y;
+      } else {
+        // Fallback: place to the right of rightmost room
+        let maxRight = -Infinity;
+        let topAtMaxRight = 0;
+        for (const room of nextFloor.rooms) {
+          const bounds = getRoomAbsoluteBounds(room);
+          if (bounds.right > maxRight) {
+            maxRight = bounds.right;
+            topAtMaxRight = bounds.top;
+          }
         }
+        newRoom.floorPosition.x = maxRight;
+        newRoom.floorPosition.y = topAtMaxRight;
       }
-      newRoom.floorPosition.x = maxRight;
-      newRoom.floorPosition.y = topAtMaxRight;
     }
 
     nextFloor.rooms.push(newRoom);
@@ -1966,9 +1997,21 @@ function updateAllTranslations() {
       const nextFloor = next.floors.find(f => f.id === state.selectedFloorId);
 
       if (nextFloor) {
+        // Subtract overlapping areas from existing rooms
+        const { modifiedRoomIds, errors } = subtractOverlappingAreas(newRoom, nextFloor.rooms);
+
+        if (errors.length > 0) {
+          console.warn("Overlap subtraction errors:", errors);
+        }
+
         nextFloor.rooms.push(newRoom);
         next.selectedRoomId = newRoom.id;
-        store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+
+        const commitLabel = modifiedRoomIds.length > 0
+          ? t("room.addedWithOverlapRemoved") || "Room added (overlap removed from existing rooms)"
+          : t("room.added") || "Room added";
+
+        store.commit(commitLabel, next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
     });
   });

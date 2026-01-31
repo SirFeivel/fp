@@ -1,6 +1,6 @@
 import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_CONFIG } from './core.js';
 import { t } from './i18n.js';
-import { getRoomAbsoluteBounds } from './floor_geometry.js';
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 
 export function createStructureController({
   store,
@@ -127,7 +127,7 @@ export function createStructureController({
   }
 
   /**
-   * Find a position for a new room that is adjacent to existing rooms
+   * Find a position for a new room on a free edge of existing rooms
    */
   function findConnectedPositionForNewRoom(newRoom, existingRooms) {
     // If no existing rooms, place at origin
@@ -135,7 +135,13 @@ export function createStructureController({
       return { x: 0, y: 0 };
     }
 
-    // Find the rightmost edge of all existing rooms
+    // Use free edge detection to find optimal position
+    const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
+    if (position) {
+      return { x: position.x, y: position.y };
+    }
+
+    // Fallback: find the rightmost edge of all existing rooms
     let maxRight = -Infinity;
     let topAtMaxRight = 0;
 
