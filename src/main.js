@@ -52,7 +52,9 @@ import {
   dissolvePatternGroup,
   changePatternGroupOrigin,
   canJoinPatternGroup,
-  getDisconnectedRoomsOnRemoval
+  getDisconnectedRoomsOnRemoval,
+  isPatternGroupChild,
+  getEffectiveTileSettings
 } from "./pattern-groups.js";
 import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
 
@@ -2325,9 +2327,15 @@ function updateAllTranslations() {
 
   function syncQuickControls() {
     const state = store.getState();
-    const room = state.floors
-      ?.find(f => f.id === state.selectedFloorId)
-      ?.rooms?.find(r => r.id === state.selectedRoomId);
+    const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+    const room = floor?.rooms?.find(r => r.id === state.selectedRoomId);
+
+    // Check if room is a child in a pattern group (tile settings are inherited)
+    const isChild = room ? isPatternGroupChild(room, floor) : false;
+    const effectiveSettings = isChild ? getEffectiveTileSettings(room, floor) : null;
+    const displayTile = isChild && effectiveSettings ? effectiveSettings.tile : room?.tile;
+    const displayPattern = isChild && effectiveSettings ? effectiveSettings.pattern : room?.pattern;
+    const displayGrout = isChild && effectiveSettings ? effectiveSettings.grout : room?.grout;
 
     if (room) {
       if (quickTilePreset) {
@@ -2339,18 +2347,43 @@ function updateAllTranslations() {
           opt.textContent = p.name || t("project.none");
           quickTilePreset.appendChild(opt);
         });
-        const match = presets.find(p => p.name && p.name === room.tile?.reference);
+        const match = presets.find(p => p.name && p.name === displayTile?.reference);
         quickTilePreset.value = match ? match.id : (presets[0]?.id || "");
-        quickTilePreset.disabled = presets.length === 0;
+        quickTilePreset.disabled = isChild || presets.length === 0;
         const quickGroup = document.getElementById("quickTilePresetGroup");
         if (quickGroup) quickGroup.classList.toggle("no-presets", presets.length === 0);
         const quickCreate = document.getElementById("quickCreateTilePreset");
         if (quickCreate) quickCreate.classList.toggle("hidden", presets.length > 0);
         quickTilePreset.classList.toggle("hidden", presets.length === 0);
       }
-      if (quickPattern) quickPattern.value = room.pattern?.type || "grid";
+      if (quickPattern) {
+        quickPattern.value = displayPattern?.type || "grid";
+        quickPattern.disabled = isChild;
+      }
       // Display grout in mm (state stores cm)
-      if (quickGrout) quickGrout.value = Math.round((room.grout?.widthCm || 0) * 10);
+      if (quickGrout) {
+        quickGrout.value = Math.round((displayGrout?.widthCm || 0) * 10);
+        quickGrout.disabled = isChild;
+      }
+
+      // Add locked class to quick control groups for overlay styling
+      const quickTileGroup = document.getElementById("quickTilePresetGroup");
+      const quickPatternGroup = quickPattern?.closest(".quick-control-group");
+      const quickGroutGroup = quickGrout?.closest(".quick-control-group");
+
+      // Get origin room name for the alert message
+      const group = isChild ? getRoomPatternGroup(floor, room.id) : null;
+      const originRoom = group ? floor.rooms?.find(r => r.id === group.originRoomId) : null;
+      const originName = originRoom?.name || "Origin";
+
+      [quickTileGroup, quickPatternGroup, quickGroutGroup].forEach(grp => {
+        if (grp) {
+          grp.classList.toggle("pattern-group-locked", isChild);
+          if (isChild) {
+            grp.dataset.originName = originName;
+          }
+        }
+      });
     }
 
     // Sync quick toggles with main toggles
@@ -2643,6 +2676,51 @@ function updateAllTranslations() {
   quickTilePreset?.addEventListener("change", commitQuickTilePreset);
   quickPattern?.addEventListener("change", commitQuickPattern);
   quickGrout?.addEventListener("change", commitQuickGrout);
+
+  // Show alert when trying to interact with disabled pattern group child controls
+  function showPatternGroupChildAlert() {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const room = getCurrentRoom(state);
+    if (!room || !floor) return;
+
+    const group = getRoomPatternGroup(floor, room.id);
+    if (!group) return;
+
+    const originRoom = floor.rooms?.find(r => r.id === group.originRoomId);
+    const message = t("patternGroups.childCannotEdit").replace("{origin}", originRoom?.name || "Origin");
+    showAlert({ title: t("patternGroups.roomInGroup"), message });
+  }
+
+  // Add click handlers for disabled quick controls
+  [quickTilePreset, quickPattern, quickGrout].forEach(el => {
+    if (el) {
+      el.addEventListener("mousedown", (e) => {
+        if (el.disabled) {
+          e.preventDefault();
+          e.stopPropagation();
+          showPatternGroupChildAlert();
+        }
+      }, true);
+    }
+  });
+
+  // Click handler for all pattern-group-locked elements (settings panel and quick controls)
+  document.addEventListener("click", (e) => {
+    const lockedElement = e.target.closest(".pattern-group-locked");
+    if (lockedElement) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Get origin name from data attribute or fall back to computing it
+      const originName = lockedElement.dataset.originName;
+      if (originName) {
+        const message = t("patternGroups.childCannotEdit").replace("{origin}", originName);
+        showAlert({ title: t("patternGroups.roomInGroup"), message });
+      } else {
+        showPatternGroupChildAlert();
+      }
+    }
+  }, true);
 
   // Spinner button handlers
   document.querySelectorAll(".quick-spinner-btn").forEach(btn => {

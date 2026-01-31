@@ -19,7 +19,7 @@ import {
 import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
-import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup } from "./pattern-groups.js";
+import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
 let activeSvgEdit = null;
 
@@ -971,27 +971,85 @@ export function renderReferencePicker(state) {
 
 export function renderTilePatternForm(state) {
   const currentRoom = getCurrentRoom(state);
+  const currentFloor = getCurrentFloor(state);
   const uiState = getUiState();
   const tileEditActive = uiState.tileEditActive;
   const tileEditDirty = uiState.tileEditDirty;
   const tileEditMode = uiState.tileEditMode || "edit";
   const tileEditHasPreset = uiState.tileEditHasPreset === true;
+
+  // Check if room is a child in a pattern group (inherits settings from origin)
+  const isChild = isPatternGroupChild(currentRoom, currentFloor);
+  const effectiveSettings = isChild ? getEffectiveTileSettings(currentRoom, currentFloor) : null;
+  const displayRoom = isChild && effectiveSettings ? {
+    ...currentRoom,
+    tile: effectiveSettings.tile,
+    pattern: effectiveSettings.pattern,
+    grout: effectiveSettings.grout
+  } : currentRoom;
+
+  // Show/hide pattern group child notice and overlay
+  let childNotice = document.getElementById("patternGroupChildNotice");
+  if (!childNotice) {
+    // Create notice element if it doesn't exist
+    const tileSection = document.getElementById("planningTileSection");
+    if (tileSection) {
+      childNotice = document.createElement("div");
+      childNotice.id = "patternGroupChildNotice";
+      childNotice.className = "pattern-group-child-notice";
+      const sectionTitle = tileSection.querySelector(".panel-section-title");
+      if (sectionTitle) {
+        sectionTitle.after(childNotice);
+      }
+    }
+  }
+
+  // Get origin room info for messages
+  const group = isChild ? getRoomPatternGroup(currentFloor, currentRoom?.id) : null;
+  const originRoom = group ? currentFloor?.rooms?.find(r => r.id === group.originRoomId) : null;
+  const originName = originRoom?.name || "Origin";
+
+  if (childNotice) {
+    childNotice.classList.toggle("hidden", !isChild);
+    if (isChild) {
+      childNotice.innerHTML = `<span class="notice-icon">🔗</span> ${t("patternGroups.childNotice").replace("{origin}", originName)}`;
+    }
+  }
+
+  // Add locked class to settings panel sections for pattern group children
+  // This enables CSS pseudo-element overlays that capture clicks
+  const tileFieldsSection = document.querySelector("#planningTileSection .panel-fields");
+  const groutFieldsSection = document.getElementById("groutW")?.closest(".panel-section")?.querySelector(".panel-fields");
+  const patternFieldsSection = document.getElementById("patternType")?.closest(".panel-section")?.querySelector(".panel-fields");
+
+  [tileFieldsSection, groutFieldsSection, patternFieldsSection].forEach(section => {
+    if (section) {
+      section.classList.toggle("pattern-group-locked", isChild);
+      if (isChild) {
+        section.dataset.originName = originName;
+      }
+    }
+  });
+
   renderReferencePicker(state);
   renderTilePresetPicker(state, currentRoom);
   renderSkirtingPresetPicker(state);
 
   const editToggle = document.getElementById("tileConfigEditToggle");
-  if (editToggle) editToggle.checked = tileEditActive;
+  if (editToggle) {
+    editToggle.checked = tileEditActive;
+    editToggle.disabled = isChild;
+  }
 
-  const ref = currentRoom?.tile?.reference;
+  const ref = displayRoom?.tile?.reference;
   const preset = ref ? state.tilePresets?.find(p => p?.name && p.name === ref) : null;
   const editActions = document.getElementById("tileEditActions");
-  if (editActions) editActions.classList.toggle("hidden", !tileEditActive);
+  if (editActions) editActions.classList.toggle("hidden", !tileEditActive || isChild);
   const editUpdateBtn = document.getElementById("tileEditUpdateBtn");
   const editSaveBtn = document.getElementById("tileEditSaveBtn");
   const hasPreset = tileEditHasPreset || Boolean(preset);
-  if (editUpdateBtn) editUpdateBtn.style.display = tileEditActive && tileEditMode !== "create" && hasPreset ? "" : "none";
-  if (editSaveBtn) editSaveBtn.style.display = tileEditActive && (tileEditMode === "create" || hasPreset) ? "" : "none";
+  if (editUpdateBtn) editUpdateBtn.style.display = tileEditActive && !isChild && tileEditMode !== "create" && hasPreset ? "" : "none";
+  if (editSaveBtn) editSaveBtn.style.display = tileEditActive && !isChild && (tileEditMode === "create" || hasPreset) ? "" : "none";
   if (editSaveBtn) {
     editSaveBtn.textContent = tileEditMode === "create"
       ? t("planning.tileEditSaveCreate")
@@ -1000,18 +1058,18 @@ export function renderTilePatternForm(state) {
 
   const isCreateMode = tileEditMode === "create";
   const tileShapeEl = document.getElementById("tileShape");
-  if (tileShapeEl) tileShapeEl.value = currentRoom?.tile?.shape ?? "rect";
+  if (tileShapeEl) tileShapeEl.value = displayRoom?.tile?.shape ?? "rect";
   const tileWEl = document.getElementById("tileW");
   const tileHEl = document.getElementById("tileH");
   if (!isCreateMode) {
-    if (tileWEl) tileWEl.value = currentRoom?.tile?.widthCm ?? "";
-    if (tileHEl) tileHEl.value = currentRoom?.tile?.heightCm ?? "";
+    if (tileWEl) tileWEl.value = displayRoom?.tile?.widthCm ?? "";
+    if (tileHEl) tileHEl.value = displayRoom?.tile?.heightCm ?? "";
   }
   // Display grout in mm (state stores cm)
-  document.getElementById("groutW").value = Math.round((currentRoom?.grout?.widthCm ?? 0) * 10);
-  const groutColorValue = currentRoom?.grout?.colorHex ?? "#ffffff";
+  document.getElementById("groutW").value = Math.round((displayRoom?.grout?.widthCm ?? 0) * 10);
+  const groutColorValue = displayRoom?.grout?.colorHex ?? "#ffffff";
   document.getElementById("groutColor").value = groutColorValue;
-  const pricing = currentRoom ? getRoomPricing(state, currentRoom) : { pricePerM2: 0, packM2: 0 };
+  const pricing = displayRoom ? getRoomPricing(state, displayRoom) : { pricePerM2: 0, packM2: 0 };
   const pricePerM2 = document.getElementById("tilePricePerM2");
   if (pricePerM2 && !isCreateMode) pricePerM2.value = pricing.pricePerM2 ?? 0;
   const packM2 = document.getElementById("tilePackM2");
@@ -1025,6 +1083,7 @@ export function renderTilePatternForm(state) {
   const allowSkirting = document.getElementById("tileAllowSkirting");
   if (allowSkirting && !isCreateMode) allowSkirting.checked = Boolean(preset?.useForSkirting);
 
+  // Tile edit inputs - disabled when child in pattern group
   const editInputs = [
     "tileReference",
     "tileShape",
@@ -1036,18 +1095,22 @@ export function renderTilePatternForm(state) {
   ];
   editInputs.forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.disabled = !tileEditActive;
+    if (el) el.disabled = isChild || !tileEditActive;
   });
   const refInput = document.getElementById("tileReference");
   if (refInput) {
-    if (tileEditActive) {
+    if (tileEditActive && !isChild) {
       refInput.removeAttribute("list");
     } else {
       refInput.setAttribute("list", "tileReferences");
     }
   }
   const tileConfigFields = document.querySelector(".tile-config-fields");
-  if (tileConfigFields) tileConfigFields.classList.toggle("is-readonly", !tileEditActive);
+  if (tileConfigFields) tileConfigFields.classList.toggle("is-readonly", isChild || !tileEditActive);
+
+  // Tile preset select - disabled when child in pattern group
+  const tilePresetSelect = document.getElementById("tilePresetSelect");
+  if (tilePresetSelect) tilePresetSelect.disabled = isChild;
 
   // Update preset swatch selection
   document.querySelectorAll("#groutColorPresets .color-swatch").forEach(swatch => {
@@ -1058,30 +1121,57 @@ export function renderTilePatternForm(state) {
     }
   });
 
-  document.getElementById("patternType").value = currentRoom?.pattern?.type ?? "grid";
+  // Grout controls - disabled when child in pattern group
+  const groutWEl = document.getElementById("groutW");
+  const groutColorEl = document.getElementById("groutColor");
+  if (groutWEl) groutWEl.disabled = isChild;
+  if (groutColorEl) groutColorEl.disabled = isChild;
+  document.querySelectorAll("#groutColorPresets .color-swatch").forEach(swatch => {
+    swatch.classList.toggle("disabled", isChild);
+  });
+
+  document.getElementById("patternType").value = displayRoom?.pattern?.type ?? "grid";
   document.getElementById("bondFraction").value = String(
-    currentRoom?.pattern?.bondFraction ?? 0.5
+    displayRoom?.pattern?.bondFraction ?? 0.5
   );
   document.getElementById("rotationDeg").value = String(
-    currentRoom?.pattern?.rotationDeg ?? 0
+    displayRoom?.pattern?.rotationDeg ?? 0
   );
-  document.getElementById("offsetX").value = currentRoom?.pattern?.offsetXcm ?? 0;
-  document.getElementById("offsetY").value = currentRoom?.pattern?.offsetYcm ?? 0;
+  document.getElementById("offsetX").value = displayRoom?.pattern?.offsetXcm ?? 0;
+  document.getElementById("offsetY").value = displayRoom?.pattern?.offsetYcm ?? 0;
 
   document.getElementById("originPreset").value =
-    currentRoom?.pattern?.origin?.preset ?? "tl";
-  document.getElementById("originX").value = currentRoom?.pattern?.origin?.xCm ?? 0;
-  document.getElementById("originY").value = currentRoom?.pattern?.origin?.yCm ?? 0;
+    displayRoom?.pattern?.origin?.preset ?? "tl";
+  document.getElementById("originX").value = displayRoom?.pattern?.origin?.xCm ?? 0;
+  document.getElementById("originY").value = displayRoom?.pattern?.origin?.yCm ?? 0;
 
-  const isRB = currentRoom?.pattern?.type === "runningBond";
-  document.getElementById("bondFraction").disabled = !isRB;
+  // Pattern controls - disabled when child in pattern group
+  const patternInputs = [
+    "patternType",
+    "bondFraction",
+    "rotationDeg",
+    "offsetX",
+    "offsetY",
+    "originPreset",
+    "originX",
+    "originY"
+  ];
+  patternInputs.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isChild;
+  });
+
+  const isRB = displayRoom?.pattern?.type === "runningBond";
+  if (!isChild) {
+    document.getElementById("bondFraction").disabled = !isRB;
+  }
   // Also hide bondFraction field if not RB
   const bondFractionField = document.getElementById("bondFraction")?.closest(".field");
   if (bondFractionField) {
     bondFractionField.style.display = isRB ? "" : "none";
   }
 
-  const shape = currentRoom?.tile?.shape || "rect";
+  const shape = displayRoom?.tile?.shape || "rect";
   const tileHField = document.getElementById("tileHeightField");
   const hexHint = document.getElementById("hexHint");
 

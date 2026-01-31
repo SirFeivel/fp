@@ -108,7 +108,9 @@ const translations = {
       member: "◦ Mitglied",
       selectedGroup: "Ausgewählte Gruppe",
       noGroups: "Keine Gruppen",
-      groupSelected: "Gruppe ausgewählt"
+      groupSelected: "Gruppe ausgewählt",
+      childNotice: "Einstellungen werden von \"{origin}\" übernommen",
+      childCannotEdit: "Dieser Raum gehört zu einer Mustergruppe. Änderungen müssen im Ursprungsraum \"{origin}\" vorgenommen werden."
     },
     settings: {
       save: "Projekt speichern",
@@ -702,7 +704,9 @@ const translations = {
       member: "◦ Member",
       selectedGroup: "Selected Group",
       noGroups: "No groups",
-      groupSelected: "Group selected"
+      groupSelected: "Group selected",
+      childNotice: "Settings inherited from \"{origin}\"",
+      childCannotEdit: "This room belongs to a pattern group. Changes must be made in the origin room \"{origin}\"."
     },
     settings: {
       save: "Save Project",

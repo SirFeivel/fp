@@ -2637,6 +2637,61 @@ body{
   filter: grayscale(0.2);
 }
 
+/* Pattern group child notice */
+.pattern-group-child-notice {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: rgba(99, 179, 237, 0.15);
+  border: 1px solid rgba(99, 179, 237, 0.3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pattern-group-child-notice.hidden {
+  display: none;
+}
+
+.pattern-group-child-notice .notice-icon {
+  font-size: 1.1em;
+}
+
+#groutColorPresets .color-swatch.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Pattern group lock overlay - captures clicks on locked sections */
+.pattern-group-locked {
+  position: relative;
+}
+
+.pattern-group-locked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  cursor: not-allowed;
+  z-index: 10;
+}
+
+.pattern-group-locked:hover::after {
+  background: rgba(99, 179, 237, 0.12);
+  border-radius: var(--r-sm);
+}
+
+/* Specific styling for panel fields */
+.panel-fields.pattern-group-locked {
+  pointer-events: auto;
+}
+
+.panel-fields.pattern-group-locked::after {
+  border-radius: var(--r-sm);
+}
+
 .tile-edit-actions {
   margin: 10px 0 6px;
   padding: 10px 12px;

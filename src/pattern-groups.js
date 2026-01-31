@@ -351,3 +351,19 @@ export function getEffectiveTileSettings(room, floor) {
     grout: sourceRoom?.grout || null
   };
 }
+
+/**
+ * Check if a room is a child in a pattern group (member but not origin)
+ * @param {Object} room - The room to check
+ * @param {Object} floor - Floor object with patternGroups
+ * @returns {boolean} True if room is a child (in group but not the origin)
+ */
+export function isPatternGroupChild(room, floor) {
+  if (!room || !floor) return false;
+
+  const group = getRoomPatternGroup(floor, room.id);
+  if (!group) return false;
+
+  // Room is in a group - check if it's the origin
+  return group.originRoomId !== room.id;
+}
