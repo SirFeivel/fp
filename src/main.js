@@ -720,30 +720,13 @@ function updatePatternGroupsControlsState() {
 function initPatternGroupsControls() {
   // Zoom controls for pattern groups view
   document.getElementById("pgZoomIn")?.addEventListener("click", () => {
-    const state = store.getState();
-    const floor = getCurrentFloor(state);
-    if (floor) {
-      zoomPanController.zoomIn(`floor:${floor.id}`);
-      renderAll(t("zoom.in"));
-    }
+    zoomPanController.zoomIn();
   });
-
   document.getElementById("pgZoomOut")?.addEventListener("click", () => {
-    const state = store.getState();
-    const floor = getCurrentFloor(state);
-    if (floor) {
-      zoomPanController.zoomOut(`floor:${floor.id}`);
-      renderAll(t("zoom.out"));
-    }
+    zoomPanController.zoomOut();
   });
-
   document.getElementById("pgZoomReset")?.addEventListener("click", () => {
-    const state = store.getState();
-    const floor = getCurrentFloor(state);
-    if (floor) {
-      zoomPanController.resetZoom(`floor:${floor.id}`);
-      renderAll(t("zoom.reset"));
-    }
+    zoomPanController.reset();
   });
 }
 
@@ -1039,8 +1022,8 @@ const zoomPanController = createZoomPanController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getCurrentRoomId: () => {
     const state = store.getState();
-    // In floor view, use floor ID as the viewport key with a prefix
-    if (state.view?.planningMode === "floor") {
+    // In floor or pattern groups view, use floor ID as the viewport key with a prefix
+    if (state.view?.planningMode === "floor" || state.view?.planningMode === "patternGroups") {
       return `floor:${state.selectedFloorId}`;
     }
     return state.selectedRoomId;
@@ -2425,13 +2408,15 @@ function updateAllTranslations() {
       : state.selectedRoomId;
     const vp = getViewport(viewportKey);
 
-    // Update both room and floor zoom indicators
+    // Update room, floor, and pattern groups zoom indicators
     const zoomLevel = document.getElementById("zoomLevel");
     const floorZoomLevel = document.getElementById("floorZoomLevel");
+    const pgZoomLevel = document.getElementById("pgZoomLevel");
 
     const zoomText = `${Math.round(vp.zoom * 100)}%`;
     if (zoomLevel) zoomLevel.textContent = zoomText;
     if (floorZoomLevel) floorZoomLevel.textContent = zoomText;
+    if (pgZoomLevel) pgZoomLevel.textContent = zoomText;
   }
 
   // Sync background controls with floor state
