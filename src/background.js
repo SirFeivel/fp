@@ -3,6 +3,7 @@
 
 import { t } from "./i18n.js";
 import { deepClone, getCurrentFloor } from "./core.js";
+import { showAlert } from "./dialog.js";
 
 /**
  * Creates a background controller for handling floor background images.
@@ -466,7 +467,11 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       return true;
     } catch (error) {
       console.error("Background upload failed:", error);
-      alert(error.message);
+      await showAlert({
+        title: t("dialog.uploadFailedTitle") || "Upload Failed",
+        message: error.message,
+        type: "error"
+      });
       return false;
     }
   }

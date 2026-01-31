@@ -2921,6 +2921,141 @@ hr{
   to{ opacity:1; transform:translateY(0); }
 }
 
+/* ==================== MODAL DIALOG ==================== */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.dialog-modal {
+  background: rgba(15, 26, 46, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  min-width: 320px;
+  max-width: 480px;
+  width: 90%;
+  animation: dialogSlideIn 0.15s ease-out;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dialog-header {
+  padding: 16px 20px 0;
+}
+
+.dialog-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.dialog-content {
+  padding: 12px 20px 16px;
+}
+
+.dialog-message {
+  font-size: var(--fs-md);
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.dialog-message.hidden {
+  display: none;
+}
+
+.dialog-input-section {
+  margin-top: 12px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: var(--fs-md);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+}
+
+.dialog-select-section {
+  margin-top: 12px;
+}
+
+.dialog-select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: var(--fs-md);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.dialog-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.dialog-actions .btn {
+  min-width: 80px;
+}
+
+.dialog-actions .btn.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.dialog-actions .btn.danger:hover {
+  background: var(--danger-hover, #c0392b);
+}
+
+/* Dialog type variations */
+.dialog-modal[data-type="error"] .dialog-title {
+  color: var(--danger);
+}
+
+.dialog-modal[data-type="warning"] .dialog-title {
+  color: var(--warning, #f39c12);
+}
+
+.dialog-modal[data-type="success"] .dialog-title {
+  color: var(--success, #27ae60);
+}
+
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
   .topbar {

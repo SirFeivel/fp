@@ -1,6 +1,7 @@
 import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_CONFIG } from './core.js';
 import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
+import { showAlert } from './dialog.js';
 
 export function createStructureController({
   store,
@@ -105,10 +106,14 @@ export function createStructureController({
     store.commit(t("structure.floorAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
-  function deleteFloor() {
+  async function deleteFloor() {
     const state = store.getState();
     if (!state.floors || state.floors.length <= 1) {
-      alert("Cannot delete the last floor");
+      await showAlert({
+        title: t("dialog.warning") || "Warning",
+        message: t("dialog.cannotDeleteLastFloor") || "Cannot delete the last floor",
+        type: "warning"
+      });
       return;
     }
 
@@ -203,11 +208,15 @@ export function createStructureController({
     store.commit(t("structure.roomAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
-  function deleteRoom() {
+  async function deleteRoom() {
     const state = store.getState();
     const currentFloor = getCurrentFloor(state);
     if (!currentFloor || currentFloor.rooms.length <= 1) {
-      alert("Cannot delete the last room");
+      await showAlert({
+        title: t("dialog.warning") || "Warning",
+        message: t("dialog.cannotDeleteLastRoom") || "Cannot delete the last room",
+        type: "warning"
+      });
       return;
     }
 

@@ -1235,6 +1235,28 @@
       </section>
     </main>
 
+    <!-- ==================== MODAL DIALOG ==================== -->
+    <div id="dialogOverlay" class="dialog-overlay hidden">
+      <div id="dialogModal" class="dialog-modal">
+        <div class="dialog-header">
+          <h3 id="dialogTitle" class="dialog-title">Dialog Title</h3>
+        </div>
+        <div class="dialog-content">
+          <p id="dialogMessage" class="dialog-message"></p>
+          <div id="dialogInputSection" class="dialog-input-section hidden">
+            <input id="dialogInput" type="text" class="dialog-input" />
+          </div>
+          <div id="dialogSelectSection" class="dialog-select-section hidden">
+            <select id="dialogSelect" class="dialog-select"></select>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button id="dialogCancelBtn" class="btn ghost small">Cancel</button>
+          <button id="dialogConfirmBtn" class="btn primary small">Confirm</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== DEBUG ==================== -->
     <div id="warningsPanel" class="debug-panel warnings-panel hidden">
       <div class="debug-panel-header">

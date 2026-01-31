@@ -54,6 +54,7 @@ import {
   canJoinPatternGroup,
   getDisconnectedRoomsOnRemoval
 } from "./pattern-groups.js";
+import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -573,7 +574,7 @@ function switchToPatternGroupsView() {
   store.commit(t("view.switchedToPatternGroups") || "Switched to Pattern Groups", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
-function switchToRoomView(skipValidation = false) {
+async function switchToRoomView(skipValidation = false) {
   const state = store.getState();
   console.log("[ViewSwitch] switchToRoomView called, current mode:", state.view?.planningMode);
   if (state.view?.planningMode === "room") {
@@ -595,7 +596,15 @@ function switchToRoomView(skipValidation = false) {
         const message = t("floor.disconnectedRoomsWarning") ||
           `Warning: Some rooms are not connected!\n\n${groupInfo}\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?`;
 
-        if (!confirm(message)) {
+        const confirmed = await showConfirm({
+          title: t("dialog.disconnectedRoomsTitle") || "Disconnected Rooms",
+          message,
+          confirmText: t("dialog.continue") || "Continue",
+          cancelText: t("dialog.cancel") || "Cancel",
+          danger: false
+        });
+
+        if (!confirmed) {
           return; // User cancelled, stay in floor view
         }
       }
@@ -1734,40 +1743,57 @@ function updateAllTranslations() {
     });
 
     // Settings menu actions
-    document.getElementById("menuSaveProject")?.addEventListener("click", () => {
+    document.getElementById("menuSaveProject")?.addEventListener("click", async () => {
       settingsDropdown.classList.add("hidden");
       const state = store.getState();
-      const name = prompt(t("project.nameLabel"), state.project?.name || "");
+      const name = await showPrompt({
+        title: t("project.title") || "Save Project",
+        message: t("dialog.enterProjectName") || "Enter a name for this project",
+        placeholder: t("project.namePlaceholder") || "e.g. Bathroom Ground Floor",
+        defaultValue: state.project?.name || "",
+        confirmText: t("dialog.save") || "Save",
+        cancelText: t("dialog.cancel") || "Cancel"
+      });
       if (!name) return;
       store.saveCurrentAsProject(name);
       store.autosaveSession(updateMeta);
       renderAll(t("project.saved"));
     });
 
-    document.getElementById("menuLoadProject")?.addEventListener("click", () => {
+    document.getElementById("menuLoadProject")?.addEventListener("click", async () => {
       settingsDropdown.classList.add("hidden");
       const projects = store.loadProjects();
       if (projects.length === 0) {
-        alert(t("project.none"));
+        await showAlert({
+          title: t("dialog.noProjectsAvailable") || "No Projects",
+          message: t("project.none") || "No saved projects found.",
+          type: "info"
+        });
         return;
       }
-      const names = projects.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
-      const choice = prompt(`${t("project.load")}:\n${names}\n\nEnter number:`, "1");
-      if (choice) {
-        const idx = parseInt(choice, 10) - 1;
-        if (idx >= 0 && idx < projects.length) {
-          const proj = projects[idx];
-          const res = store.loadProjectById(proj.id);
-          if (!res.ok) {
-            alert(t("project.notFound"));
-            return;
-          }
-          setSelectedExcl(null);
-          setSelectedSection(null);
-          lastUnionError = null;
-          lastTileError = null;
-          renderAll(`${t("project.loaded")}: ${res.name}`);
+      const items = projects.map(p => ({ value: p.id, label: p.name }));
+      const selectedId = await showSelect({
+        title: t("project.load") || "Load Project",
+        message: t("dialog.selectProject") || "Select a project to load",
+        items,
+        confirmText: t("project.load") || "Load",
+        cancelText: t("dialog.cancel") || "Cancel"
+      });
+      if (selectedId) {
+        const res = store.loadProjectById(selectedId);
+        if (!res.ok) {
+          await showAlert({
+            title: t("dialog.projectNotFoundTitle") || "Not Found",
+            message: t("project.notFound") || "Project not found.",
+            type: "error"
+          });
+          return;
         }
+        setSelectedExcl(null);
+        setSelectedSection(null);
+        lastUnionError = null;
+        lastTileError = null;
+        renderAll(`${t("project.loaded")}: ${res.name}`);
       }
     });
 
@@ -1792,9 +1818,16 @@ function updateAllTranslations() {
       document.getElementById("debugPanel")?.classList.add("hidden");
     });
 
-    document.getElementById("menuReset")?.addEventListener("click", () => {
+    document.getElementById("menuReset")?.addEventListener("click", async () => {
       settingsDropdown.classList.add("hidden");
-      if (confirm(t("session.confirmReset"))) {
+      const confirmed = await showConfirm({
+        title: t("dialog.confirmResetTitle") || "Reset Everything?",
+        message: t("dialog.confirmResetText") || "All changes to the current project will be lost. This action cannot be undone.",
+        confirmText: t("dialog.reset") || "Reset",
+        cancelText: t("dialog.cancel") || "Cancel",
+        danger: true
+      });
+      if (confirmed) {
         setSelectedExcl(null);
         setSelectedSection(null);
         lastUnionError = null;
@@ -2098,14 +2131,18 @@ function updateAllTranslations() {
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
-  document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
+  document.getElementById("floorDeleteRoom")?.addEventListener("click", async () => {
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor || !state.selectedRoomId) return;
 
     // Don't delete if it's the last room
     if (floor.rooms.length <= 1) {
-      alert(t("floor.cannotDeleteLastRoom") || "Cannot delete the last room");
+      await showAlert({
+        title: t("dialog.warning") || "Warning",
+        message: t("floor.cannotDeleteLastRoom") || "Cannot delete the last room",
+        type: "warning"
+      });
       return;
     }
 
@@ -2199,7 +2236,7 @@ function updateAllTranslations() {
     }
   });
 
-  document.getElementById("pgRemoveFromGroup")?.addEventListener("click", () => {
+  document.getElementById("pgRemoveFromGroup")?.addEventListener("click", async () => {
     const state = store.getState();
     const floor = getCurrentFloor(state);
     const roomId = state.selectedRoomId;
@@ -2216,9 +2253,16 @@ function updateAllTranslations() {
         const room = floor.rooms?.find(r => r.id === id);
         return room?.name || id;
       }).join(", ");
-      const confirmMsg = t("patternGroups.removeDisconnectWarning") ||
-        `Removing this room will also disconnect: ${roomNames}. Continue?`;
-      if (!confirm(confirmMsg.replace("{rooms}", roomNames))) return;
+      const message = (t("patternGroups.removeDisconnectWarning") ||
+        "Removing this room will also disconnect: {rooms}. Continue?").replace("{rooms}", roomNames);
+      const confirmed = await showConfirm({
+        title: t("dialog.removeFromGroupTitle") || "Remove Room?",
+        message,
+        confirmText: t("dialog.continue") || "Continue",
+        cancelText: t("dialog.cancel") || "Cancel",
+        danger: true
+      });
+      if (!confirmed) return;
     }
 
     const next = deepClone(state);
@@ -2250,7 +2294,7 @@ function updateAllTranslations() {
     }
   });
 
-  document.getElementById("pgDissolveGroup")?.addEventListener("click", () => {
+  document.getElementById("pgDissolveGroup")?.addEventListener("click", async () => {
     const state = store.getState();
     const floor = getCurrentFloor(state);
     const roomId = state.selectedRoomId;
@@ -2262,7 +2306,14 @@ function updateAllTranslations() {
 
     const confirmMsg = t("patternGroups.dissolveConfirm") ||
       "This will dissolve the pattern group. All rooms will become independent. Continue?";
-    if (!confirm(confirmMsg)) return;
+    const confirmed = await showConfirm({
+      title: t("dialog.dissolveGroupTitle") || "Dissolve Group?",
+      message: confirmMsg,
+      confirmText: t("dialog.continue") || "Continue",
+      cancelText: t("dialog.cancel") || "Cancel",
+      danger: true
+    });
+    if (!confirmed) return;
 
     const next = deepClone(state);
     const nextFloor = next.floors?.find(f => f.id === next.selectedFloorId);

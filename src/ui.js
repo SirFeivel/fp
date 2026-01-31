@@ -4,6 +4,7 @@ import { t } from "./i18n.js";
 import { getRoomSections } from "./composite.js";
 import { computeProjectTotals } from "./calc.js";
 import { getUiState, setUiState } from "./ui_state.js";
+import { showConfirm, showAlert } from "./dialog.js";
 
 function wireInputCommit(el, { markDirty, commitLabel, commitFn }) {
   if (!el) return;
@@ -21,15 +22,21 @@ async function handleImportFile(file, { validateState, commit }) {
   const text = await file.text();
   const parsed = safeParseJSON(text);
   if (!parsed.ok) {
-    alert(t("importExport.importFailed"));
+    await showAlert({
+      title: t("dialog.importFailedTitle") || "Import Failed",
+      message: t("importExport.importFailed") || "Failed to parse import file.",
+      type: "error"
+    });
     return;
   }
   const candidate = parsed.value;
   const { errors } = validateState(candidate);
   if (errors.length > 0) {
-    alert(
-      t("importExport.importRejected") + "\n- " + errors.map((e) => e.title).join("\n- ")
-    );
+    await showAlert({
+      title: t("dialog.importRejectedTitle") || "Import Rejected",
+      message: t("importExport.importRejected") + "\n- " + errors.map((e) => e.title).join("\n- "),
+      type: "error"
+    });
     return;
   }
   commit("Import JSON", candidate);
@@ -662,8 +669,15 @@ export function bindUI({
   }
 
   // Buttons
-  document.getElementById("btnReset")?.addEventListener("click", () => {
-    if (confirm(t("session.confirmReset"))) {
+  document.getElementById("btnReset")?.addEventListener("click", async () => {
+    const confirmed = await showConfirm({
+      title: t("dialog.confirmResetTitle") || "Reset Everything?",
+      message: t("dialog.confirmResetText") || "All changes to the current project will be lost. This action cannot be undone.",
+      confirmText: t("dialog.reset") || "Reset",
+      cancelText: t("dialog.cancel") || "Cancel",
+      danger: true
+    });
+    if (confirmed) {
       setSelectedExcl(null);
       setSelectedSection(null);
       resetErrors();
@@ -674,10 +688,14 @@ export function bindUI({
     }
   });
 
-  document.getElementById("btnLoadSession")?.addEventListener("click", () => {
+  document.getElementById("btnLoadSession")?.addEventListener("click", async () => {
     const ok = store.loadSessionIfAny();
     if (!ok) {
-      alert(t("errors.noSession"));
+      await showAlert({
+        title: t("dialog.noSessionTitle") || "No Session",
+        message: t("dialog.noSessionText") || "No valid session found to restore.",
+        type: "info"
+      });
       return;
     }
     setSelectedExcl(null);
@@ -715,13 +733,17 @@ export function bindUI({
   document.getElementById("btnCancelDeleteProject")?.addEventListener("click", () => {
     document.getElementById("projectDeleteWarning")?.classList.add("hidden");
   });
-  document.getElementById("projectSelect")?.addEventListener("change", () => {
+  document.getElementById("projectSelect")?.addEventListener("change", async () => {
     document.getElementById("projectDeleteWarning")?.classList.add("hidden");
     const id = document.getElementById("projectSelect")?.value;
     if (!id) return;
     const res = store.loadProjectById(id);
     if (!res.ok) {
-      alert(t("project.notFound"));
+      await showAlert({
+        title: t("dialog.projectNotFoundTitle") || "Not Found",
+        message: t("project.notFound") || "Project not found.",
+        type: "error"
+      });
       return;
     }
     setSelectedExcl(null);
@@ -1248,9 +1270,17 @@ export function bindUI({
     const state = store.getState();
     try {
       await navigator.clipboard.writeText(JSON.stringify(state, null, 2));
-      alert(t("importExport.stateCopied"));
+      await showAlert({
+        title: t("dialog.success") || "Success",
+        message: t("dialog.copiedToClipboard") || "State copied to clipboard.",
+        type: "success"
+      });
     } catch {
-      alert(t("importExport.copyFailed"));
+      await showAlert({
+        title: t("dialog.error") || "Error",
+        message: t("dialog.copyFailed") || "Failed to copy to clipboard.",
+        type: "error"
+      });
     }
   });
 
