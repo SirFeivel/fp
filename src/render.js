@@ -18,7 +18,46 @@ import {
 } from "./geometry.js";
 import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
-import { getFloorBounds } from "./floor_geometry.js";
+import { getFloorBounds, findPatternLinkedGroups } from "./floor_geometry.js";
+
+/**
+ * Compute shared origin for a room if it's part of a linked group.
+ * Returns origin in floor coordinates, or null if room is not linked.
+ */
+function computeLinkedOriginForRoom(room, floor) {
+  if (!floor?.rooms || floor.rooms.length < 2) return null;
+
+  const linkedGroups = findPatternLinkedGroups(floor.rooms);
+
+  // Find the group containing this room
+  const group = linkedGroups.find(g => g.includes(room.id));
+  if (!group || group.length < 2) return null;
+
+  // Get all rooms in the group
+  const groupRooms = group.map(id => floor.rooms.find(r => r.id === id)).filter(Boolean);
+
+  // Sort by position for consistent reference room selection
+  groupRooms.sort((a, b) => {
+    const posA = a.floorPosition || { x: 0, y: 0 };
+    const posB = b.floorPosition || { x: 0, y: 0 };
+    return posA.x - posB.x || posA.y - posB.y;
+  });
+
+  // Reference room is the first (top-left-most) room
+  const refRoom = groupRooms[0];
+  const refPos = refRoom.floorPosition || { x: 0, y: 0 };
+  const refBounds = getRoomBounds(refRoom);
+
+  // Global origin in floor coordinates (top-left of reference room)
+  const globalOrigin = { x: refPos.x + refBounds.minX, y: refPos.y + refBounds.minY };
+
+  // Convert to this room's local coordinates
+  const roomPos = room.floorPosition || { x: 0, y: 0 };
+  return {
+    x: globalOrigin.x - roomPos.x,
+    y: globalOrigin.y - roomPos.y
+  };
+}
 
 let activeSvgEdit = null;
 
@@ -1901,7 +1940,11 @@ export function renderPlanSvg({
     else setLastTileError(null);
 
     if (avail.mp) {
-      const t = tilesForPreview(state, avail.mp, isRemovalMode);
+      // Check if room is in a linked group and compute shared origin
+      const currentFloor = state.floors?.find(f => f.id === state.selectedFloorId);
+      const linkedOrigin = computeLinkedOriginForRoom(currentRoom, currentFloor);
+
+      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: linkedOrigin });
       if (t.error) setLastTileError(t.error);
       else setLastTileError(null);
 
@@ -2750,6 +2793,7 @@ export function renderFloorCanvas({
     svg.appendChild(gridGroup);
   }
 
+
   // Render each room
   for (const room of floor.rooms) {
     const pos = room.floorPosition || { x: 0, y: 0 };
@@ -2776,29 +2820,39 @@ export function renderFloorCanvas({
         "stroke-width": isSelected ? 3 : 2
       }));
 
-      // Render simplified tiles preview if room has tile config
-      if (room.tile?.widthCm > 0 && room.tile?.heightCm > 0) {
+      // Render tiles preview if enabled and room has tile config
+      if (state.view?.showFloorTiles && room.tile?.widthCm > 0 && room.tile?.heightCm > 0) {
         try {
-          const roomState = { ...state, selectedRoomId: room.id };
-          const tiles = tilesForPreview(roomState, null, room);
-          const groutColor = room.grout?.colorHex || "#ffffff";
+          // Compute available area (room polygon minus exclusions)
+          const avail = computeAvailableArea(room, room.exclusions || []);
+          if (avail.mp) {
+            const roomState = { ...state, selectedRoomId: room.id };
+            // Use shared origin for linked rooms
+            const linkedOrigin = computeLinkedOriginForRoom(room, floor);
+            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: linkedOrigin });
+            const groutColor = room.grout?.colorHex || "#ffffff";
 
-          // Create a group for tiles
-          const tilesGroup = svgEl("g", { opacity: 0.6 });
+            if (result.error) {
+              console.warn(`Floor tiles error for room ${room.name || room.id}:`, result.error);
+            }
 
-          for (const tile of tiles.slice(0, 500)) { // Limit tiles for performance
-            const tilePathD = multiPolygonToPathD(tile.clipped);
-            tilesGroup.appendChild(svgEl("path", {
-              d: tilePathD,
-              fill: "rgba(100, 116, 139, 0.4)",
-              stroke: groutColor,
-              "stroke-width": room.grout?.widthCm || 0.2
-            }));
+            // Create a group for tiles
+            const tilesGroup = svgEl("g", { opacity: 0.8 });
+
+            for (const tile of (result.tiles || []).slice(0, 1000)) { // Limit tiles for performance
+              if (!tile.d) continue;
+              tilesGroup.appendChild(svgEl("path", {
+                d: tile.d,
+                fill: "rgba(100, 116, 139, 0.5)",
+                stroke: groutColor,
+                "stroke-width": room.grout?.widthCm || 0.2
+              }));
+            }
+
+            roomGroup.appendChild(tilesGroup);
           }
-
-          roomGroup.appendChild(tilesGroup);
-        } catch {
-          // Skip tiles if there's an error
+        } catch (e) {
+          console.warn(`Floor tiles rendering failed for room ${room.name || room.id}:`, e);
         }
       }
     }

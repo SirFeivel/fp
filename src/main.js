@@ -765,6 +765,21 @@ function initBackgroundControls() {
     }
   });
 
+  // Floor tiles toggle - shows/hides tile rendering for whole floor
+  const floorShowTiles = document.getElementById("floorShowTiles");
+  floorShowTiles?.addEventListener("change", (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+
+    next.view = next.view || {};
+    next.view.showFloorTiles = e.target.checked;
+
+    store.commit(t("floor.tilesToggled") || "Floor tiles toggled", next, {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  });
+
 }
 
 // commit helper
@@ -2175,10 +2190,15 @@ function updateAllTranslations() {
     const floor = getCurrentFloor(state);
     const room = getCurrentRoom(state);
     const hasBackground = Boolean(floor?.layout?.background?.dataUrl);
+    const showFloorTiles = state.view?.showFloorTiles || false;
 
     const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
     const bgOpacitySlider = document.getElementById("bgOpacitySlider");
     const floorLinkPatterns = document.getElementById("floorLinkPatterns");
+    const floorShowTilesEl = document.getElementById("floorShowTiles");
+    const floorAddRoom = document.getElementById("floorAddRoom");
+    const floorDrawRoom = document.getElementById("floorDrawRoom");
+    const floorDeleteRoom = document.getElementById("floorDeleteRoom");
 
     if (bgCalibrateBtn) bgCalibrateBtn.disabled = !hasBackground;
     if (bgOpacitySlider) {
@@ -2188,15 +2208,30 @@ function updateAllTranslations() {
       }
     }
 
+    // Floor tiles toggle
+    if (floorShowTilesEl) {
+      floorShowTilesEl.checked = showFloorTiles;
+    }
+
+    // Disable room controls when tiles are shown (for performance)
+    if (floorAddRoom) floorAddRoom.disabled = showFloorTiles;
+    if (floorDrawRoom) floorDrawRoom.disabled = showFloorTiles;
+    if (floorDeleteRoom) {
+      // Delete is also disabled if no room selected or last room
+      const hasSelection = !!state.selectedRoomId;
+      const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
+      floorDeleteRoom.disabled = showFloorTiles || !hasSelection || !hasMultipleRooms;
+    }
+
     // Pattern linking - show per-room setting (enabled/disabled)
     // Actual linking only happens when adjacent rooms both have it enabled
     if (floorLinkPatterns) {
-      if (room) {
+      if (room && !showFloorTiles) {
         floorLinkPatterns.checked = room.patternLinking?.enabled !== false;
         floorLinkPatterns.disabled = false;
       } else {
-        floorLinkPatterns.checked = false;
-        floorLinkPatterns.disabled = true;
+        floorLinkPatterns.checked = room?.patternLinking?.enabled !== false;
+        floorLinkPatterns.disabled = !room || showFloorTiles;
       }
     }
   }

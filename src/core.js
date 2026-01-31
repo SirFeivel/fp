@@ -222,6 +222,7 @@ export function defaultState() {
       showGrid: true,
       showNeeds: false,
       showSkirting: true,
+      showFloorTiles: false,
       planningMode: "room"  // "room" | "floor"
     }
   };

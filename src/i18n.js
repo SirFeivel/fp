@@ -82,7 +82,9 @@ const translations = {
       drawRoom: "Freiform",
       deleteRoom: "Löschen",
       cannotDeleteLastRoom: "Der letzte Raum kann nicht gelöscht werden",
-      disconnectedRoomsWarning: "Warnung: Einige Räume sind nicht verbunden!\n\nRäume müssen mindestens 10cm Wand teilen, um als verbunden zu gelten.\n\nMöchten Sie trotzdem fortfahren?"
+      disconnectedRoomsWarning: "Warnung: Einige Räume sind nicht verbunden!\n\nRäume müssen mindestens 10cm Wand teilen, um als verbunden zu gelten.\n\nMöchten Sie trotzdem fortfahren?",
+      tilesToggled: "Fliesenanzeige umgeschaltet",
+      showTiles: "Fliesen anzeigen"
     },
     view: {
       switchedToFloor: "Etagenansicht",
@@ -619,7 +621,9 @@ const translations = {
       drawRoom: "Freeform",
       deleteRoom: "Delete",
       cannotDeleteLastRoom: "Cannot delete the last room",
-      disconnectedRoomsWarning: "Warning: Some rooms are not connected!\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?"
+      disconnectedRoomsWarning: "Warning: Some rooms are not connected!\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?",
+      tilesToggled: "Floor tiles toggled",
+      showTiles: "Show tiles"
     },
     view: {
       switchedToFloor: "Floor view",
