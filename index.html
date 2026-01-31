@@ -496,7 +496,10 @@
                 <span data-i18n="tabs.room">Room:</span>
                 <select id="planningRoomSelect"></select>
               </label>
-              <span class="planning-area" id="planningArea">–</span>
+              <label class="planning-room-select" id="groupSelectLabel" style="display: none;">
+                <span data-i18n="patternGroups.selectedGroup">Selected Group:</span>
+                <select id="pgGroupSelect"></select>
+              </label>
             </div>
             <div class="planning-header-right">
               <button id="btnFullscreen" class="btn-icon" title="Fullscreen">
@@ -664,19 +667,6 @@
                     </svg>
                     <span>Dissolve</span>
                   </button>
-                </div>
-                <div class="quick-control-divider"></div>
-                <!-- Target Group Selector -->
-                <div class="quick-control-group">
-                  <span class="quick-label" data-i18n="patternGroups.targetGroup">Target Group:</span>
-                  <select id="pgGroupSelect" class="quick-select">
-                    <option value="" data-i18n="patternGroups.noGroups">No groups</option>
-                  </select>
-                </div>
-                <div class="quick-control-divider"></div>
-                <!-- Status display -->
-                <div class="quick-control-group">
-                  <span class="quick-label" id="pgStatusLabel">Select a room</span>
                 </div>
                 <div class="quick-control-divider"></div>
                 <!-- Zoom Controls -->

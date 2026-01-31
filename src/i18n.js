@@ -105,7 +105,7 @@ const translations = {
       dissolveConfirm: "Die Mustergruppe wird aufgelöst. Alle Räume werden unabhängig. Fortfahren?",
       origin: "⊙ Ursprung",
       member: "◦ Mitglied",
-      targetGroup: "Zielgruppe",
+      selectedGroup: "Ausgewählte Gruppe",
       noGroups: "Keine Gruppen",
       groupSelected: "Gruppe ausgewählt"
     },
@@ -663,7 +663,7 @@ const translations = {
       dissolveConfirm: "This will dissolve the pattern group. All rooms will become independent. Continue?",
       origin: "⊙ Origin",
       member: "◦ Member",
-      targetGroup: "Target Group",
+      selectedGroup: "Selected Group",
       noGroups: "No groups",
       groupSelected: "Group selected"
     },

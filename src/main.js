@@ -614,6 +614,8 @@ function updateViewToggleUI(planningMode) {
   const floorControls = document.getElementById("floorQuickControls");
   const patternGroupsControls = document.getElementById("patternGroupsQuickControls");
   const roomControls = document.getElementById("roomQuickControls");
+  const roomSelectLabel = document.getElementById("roomSelectLabel");
+  const groupSelectLabel = document.getElementById("groupSelectLabel");
 
   const isFloorView = planningMode === "floor";
   const isPatternGroupsView = planningMode === "patternGroups";
@@ -625,6 +627,8 @@ function updateViewToggleUI(planningMode) {
   if (floorControls) floorControls.style.display = isFloorView ? "" : "none";
   if (patternGroupsControls) patternGroupsControls.style.display = isPatternGroupsView ? "" : "none";
   if (roomControls) roomControls.style.display = isRoomView ? "" : "none";
+  if (roomSelectLabel) roomSelectLabel.style.display = isPatternGroupsView ? "none" : "";
+  if (groupSelectLabel) groupSelectLabel.style.display = isPatternGroupsView ? "" : "none";
 }
 
 function updateFloorControlsState(state) {
