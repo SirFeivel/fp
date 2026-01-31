@@ -581,7 +581,6 @@ function initBackgroundControls() {
   const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
   const bgOpacitySlider = document.getElementById("bgOpacitySlider");
   const floorLinkPatterns = document.getElementById("floorLinkPatterns");
-  const floorShareOffcuts = document.getElementById("floorShareOffcuts");
 
   // Upload button triggers hidden file input
   bgUploadBtn?.addEventListener("click", () => {
@@ -748,22 +747,6 @@ function initBackgroundControls() {
     }
   });
 
-  // Offcut sharing toggle
-  floorShareOffcuts?.addEventListener("change", (e) => {
-    const state = store.getState();
-    const next = deepClone(state);
-    const floor = getCurrentFloor(next);
-
-    if (floor) {
-      floor.offcutSharing = floor.offcutSharing || { enabled: false };
-      floor.offcutSharing.enabled = e.target.checked;
-
-      store.commit(t("floor.offcutSharingChanged") || "Offcut sharing changed", next, {
-        onRender: renderAll,
-        updateMetaCb: updateMeta
-      });
-    }
-  });
 }
 
 // commit helper
@@ -2196,7 +2179,6 @@ function updateAllTranslations() {
     const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
     const bgOpacitySlider = document.getElementById("bgOpacitySlider");
     const floorLinkPatterns = document.getElementById("floorLinkPatterns");
-    const floorShareOffcuts = document.getElementById("floorShareOffcuts");
 
     if (bgCalibrateBtn) bgCalibrateBtn.disabled = !hasBackground;
     if (bgOpacitySlider) {
@@ -2208,10 +2190,6 @@ function updateAllTranslations() {
 
     if (floorLinkPatterns) {
       floorLinkPatterns.checked = floor?.patternLinking?.enabled || false;
-    }
-
-    if (floorShareOffcuts) {
-      floorShareOffcuts.checked = floor?.offcutSharing?.enabled || false;
     }
   }
 

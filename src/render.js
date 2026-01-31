@@ -1134,6 +1134,9 @@ export function renderTilePatternForm(state) {
   const allowRotate = document.getElementById("wasteAllowRotate");
   if (allowRotate) allowRotate.checked = state?.waste?.allowRotate !== false;
 
+  const shareOffcuts = document.getElementById("wasteShareOffcuts");
+  if (shareOffcuts) shareOffcuts.checked = Boolean(state?.waste?.shareOffcuts);
+
   const optimizeCuts = document.getElementById("wasteOptimizeCuts");
   if (optimizeCuts) optimizeCuts.checked = Boolean(state?.waste?.optimizeCuts);
 

@@ -524,6 +524,9 @@ export function bindUI({
     const allowRotate = document.getElementById("wasteAllowRotate");
     if (allowRotate) next.waste.allowRotate = Boolean(allowRotate.checked);
 
+    const shareOffcuts = document.getElementById("wasteShareOffcuts");
+    if (shareOffcuts) next.waste.shareOffcuts = Boolean(shareOffcuts.checked);
+
     // Waste: kerfCm (Schnittbreite)
     const kerfEl = document.getElementById('wasteKerfCm');
     if (kerfEl) next.waste.kerfCm = Number(kerfEl.value) / 10;

@@ -266,6 +266,7 @@ const translations = {
     },
     waste: {
       allowRotate: "Reststücke drehen (Reuse)",
+      shareOffcuts: "Verschnitt raumübergreifend teilen",
       optimizeCuts: "Verschnitt optimieren (Zuschnitt erlaubt)",
       kerfWidth: "Schnittbreite / Kerf (mm)",
       changed: "Reuse geändert",
@@ -801,6 +802,7 @@ const translations = {
     },
     waste: {
       allowRotate: "Rotate leftovers (Reuse)",
+      shareOffcuts: "Share offcuts across rooms",
       optimizeCuts: "Optimize waste (allow cutting)",
       kerfWidth: "Kerf Width (mm)",
       changed: "Reuse changed",

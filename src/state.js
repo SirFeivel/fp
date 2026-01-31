@@ -109,6 +109,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
     if (!s.waste || typeof s.waste !== "object") s.waste = { ...DEFAULT_WASTE };
     if (typeof s.waste.allowRotate !== "boolean") s.waste.allowRotate = DEFAULT_WASTE.allowRotate;
+    if (typeof s.waste.shareOffcuts !== "boolean") s.waste.shareOffcuts = DEFAULT_WASTE.shareOffcuts;
     if (typeof s.waste.optimizeCuts !== "boolean") s.waste.optimizeCuts = DEFAULT_WASTE.optimizeCuts;
     if (!Number.isFinite(s.waste.kerfCm)) s.waste.kerfCm = DEFAULT_WASTE.kerfCm;
 

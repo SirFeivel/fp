@@ -112,6 +112,7 @@ export const DEFAULT_SKIRTING_PRESET = {
 
 export const DEFAULT_WASTE = {
   allowRotate: true,
+  shareOffcuts: false,
   optimizeCuts: false,
   kerfCm: 0.2
 };
