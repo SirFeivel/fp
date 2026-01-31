@@ -524,6 +524,28 @@
 
               <!-- Floor View Quick Controls (hidden by default) -->
               <div class="quick-controls floor-controls" id="floorQuickControls" style="display: none;">
+                <!-- Floor Management -->
+                <div class="quick-control-group">
+                  <span class="quick-label" data-i18n="tabs.floor">Floor:</span>
+                  <select id="floorQuickSelect" class="quick-select"></select>
+                  <input type="text" id="floorQuickName" class="quick-input" style="width: 100px;" placeholder="Name">
+                </div>
+                <div class="quick-actions">
+                  <button id="floorQuickAddFloor" class="quick-btn" title="Add floor">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                      <line x1="12" y1="10" x2="12" y2="18"></line>
+                      <line x1="8" y1="14" x2="16" y2="14"></line>
+                    </svg>
+                  </button>
+                  <button id="floorQuickDeleteFloor" class="quick-btn danger" title="Delete floor">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="m19 6-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div class="quick-control-divider"></div>
                 <!-- Room Actions -->
                 <div class="quick-actions">
                   <button id="floorAddRoom" class="quick-btn" title="Add rectangle room">

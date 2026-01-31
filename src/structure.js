@@ -66,41 +66,28 @@ export function createStructureController({
     const state = store.getState();
     const next = deepClone(state);
 
-    const hasPreset = Boolean(next.tilePresets?.[0]?.name);
-    const defaultPreset = getDefaultTilePresetTemplate(next);
-    const presetName = hasPreset ? next.tilePresets[0].name : "";
     const newFloor = {
       id: uuid(),
       name: `Etage ${next.floors.length + 1}`,
-      rooms: [{
-        id: uuid(),
-        name: "Raum",
-        sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
-        exclusions: [],
-        excludedTiles: [],
-        excludedSkirts: [],
-        tile: {
-          widthCm: defaultPreset.widthCm,
-          heightCm: defaultPreset.heightCm,
-          shape: defaultPreset.shape || "rect",
-          reference: presetName
-        },
-        grout: { widthCm: defaultPreset.groutWidthCm, colorHex: defaultPreset.groutColorHex },
-        pattern: {
-          type: "grid",
-          bondFraction: 0.5,
-          rotationDeg: 0,
-          offsetXcm: 0,
-          offsetYcm: 0,
-          origin: { preset: "tl", xCm: 0, yCm: 0 }
-        },
-        skirting: { ...DEFAULT_SKIRTING_CONFIG }
-      }]
+      layout: {
+        enabled: false,
+        background: null
+      },
+      patternLinking: {
+        enabled: false,
+        globalOrigin: { x: 0, y: 0 }
+      },
+      offcutSharing: {
+        enabled: false
+      },
+      walls: [],
+      patternGroups: [],
+      rooms: []
     };
 
     next.floors.push(newFloor);
     next.selectedFloorId = newFloor.id;
-    next.selectedRoomId = newFloor.rooms[0].id;
+    next.selectedRoomId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.floorAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -211,14 +198,7 @@ export function createStructureController({
   async function deleteRoom() {
     const state = store.getState();
     const currentFloor = getCurrentFloor(state);
-    if (!currentFloor || currentFloor.rooms.length <= 1) {
-      await showAlert({
-        title: t("dialog.warning") || "Warning",
-        message: t("dialog.cannotDeleteLastRoom") || "Cannot delete the last room",
-        type: "warning"
-      });
-      return;
-    }
+    if (!currentFloor || !state.selectedRoomId) return;
 
     const next = deepClone(state);
     const nextFloor = getCurrentFloor(next);

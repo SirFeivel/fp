@@ -644,14 +644,12 @@ function updateViewToggleUI(planningMode) {
 }
 
 function updateFloorControlsState(state) {
-  const floor = getCurrentFloor(state);
   const deleteBtn = document.getElementById("floorDeleteRoom");
 
   if (deleteBtn) {
-    // Enable delete if a room is selected and it's not the last room
+    // Enable delete if a room is selected
     const hasSelection = !!state.selectedRoomId;
-    const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
-    deleteBtn.disabled = !hasSelection || !hasMultipleRooms;
+    deleteBtn.disabled = !hasSelection;
   }
 }
 
@@ -2133,20 +2131,10 @@ function updateAllTranslations() {
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
-  document.getElementById("floorDeleteRoom")?.addEventListener("click", async () => {
+  document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor || !state.selectedRoomId) return;
-
-    // Don't delete if it's the last room
-    if (floor.rooms.length <= 1) {
-      await showAlert({
-        title: t("dialog.warning") || "Warning",
-        message: t("floor.cannotDeleteLastRoom") || "Cannot delete the last room",
-        type: "warning"
-      });
-      return;
-    }
 
     const next = deepClone(state);
     const nextFloor = next.floors.find(f => f.id === floor.id);
@@ -2154,7 +2142,7 @@ function updateAllTranslations() {
 
     if (roomIndex !== -1) {
       nextFloor.rooms.splice(roomIndex, 1);
-      // Select another room
+      // Select another room if available
       next.selectedRoomId = nextFloor.rooms[Math.max(0, roomIndex - 1)]?.id || null;
       store.commit(t("room.deleted") || "Room deleted", next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
@@ -2509,6 +2497,35 @@ function updateAllTranslations() {
     if (pgZoomLevel) pgZoomLevel.textContent = zoomText;
   }
 
+  // Sync floor quick controls (floor selector and name in floor view)
+  function syncFloorQuickControls() {
+    const state = store.getState();
+    const floorSelect = document.getElementById("floorQuickSelect");
+    const floorNameInput = document.getElementById("floorQuickName");
+    const deleteFloorBtn = document.getElementById("floorQuickDeleteFloor");
+
+    if (floorSelect) {
+      floorSelect.innerHTML = "";
+      state.floors?.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f.id;
+        opt.textContent = f.name || t("project.none");
+        if (f.id === state.selectedFloorId) opt.selected = true;
+        floorSelect.appendChild(opt);
+      });
+    }
+
+    const currentFloor = getCurrentFloor(state);
+    if (floorNameInput) {
+      floorNameInput.value = currentFloor?.name || "";
+    }
+
+    // Disable delete if only one floor
+    if (deleteFloorBtn) {
+      deleteFloorBtn.disabled = (state.floors?.length || 0) <= 1;
+    }
+  }
+
   // Sync background controls with floor state
   function syncBackgroundControls() {
     const state = store.getState();
@@ -2536,11 +2553,10 @@ function updateAllTranslations() {
       floorShowTilesEl.checked = showFloorTiles;
     }
 
-    // Room controls - only disable delete if no selection or last room
+    // Room controls - only disable delete if no selection
     if (floorDeleteRoom) {
       const hasSelection = !!state.selectedRoomId;
-      const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
-      floorDeleteRoom.disabled = !hasSelection || !hasMultipleRooms;
+      floorDeleteRoom.disabled = !hasSelection;
     }
   }
 
@@ -2597,6 +2613,7 @@ function updateAllTranslations() {
     enhanceNumberSpinners();
     updateZoomIndicator();
     syncBackgroundControls();
+    syncFloorQuickControls();
     // Sync view toggle UI with state
     const state = store.getState();
     updateViewToggleUI(state.view?.planningMode || "room");
@@ -2743,6 +2760,52 @@ function updateAllTranslations() {
       input.value = value;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
+  });
+
+  // Floor quick controls (in floor view bottom bar)
+  document.getElementById("floorQuickSelect")?.addEventListener("change", (e) => {
+    structure.selectFloor(e.target.value);
+  });
+
+  document.getElementById("floorQuickName")?.addEventListener("change", (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = getCurrentFloor(next);
+    if (!floor) return;
+
+    floor.name = e.target.value || floor.name;
+    store.commit(t("structure.floorChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  document.getElementById("floorQuickAddFloor")?.addEventListener("click", () => {
+    structure.addFloor();
+  });
+
+  document.getElementById("floorQuickDeleteFloor")?.addEventListener("click", async () => {
+    const state = store.getState();
+    if (!state.floors || state.floors.length <= 1) {
+      await showAlert({
+        title: t("dialog.warning") || "Warning",
+        message: t("dialog.cannotDeleteLastFloor") || "Cannot delete the last floor",
+        type: "warning"
+      });
+      return;
+    }
+
+    const currentFloor = getCurrentFloor(state);
+    const floorName = currentFloor?.name || t("structure.floor");
+
+    const confirmed = await showConfirm({
+      title: t("dialog.confirmDeleteFloorTitle") || "Delete Floor?",
+      message: (t("dialog.confirmDeleteFloorText") || "Are you sure you want to delete \"{name}\"? All rooms on this floor will be permanently deleted.").replace("{name}", floorName),
+      confirmText: t("dialog.delete") || "Delete",
+      cancelText: t("dialog.cancel") || "Cancel",
+      danger: true
+    });
+
+    if (confirmed) {
+      structure.deleteFloor();
+    }
   });
 
   // Room dimensions (sync with first section)
