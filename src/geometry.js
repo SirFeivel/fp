@@ -25,6 +25,16 @@ export function svgEl(tag, attrs = {}) {
 }
 
 export function roomPolygon(room) {
+  // If room has polygon vertices (from draw mode), use those
+  if (room?.polygonVertices && room.polygonVertices.length >= 3) {
+    const ring = room.polygonVertices.map(p => [p.x, p.y]);
+    // Close the ring if not already closed
+    if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
+      ring.push([ring[0][0], ring[0][1]]);
+    }
+    return [[[ring]]];
+  }
+
   const sections = getRoomSections(room);
   if (sections.length === 0) {
     return [[[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]]];
@@ -40,6 +50,26 @@ export function roomPolygon(room) {
 }
 
 export function getRoomBounds(room) {
+  // If room has polygon vertices (from draw mode), calculate bounds from those
+  if (room?.polygonVertices && room.polygonVertices.length >= 3) {
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    for (const p of room.polygonVertices) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
   const sections = getRoomSections(room);
   if (sections.length === 0) {
     return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
@@ -475,7 +505,41 @@ export function computeAvailableArea(room, exclusions) {
   }
 }
 
-export function computeOriginPoint(room, pattern) {
+/**
+ * Computes the origin point for tile pattern placement.
+ *
+ * @param {Object} room - The room object
+ * @param {Object} pattern - The pattern configuration
+ * @param {Object} floor - Optional floor object for pattern linking support
+ * @returns {Object} The origin point {x, y} in room-local coordinates
+ */
+export function computeOriginPoint(room, pattern, floor = null) {
+  // Check for floor-level pattern linking
+  if (floor?.patternLinking?.enabled && room?.patternLink?.mode === "floor") {
+    // Use global origin from floor, converted to room-local coordinates
+    const globalOrigin = floor.patternLinking.globalOrigin || { x: 0, y: 0 };
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    // Convert global floor coordinates to room-local coordinates
+    return { x: globalOrigin.x - pos.x, y: globalOrigin.y - pos.y };
+  }
+
+  // Check for room-to-room pattern linking
+  if (room?.patternLink?.mode === "room" && room.patternLink.linkedRoomId && floor) {
+    const linkedRoom = floor.rooms?.find(r => r.id === room.patternLink.linkedRoomId);
+    if (linkedRoom) {
+      // Get the origin of the linked room (recursively, but prevent infinite loops)
+      const linkedOrigin = computeOriginPoint(linkedRoom, linkedRoom.pattern, null);
+      const linkedPos = linkedRoom.floorPosition || { x: 0, y: 0 };
+      const pos = room.floorPosition || { x: 0, y: 0 };
+      // Convert linked room's origin to this room's local coordinates
+      return {
+        x: linkedOrigin.x + linkedPos.x - pos.x,
+        y: linkedOrigin.y + linkedPos.y - pos.y
+      };
+    }
+  }
+
+  // Standard room-local origin computation
   const bounds = getRoomBounds(room);
   const w = bounds.width;
   const h = bounds.height;
@@ -535,7 +599,7 @@ function detectBondPeriod(frac) {
   return 0;
 }
 
-export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeInclude = null) {
+export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeInclude = null, floorOverride = null) {
   let roomOverride = null;
   let includeExcluded = false;
 
@@ -548,6 +612,9 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   }
 
   const finalRoom = roomOverride || getCurrentRoom(state);
+
+  // Get floor context for pattern linking (from override or state)
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   if (!finalRoom) {
     return { tiles: [], error: "Kein Raum ausgewählt." };
   }
@@ -561,34 +628,34 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   }
 
   if (tileShape === "hex") {
-    return tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   if (tileShape === "rhombus") {
-    return tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   if (tileShape === "square") {
     // For square tiles, we force width = height using the width value
-    return tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded, finalRoom);
+    return tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded, finalRoom, floor);
   }
 
   const type = finalRoom.pattern?.type || "grid";
 
   if (type === "herringbone") {
-    return tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   if (type === "basketweave") {
-    return tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   if (type === "doubleHerringbone") {
-    return tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   if (type === "verticalStackAlternating") {
-    return tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded, finalRoom);
+    return tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded, finalRoom, floor);
   }
 
   const stepX = tw + grout;
@@ -600,7 +667,7 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   const offX = Number(finalRoom.pattern?.offsetXcm) || 0;
   const offY = Number(finalRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(finalRoom, finalRoom.pattern);
+  const origin = computeOriginPoint(finalRoom, finalRoom.pattern, floor);
   const preset = finalRoom.pattern?.origin?.preset || "tl";
 
   const frac = Number(finalRoom.pattern?.bondFraction) || 0.5;
@@ -684,15 +751,16 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   return { tiles, error: null };
 }
 
-function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const sideLength = tw / Math.sqrt(3);
@@ -771,15 +839,16 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   return { tiles, error: null };
 }
 
-function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const type = currentRoom.pattern?.type || "grid";
@@ -862,15 +931,16 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
   return { tiles, error: null };
 }
 
-function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const stepX = tw + grout;
@@ -945,15 +1015,16 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
   return { tiles, error: null };
 }
 
-function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const L = Math.max(tw, th);
@@ -1045,15 +1116,16 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
 // Export for testing
 export { tilesForPreviewHerringbone };
 
-function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const L = Math.max(tw, th);
@@ -1165,15 +1237,16 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
   return { tiles, error: null };
 }
 
-function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const L = Math.max(tw, th);
@@ -1250,15 +1323,16 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
   return { tiles, error: null };
 }
 
-function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null) {
+function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null) {
   const currentRoom = roomOverride || getCurrentRoom(state);
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
   const rotDeg = Number(currentRoom.pattern?.rotationDeg) || 0;
   const rotRad = degToRad(rotDeg);
 
   const offX = Number(currentRoom.pattern?.offsetXcm) || 0;
   const offY = Number(currentRoom.pattern?.offsetYcm) || 0;
 
-  const origin = computeOriginPoint(currentRoom, currentRoom.pattern);
+  const origin = computeOriginPoint(currentRoom, currentRoom.pattern, floor);
   const preset = currentRoom.pattern?.origin?.preset || "tl";
 
   const L = Math.max(tw, th);

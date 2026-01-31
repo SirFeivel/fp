@@ -129,7 +129,7 @@ export function defaultState() {
   const roomId = uuid();
 
   return {
-    meta: { version: 6, updatedAt: nowISO() },
+    meta: { version: 7, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
@@ -152,10 +152,29 @@ export function defaultState() {
       {
         id: floorId,
         name: "Erdgeschoss",
+        // Floor layout properties (v7)
+        layout: {
+          enabled: false,
+          background: null
+        },
+        patternLinking: {
+          enabled: false,
+          globalOrigin: { x: 0, y: 0 }
+        },
+        offcutSharing: {
+          enabled: false
+        },
+        walls: [],
         rooms: [
           {
             id: roomId,
             name: "Raum",
+            // Room position on floor (v7)
+            floorPosition: { x: 0, y: 0 },
+            patternLink: {
+              mode: "independent",
+              linkedRoomId: null
+            },
             sections: [
               {
                 id: uuid(),
@@ -201,7 +220,8 @@ export function defaultState() {
     view: {
       showGrid: true,
       showNeeds: false,
-      showSkirting: true
+      showSkirting: true,
+      planningMode: "room"  // "room" | "floor"
     }
   };
 }

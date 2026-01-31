@@ -78,7 +78,7 @@ describe("state migrations", () => {
     const state = store.getState();
     const room = state.floors[0].rooms[0];
 
-    expect(state.meta.version).toBe(6);
+    expect(state.meta.version).toBe(7);
     expect(room.sections.length).toBe(1);
     expect(room.sections[0].widthCm).toBe(300);
     expect(room.sections[0].heightCm).toBe(200);
@@ -117,7 +117,7 @@ describe("state migrations", () => {
     store.setStateDirect(v5);
     const state = store.getState();
 
-    expect(state.meta.version).toBe(6);
+    expect(state.meta.version).toBe(7);
     expect(Array.isArray(state.tilePresets)).toBe(true);
     expect(Array.isArray(state.skirtingPresets)).toBe(true);
   });

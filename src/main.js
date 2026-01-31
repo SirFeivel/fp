@@ -3,9 +3,9 @@ import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController, createSectionDragController } from "./drag.js";
+import { createExclusionDragController, createSectionDragController, createRoomDragController, createRoomResizeController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
@@ -17,6 +17,8 @@ import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
+import { createBackgroundController } from "./background.js";
+import { createPolygonDrawController } from "./polygon-draw.js";
 
 import {
   renderWarnings,
@@ -29,6 +31,7 @@ import {
   renderExclProps,
   renderSkirtingRoomList,
   renderPlanSvg,
+  renderFloorCanvas,
   renderSectionsList,
   renderTilePresets,
   renderSkirtingPresets,
@@ -188,6 +191,9 @@ function renderSetupSection(state) {
 
 function renderPlanningSection(state, opts) {
   const isDrag = opts?.mode === "drag";
+  const isFloorView = state.view?.planningMode === "floor";
+
+  // Always render room-related UI (forms, lists) even in floor view
   renderRoomForm(state);
   renderTilePatternForm(state);
 
@@ -216,30 +222,56 @@ function renderPlanningSection(state, opts) {
   renderWarnings(state, validateState);
   if (!isDrag) renderMetrics(state);
 
-  const metrics = isDrag ? null : computePlanMetrics(state);
-  if (metrics) console.log("metrics", metrics);
+  // Render either floor canvas or room canvas based on view mode
+  if (isFloorView) {
+    const floor = getCurrentFloor(state);
+    renderFloorCanvas({
+      state,
+      floor,
+      selectedRoomId: state.selectedRoomId,
+      onRoomClick: (roomId) => {
+        // Select room in floor view
+        const next = deepClone(store.getState());
+        next.selectedRoomId = roomId;
+        store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      },
+      onRoomDoubleClick: (roomId) => {
+        // Switch to room view for this room
+        const next = deepClone(store.getState());
+        next.selectedRoomId = roomId;
+        next.view = next.view || {};
+        next.view.planningMode = "room";
+        store.commit(t("view.switchedToRoom"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      },
+      onRoomPointerDown: (e, roomId) => roomDragController.onRoomPointerDown(e, roomId),
+      onRoomResizePointerDown: (e, roomId, handleType) => roomResizeController.onRoomResizePointerDown(e, roomId, handleType)
+    });
+  } else {
+    const metrics = isDrag ? null : computePlanMetrics(state);
+    if (metrics) console.log("metrics", metrics);
 
-  renderPlanSvg({
-    state,
-    selectedExclId,
-    setSelectedExcl,
-    onExclPointerDown: dragController.onExclPointerDown,
-    onInlineEdit: updateExclusionInline,
-    onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
-    lastUnionError,
-    lastTileError,
-    setLastUnionError: (v) => (lastUnionError = v),
-    setLastTileError: (v) => (lastTileError = v),
-    metrics,
-    skipTiles: isDrag,
-    // Section callbacks
-    selectedSectionId,
-    setSelectedSection: handleSectionSelect,
-    onSectionPointerDown: sectionDragController.onSectionPointerDown,
-    onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
-    onSectionInlineEdit: updateSectionInline,
-    onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
-  });
+    renderPlanSvg({
+      state,
+      selectedExclId,
+      setSelectedExcl,
+      onExclPointerDown: dragController.onExclPointerDown,
+      onInlineEdit: updateExclusionInline,
+      onResizeHandlePointerDown: dragController.onResizeHandlePointerDown,
+      lastUnionError,
+      lastTileError,
+      setLastUnionError: (v) => (lastUnionError = v),
+      setLastTileError: (v) => (lastTileError = v),
+      metrics,
+      skipTiles: isDrag,
+      // Section callbacks
+      selectedSectionId,
+      setSelectedSection: handleSectionSelect,
+      onSectionPointerDown: sectionDragController.onSectionPointerDown,
+      onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
+      onSectionInlineEdit: updateSectionInline,
+      onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
+    });
+  }
 }
 
 function getExportOptionsFromUi() {
@@ -372,6 +404,148 @@ function updateExportSelectionFromList() {
   });
 }
 
+// View toggle functions for Floor/Room planning modes
+function switchToFloorView() {
+  const state = store.getState();
+  if (state.view?.planningMode === "floor") return; // Already in floor view
+
+  const next = deepClone(state);
+  next.view = next.view || {};
+  next.view.planningMode = "floor";
+  store.commit(t("view.switchedToFloor"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
+function switchToRoomView() {
+  const state = store.getState();
+  if (state.view?.planningMode !== "floor") return; // Already in room view
+
+  const next = deepClone(state);
+  next.view = next.view || {};
+  next.view.planningMode = "room";
+  store.commit(t("view.switchedToRoom"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
+function updateViewToggleUI(planningMode) {
+  const floorBtn = document.getElementById("floorViewBtn");
+  const roomBtn = document.getElementById("roomViewBtn");
+  const floorControls = document.getElementById("floorQuickControls");
+  const roomControls = document.getElementById("roomQuickControls");
+
+  const isFloorView = planningMode === "floor";
+
+  if (floorBtn) floorBtn.classList.toggle("active", isFloorView);
+  if (roomBtn) roomBtn.classList.toggle("active", !isFloorView);
+  if (floorControls) floorControls.style.display = isFloorView ? "" : "none";
+  if (roomControls) roomControls.style.display = isFloorView ? "none" : "";
+}
+
+function updateFloorControlsState(state) {
+  const floor = getCurrentFloor(state);
+  const deleteBtn = document.getElementById("floorDeleteRoom");
+
+  if (deleteBtn) {
+    // Enable delete if a room is selected and it's not the last room
+    const hasSelection = !!state.selectedRoomId;
+    const hasMultipleRooms = (floor?.rooms?.length || 0) > 1;
+    deleteBtn.disabled = !hasSelection || !hasMultipleRooms;
+  }
+}
+
+function initViewToggle() {
+  const floorBtn = document.getElementById("floorViewBtn");
+  const roomBtn = document.getElementById("roomViewBtn");
+
+  floorBtn?.addEventListener("click", () => switchToFloorView());
+  roomBtn?.addEventListener("click", () => switchToRoomView());
+
+  // Initialize UI state from current state
+  const state = store.getState();
+  updateViewToggleUI(state.view?.planningMode || "room");
+}
+
+function initBackgroundControls() {
+  const bgUpload = document.getElementById("bgUpload");
+  const bgUploadBtn = document.getElementById("bgUploadBtn");
+  const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
+  const bgOpacitySlider = document.getElementById("bgOpacitySlider");
+  const floorLinkPatterns = document.getElementById("floorLinkPatterns");
+  const floorShareOffcuts = document.getElementById("floorShareOffcuts");
+
+  // Upload button triggers hidden file input
+  bgUploadBtn?.addEventListener("click", () => {
+    bgUpload?.click();
+  });
+
+  // Handle file selection
+  bgUpload?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const success = await backgroundController.handleFileUpload(file);
+    if (success) {
+      // Enable calibration and opacity controls
+      if (bgCalibrateBtn) bgCalibrateBtn.disabled = false;
+      if (bgOpacitySlider) bgOpacitySlider.disabled = false;
+    }
+
+    // Clear input so same file can be selected again
+    e.target.value = "";
+  });
+
+  // Calibration button
+  bgCalibrateBtn?.addEventListener("click", () => {
+    const svg = document.getElementById("planSvg");
+    if (!svg) return;
+
+    backgroundController.startCalibration(svg, (success) => {
+      if (success) {
+        // Calibration complete
+        console.log("Calibration successful");
+      }
+    });
+  });
+
+  // Opacity slider
+  bgOpacitySlider?.addEventListener("input", (e) => {
+    const opacity = parseInt(e.target.value, 10) / 100;
+    backgroundController.updateOpacity(opacity);
+  });
+
+  // Pattern linking toggle
+  floorLinkPatterns?.addEventListener("change", (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = getCurrentFloor(next);
+
+    if (floor) {
+      floor.patternLinking = floor.patternLinking || { enabled: false, globalOrigin: { x: 0, y: 0 } };
+      floor.patternLinking.enabled = e.target.checked;
+
+      store.commit(t("floor.patternLinkingChanged") || "Pattern linking changed", next, {
+        onRender: renderAll,
+        updateMetaCb: updateMeta
+      });
+    }
+  });
+
+  // Offcut sharing toggle
+  floorShareOffcuts?.addEventListener("change", (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = getCurrentFloor(next);
+
+    if (floor) {
+      floor.offcutSharing = floor.offcutSharing || { enabled: false };
+      floor.offcutSharing.enabled = e.target.checked;
+
+      store.commit(t("floor.offcutSharingChanged") || "Offcut sharing changed", next, {
+        onRender: renderAll,
+        updateMetaCb: updateMeta
+      });
+    }
+  });
+}
+
 // commit helper
 const commitViaStore = (label, next) =>
   store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -398,6 +572,12 @@ const structure = createStructureController({
 });
 
 const removal = createRemovalController(store, renderAll);
+
+const backgroundController = createBackgroundController({
+  store,
+  renderAll,
+  updateMeta
+});
 
 const dragController = createExclusionDragController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
@@ -432,9 +612,54 @@ const sectionDragController = createSectionDragController({
   getResizeLabel: () => t("room.sectionResized") || "Section resized"
 });
 
+const roomDragController = createRoomDragController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getCurrentFloor: (state) => {
+    const s = state || store.getState();
+    const floor = s.floors?.find(f => f.id === s.selectedFloorId);
+    return floor || null;
+  },
+  getMoveLabel: () => t("room.positionChanged") || "Room position changed"
+});
+
+const polygonDrawController = createPolygonDrawController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getCurrentFloor: (state) => {
+    const s = state || store.getState();
+    const floor = s.floors?.find(f => f.id === s.selectedFloorId);
+    return floor || null;
+  }
+});
+
+const roomResizeController = createRoomResizeController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getCurrentFloor: (state) => {
+    const s = state || store.getState();
+    const floor = s.floors?.find(f => f.id === s.selectedFloorId);
+    return floor || null;
+  },
+  getResizeLabel: () => t("room.sizeChanged") || "Room resized"
+});
+
 const zoomPanController = createZoomPanController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
-  getCurrentRoomId: () => store.getState().selectedRoomId,
+  getCurrentRoomId: () => {
+    const state = store.getState();
+    // In floor view, use floor ID as the viewport key with a prefix
+    if (state.view?.planningMode === "floor") {
+      return `floor:${state.selectedFloorId}`;
+    }
+    return state.selectedRoomId;
+  },
   onViewportChange: () => renderAll({ mode: "zoom" }),
   getSelectedExclId: () => selectedExclId,
   getSelectedSectionId: () => selectedSectionId
@@ -1000,6 +1225,8 @@ function updateAllTranslations() {
 
   initMainTabs();
   initFullscreen(dragController, renderAll);
+  initViewToggle();
+  initBackgroundControls();
 
   // Initialize zoom/pan controller
   zoomPanController.attach();
@@ -1421,7 +1648,7 @@ function updateAllTranslations() {
     });
   });
 
-  // Zoom controls
+  // Zoom controls (room view)
   document.getElementById("zoomIn")?.addEventListener("click", () => {
     zoomPanController.zoomIn();
   });
@@ -1430,6 +1657,108 @@ function updateAllTranslations() {
   });
   document.getElementById("zoomReset")?.addEventListener("click", () => {
     zoomPanController.reset();
+  });
+
+  // Floor view zoom controls
+  document.getElementById("floorZoomIn")?.addEventListener("click", () => {
+    zoomPanController.zoomIn();
+  });
+  document.getElementById("floorZoomOut")?.addEventListener("click", () => {
+    zoomPanController.zoomOut();
+  });
+  document.getElementById("floorZoomReset")?.addEventListener("click", () => {
+    zoomPanController.reset();
+  });
+
+  // Floor view room management
+  document.getElementById("floorAddRoom")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (!floor) return;
+
+    const next = deepClone(state);
+    const nextFloor = next.floors.find(f => f.id === floor.id);
+
+    // Create new room with default size
+    const newRoom = {
+      id: uuid(),
+      name: t("room.newRoom") || "New Room",
+      widthCm: 300,
+      heightCm: 300,
+      sections: [{ id: uuid(), label: "Main", x: 0, y: 0, widthCm: 300, heightCm: 300, skirtingEnabled: true }],
+      exclusions: [],
+      tile: { widthCm: 60, heightCm: 30, shape: "rect" },
+      grout: { widthCm: 0.3, color: "#999999" },
+      pattern: { type: "grid", offsetPercent: 50, angle: 0, startCorner: "topLeft" },
+      floorPosition: { x: 0, y: 0 }
+    };
+
+    // Position new room offset from existing rooms
+    if (nextFloor.rooms.length > 0) {
+      // Find rightmost room edge
+      let maxX = 0;
+      for (const r of nextFloor.rooms) {
+        const pos = r.floorPosition || { x: 0, y: 0 };
+        const roomRight = pos.x + (r.widthCm || 300);
+        maxX = Math.max(maxX, roomRight);
+      }
+      newRoom.floorPosition.x = maxX + 50; // 50cm gap
+    }
+
+    nextFloor.rooms.push(newRoom);
+    next.selectedRoomId = newRoom.id;
+
+    store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (!floor || !state.selectedRoomId) return;
+
+    // Don't delete if it's the last room
+    if (floor.rooms.length <= 1) {
+      alert(t("floor.cannotDeleteLastRoom") || "Cannot delete the last room");
+      return;
+    }
+
+    const next = deepClone(state);
+    const nextFloor = next.floors.find(f => f.id === floor.id);
+    const roomIndex = nextFloor.rooms.findIndex(r => r.id === state.selectedRoomId);
+
+    if (roomIndex !== -1) {
+      nextFloor.rooms.splice(roomIndex, 1);
+      // Select another room
+      next.selectedRoomId = nextFloor.rooms[Math.max(0, roomIndex - 1)]?.id || null;
+      store.commit(t("room.deleted") || "Room deleted", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    }
+  });
+
+  // Draw Room button - start polygon drawing mode
+  document.getElementById("floorDrawRoom")?.addEventListener("click", () => {
+    const state = store.getState();
+    if (state.view?.planningMode !== "floor") return;
+
+    const drawBtn = document.getElementById("floorDrawRoom");
+    if (drawBtn) drawBtn.classList.add("active");
+
+    polygonDrawController.startDrawing((polygonPoints) => {
+      if (drawBtn) drawBtn.classList.remove("active");
+
+      // Create room from polygon
+      const newRoom = polygonDrawController.createRoomFromPolygon(polygonPoints);
+      if (!newRoom) return;
+
+      const state = store.getState();
+      const next = deepClone(state);
+      const nextFloor = next.floors.find(f => f.id === state.selectedFloorId);
+
+      if (nextFloor) {
+        nextFloor.rooms.push(newRoom);
+        next.selectedRoomId = newRoom.id;
+        store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      }
+    });
   });
 
   function syncQuickControls() {
@@ -1568,10 +1897,46 @@ function updateAllTranslations() {
   // Update zoom indicator
   function updateZoomIndicator() {
     const state = store.getState();
-    const vp = getViewport(state.selectedRoomId);
+    // Use floor viewport key when in floor view
+    const viewportKey = state.view?.planningMode === "floor"
+      ? `floor:${state.selectedFloorId}`
+      : state.selectedRoomId;
+    const vp = getViewport(viewportKey);
+
+    // Update both room and floor zoom indicators
     const zoomLevel = document.getElementById("zoomLevel");
-    if (zoomLevel) {
-      zoomLevel.textContent = `${Math.round(vp.zoom * 100)}%`;
+    const floorZoomLevel = document.getElementById("floorZoomLevel");
+
+    const zoomText = `${Math.round(vp.zoom * 100)}%`;
+    if (zoomLevel) zoomLevel.textContent = zoomText;
+    if (floorZoomLevel) floorZoomLevel.textContent = zoomText;
+  }
+
+  // Sync background controls with floor state
+  function syncBackgroundControls() {
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const hasBackground = Boolean(floor?.layout?.background?.dataUrl);
+
+    const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
+    const bgOpacitySlider = document.getElementById("bgOpacitySlider");
+    const floorLinkPatterns = document.getElementById("floorLinkPatterns");
+    const floorShareOffcuts = document.getElementById("floorShareOffcuts");
+
+    if (bgCalibrateBtn) bgCalibrateBtn.disabled = !hasBackground;
+    if (bgOpacitySlider) {
+      bgOpacitySlider.disabled = !hasBackground;
+      if (hasBackground && floor?.layout?.background?.opacity !== undefined) {
+        bgOpacitySlider.value = Math.round(floor.layout.background.opacity * 100);
+      }
+    }
+
+    if (floorLinkPatterns) {
+      floorLinkPatterns.checked = floor?.patternLinking?.enabled || false;
+    }
+
+    if (floorShareOffcuts) {
+      floorShareOffcuts.checked = floor?.offcutSharing?.enabled || false;
     }
   }
 
@@ -1581,6 +1946,11 @@ function updateAllTranslations() {
     syncQuickControls();
     enhanceNumberSpinners();
     updateZoomIndicator();
+    syncBackgroundControls();
+    // Sync view toggle UI with state
+    const state = store.getState();
+    updateViewToggleUI(state.view?.planningMode || "room");
+    updateFloorControlsState(state);
   };
 
   function commitQuickTilePreset() {

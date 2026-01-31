@@ -1225,3 +1225,332 @@ export function createSectionDragController({
 
   return { onSectionPointerDown, onSectionResizeHandlePointerDown };
 }
+
+/**
+ * Creates a drag controller for repositioning rooms on the floor canvas.
+ * Used in Floor View mode.
+ */
+export function createRoomDragController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getCurrentFloor,
+  getMoveLabel
+}) {
+  let drag = null;
+  let dragStartState = null;
+  let isDragging = false;
+  const DRAG_THRESHOLD = 5; // pixels before considering it a drag
+
+  function onRoomPointerDown(e, roomId) {
+    const svg = getSvg();
+    if (!svg) return;
+
+    const state = getState();
+    const floor = getCurrentFloor(state);
+    if (!floor) return;
+
+    const room = floor.rooms?.find(r => r.id === roomId);
+    if (!room) return;
+
+    // Don't preventDefault here - allow click/dblclick to work
+    // Only capture pointer after drag threshold is met
+
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const pointerId = e.pointerId;
+    dragStartState = deepClone(state);
+    isDragging = false;
+
+    drag = {
+      roomId,
+      startMouse,
+      startClientX,
+      startClientY,
+      pointerId,
+      startPos: { ...(room.floorPosition || { x: 0, y: 0 }) },
+      currentDx: 0,
+      currentDy: 0
+    };
+
+    svg.addEventListener("pointermove", onPointerMove);
+    svg.addEventListener("pointerup", onPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onPointerUp, { once: true });
+  }
+
+  function onPointerMove(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    if (!svg) return;
+
+    // Check if we've moved past the drag threshold
+    const clientDx = e.clientX - drag.startClientX;
+    const clientDy = e.clientY - drag.startClientY;
+    const distance = Math.sqrt(clientDx * clientDx + clientDy * clientDy);
+
+    if (!isDragging && distance < DRAG_THRESHOLD) {
+      return; // Not dragging yet
+    }
+
+    if (!isDragging) {
+      // Just crossed threshold - start actual drag
+      isDragging = true;
+      svg.setPointerCapture(drag.pointerId);
+      showResizeOverlay(
+        `${formatCm(drag.startPos.x)}, ${formatCm(drag.startPos.y)} cm`,
+        e.clientX,
+        e.clientY
+      );
+    }
+
+    const current = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const rawDx = current.x - drag.startMouse.x;
+    const rawDy = current.y - drag.startMouse.y;
+
+    // Snap to 0.5cm grid
+    drag.currentDx = Math.round(rawDx / 0.5) * 0.5;
+    drag.currentDy = Math.round(rawDy / 0.5) * 0.5;
+
+    const newX = drag.startPos.x + drag.currentDx;
+    const newY = drag.startPos.y + drag.currentDy;
+
+    // Update visual position of room group during drag
+    const roomGroup = svg.querySelector(`[data-roomid="${drag.roomId}"]`);
+    if (roomGroup) {
+      roomGroup.setAttribute("transform", `translate(${newX}, ${newY})`);
+    }
+
+    showResizeOverlay(`${formatCm(newX)}, ${formatCm(newY)} cm`, e.clientX, e.clientY);
+  }
+
+  function onPointerUp(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    if (svg) {
+      if (isDragging) {
+        svg.releasePointerCapture(e.pointerId);
+      }
+      svg.removeEventListener("pointermove", onPointerMove);
+    }
+
+    hideResizeOverlay();
+
+    // Only commit if position actually changed and was a drag
+    if (isDragging && (drag.currentDx !== 0 || drag.currentDy !== 0)) {
+      const next = deepClone(dragStartState);
+      const floor = getCurrentFloor(next);
+      const room = floor?.rooms?.find(r => r.id === drag.roomId);
+
+      if (room) {
+        room.floorPosition = room.floorPosition || { x: 0, y: 0 };
+        room.floorPosition.x = drag.startPos.x + drag.currentDx;
+        room.floorPosition.y = drag.startPos.y + drag.currentDy;
+
+        commit(getMoveLabel?.() || "Room moved", next);
+      }
+    }
+    // If not dragging or no change, don't need to do anything -
+    // click/dblclick handlers will fire naturally
+
+    drag = null;
+    dragStartState = null;
+    isDragging = false;
+  }
+
+  return { onRoomPointerDown };
+}
+
+/**
+ * Creates a resize controller for rooms in floor view.
+ * Allows resizing rooms by dragging corner/edge handles.
+ */
+export function createRoomResizeController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getCurrentFloor,
+  getResizeLabel
+}) {
+  let resize = null;
+  let resizeStartState = null;
+
+  function onRoomResizePointerDown(e, roomId, handleType) {
+    const svg = getSvg();
+    if (!svg) return;
+
+    const state = getState();
+    const floor = getCurrentFloor(state);
+    if (!floor) return;
+
+    const room = floor.rooms?.find(r => r.id === roomId);
+    if (!room || !room.sections?.length) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    svg.setPointerCapture(e.pointerId);
+
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    resizeStartState = deepClone(state);
+
+    // Get initial room dimensions from first section
+    const section = room.sections[0];
+    const pos = room.floorPosition || { x: 0, y: 0 };
+
+    resize = {
+      roomId,
+      handleType,
+      startMouse,
+      startPos: { ...pos },
+      startSection: {
+        x: section.x,
+        y: section.y,
+        widthCm: section.widthCm,
+        heightCm: section.heightCm
+      },
+      currentDx: 0,
+      currentDy: 0
+    };
+
+    showResizeOverlay(
+      `${formatCm(section.widthCm)} × ${formatCm(section.heightCm)} cm`,
+      e.clientX,
+      e.clientY
+    );
+
+    svg.addEventListener("pointermove", onPointerMove);
+    svg.addEventListener("pointerup", onPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onPointerUp, { once: true });
+  }
+
+  function onPointerMove(e) {
+    if (!resize) return;
+
+    const svg = getSvg();
+    if (!svg) return;
+
+    const current = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const rawDx = current.x - resize.startMouse.x;
+    const rawDy = current.y - resize.startMouse.y;
+
+    // Snap to 0.5cm grid
+    const dx = Math.round(rawDx / 0.5) * 0.5;
+    const dy = Math.round(rawDy / 0.5) * 0.5;
+
+    resize.currentDx = dx;
+    resize.currentDy = dy;
+
+    // Calculate new dimensions based on handle type
+    let newWidth = resize.startSection.widthCm;
+    let newHeight = resize.startSection.heightCm;
+    let newPosX = resize.startPos.x;
+    let newPosY = resize.startPos.y;
+
+    const handle = resize.handleType;
+
+    // Horizontal resizing
+    if (handle.includes("e")) {
+      newWidth = Math.max(50, resize.startSection.widthCm + dx);
+    } else if (handle.includes("w")) {
+      const widthChange = Math.min(dx, resize.startSection.widthCm - 50);
+      newWidth = resize.startSection.widthCm - widthChange;
+      newPosX = resize.startPos.x + widthChange;
+    }
+
+    // Vertical resizing
+    if (handle.includes("s")) {
+      newHeight = Math.max(50, resize.startSection.heightCm + dy);
+    } else if (handle.includes("n")) {
+      const heightChange = Math.min(dy, resize.startSection.heightCm - 50);
+      newHeight = resize.startSection.heightCm - heightChange;
+      newPosY = resize.startPos.y + heightChange;
+    }
+
+    // Update visual during drag
+    const roomGroup = svg.querySelector(`[data-roomid="${resize.roomId}"]`);
+    if (roomGroup) {
+      roomGroup.setAttribute("transform", `translate(${newPosX}, ${newPosY})`);
+      // Find and update the path
+      const path = roomGroup.querySelector("path");
+      if (path) {
+        const d = `M 0 0 L ${newWidth} 0 L ${newWidth} ${newHeight} L 0 ${newHeight} Z`;
+        path.setAttribute("d", d);
+      }
+    }
+
+    showResizeOverlay(`${formatCm(newWidth)} × ${formatCm(newHeight)} cm`, e.clientX, e.clientY);
+  }
+
+  function onPointerUp(e) {
+    if (!resize) return;
+
+    const svg = getSvg();
+    if (svg) {
+      svg.releasePointerCapture(e.pointerId);
+      svg.removeEventListener("pointermove", onPointerMove);
+    }
+
+    hideResizeOverlay();
+
+    // Commit changes if dimensions changed
+    const handle = resize.handleType;
+    const dx = resize.currentDx;
+    const dy = resize.currentDy;
+
+    let newWidth = resize.startSection.widthCm;
+    let newHeight = resize.startSection.heightCm;
+    let newPosX = resize.startPos.x;
+    let newPosY = resize.startPos.y;
+
+    if (handle.includes("e")) {
+      newWidth = Math.max(50, resize.startSection.widthCm + dx);
+    } else if (handle.includes("w")) {
+      const widthChange = Math.min(dx, resize.startSection.widthCm - 50);
+      newWidth = resize.startSection.widthCm - widthChange;
+      newPosX = resize.startPos.x + widthChange;
+    }
+
+    if (handle.includes("s")) {
+      newHeight = Math.max(50, resize.startSection.heightCm + dy);
+    } else if (handle.includes("n")) {
+      const heightChange = Math.min(dy, resize.startSection.heightCm - 50);
+      newHeight = resize.startSection.heightCm - heightChange;
+      newPosY = resize.startPos.y + heightChange;
+    }
+
+    const hasChanges =
+      newWidth !== resize.startSection.widthCm ||
+      newHeight !== resize.startSection.heightCm ||
+      newPosX !== resize.startPos.x ||
+      newPosY !== resize.startPos.y;
+
+    if (hasChanges) {
+      const next = deepClone(resizeStartState);
+      const floor = getCurrentFloor(next);
+      const room = floor?.rooms?.find(r => r.id === resize.roomId);
+
+      if (room && room.sections?.length > 0) {
+        room.floorPosition = { x: newPosX, y: newPosY };
+        room.sections[0].widthCm = newWidth;
+        room.sections[0].heightCm = newHeight;
+        // Also update legacy dimensions for compatibility
+        room.widthCm = newWidth;
+        room.heightCm = newHeight;
+
+        commit(getResizeLabel?.() || "Room resized", next);
+      }
+    } else {
+      render();
+    }
+
+    resize = null;
+    resizeStartState = null;
+  }
+
+  return { onRoomResizePointerDown };
+}

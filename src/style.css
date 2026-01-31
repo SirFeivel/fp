@@ -766,6 +766,53 @@ body{
   gap: 16px;
 }
 
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  align-items: center;
+  background: rgba(0,0,0,.18);
+  border-radius: var(--r-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: calc(var(--r-sm) - 2px);
+  transition: all 0.15s ease;
+}
+
+.view-toggle-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.05);
+}
+
+.view-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-toggle-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.view-toggle-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
 .planning-room-select {
   display: flex;
   align-items: center;
@@ -1031,6 +1078,50 @@ body{
   width: 45px;
 }
 
+/* Quick Controls Slider */
+.quick-slider {
+  width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--line);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.quick-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+
+.quick-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+
+.quick-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Floor Quick Controls specific */
+.floor-controls .quick-btn span {
+  font-size: var(--fs-sm);
+}
+
 /* Hide native number input spinners */
 .no-spinner::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button {
@@ -1228,6 +1319,37 @@ body{
 #planSvg.panning,
 #planSvgFullscreen.panning {
   cursor: grabbing;
+}
+
+/* Polygon drawing mode */
+#planSvg.drawing-polygon,
+#planSvgFullscreen.drawing-polygon {
+  cursor: crosshair;
+}
+
+.polygon-draw-preview .close-target {
+  cursor: pointer;
+}
+
+.polygon-draw-hint {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  border-radius: 6px;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+}
+
+/* Active state for Draw button */
+#floorDrawRoom.active {
+  background: var(--accent);
+  color: white;
 }
 
 /* Metrics Bar */

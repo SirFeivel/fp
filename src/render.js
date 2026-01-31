@@ -18,6 +18,7 @@ import {
 } from "./geometry.js";
 import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
+import { getFloorBounds } from "./floor_geometry.js";
 
 let activeSvgEdit = null;
 
@@ -2528,4 +2529,289 @@ export function renderExportTab(state, selection = null) {
 
     listEl.appendChild(group);
   }
+}
+
+/**
+ * Renders a floor-level canvas showing all rooms on the floor.
+ * Used in Floor View mode within the Planning tab.
+ */
+export function renderFloorCanvas({
+  state,
+  floor,
+  selectedRoomId,
+  onRoomClick,
+  onRoomDoubleClick,
+  onRoomPointerDown,
+  onRoomResizePointerDown,
+  svgOverride = null
+}) {
+  const svg = svgOverride || document.getElementById("planSvg");
+  if (!svg) return;
+
+  // Clear existing content
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  if (!floor || !floor.rooms?.length) {
+    svg.setAttribute("viewBox", "0 0 100 100");
+    return;
+  }
+
+  // Get floor bounds encompassing all rooms
+  const bounds = getFloorBounds(floor);
+  const padding = 80; // Padding around the floor
+
+  const baseViewBox = {
+    minX: bounds.minX - padding,
+    minY: bounds.minY - padding,
+    width: bounds.width + 2 * padding,
+    height: bounds.height + 2 * padding
+  };
+
+  // Use floor-specific viewport key
+  const viewportKey = `floor:${floor.id}`;
+  setBaseViewBox(viewportKey, baseViewBox);
+
+  // Apply zoom/pan from viewport
+  const effectiveViewBox = calculateEffectiveViewBox(viewportKey) || baseViewBox;
+  const viewBox = effectiveViewBox;
+
+  svg.setAttribute("viewBox", `${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+  // Background
+  const bgPadding = Math.max(viewBox.width, viewBox.height) * 2;
+  svg.appendChild(svgEl("rect", {
+    x: viewBox.minX - bgPadding,
+    y: viewBox.minY - bgPadding,
+    width: viewBox.width + 2 * bgPadding,
+    height: viewBox.height + 2 * bgPadding,
+    fill: "#081022"
+  }));
+
+  // Render background image if available
+  if (floor.layout?.background?.dataUrl) {
+    const bg = floor.layout.background;
+    const imgAttrs = {
+      href: bg.dataUrl,
+      x: bg.position?.x || 0,
+      y: bg.position?.y || 0,
+      opacity: bg.opacity ?? 0.5,
+      "pointer-events": bg.locked ? "none" : "all"
+    };
+
+    // Apply scale if calibrated
+    if (bg.scale?.calibrated && bg.scale.pixelsPerCm) {
+      const scale = 1 / bg.scale.pixelsPerCm;
+      imgAttrs.transform = `scale(${scale})`;
+    }
+
+    const imgEl = svgEl("image", imgAttrs);
+    svg.appendChild(imgEl);
+  }
+
+  // Render each room
+  for (const room of floor.rooms) {
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    const roomGroup = svgEl("g", {
+      transform: `translate(${pos.x}, ${pos.y})`,
+      "data-roomid": room.id,
+      cursor: "pointer"
+    });
+
+    const isSelected = room.id === selectedRoomId;
+
+    // Get room polygon for rendering (in room-local coordinates)
+    // The group transform handles floor positioning
+    const roomPoly = roomPolygon(room);
+    if (roomPoly && roomPoly.length > 0) {
+      // Convert polygon to path
+      const pathD = multiPolygonToPathD(roomPoly);
+
+      // Room fill with clear visibility
+      roomGroup.appendChild(svgEl("path", {
+        d: pathD,
+        fill: isSelected ? "rgba(59, 130, 246, 0.25)" : "rgba(100, 150, 200, 0.15)",
+        stroke: isSelected ? "#3b82f6" : "rgba(200, 220, 255, 0.5)",
+        "stroke-width": isSelected ? 3 : 2
+      }));
+
+      // Render simplified tiles preview if room has tile config
+      if (room.tile?.widthCm > 0 && room.tile?.heightCm > 0) {
+        try {
+          const roomState = { ...state, selectedRoomId: room.id };
+          const tiles = tilesForPreview(roomState, null, room);
+          const groutColor = room.grout?.colorHex || "#ffffff";
+
+          // Create a group for tiles
+          const tilesGroup = svgEl("g", { opacity: 0.6 });
+
+          for (const tile of tiles.slice(0, 500)) { // Limit tiles for performance
+            const tilePathD = multiPolygonToPathD(tile.clipped);
+            tilesGroup.appendChild(svgEl("path", {
+              d: tilePathD,
+              fill: "rgba(100, 116, 139, 0.4)",
+              stroke: groutColor,
+              "stroke-width": room.grout?.widthCm || 0.2
+            }));
+          }
+
+          roomGroup.appendChild(tilesGroup);
+        } catch {
+          // Skip tiles if there's an error
+        }
+      }
+    }
+
+    // Room label
+    const roomBounds = getRoomBounds(room);
+    const labelX = roomBounds.width / 2 + roomBounds.minX;
+    const labelY = roomBounds.height / 2 + roomBounds.minY;
+
+    const labelGroup = svgEl("g");
+
+    // Background pill for label
+    const labelText = room.name || t("tabs.room");
+    const fontSize = Math.min(16, Math.max(10, roomBounds.width / 10));
+
+    labelGroup.appendChild(svgEl("text", {
+      x: labelX,
+      y: labelY,
+      fill: isSelected ? "#3b82f6" : "rgba(231, 238, 252, 0.9)",
+      "font-size": fontSize,
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      "font-weight": isSelected ? "600" : "500",
+      "text-anchor": "middle",
+      "dominant-baseline": "middle"
+    }).appendChild(document.createTextNode(labelText)));
+
+    roomGroup.appendChild(labelGroup);
+
+    // Event handlers
+    if (onRoomClick) {
+      roomGroup.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onRoomClick(room.id);
+      });
+    }
+
+    if (onRoomDoubleClick) {
+      roomGroup.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        onRoomDoubleClick(room.id);
+      });
+    }
+
+    if (onRoomPointerDown) {
+      roomGroup.addEventListener("pointerdown", (e) => {
+        if (e.button === 0) { // Left mouse button
+          onRoomPointerDown(e, room.id);
+        }
+      });
+    }
+
+    svg.appendChild(roomGroup);
+
+    // Add resize handles for selected room (only for rectangle rooms with sections)
+    if (isSelected && onRoomResizePointerDown && room.sections?.length > 0 && !room.polygonVertices) {
+      const handleSize = 10;
+      const handles = [
+        { type: "nw", x: roomBounds.minX, y: roomBounds.minY, cursor: "nwse-resize" },
+        { type: "ne", x: roomBounds.maxX, y: roomBounds.minY, cursor: "nesw-resize" },
+        { type: "se", x: roomBounds.maxX, y: roomBounds.maxY, cursor: "nwse-resize" },
+        { type: "sw", x: roomBounds.minX, y: roomBounds.maxY, cursor: "nesw-resize" },
+        { type: "n", x: (roomBounds.minX + roomBounds.maxX) / 2, y: roomBounds.minY, cursor: "ns-resize" },
+        { type: "s", x: (roomBounds.minX + roomBounds.maxX) / 2, y: roomBounds.maxY, cursor: "ns-resize" },
+        { type: "e", x: roomBounds.maxX, y: (roomBounds.minY + roomBounds.maxY) / 2, cursor: "ew-resize" },
+        { type: "w", x: roomBounds.minX, y: (roomBounds.minY + roomBounds.maxY) / 2, cursor: "ew-resize" }
+      ];
+
+      for (const h of handles) {
+        const handle = svgEl("rect", {
+          x: pos.x + h.x - handleSize / 2,
+          y: pos.y + h.y - handleSize / 2,
+          width: handleSize,
+          height: handleSize,
+          fill: "#3b82f6",
+          stroke: "#fff",
+          "stroke-width": 1.5,
+          cursor: h.cursor,
+          "data-roomid": room.id,
+          "data-resize-handle": h.type
+        });
+        handle.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          onRoomResizePointerDown(e, room.id, h.type);
+        });
+        svg.appendChild(handle);
+      }
+
+      // Show dimensions label
+      const dimLabel = `${Math.round(roomBounds.width)} × ${Math.round(roomBounds.height)} cm`;
+      const dimText = svgEl("text", {
+        x: pos.x + roomBounds.minX + roomBounds.width / 2,
+        y: pos.y + roomBounds.maxY + 20,
+        fill: "#3b82f6",
+        "font-size": 12,
+        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        "text-anchor": "middle"
+      });
+      dimText.textContent = dimLabel;
+      svg.appendChild(dimText);
+    }
+  }
+
+  // Render global origin marker if pattern linking is enabled
+  if (floor.patternLinking?.enabled) {
+    const origin = floor.patternLinking.globalOrigin || { x: 0, y: 0 };
+    const markerSize = 8;
+
+    const markerGroup = svgEl("g", {
+      transform: `translate(${origin.x}, ${origin.y})`,
+      cursor: "move"
+    });
+
+    // Crosshair
+    markerGroup.appendChild(svgEl("line", {
+      x1: -markerSize,
+      y1: 0,
+      x2: markerSize,
+      y2: 0,
+      stroke: "#22c55e",
+      "stroke-width": 2
+    }));
+    markerGroup.appendChild(svgEl("line", {
+      x1: 0,
+      y1: -markerSize,
+      x2: 0,
+      y2: markerSize,
+      stroke: "#22c55e",
+      "stroke-width": 2
+    }));
+
+    // Circle around crosshair
+    markerGroup.appendChild(svgEl("circle", {
+      cx: 0,
+      cy: 0,
+      r: markerSize + 2,
+      fill: "none",
+      stroke: "#22c55e",
+      "stroke-width": 1.5
+    }));
+
+    svg.appendChild(markerGroup);
+  }
+
+  // Add floor view hint text at the top
+  const hintY = viewBox.minY + 15;
+  const hintX = viewBox.minX + viewBox.width / 2;
+  const hintText = svgEl("text", {
+    x: hintX,
+    y: hintY,
+    fill: "rgba(150, 180, 220, 0.7)",
+    "font-size": 12,
+    "font-family": "system-ui, -apple-system, sans-serif",
+    "text-anchor": "middle"
+  });
+  hintText.textContent = t("floor.hintDragRooms") || "Drag rooms to position • Double-click to edit room";
+  svg.appendChild(hintText);
 }

@@ -35,6 +35,8 @@ const translations = {
       settings: "Raumeinstellungen",
       editTileConfig: "Bearbeiten",
       done: "Fertig",
+      floorView: "Etage",
+      roomView: "Raum",
       tileEditActionsTitle: "Änderungen speichern",
       tileEditUpdatePreset: "Preset aktualisieren",
       tileEditSaveNew: "Als neues Preset speichern",
@@ -56,6 +58,25 @@ const translations = {
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
       removalMode: "Entfernungsmodus"
+    },
+    floor: {
+      uploadBg: "Bild",
+      calibrate: "Kalibrieren",
+      opacity: "Deckkraft:",
+      linkPatterns: "Muster verbinden",
+      shareOffcuts: "Verschnitt teilen",
+      calibratePrompt: "Länge eingeben (cm):",
+      calibrateSuccess: "Kalibrierung erfolgreich",
+      noBackground: "Kein Hintergrundbild",
+      hintDragRooms: "Räume ziehen zum Positionieren • Doppelklick zum Bearbeiten",
+      addRoom: "Raum hinzufügen",
+      drawRoom: "Zeichnen",
+      deleteRoom: "Löschen",
+      cannotDeleteLastRoom: "Der letzte Raum kann nicht gelöscht werden"
+    },
+    view: {
+      switchedToFloor: "Etagenansicht",
+      switchedToRoom: "Raumansicht"
     },
     settings: {
       save: "Projekt speichern",
@@ -137,7 +158,13 @@ const translations = {
       noSectionSelected: "– kein Abschnitt ausgewählt –",
       sectionAdded: "Abschnitt hinzugefügt",
       sectionDeleted: "Abschnitt gelöscht",
-      sectionChanged: "Abschnitt geändert"
+      sectionChanged: "Abschnitt geändert",
+      selected: "Raum ausgewählt",
+      positionChanged: "Raumposition geändert",
+      sizeChanged: "Raumgröße geändert",
+      newRoom: "Neuer Raum",
+      added: "Raum hinzugefügt",
+      deleted: "Raum gelöscht"
     },
     skirting: {
       title: "Sockelleisten Konfiguration",
@@ -528,6 +555,8 @@ const translations = {
       settings: "Room Settings",
       editTileConfig: "Edit",
       done: "Done",
+      floorView: "Floor",
+      roomView: "Room",
       tileEditActionsTitle: "Save changes",
       tileEditUpdatePreset: "Update preset",
       tileEditSaveNew: "Save as new",
@@ -549,6 +578,25 @@ const translations = {
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
       removalMode: "Removal mode"
+    },
+    floor: {
+      uploadBg: "Image",
+      calibrate: "Calibrate",
+      opacity: "Opacity:",
+      linkPatterns: "Link patterns",
+      shareOffcuts: "Share offcuts",
+      calibratePrompt: "Enter length (cm):",
+      calibrateSuccess: "Calibration successful",
+      noBackground: "No background image",
+      hintDragRooms: "Drag rooms to position • Double-click to edit room",
+      addRoom: "Add Room",
+      drawRoom: "Draw",
+      deleteRoom: "Delete",
+      cannotDeleteLastRoom: "Cannot delete the last room"
+    },
+    view: {
+      switchedToFloor: "Floor view",
+      switchedToRoom: "Room view"
     },
     settings: {
       save: "Save Project",
@@ -630,7 +678,13 @@ const translations = {
       noSectionSelected: "– no section selected –",
       sectionAdded: "Section added",
       sectionDeleted: "Section deleted",
-      sectionChanged: "Section changed"
+      sectionChanged: "Section changed",
+      selected: "Room selected",
+      positionChanged: "Room position changed",
+      sizeChanged: "Room size changed",
+      newRoom: "New Room",
+      added: "Room added",
+      deleted: "Room deleted"
     },
     skirting: {
       title: "Skirting Configuration",

@@ -38,6 +38,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 5) {
       s = migrateV5ToV6(s);
     }
+    if (s.meta?.version === 6) {
+      s = migrateV6ToV7(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -94,10 +97,11 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.pattern;
     }
 
-    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true };
+    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, planningMode: "room" };
     if (s.view.showGrid === undefined) s.view.showGrid = true;
     if (s.view.showNeeds === undefined) s.view.showNeeds = false;
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
+    if (s.view.planningMode === undefined) s.view.planningMode = "room";
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;
       delete s.view.showBaseBoards;
@@ -114,8 +118,18 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
     if (s.floors && Array.isArray(s.floors)) {
       for (const floor of s.floors) {
+        // Normalize floor-level v7 properties
+        if (!floor.layout) floor.layout = { enabled: false, background: null };
+        if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
+        if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
+        if (!floor.walls) floor.walls = [];
+
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
+            // Normalize room-level v7 properties
+            if (!room.floorPosition) room.floorPosition = { x: 0, y: 0 };
+            if (!room.patternLink) room.patternLink = { mode: "independent", linkedRoomId: null };
+
             room.tile = room.tile || {
               widthCm: DEFAULT_TILE_PRESET.widthCm,
               heightCm: DEFAULT_TILE_PRESET.heightCm,
@@ -292,6 +306,42 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
     if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
     s.meta.version = 6;
+    return s;
+  }
+
+  function migrateV6ToV7(s) {
+    // Add floor-level layout properties
+    for (const floor of s.floors || []) {
+      if (!floor.layout) {
+        floor.layout = { enabled: false, background: null };
+      }
+      if (!floor.patternLinking) {
+        floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
+      }
+      if (!floor.offcutSharing) {
+        floor.offcutSharing = { enabled: false };
+      }
+      if (!floor.walls) {
+        floor.walls = [];
+      }
+
+      // Add room-level position and pattern link properties
+      for (const room of floor.rooms || []) {
+        if (!room.floorPosition) {
+          room.floorPosition = { x: 0, y: 0 };
+        }
+        if (!room.patternLink) {
+          room.patternLink = { mode: "independent", linkedRoomId: null };
+        }
+      }
+    }
+
+    // Add planningMode to view
+    if (s.view && s.view.planningMode === undefined) {
+      s.view.planningMode = "room";
+    }
+
+    s.meta.version = 7;
     return s;
   }
 

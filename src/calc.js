@@ -452,7 +452,21 @@ class OffcutPool {
   snapshot() {
     return this.rects.map((r) => ({ id: r.id, w: r.w, h: r.h, from: r.from }));
   }
+
+  /** Returns count of offcuts in the pool */
+  count() {
+    return this.rects.length;
+  }
+
+  /** Clears all offcuts from the pool */
+  clear() {
+    this.rects = [];
+    this._seq = 0;
+  }
 }
+
+/** Exported for floor-level offcut sharing */
+export { OffcutPool };
 
 const metricsCache = new Map();
 
@@ -475,15 +489,31 @@ function getMetricsKey(state, room) {
   });
 }
 
-export function computePlanMetrics(state, roomOverride = null) {
+/**
+ * Computes tile planning metrics for a room.
+ *
+ * @param {Object} state - The application state
+ * @param {Object|null} roomOverride - Optional room to compute metrics for (overrides current room)
+ * @param {Object} options - Optional settings:
+ *   - externalPool: OffcutPool instance to use (enables floor-level offcut sharing)
+ *   - returnPool: If true, returns the pool in the result for chaining
+ *   - skipCache: If true, bypasses caching
+ * @returns {Object} Metrics result with ok, error, data, and optionally pool
+ */
+export function computePlanMetrics(state, roomOverride = null, options = {}) {
+  const { externalPool = null, returnPool = false, skipCache = false } = options;
+
   const currentRoom = roomOverride || getCurrentRoom(state);
   if (!currentRoom) {
     return { ok: false, error: "Kein Raum ausgewählt.", data: null };
   }
 
+  // Skip cache when using external pool (floor-level sharing mode)
+  const useCache = !skipCache && !externalPool;
+
   const cacheKey = getMetricsKey(state, currentRoom);
   const cached = metricsCache.get(currentRoom.id);
-  if (cached && cached.key === cacheKey) {
+  if (useCache && cached && cached.key === cacheKey) {
     return cached.result;
   }
 
@@ -515,7 +545,8 @@ export function computePlanMetrics(state, roomOverride = null) {
   let cutTiles = 0;
   let reusedCuts = 0;
 
-  const pool = new OffcutPool();
+  // Use external pool for floor-level offcut sharing, or create new pool
+  const pool = externalPool || new OffcutPool();
 
   const tileUsage = new Array(t.tiles.length);
   const cutNeeds = new Array(t.tiles.length);
@@ -752,8 +783,92 @@ export function computePlanMetrics(state, roomOverride = null) {
     },
   };
 
-  metricsCache.set(currentRoom.id, { key: cacheKey, result });
+  // Add pool to result if requested (for floor-level offcut chaining)
+  if (returnPool) {
+    result.pool = pool;
+  }
+
+  // Cache the result (skip caching when using external pool)
+  if (useCache) {
+    metricsCache.set(currentRoom.id, { key: cacheKey, result });
+  }
+
   return result;
+}
+
+/**
+ * Computes metrics for all rooms on a floor, optionally sharing offcuts between rooms.
+ *
+ * @param {Object} state - The application state
+ * @param {Object} floor - The floor to compute metrics for
+ * @returns {Object} Floor metrics with per-room breakdown and totals
+ */
+export function computeFloorMetrics(state, floor) {
+  if (!floor?.rooms?.length) {
+    return {
+      ok: false,
+      error: "No rooms on floor",
+      rooms: [],
+      totals: null,
+      sharedPool: null
+    };
+  }
+
+  const useSharedPool = floor?.offcutSharing?.enabled;
+  const sharedPool = useSharedPool ? new OffcutPool() : null;
+
+  const roomMetrics = [];
+  let totalFullTiles = 0;
+  let totalCutTiles = 0;
+  let totalReusedCuts = 0;
+  let totalAreaCm2 = 0;
+  let totalWasteAreaCm2 = 0;
+  let totalPurchasedTiles = 0;
+  let totalCost = 0;
+
+  for (const room of floor.rooms) {
+    const options = {
+      externalPool: sharedPool,
+      returnPool: useSharedPool,
+      skipCache: useSharedPool
+    };
+
+    const metrics = computePlanMetrics(state, room, options);
+
+    roomMetrics.push({
+      room,
+      roomId: room.id,
+      roomName: room.name,
+      metrics
+    });
+
+    if (metrics.ok && metrics.data) {
+      const d = metrics.data;
+      totalFullTiles += d.tiles.fullTiles || 0;
+      totalCutTiles += d.tiles.cutTiles || 0;
+      totalReusedCuts += d.tiles.reusedCuts || 0;
+      totalAreaCm2 += d.area.roomAreaCm2 || 0;
+      totalWasteAreaCm2 += d.waste.wasteAreaCm2 || 0;
+      totalPurchasedTiles += d.tiles.purchasedTiles || 0;
+      totalCost += d.cost.tilesCost || 0;
+    }
+  }
+
+  return {
+    ok: true,
+    rooms: roomMetrics,
+    totals: {
+      fullTiles: totalFullTiles,
+      cutTiles: totalCutTiles,
+      reusedCuts: totalReusedCuts,
+      totalAreaCm2,
+      totalAreaM2: totalAreaCm2 / 10000,
+      wasteAreaCm2: totalWasteAreaCm2,
+      purchasedTiles: totalPurchasedTiles,
+      totalCost
+    },
+    sharedPool: sharedPool?.snapshot() || null
+  };
 }
 
 /**
