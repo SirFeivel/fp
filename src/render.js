@@ -1906,7 +1906,10 @@ export function renderPlanSvg({
       const currentFloor = state.floors?.find(f => f.id === state.selectedFloorId);
       const patternGroupOrigin = computePatternGroupOrigin(currentRoom, currentFloor);
 
-      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: patternGroupOrigin });
+      // Get effective settings (from origin room if in pattern group)
+      const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
+
+      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: patternGroupOrigin, effectiveSettings });
       if (t.error) setLastTileError(t.error);
       else setLastTileError(null);
 
@@ -1915,8 +1918,6 @@ export function renderPlanSvg({
       const g = svgEl("g", { opacity: 1, "pointer-events": isRemovalMode ? "auto" : "none" });
       svg.appendChild(g);
 
-      // Get effective settings (from origin room if in pattern group)
-      const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
       const groutWidth = effectiveSettings.grout?.widthCm || 0;
       const groutHex = groutWidth > 0 ? (effectiveSettings.grout?.colorHex || "#ffffff") : "#ffffff";
       const groutRgb = hexToRgb(groutHex);
@@ -2795,7 +2796,7 @@ export function renderFloorCanvas({
             const roomState = { ...state, selectedRoomId: room.id };
             // Use shared origin for pattern group
             const patternGroupOrigin = computePatternGroupOrigin(room, floor);
-            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: patternGroupOrigin });
+            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: patternGroupOrigin, effectiveSettings });
             const groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
 
             if (result.error) {

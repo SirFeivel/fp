@@ -36,6 +36,32 @@ export function getPatternOriginRoom(floor, roomId) {
 }
 
 /**
+ * Compute the origin point for a room based on its pattern settings
+ * This mirrors the logic in geometry.js computeOriginPoint
+ * @param {Object} room - The room
+ * @returns {Object} Origin {x, y} in room-local coordinates
+ */
+function computeRoomLocalOrigin(room) {
+  const bounds = getRoomBounds(room);
+  const w = bounds.width;
+  const h = bounds.height;
+  const minX = bounds.minX;
+  const minY = bounds.minY;
+
+  const o = room.pattern?.origin || { preset: "tl", xCm: 0, yCm: 0 };
+  const preset = o.preset || "tl";
+
+  if (preset === "tl") return { x: minX, y: minY };
+  if (preset === "tr") return { x: minX + w, y: minY };
+  if (preset === "bl") return { x: minX, y: minY + h };
+  if (preset === "br") return { x: minX + w, y: minY + h };
+  if (preset === "center") return { x: minX + w / 2, y: minY + h / 2 };
+
+  // "free"
+  return { x: Number(o.xCm) || 0, y: Number(o.yCm) || 0 };
+}
+
+/**
  * Compute the shared origin point for a room based on its pattern group
  * Returns origin in room-local coordinates, or null if room is independent
  * @param {Object} room - The room to compute origin for
@@ -49,14 +75,16 @@ export function computePatternGroupOrigin(room, floor) {
   if (!group || group.memberRoomIds.length < 2) return null;
 
   const originRoom = floor.rooms?.find(r => r.id === group.originRoomId);
-  if (!originRoom || originRoom.id === room.id) return null;
+  if (!originRoom) return null;
 
-  // Compute origin in floor coordinates from origin room's top-left
+  // Compute the origin point in origin room's local coordinates (respecting preset)
+  const originLocalPoint = computeRoomLocalOrigin(originRoom);
+
+  // Convert to global floor coordinates
   const originPos = originRoom.floorPosition || { x: 0, y: 0 };
-  const originBounds = getRoomBounds(originRoom);
   const globalOrigin = {
-    x: originPos.x + originBounds.minX,
-    y: originPos.y + originBounds.minY
+    x: originPos.x + originLocalPoint.x,
+    y: originPos.y + originLocalPoint.y
   };
 
   // Convert to this room's local coordinates

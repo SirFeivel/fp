@@ -1,6 +1,7 @@
 // src/calc.js
 import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments } from "./geometry.js";
-import { getCurrentRoom } from "./core.js";
+import { getCurrentRoom, getCurrentFloor } from "./core.js";
+import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
 
 /**
  * Calculates material requirements for skirting.
@@ -517,9 +518,13 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
     return cached.result;
   }
 
-  const tw = Number(currentRoom.tile?.widthCm);
-  const th = Number(currentRoom.tile?.heightCm);
-  const grout = Number(currentRoom.grout?.widthCm) || 0;
+  // Get floor context for pattern group inheritance
+  const floor = getCurrentFloor(state);
+  const effectiveSettings = getEffectiveTileSettings(currentRoom, floor);
+
+  const tw = Number(effectiveSettings.tile?.widthCm);
+  const th = Number(effectiveSettings.tile?.heightCm);
+  const grout = Number(effectiveSettings.grout?.widthCm) || 0;
 
   if (!(tw > 0) || !(th > 0) || grout < 0) {
     return { ok: false, error: "Ungültige Fliesen- oder Fugenmaße.", data: null };
@@ -534,11 +539,12 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
   const avail = computeAvailableArea(currentRoom, currentRoom.exclusions);
   if (!avail.mp) return { ok: false, error: "Keine verfügbare Fläche.", data: null };
 
-  // Preview tiles (clipped paths)
-  const t = tilesForPreview(state, avail.mp, roomOverride, false);
+  // Preview tiles (clipped paths) - use effective settings from pattern group origin
+  const patternGroupOrigin = computePatternGroupOrigin(currentRoom, floor);
+  const t = tilesForPreview(state, avail.mp, roomOverride, false, floor, { originOverride: patternGroupOrigin, effectiveSettings });
   if (t.error) return { ok: false, error: t.error, data: null };
 
-  const tileShape = currentRoom.tile?.shape || "rect";
+  const tileShape = effectiveSettings.tile?.shape || "rect";
   const tileAreaCm2 = calculateTileArea(tw, th, tileShape);
 
   let fullTiles = 0;
