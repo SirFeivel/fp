@@ -2543,6 +2543,7 @@ export function renderFloorCanvas({
   onRoomDoubleClick,
   onRoomPointerDown,
   onRoomResizePointerDown,
+  onRoomInlineEdit,
   svgOverride = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
@@ -2745,18 +2746,67 @@ export function renderFloorCanvas({
         svg.appendChild(handle);
       }
 
-      // Show dimensions label
-      const dimLabel = `${Math.round(roomBounds.width)} × ${Math.round(roomBounds.height)} cm`;
-      const dimText = svgEl("text", {
-        x: pos.x + roomBounds.minX + roomBounds.width / 2,
-        y: pos.y + roomBounds.maxY + 20,
+      // Editable dimension labels (matching section pattern)
+      const labelBaseStyle = {
         fill: "#3b82f6",
-        "font-size": 12,
+        "font-size": 11,
         "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-        "text-anchor": "middle"
-      });
-      dimText.textContent = dimLabel;
-      svg.appendChild(dimText);
+        "font-weight": 500,
+        "dominant-baseline": "middle"
+      };
+      const pad = 14;
+
+      const fmtCm = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "0";
+        return n % 1 === 0 ? String(n) : n.toFixed(1);
+      };
+
+      const addRoomEditableLabel = (text, value, key, x, y, anchor = "middle", angle = 0) => {
+        const labelGroup = svgEl("g", { cursor: "text" });
+        if (angle) {
+          labelGroup.setAttribute("transform", `rotate(${angle} ${x} ${y})`);
+        }
+        const textEl = svgEl("text", { ...labelBaseStyle, x, y, "text-anchor": anchor });
+        textEl.textContent = text;
+        labelGroup.appendChild(textEl);
+        svg.appendChild(labelGroup);
+
+        if (!onRoomInlineEdit) return;
+        const openEdit = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          labelGroup.style.display = "none";
+          startSvgEdit({
+            svg,
+            x,
+            y,
+            angle,
+            value,
+            textStyle: labelBaseStyle,
+            onCommit: (nextVal) => {
+              labelGroup.style.display = "";
+              onRoomInlineEdit({ id: room.id, key, value: nextVal });
+            },
+            onCancel: () => {
+              labelGroup.style.display = "";
+            },
+            anchor
+          });
+        };
+        labelGroup.addEventListener("pointerdown", openEdit);
+        labelGroup.addEventListener("click", openEdit);
+      };
+
+      // Width label (bottom center)
+      const widthLabelX = pos.x + roomBounds.minX + roomBounds.width / 2;
+      const widthLabelY = pos.y + roomBounds.maxY + pad;
+      addRoomEditableLabel(`${fmtCm(roomBounds.width)} cm`, roomBounds.width, "widthCm", widthLabelX, widthLabelY, "middle", 0);
+
+      // Height label (right side, rotated)
+      const heightLabelX = pos.x + roomBounds.maxX + pad;
+      const heightLabelY = pos.y + roomBounds.minY + roomBounds.height / 2;
+      addRoomEditableLabel(`${fmtCm(roomBounds.height)} cm`, roomBounds.height, "heightCm", heightLabelX, heightLabelY, "middle", 90);
     }
   }
 

@@ -244,7 +244,32 @@ function renderPlanningSection(state, opts) {
         store.commit(t("view.switchedToRoom"), next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onRoomPointerDown: (e, roomId) => roomDragController.onRoomPointerDown(e, roomId),
-      onRoomResizePointerDown: (e, roomId, handleType) => roomResizeController.onRoomResizePointerDown(e, roomId, handleType)
+      onRoomResizePointerDown: (e, roomId, handleType) => roomResizeController.onRoomResizePointerDown(e, roomId, handleType),
+      onRoomInlineEdit: ({ id, key, value }) => {
+        const state = store.getState();
+        const next = deepClone(state);
+        const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+        const room = floor?.rooms?.find(r => r.id === id);
+        if (!room) return;
+
+        const numVal = parseFloat(value);
+        if (!Number.isFinite(numVal) || numVal < 1) return;
+
+        // Update both section and legacy dimensions
+        if (key === "widthCm") {
+          if (room.sections?.length > 0) {
+            room.sections[0].widthCm = numVal;
+          }
+          room.widthCm = numVal;
+        } else if (key === "heightCm") {
+          if (room.sections?.length > 0) {
+            room.sections[0].heightCm = numVal;
+          }
+          room.heightCm = numVal;
+        }
+
+        store.commit(t("room.sizeChanged") || "Room size changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
+      }
     });
   } else {
     const metrics = isDrag ? null : computePlanMetrics(state);
