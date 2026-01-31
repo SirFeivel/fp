@@ -879,6 +879,7 @@ function bindPresetCollection() {
   });
   tileShape?.addEventListener("change", commitTilePreset);
   groutColor?.addEventListener("change", commitTilePreset);
+  groutColor?.addEventListener("input", commitTilePreset);
   useSkirting?.addEventListener("change", commitTilePreset);
   pricePerPack?.addEventListener("change", () => {
     const pack = Number(packM2?.value);
@@ -888,6 +889,7 @@ function bindPresetCollection() {
     if (pricePerM2) pricePerM2.value = (price / pack).toFixed(2);
     commitTilePreset();
   });
+
 
   roomList?.addEventListener("change", (e) => {
     const target = e.target;

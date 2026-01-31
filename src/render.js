@@ -527,6 +527,22 @@ export function renderTilePresets(state, selectedId, setSelectedId) {
   if (h) { h.disabled = false; h.value = selected.heightCm ?? ""; }
   if (groutW) { groutW.disabled = false; groutW.value = Math.round((selected.groutWidthCm ?? 0) * 10); }
   if (groutColor) { groutColor.disabled = false; groutColor.value = selected.groutColorHex || "#ffffff"; }
+  const groutSwatches = document.getElementById("tilePresetGroutColorPresets");
+  if (groutSwatches && !groutSwatches.dataset.bound) {
+    groutSwatches.dataset.bound = "true";
+    groutSwatches.addEventListener("click", (e) => {
+      const swatch = e.target.closest(".color-swatch");
+      if (!swatch) return;
+      const color = swatch.dataset.color;
+      if (!color) return;
+      if (groutColor) {
+        groutColor.value = color;
+        groutColor.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      groutSwatches.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("selected"));
+      swatch.classList.add("selected");
+    });
+  }
   document.querySelectorAll("#tilePresetGroutColorPresets .color-swatch").forEach(swatch => {
     if (swatch.dataset.color?.toLowerCase() === (selected.groutColorHex || "#ffffff").toLowerCase()) {
       swatch.classList.add("selected");

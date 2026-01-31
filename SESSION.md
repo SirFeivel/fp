@@ -64,6 +64,22 @@
 - Tests: `npm run test`
 - Build: `npm run build`
 
+## Session: Setup Grout Picker Fix (2026-01-31)
+### Goal
+- Restore Setup tile preset grout color swatch picker behavior.
+
+### Branch
+`fix/setup-grout-picker`
+
+### Plan
+1. Wire swatch clicks for setup grout preset picker
+2. Add/adjust tests for swatch selection
+
+### Status
+- Completed
+- Tests: `npm run test`
+- Build: `npm run build`
+
 ## Session: Setup Project Section (2026-01-31)
 ### Goal
 - Add a Project section at the top of Setup with editable project name, save/load, and delete with warning.
