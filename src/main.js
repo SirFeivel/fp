@@ -1856,12 +1856,21 @@ function updateAllTranslations() {
     exclDropdown?.classList.toggle("hidden");
   });
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   document.addEventListener("click", (e) => {
+    // Close exclusion dropdown
     if (exclDropdown && !exclDropdown.classList.contains("hidden") &&
         !exclDropdown.contains(e.target) &&
         e.target !== quickAddExclusion) {
       exclDropdown.classList.add("hidden");
+    }
+    // Close room dropdown
+    const roomDropdown = document.getElementById("roomDropdown");
+    const floorAddRoomBtn = document.getElementById("floorAddRoomBtn");
+    if (roomDropdown && !roomDropdown.classList.contains("hidden") &&
+        !roomDropdown.contains(e.target) &&
+        e.target !== floorAddRoomBtn) {
+      roomDropdown.classList.add("hidden");
     }
   });
 
@@ -1903,8 +1912,18 @@ function updateAllTranslations() {
     zoomPanController.reset();
   });
 
+  // Floor view room dropdown (like exclusion dropdown)
+  const floorAddRoomBtn = document.getElementById("floorAddRoomBtn");
+  const roomDropdown = document.getElementById("roomDropdown");
+
+  floorAddRoomBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    roomDropdown?.classList.toggle("hidden");
+  });
+
   // Floor view room management
   document.getElementById("floorAddRoom")?.addEventListener("click", () => {
+    roomDropdown?.classList.add("hidden");
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -1979,14 +1998,15 @@ function updateAllTranslations() {
 
   // Draw Room button - start polygon drawing mode
   document.getElementById("floorDrawRoom")?.addEventListener("click", () => {
+    roomDropdown?.classList.add("hidden");
     const state = store.getState();
     if (state.view?.planningMode !== "floor") return;
 
-    const drawBtn = document.getElementById("floorDrawRoom");
-    if (drawBtn) drawBtn.classList.add("active");
+    const addRoomBtn = document.getElementById("floorAddRoomBtn");
+    if (addRoomBtn) addRoomBtn.classList.add("active");
 
     polygonDrawController.startDrawing((polygonPoints) => {
-      if (drawBtn) drawBtn.classList.remove("active");
+      if (addRoomBtn) addRoomBtn.classList.remove("active");
 
       // Create room from polygon
       const newRoom = polygonDrawController.createRoomFromPolygon(polygonPoints);

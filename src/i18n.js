@@ -78,7 +78,8 @@ const translations = {
       noBackground: "Kein Hintergrundbild",
       hintDragRooms: "Räume ziehen zum Positionieren • Doppelklick zum Bearbeiten",
       addRoom: "Raum hinzufügen",
-      drawRoom: "Zeichnen",
+      addRectRoom: "Rechteck",
+      drawRoom: "Freiform",
       deleteRoom: "Löschen",
       cannotDeleteLastRoom: "Der letzte Raum kann nicht gelöscht werden",
       disconnectedRoomsWarning: "Warnung: Einige Räume sind nicht verbunden!\n\nRäume müssen mindestens 10cm Wand teilen, um als verbunden zu gelten.\n\nMöchten Sie trotzdem fortfahren?"
@@ -612,7 +613,8 @@ const translations = {
       noBackground: "No background image",
       hintDragRooms: "Drag rooms to position • Double-click to edit room",
       addRoom: "Add Room",
-      drawRoom: "Draw",
+      addRectRoom: "Rectangle",
+      drawRoom: "Freeform",
       deleteRoom: "Delete",
       cannotDeleteLastRoom: "Cannot delete the last room",
       disconnectedRoomsWarning: "Warning: Some rooms are not connected!\n\nRooms must share at least 10cm of wall to be considered connected.\n\nDo you want to continue anyway?"

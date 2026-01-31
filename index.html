@@ -509,6 +509,36 @@
 
               <!-- Floor View Quick Controls (hidden by default) -->
               <div class="quick-controls floor-controls" id="floorQuickControls" style="display: none;">
+                <!-- Room Actions (like exclusion dropdown in room view) -->
+                <div class="quick-actions">
+                  <div class="quick-dropdown">
+                    <button id="floorAddRoomBtn" class="quick-btn" title="Add Room">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                      </svg>
+                    </button>
+                    <div id="roomDropdown" class="quick-dropdown-menu hidden">
+                      <button id="floorAddRoom" class="quick-dropdown-item" title="Add rectangle room">
+                        <span class="quick-dropdown-icon">▭</span>
+                        <span data-i18n="floor.addRectRoom">Rectangle</span>
+                      </button>
+                      <button id="floorDrawRoom" class="quick-dropdown-item" title="Draw room polygon">
+                        <span class="quick-dropdown-icon">⬡</span>
+                        <span data-i18n="floor.drawRoom">Freeform</span>
+                      </button>
+                    </div>
+                  </div>
+                  <button id="floorDeleteRoom" class="quick-btn danger" title="Delete selected room" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="m19 6-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div class="quick-control-divider"></div>
+                <!-- Background Controls -->
                 <div class="quick-control-group">
                   <input type="file" id="bgUpload" accept="image/*,.pdf" class="hidden-input" style="display: none;">
                   <button id="bgUploadBtn" class="quick-btn" title="Upload background image">
@@ -517,14 +547,12 @@
                       <circle cx="8.5" cy="8.5" r="1.5"></circle>
                       <polyline points="21 15 16 10 5 21"></polyline>
                     </svg>
-                    <span data-i18n="floor.uploadBg">Image</span>
                   </button>
                   <button id="bgCalibrateBtn" class="quick-btn" title="Calibrate scale" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M2 12h4m12 0h4M12 2v4m0 12v4"></path>
                       <circle cx="12" cy="12" r="3"></circle>
                     </svg>
-                    <span data-i18n="floor.calibrate">Calibrate</span>
                   </button>
                 </div>
                 <div class="quick-control-group">
@@ -532,6 +560,7 @@
                   <input type="range" id="bgOpacitySlider" class="quick-slider" min="0" max="100" value="50" disabled>
                 </div>
                 <div class="quick-control-divider"></div>
+                <!-- Quick Toggles -->
                 <div class="quick-toggles">
                   <label class="quick-toggle" title="Link patterns across rooms">
                     <input id="floorLinkPatterns" type="checkbox" />
@@ -543,41 +572,12 @@
                   </label>
                 </div>
                 <div class="quick-control-divider"></div>
+                <!-- Zoom Controls (at end, like room view) -->
                 <div class="zoom-controls">
                   <button id="floorZoomOut" class="quick-btn zoom-btn" title="Zoom Out (-)">−</button>
                   <span id="floorZoomLevel" class="zoom-indicator">100%</span>
                   <button id="floorZoomIn" class="quick-btn zoom-btn" title="Zoom In (+)">+</button>
                   <button id="floorZoomReset" class="quick-btn zoom-btn" title="Reset Zoom (0)">⊙</button>
-                </div>
-                <div class="quick-control-divider"></div>
-                <div class="quick-control-group room-management">
-                  <button id="floorAddRoom" class="quick-btn" title="Add rectangle room">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <line x1="12" y1="8" x2="12" y2="16"></line>
-                      <line x1="8" y1="12" x2="16" y2="12"></line>
-                    </svg>
-                    <span data-i18n="floor.addRoom">Add Room</span>
-                  </button>
-                  <button id="floorDrawRoom" class="quick-btn" title="Draw room polygon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"></polygon>
-                      <circle cx="12" cy="2" r="1.5" fill="currentColor"></circle>
-                      <circle cx="22" cy="8.5" r="1.5" fill="currentColor"></circle>
-                      <circle cx="22" cy="15.5" r="1.5" fill="currentColor"></circle>
-                      <circle cx="12" cy="22" r="1.5" fill="currentColor"></circle>
-                      <circle cx="2" cy="15.5" r="1.5" fill="currentColor"></circle>
-                      <circle cx="2" cy="8.5" r="1.5" fill="currentColor"></circle>
-                    </svg>
-                    <span data-i18n="floor.drawRoom">Draw</span>
-                  </button>
-                  <button id="floorDeleteRoom" class="quick-btn danger" title="Delete selected room" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="m19 6-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"></path>
-                    </svg>
-                    <span data-i18n="floor.deleteRoom">Delete</span>
-                  </button>
                 </div>
               </div>
 
