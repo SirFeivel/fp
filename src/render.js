@@ -817,6 +817,46 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
   });
 }
 
+export function renderCurrentRoomSections(room, { onToggleSection }) {
+  const wrap = document.getElementById("currentRoomSectionsList");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  if (!room) return;
+
+  const roomEnabled = room.skirting?.enabled !== false;
+  const sections = getRoomSections(room);
+
+  if (sections.length === 0) return;
+
+  sections.forEach((sec, secIdx) => {
+    const secRow = document.createElement("div");
+    secRow.className = "skirting-room-row is-section";
+    if (!roomEnabled) secRow.classList.add("is-disabled");
+    const secName = sec.label || `${t("room.section")} ${secIdx + 1}`;
+    const secNameEl = document.createElement("div");
+    secNameEl.className = "skirting-room-name";
+    secNameEl.textContent = secName;
+    const secToggle = document.createElement("label");
+    secToggle.className = "toggle-switch skirting-room-toggle";
+    const secInput = document.createElement("input");
+    secInput.type = "checkbox";
+    secInput.checked = sec.skirtingEnabled !== false;
+    secInput.dataset.secId = sec.id;
+    if (!roomEnabled) secInput.disabled = true;
+    const secSlider = document.createElement("div");
+    secSlider.className = "toggle-slider";
+    secRow.appendChild(secNameEl);
+    secToggle.appendChild(secInput);
+    secToggle.appendChild(secSlider);
+    secRow.appendChild(secToggle);
+    secInput.addEventListener("change", () => {
+      onToggleSection?.(room.id, sec.id, Boolean(secInput.checked));
+    });
+    wrap.appendChild(secRow);
+  });
+}
+
 export function renderTilePresetPicker(state, currentRoom) {
   const sel = document.getElementById("tilePresetSelect");
   if (!sel) return;

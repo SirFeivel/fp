@@ -77,7 +77,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               if (!room.grout.colorHex) room.grout.colorHex = "#ffffff";
               if (!room.pattern) room.pattern = deepClone(globalPattern);
               if (!room.skirting) {
-                room.skirting = { ...DEFAULT_SKIRTING_CONFIG, enabled: false };
+                room.skirting = { ...DEFAULT_SKIRTING_CONFIG };
               }
               if (!room.excludedTiles) room.excludedTiles = [];
               if (!room.excludedSkirts) room.excludedSkirts = [];
@@ -168,7 +168,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
             if (room.pattern.origin.yCm == null) room.pattern.origin.yCm = 0;
 
             if (!room.skirting) {
-              room.skirting = { ...DEFAULT_SKIRTING_CONFIG, enabled: false };
+              room.skirting = { ...DEFAULT_SKIRTING_CONFIG };
             } else if (room.skirting.type !== "cutout" && room.skirting.type !== "bought") {
               room.skirting.type = "cutout";
             }

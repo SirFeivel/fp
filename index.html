@@ -370,6 +370,12 @@
                     <input id="skirtingPresetPrice" type="number" min="0" step="0.01" />
                   </div>
                 </div>
+                <div class="collection-section">
+                  <h4 class="collection-title" data-i18n="setup.skirtingPerRoom">Per Room</h4>
+                  <div id="skirtingRoomsList" class="skirting-room-list">
+                    <div class="meta subtle" data-i18n="project.none">– none –</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -958,8 +964,13 @@
             <!-- Skirting -->
             <div class="panel-section">
               <h4 class="panel-section-title" data-i18n="skirting.title">Skirting</h4>
-              <div class="panel-fields" id="skirtingRoomsList">
-                <div class="meta subtle" data-i18n="project.none">– none –</div>
+              <div class="panel-fields">
+                <label class="toggle-switch">
+                  <span class="toggle-label" data-i18n="skirting.enableForRoom">Enable for this room</span>
+                  <input id="planningRoomSkirtingEnabled" type="checkbox" checked />
+                  <div class="toggle-slider"></div>
+                </label>
+                <div id="currentRoomSectionsList" class="skirting-sections-list"></div>
               </div>
             </div>
 

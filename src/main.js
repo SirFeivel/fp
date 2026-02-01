@@ -31,6 +31,7 @@ import {
   renderExclList,
   renderExclProps,
   renderSkirtingRoomList,
+  renderCurrentRoomSections,
   renderPlanSvg,
   renderFloorCanvas,
   renderPatternGroupsCanvas,
@@ -223,6 +224,9 @@ function renderPlanningSection(state, opts) {
   renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
   renderSkirtingRoomList(state, {
     onToggleRoom: setRoomSkirtingEnabledById,
+    onToggleSection: setSectionSkirtingEnabledById
+  });
+  renderCurrentRoomSections(getCurrentRoom(state), {
     onToggleSection: setSectionSkirtingEnabledById
   });
   renderSectionProps({
