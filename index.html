@@ -236,88 +236,10 @@
             </div>
           </div>
 
-          <!-- Floor Section -->
-          <div class="setup-block">
-            <div class="setup-block-header">
-              <span class="setup-block-number">2</span>
-              <h3 class="setup-block-title" data-i18n="setup.floorTitle">Floor</h3>
-            </div>
-            <div class="setup-block-content">
-              <div class="inline-select-row">
-                <select id="floorSelect" class="inline-select"></select>
-                <button id="btnAddFloor" class="btn-inline" title="Add Floor">+</button>
-                <button id="btnDeleteFloor" class="btn-inline danger" title="Delete Floor">×</button>
-              </div>
-              <div class="field">
-                <label data-i18n="tabs.floorName">Name</label>
-                <input id="floorName" type="text" placeholder="e.g. Ground Floor" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Room Section -->
-          <div class="setup-block">
-            <div class="setup-block-header">
-              <span class="setup-block-number">3</span>
-              <h3 class="setup-block-title" data-i18n="setup.roomTitle">Room</h3>
-            </div>
-            <div class="setup-block-content">
-              <div class="inline-select-row">
-                <select id="roomSelect" class="inline-select"></select>
-                <button id="btnAddRoom" class="btn-inline" title="Add Room">+</button>
-                <button id="btnDeleteRoom" class="btn-inline danger" title="Delete Room">×</button>
-              </div>
-              <div class="field">
-                <label data-i18n="room.name">Name</label>
-                <input id="roomName" type="text" placeholder="e.g. Bathroom" />
-              </div>
-
-              <div class="dimensions-row">
-                <div class="field">
-                  <label data-i18n="setup.width">Width (cm)</label>
-                  <input id="roomWidth" type="number" min="1" step="1" placeholder="300" />
-                </div>
-                <span class="dimensions-x">×</span>
-                <div class="field">
-                  <label data-i18n="setup.length">Length (cm)</label>
-                  <input id="roomLength" type="number" min="1" step="1" placeholder="400" />
-                </div>
-              </div>
-              <label class="toggle-switch">
-                <span class="toggle-label" data-i18n="skirting.roomEnabled">Skirting for this room</span>
-                <input id="roomSkirtingEnabled" type="checkbox" />
-                <div class="toggle-slider"></div>
-              </label>
-
-              <!-- Advanced: Multiple Sections -->
-              <div id="sectionsAdvanced" class="sections-advanced">
-                <div class="sections-hint" id="sectionsHint">
-                  <span class="hint-icon">💡</span>
-                  <span data-i18n="setup.complexRoomHint">Need an L-shape or complex room?</span>
-                  <button id="btnAddSection" class="btn-text" data-i18n="room.addSection">+ Add Section</button>
-                </div>
-
-                <div id="sectionsPanel" class="sections-panel hidden">
-                  <div class="sections-header">
-                    <label data-i18n="room.sectionsList">Sections</label>
-                    <button id="btnAddSectionAlt" class="btn-inline small" title="Add Section">+</button>
-                  </div>
-                  <div class="inline-select-row">
-                    <select id="sectionsList" class="inline-select"></select>
-                    <button id="btnDeleteSection" class="btn-inline danger small" title="Delete Section">×</button>
-                  </div>
-                  <div id="sectionProps" class="section-props-grid">
-                    <!-- Populated dynamically -->
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- Tile Collection -->
           <div class="setup-block">
             <div class="setup-block-header">
-              <span class="setup-block-number">4</span>
+              <span class="setup-block-number">2</span>
               <h3 class="setup-block-title" data-i18n="setup.tileCollection">Tile Collection</h3>
             </div>
             <div class="setup-block-content">

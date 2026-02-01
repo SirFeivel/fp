@@ -493,7 +493,8 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
 
 export function renderRoomForm(state) {
   const currentRoom = getCurrentRoom(state);
-  document.getElementById("roomName").value = currentRoom?.name ?? "";
+  const roomNameEl = document.getElementById("roomName");
+  if (roomNameEl) roomNameEl.value = currentRoom?.name ?? "";
   const isCreateMode = getUiState().tileEditMode === "create";
   const tileRefEl = document.getElementById("tileReference");
   if (tileRefEl && !isCreateMode) {
