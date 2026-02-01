@@ -428,6 +428,7 @@ export function createPolygonDrawController({
   let cachedFloor = null; // Cached floor for inside-room checks
   let isMouseInsideRoom = false; // True when mouse is inside an existing room
   let currentMousePoint = null; // Current mouse position for preview
+  let hintContainer = null; // Custom container for hints (for room view)
 
   function pointerToSvgXY(svg, clientX, clientY) {
     const pt = svg.createSVGPoint();
@@ -460,6 +461,7 @@ export function createPolygonDrawController({
     currentSnapType = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
+    hintContainer = options?.hintContainer || null;
 
     // Check if there are existing rooms - if so, enable edge snap mode
     // UNLESS disableEdgeSnap is set (for exclusions which don't need shared edges)
@@ -517,6 +519,7 @@ export function createPolygonDrawController({
     cachedFloor = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
+    hintContainer = null;
 
     if (previewGroup) {
       previewGroup.remove();
@@ -840,11 +843,13 @@ export function createPolygonDrawController({
     if (!svg) return;
 
     // Check if previewGroup was removed (e.g., by a render cycle during scroll/zoom)
-    // If so, re-create and re-attach it
+    // If so, re-create it
     if (!previewGroup || !previewGroup.parentNode) {
       previewGroup = svgEl("g", { class: "polygon-draw-preview" });
-      svg.appendChild(previewGroup);
     }
+    // Always ensure preview is last child (on top of room content)
+    // appendChild moves existing nodes to the end
+    svg.appendChild(previewGroup);
 
     // Clear previous preview
     previewGroup.innerHTML = "";
@@ -1003,7 +1008,9 @@ export function createPolygonDrawController({
       hintEl = document.createElement("div");
       hintEl.id = "polygonDrawHint";
       hintEl.className = "polygon-draw-hint";
-      document.querySelector(".svgWrap.planning-svg")?.appendChild(hintEl);
+      // Use custom container if specified, otherwise default to floor view container
+      const container = hintContainer || document.querySelector(".svgWrap.planning-svg");
+      container?.appendChild(hintEl);
     }
     hintEl.textContent = text;
   }

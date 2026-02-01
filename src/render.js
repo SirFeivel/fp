@@ -2362,6 +2362,38 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
           const angle = Math.atan2(dy, dx) * 180 / Math.PI;
           addEditableLabel(`${fmtCm(len)} cm`, len, side.key, x, y, "middle", angle);
         });
+      } else if (ex.type === "freeform" && ex.vertices?.length >= 3) {
+        // Vertex handles for freeform exclusions
+        ex.vertices.forEach((v, i) => {
+          const handle = svgEl("circle", {
+            ...handleStyle,
+            cx: v.x,
+            cy: v.y,
+            r: handleRadius,
+            cursor: "move",
+            "data-resize-handle": `v${i}`
+          });
+          handle.addEventListener("pointerdown", onResizeHandlePointerDown);
+          gEx.appendChild(handle);
+        });
+
+        // Edge length labels
+        for (let i = 0; i < ex.vertices.length; i++) {
+          const p1 = ex.vertices[i];
+          const p2 = ex.vertices[(i + 1) % ex.vertices.length];
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const offset = 8;
+          const x = midX + nx * offset;
+          const y = midY + ny * offset;
+          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+          addPillLabel(`${fmtCm(len)} cm`, x, y, { angle, parent: gEx });
+        }
       }
     }
   }

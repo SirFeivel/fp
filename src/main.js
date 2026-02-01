@@ -2172,8 +2172,12 @@ function updateAllTranslations() {
         const freeformBtn = item;
         freeformBtn.classList.add("active");
 
+        // Get room view container for hints (not floor view container)
+        const roomViewContainer = document.querySelector(".svgWrap:not(.planning-svg)");
+
         polygonDrawController.startDrawing({
           disableEdgeSnap: true, // No edge constraint for exclusions
+          hintContainer: roomViewContainer, // Use room view container for hints
           onComplete: (polygonPoints) => {
             freeformBtn.classList.remove("active");
 

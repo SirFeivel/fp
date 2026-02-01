@@ -130,6 +130,17 @@ function getExclusionBounds(startShape, dx, dy) {
       maxY: startShape.cy + dy + startShape.r
     };
   }
+  if (startShape.type === "freeform" && startShape.vertices?.length > 0) {
+    const xs = startShape.vertices.map(v => v.x + dx);
+    const ys = startShape.vertices.map(v => v.y + dy);
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys)
+    };
+  }
+  // tri type (default)
   const points = [
     { x: startShape.p1.x + dx, y: startShape.p1.y + dy },
     { x: startShape.p2.x + dx, y: startShape.p2.y + dy },
@@ -345,6 +356,11 @@ export function createExclusionDragController({
           excl.p2.y += dy;
           excl.p3.x += dx;
           excl.p3.y += dy;
+        } else if (excl.type === "freeform" && excl.vertices) {
+          for (const v of excl.vertices) {
+            v.x += dx;
+            v.y += dy;
+          }
         }
       }
 
@@ -450,6 +466,8 @@ export function createExclusionDragController({
     let triPoints = null;
     let circleR = null;
 
+    let freeformVertices = null;
+
     if (startShape.type === "rect") {
       rectDims = getRectResizeDims(startShape, handleType, dx, dy);
       overlayText = `${formatCm(rectDims.newW)} x ${formatCm(rectDims.newH)} cm`;
@@ -468,6 +486,14 @@ export function createExclusionDragController({
       const c = dist(triPoints.p3, triPoints.p1);
       overlayText = `a ${formatCm(a)} · b ${formatCm(b)} · c ${formatCm(c)} cm`;
       updateTriangleLabels(resize.id, triPoints);
+    } else if (startShape.type === "freeform" && startShape.vertices && handleType.startsWith("v")) {
+      const vertexIndex = parseInt(handleType.substring(1), 10);
+      freeformVertices = startShape.vertices.map((v, i) =>
+        i === vertexIndex
+          ? { x: v.x + dx, y: v.y + dy }
+          : { ...v }
+      );
+      overlayText = `x ${formatCm(freeformVertices[vertexIndex].x)} · y ${formatCm(freeformVertices[vertexIndex].y)} cm`;
     }
 
     elements.forEach(el => {
@@ -492,6 +518,12 @@ export function createExclusionDragController({
           const { p1, p2, p3 } = triPoints;
           el.setAttribute("points", `${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`);
         }
+      } else if (startShape.type === "freeform" && freeformVertices) {
+        // For freeform, update the polygon points
+        if (!el.hasAttribute("data-resize-handle")) {
+          const pts = freeformVertices.map(v => `${v.x},${v.y}`).join(" ");
+          el.setAttribute("points", pts);
+        }
       }
     });
 
@@ -500,10 +532,10 @@ export function createExclusionDragController({
     }
 
     // Update handle positions
-    updateResizeHandlePositions(resize.id, startShape, dx, dy, handleType, curMouse);
+    updateResizeHandlePositions(resize.id, startShape, dx, dy, handleType, curMouse, freeformVertices);
   }
 
-  function updateResizeHandlePositions(id, startShape, dx, dy, activeHandle, curMouse) {
+  function updateResizeHandlePositions(id, startShape, dx, dy, activeHandle, curMouse, freeformVertices = null) {
     const handles = findResizeHandles(id);
     handles.forEach(handle => {
       const ht = handle.getAttribute("data-resize-handle");
@@ -557,6 +589,12 @@ export function createExclusionDragController({
         if (pointNum === activeHandle.replace("p", "")) {
           handle.setAttribute("cx", startShape[`p${pointNum}`].x + dx);
           handle.setAttribute("cy", startShape[`p${pointNum}`].y + dy);
+        }
+      } else if (startShape.type === "freeform" && freeformVertices && ht.startsWith("v")) {
+        const vertexIndex = parseInt(ht.substring(1), 10);
+        if (freeformVertices[vertexIndex]) {
+          handle.setAttribute("cx", freeformVertices[vertexIndex].x);
+          handle.setAttribute("cy", freeformVertices[vertexIndex].y);
         }
       }
     });
@@ -626,6 +664,12 @@ export function createExclusionDragController({
           const pointNum = handleType.replace("p", "");
           excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + dx;
           excl[`p${pointNum}`].y = startShape[`p${pointNum}`].y + dy;
+        } else if (excl.type === "freeform" && excl.vertices && handleType.startsWith("v")) {
+          const vertexIndex = parseInt(handleType.substring(1), 10);
+          if (excl.vertices[vertexIndex]) {
+            excl.vertices[vertexIndex].x = startShape.vertices[vertexIndex].x + dx;
+            excl.vertices[vertexIndex].y = startShape.vertices[vertexIndex].y + dy;
+          }
         }
       }
 
