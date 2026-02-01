@@ -335,6 +335,8 @@ const translations = {
       rect: "Rechteck",
       circle: "Kreis",
       triangle: "Dreieck",
+      freeform: "Freiform",
+      addFreeform: "Freiform-Ausschluss hinzugefügt",
       outside: "Ausschluss außerhalb Raum"
     },
     exclProps: {
@@ -350,7 +352,9 @@ const translations = {
       p2x: "P2 X (cm)",
       p2y: "P2 Y (cm)",
       p3x: "P3 X (cm)",
-      p3y: "P3 Y (cm)"
+      p3y: "P3 Y (cm)",
+      vertices: "Eckpunkte",
+      points: "Punkte"
     },
     undo: {
       title: "Undo / Redo",
@@ -940,6 +944,8 @@ const translations = {
       rect: "Rectangle",
       circle: "Circle",
       triangle: "Triangle",
+      freeform: "Freeform",
+      addFreeform: "Freeform exclusion added",
       outside: "Exclusion outside room"
     },
     exclProps: {
@@ -955,7 +961,9 @@ const translations = {
       p2x: "P2 X (cm)",
       p2y: "P2 Y (cm)",
       p3x: "P3 X (cm)",
-      p3y: "P3 Y (cm)"
+      p3y: "P3 Y (cm)",
+      vertices: "Vertices",
+      points: "points"
     },
     undo: {
       title: "Undo / Redo",

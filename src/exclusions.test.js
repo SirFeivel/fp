@@ -192,6 +192,106 @@ describe('createExclusionsController', () => {
     });
   });
 
+  describe('addFreeform', () => {
+    it('adds freeform exclusion with provided vertices', () => {
+      const { controller, state, commit, setSelectedId } = createMockController();
+      const vertices = [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 50 }];
+
+      controller.addFreeform(vertices);
+
+      const room = state.floors[0].rooms[0];
+      expect(commit).toHaveBeenCalledWith('Freiform-Ausschluss hinzugefügt', expect.any(Object));
+      expect(room.exclusions).toHaveLength(1);
+      expect(room.exclusions[0].type).toBe('freeform');
+      expect(setSelectedId).toHaveBeenCalled();
+    });
+
+    it('creates freeform with vertices array', () => {
+      const { controller, state } = createMockController();
+      const vertices = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+
+      controller.addFreeform(vertices);
+
+      const room = state.floors[0].rooms[0];
+      const freeform = room.exclusions[0];
+      expect(freeform.vertices).toHaveLength(4);
+      expect(freeform.vertices[0]).toEqual({ x: 0, y: 0 });
+      expect(freeform.vertices[2]).toEqual({ x: 100, y: 100 });
+    });
+
+    it('creates freeform with unique id', () => {
+      const { controller, state } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+      controller.addFreeform([{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }]);
+
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].id).not.toBe(room.exclusions[1].id);
+    });
+
+    it('sets label for freeform', () => {
+      const { controller, state } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].label).toContain('Freiform');
+    });
+
+    it('selects newly added freeform', () => {
+      const { controller, state, setSelectedId } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+
+      const room = state.floors[0].rooms[0];
+      expect(setSelectedId).toHaveBeenCalledWith(room.exclusions[0].id);
+    });
+
+    it('sets skirtingEnabled to true by default', () => {
+      const { controller, state } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].skirtingEnabled).toBe(true);
+    });
+
+    it('does nothing with less than 3 vertices', () => {
+      const { controller, commit } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('does nothing with null vertices', () => {
+      const { controller, commit } = createMockController();
+
+      controller.addFreeform(null);
+
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('does nothing with empty vertices array', () => {
+      const { controller, commit } = createMockController();
+
+      controller.addFreeform([]);
+
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it('increments label number for each freeform', () => {
+      const { controller, state } = createMockController();
+
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+      controller.addFreeform([{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }]);
+
+      const room = state.floors[0].rooms[0];
+      expect(room.exclusions[0].label).toContain('1');
+      expect(room.exclusions[1].label).toContain('2');
+    });
+  });
+
   describe('deleteSelectedExcl', () => {
     it('deletes selected exclusion', () => {
       const initialState = {
@@ -408,13 +508,14 @@ describe('createExclusionsController', () => {
       controller.addRect();
       controller.addCircle();
       controller.addTri();
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
 
       const roomAfterAdd = state.floors[0].rooms[0];
-      expect(roomAfterAdd.exclusions).toHaveLength(3);
+      expect(roomAfterAdd.exclusions).toHaveLength(4);
 
       controller.deleteSelectedExcl();
       const roomAfterDelete = state.floors[0].rooms[0];
-      expect(roomAfterDelete.exclusions).toHaveLength(2);
+      expect(roomAfterDelete.exclusions).toHaveLength(3);
     });
 
     it('maintains separate ids for different shapes', () => {
@@ -432,9 +533,16 @@ describe('createExclusionsController', () => {
       const roomAfterTri = state.floors[0].rooms[0];
       const triId = roomAfterTri.exclusions[2].id;
 
+      controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+      const roomAfterFreeform = state.floors[0].rooms[0];
+      const freeformId = roomAfterFreeform.exclusions[3].id;
+
       expect(rectId).not.toBe(circleId);
       expect(circleId).not.toBe(triId);
       expect(rectId).not.toBe(triId);
+      expect(freeformId).not.toBe(rectId);
+      expect(freeformId).not.toBe(circleId);
+      expect(freeformId).not.toBe(triId);
     });
   });
 });

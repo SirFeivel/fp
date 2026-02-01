@@ -474,6 +474,16 @@ export function exclusionToPolygon(ex) {
     ];
     return [[ring]];
   }
+  if (ex.type === "freeform" && ex.vertices?.length >= 3) {
+    const ring = ex.vertices.map(v => [v.x, v.y]);
+    // Close the ring if not already closed
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      ring.push([first[0], first[1]]);
+    }
+    return [[ring]];
+  }
   return null;
 }
 

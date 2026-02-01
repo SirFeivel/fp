@@ -1381,6 +1381,12 @@ export function renderExclProps({
     field(t("exclProps.p2y"), "exP2Y", ex.p2.y, "0.01");
     field(t("exclProps.p3x"), "exP3X", ex.p3.x, "0.01");
     field(t("exclProps.p3y"), "exP3Y", ex.p3.y, "0.01");
+  } else if (ex.type === "freeform" && ex.vertices) {
+    // Show read-only vertex count for freeform exclusions
+    const infoDiv = document.createElement("div");
+    infoDiv.className = "field span2";
+    infoDiv.innerHTML = `<span class="field-label">${t("exclProps.vertices")}</span><span>${ex.vertices.length} ${t("exclProps.points")}</span>`;
+    propsEl.appendChild(infoDiv);
   }
 
   // Add Skirting Toggle for Exclusion
@@ -2207,6 +2213,9 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       shapeEl = svgEl("rect", { ...common, x: ex.x, y: ex.y, width: ex.w, height: ex.h });
     } else if (ex.type === "circle") {
       shapeEl = svgEl("circle", { ...common, cx: ex.cx, cy: ex.cy, r: ex.r });
+    } else if (ex.type === "freeform" && ex.vertices?.length >= 3) {
+      const pts = ex.vertices.map(v => `${v.x},${v.y}`).join(" ");
+      shapeEl = svgEl("polygon", { ...common, points: pts });
     } else {
       const pts = `${ex.p1.x},${ex.p1.y} ${ex.p2.x},${ex.p2.y} ${ex.p3.x},${ex.p3.y}`;
       shapeEl = svgEl("polygon", { ...common, points: pts });

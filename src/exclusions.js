@@ -100,6 +100,31 @@ export function createExclusionsController({
     commit(t('exclusions.added'), next);
   }
 
+  function addFreeform(vertices) {
+    if (!vertices || vertices.length < 3) return;
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    if (!room) return;
+
+    const freeformCount = room.exclusions.filter(e => e.type === 'freeform').length;
+    const ex = {
+      id: uuid(),
+      type: 'freeform',
+      label: `${t('exclusions.freeform')} ${freeformCount + 1}`,
+      vertices: vertices,
+      skirtingEnabled: true,
+    };
+
+    const next = deepClone(state);
+    const nextRoom = getCurrentRoom(next);
+    if (!nextRoom) return;
+
+    nextRoom.exclusions.push(ex);
+    setSelectedId(ex.id);
+    commit(t('exclusions.addFreeform'), next);
+  }
+
   function deleteSelectedExcl() {
     const state = getState();
     const id = getSelectedId();
@@ -170,6 +195,7 @@ export function createExclusionsController({
     addRect,
     addCircle,
     addTri,
+    addFreeform,
     deleteSelectedExcl,
     commitExclProps,
   };

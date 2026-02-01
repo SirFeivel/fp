@@ -2167,6 +2167,29 @@ function updateAllTranslations() {
         excl.addCircle();
       } else if (type === "triangle") {
         excl.addTri();
+      } else if (type === "freeform") {
+        // Start polygon drawing for freeform exclusion
+        const freeformBtn = item;
+        freeformBtn.classList.add("active");
+
+        polygonDrawController.startDrawing({
+          disableEdgeSnap: true, // No edge constraint for exclusions
+          onComplete: (polygonPoints) => {
+            freeformBtn.classList.remove("active");
+
+            // Convert to room-local coordinates (room view renders at 0,0)
+            // Points are already in room-local coords in room view
+            const vertices = polygonPoints.map(p => ({
+              x: Math.round(p.x),
+              y: Math.round(p.y)
+            }));
+
+            excl.addFreeform(vertices);
+          },
+          onCancel: () => {
+            freeformBtn.classList.remove("active");
+          }
+        });
       }
     });
   });

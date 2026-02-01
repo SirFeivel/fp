@@ -462,10 +462,11 @@ export function createPolygonDrawController({
     currentMousePoint = null;
 
     // Check if there are existing rooms - if so, enable edge snap mode
+    // UNLESS disableEdgeSnap is set (for exclusions which don't need shared edges)
     const floor = getCurrentFloor();
     cachedFloor = floor;
     const hasExistingRooms = floor?.rooms?.length > 0;
-    edgeSnapMode = hasExistingRooms;
+    edgeSnapMode = hasExistingRooms && !options?.disableEdgeSnap;
 
     if (edgeSnapMode) {
       // Cache all room edges and vertices for snapping
