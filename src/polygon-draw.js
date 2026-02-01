@@ -416,6 +416,7 @@ export function createPolygonDrawController({
   let points = []; // Array of { x, y } in SVG coordinates
   let previewGroup = null;
   let onComplete = null;
+  let onCancel = null;
 
   // Edge snapping state
   let edgeSnapMode = false; // True when existing rooms exist and we need to snap first two points
@@ -439,13 +440,21 @@ export function createPolygonDrawController({
     return { x: p.x, y: p.y };
   }
 
-  function startDrawing(completeCb) {
+  function startDrawing(options) {
     const svg = getSvg();
     if (!svg) return false;
 
+    // Support both function and options object
+    if (typeof options === 'function') {
+      onComplete = options;
+      onCancel = null;
+    } else {
+      onComplete = options?.onComplete || null;
+      onCancel = options?.onCancel || null;
+    }
+
     isDrawing = true;
     points = [];
-    onComplete = completeCb;
     snapTargetRoomId = null;
     currentEdgeSnapPoint = null;
     currentSnapType = null;
@@ -525,8 +534,14 @@ export function createPolygonDrawController({
 
     if (cancelled) {
       points = [];
-      onComplete = null;
+      // Call onCancel callback if provided
+      if (onCancel) {
+        onCancel();
+      }
     }
+    // Always clear callbacks
+    onComplete = null;
+    onCancel = null;
   }
 
   function handleClick(e) {

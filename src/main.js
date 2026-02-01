@@ -566,6 +566,7 @@ function switchToFloorView() {
   const state = store.getState();
   if (state.view?.planningMode === "floor") return; // Already in floor view
 
+  cancelFreeformDrawing(); // Cancel any active freeform drawing
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "floor";
@@ -576,6 +577,7 @@ function switchToPatternGroupsView() {
   const state = store.getState();
   if (state.view?.planningMode === "patternGroups") return; // Already in pattern groups view
 
+  cancelFreeformDrawing(); // Cancel any active freeform drawing
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "patternGroups";
@@ -583,6 +585,7 @@ function switchToPatternGroupsView() {
 }
 
 async function switchToRoomView(skipValidation = false) {
+  cancelFreeformDrawing(); // Cancel any active freeform drawing
   const state = store.getState();
   console.log("[ViewSwitch] switchToRoomView called, current mode:", state.view?.planningMode);
   if (state.view?.planningMode === "room") {
@@ -1028,6 +1031,16 @@ const polygonDrawController = createPolygonDrawController({
     return floor || null;
   }
 });
+
+// Helper to cancel freeform drawing mode and reset button state
+function cancelFreeformDrawing() {
+  if (polygonDrawController.isDrawing()) {
+    polygonDrawController.stopDrawing(true);
+  }
+  // Also ensure button is reset (in case stopDrawing was already called)
+  const drawRoomBtn = document.getElementById("floorDrawRoom");
+  if (drawRoomBtn) drawRoomBtn.classList.remove("active");
+}
 
 const roomResizeController = createRoomResizeController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
@@ -1656,6 +1669,7 @@ function updateAllTranslations() {
   bindPresetCollection();
 
   document.getElementById("floorSelect")?.addEventListener("change", (e) => {
+    cancelFreeformDrawing(); // Cancel any active freeform drawing
     structure.selectFloor(e.target.value);
   });
 
@@ -2024,6 +2038,7 @@ function updateAllTranslations() {
   const planningFloorSelect = document.getElementById("planningFloorSelect");
   if (planningFloorSelect) {
     planningFloorSelect.addEventListener("change", (e) => {
+      cancelFreeformDrawing(); // Cancel any active freeform drawing
       structure.selectFloor(e.target.value);
     });
   }
@@ -2122,6 +2137,7 @@ function updateAllTranslations() {
 
   // Floor view room management - Add rectangle room
   document.getElementById("floorAddRoom")?.addEventListener("click", () => {
+    cancelFreeformDrawing(); // Cancel any active freeform drawing
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -2220,8 +2236,9 @@ function updateAllTranslations() {
     const drawRoomBtn = document.getElementById("floorDrawRoom");
     if (drawRoomBtn) drawRoomBtn.classList.add("active");
 
-    polygonDrawController.startDrawing((polygonPoints) => {
-      if (drawRoomBtn) drawRoomBtn.classList.remove("active");
+    polygonDrawController.startDrawing({
+      onComplete: (polygonPoints) => {
+        if (drawRoomBtn) drawRoomBtn.classList.remove("active");
 
       // Create room from polygon
       const newRoom = polygonDrawController.createRoomFromPolygon(polygonPoints);
@@ -2247,6 +2264,10 @@ function updateAllTranslations() {
           : t("room.added") || "Room added";
 
         store.commit(commitLabel, next, { onRender: renderAll, updateMetaCb: updateMeta });
+      }
+      },
+      onCancel: () => {
+        if (drawRoomBtn) drawRoomBtn.classList.remove("active");
       }
     });
   });
@@ -2829,6 +2850,7 @@ function updateAllTranslations() {
 
   // Floor quick controls (in floor view bottom bar)
   document.getElementById("floorQuickSelect")?.addEventListener("change", (e) => {
+    cancelFreeformDrawing(); // Cancel any active freeform drawing
     structure.selectFloor(e.target.value);
   });
 
