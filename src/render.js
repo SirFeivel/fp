@@ -676,6 +676,7 @@ export function renderTilePresets(state, selectedId, setSelectedId) {
           label.className = "preset-room-item";
           const input = document.createElement("input");
           input.type = "checkbox";
+          input.className = "checkbox";
           input.dataset.roomId = room.id;
           input.disabled = !canAssign;
           input.checked = canAssign && room.tile?.reference === selected.name;
@@ -2765,11 +2766,11 @@ export function renderExportTab(state, selection = null) {
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.className = "export-room-checkbox";
+      checkbox.className = "checkbox export-room-checkbox";
       checkbox.dataset.roomId = room.id;
       checkbox.checked = hasSelection ? selection.has(room.id) : true;
 
-      row.append(labelWrap, checkbox);
+      row.append(checkbox, labelWrap);
       group.appendChild(row);
     }
 

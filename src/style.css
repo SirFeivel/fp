@@ -673,17 +673,16 @@ body{
   margin-left: 2px;
 }
 
-.preset-room-item input[type="checkbox"] {
-  accent-color: var(--accent);
-  appearance: auto;
-  width: 14px;
-  height: 14px;
-  min-height: 14px;
+.field .preset-room-item input[type="checkbox"],
+.field input[type="checkbox"].checkbox {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  max-width: 18px;
+  max-height: 18px;
   padding: 0;
-  margin: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  border-radius: 2px;
 }
 
 .btn.large {
@@ -1841,7 +1840,7 @@ body{
 
 .export-rooms-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .export-actions {
@@ -1876,15 +1875,14 @@ body{
 .export-room-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   padding: 6px 0;
   border-bottom: 1px dashed rgba(0,0,0,0.15);
 }
 
 .export-room-checkbox {
-  width: 18px;
-  height: 18px;
+  /* Uses .checkbox base styles */
 }
 
 .export-room-item:last-child {
@@ -2236,6 +2234,51 @@ body{
   color: var(--text);
   line-height: 20px;
   flex: 1;
+}
+
+/* ==================== CHECKBOXES ==================== */
+.checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  min-height: 18px;
+  max-height: 18px;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  background: var(--btn);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.checkbox:hover {
+  border-color: var(--accent);
+}
+
+.checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.checkbox:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ==================== META / HINTS ==================== */
