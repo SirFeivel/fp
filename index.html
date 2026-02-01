@@ -458,7 +458,7 @@
               <!-- Scale indicator for calibrated floor view -->
               <div id="floorScaleIndicator" class="floor-scale-indicator hidden">
                 <div class="scale-bar"></div>
-                <span id="floorScaleText">1 cm = 1 px</span>
+                <span id="floorScaleText">100 cm</span>
               </div>
 
               <!-- Floor View Quick Controls (hidden by default) -->
@@ -571,6 +571,7 @@
                   </button>
                 </div>
                 <p class="calibration-instruction" id="calibrationInstruction" data-i18n="floor.calibrateDrawLine">Click two points on a known measurement</p>
+                <p class="calibration-hint" data-i18n="floor.calibrateHint">Tip: Use the longest available reference for best accuracy</p>
                 <div class="calibration-input hidden" id="calibrationInputSection">
                   <label for="calibrationLengthInput" data-i18n="floor.calibrateEnterLength">Enter length (cm):</label>
                   <div class="calibration-input-row">
@@ -582,8 +583,13 @@
                 <div class="calibration-success hidden" id="calibrationSuccess">
                   <div class="calibration-success-icon">✓</div>
                   <p data-i18n="floor.calibrateComplete">Calibration complete!</p>
-                  <p class="calibration-scale" id="calibrationScaleResult"></p>
                   <button id="btnCloseCalibration" class="btn small primary" data-i18n="floor.calibrateDone">Done</button>
+                </div>
+                <div class="calibration-failed hidden" id="calibrationFailed">
+                  <div class="calibration-failed-icon">✗</div>
+                  <p data-i18n="floor.calibrateFailedTitle">Calibration failed</p>
+                  <p class="calibration-failed-reason" id="calibrationFailedReason"></p>
+                  <button id="btnRetryCalibration" class="btn small primary" data-i18n="floor.calibrateRetry">Retry</button>
                 </div>
               </div>
 

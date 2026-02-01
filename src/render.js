@@ -3266,8 +3266,8 @@ export function renderFloorCanvas({
     const bg = floor.layout?.background;
     if (bg?.scale?.calibrated && bg.scale.pixelsPerCm) {
       scaleIndicator.classList.remove("hidden");
-      scaleText.textContent = t("floor.calibrateScale")
-        .replace("{px}", bg.scale.pixelsPerCm.toFixed(2));
+      // Just show "100 cm" - the bar visually represents this length
+      scaleText.textContent = "100 cm";
     } else {
       scaleIndicator.classList.add("hidden");
     }

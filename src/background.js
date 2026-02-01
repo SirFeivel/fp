@@ -473,6 +473,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
 
   /**
    * Completes calibration with the average of all measurements.
+   * Uses weighted average (total distance / total cm) for better accuracy.
    */
   function completeCalibration() {
     if (!calibrationState) return;
@@ -486,16 +487,36 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       return;
     }
 
-    // Calculate average pixelsPerCm from all measurements (in SVG units)
+    // Check for outliers - calculate coefficient of variation
     const measurements = calibrationState.measurements;
-    const avgSvgPixelsPerCm = measurements.reduce((sum, m) => sum + m.pixelsPerCm, 0) / measurements.length;
+    const ratios = measurements.map(m => m.pixelsPerCm);
+    const meanRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    const variance = ratios.reduce((sum, r) => sum + Math.pow(r - meanRatio, 2), 0) / ratios.length;
+    const stdDev = Math.sqrt(variance);
+    const coefficientOfVariation = (stdDev / meanRatio) * 100; // as percentage
 
-    // Convert to native image pixels
-    // During calibration, image was displayed at scale = 1000/nativeWidth
-    // So: nativePixels = svgUnits * (nativeWidth / 1000)
+    // Reject calibration if measurements are too inconsistent (CV > 5%)
+    if (coefficientOfVariation > 5) {
+      console.warn(`Calibration failed: measurements vary by ${coefficientOfVariation.toFixed(1)}%`);
+      const callbacks = calibrationState.callbacks;
+      cleanupCalibration();
+      calibrationState = null;
+      callbacks.onFailed?.(coefficientOfVariation);
+      return;
+    }
+
+    // Use weighted average (total distance / total cm) - gives more weight to longer measurements
+    const totalSvgDistance = measurements.reduce((sum, m) => sum + m.pixelDistance, 0);
+    const totalLengthCm = measurements.reduce((sum, m) => sum + m.lengthCm, 0);
+    const avgSvgPixelsPerCm = totalSvgDistance / totalLengthCm;
+
+    // Convert SVG units to native pixels using the ACTUAL rendering scale
     const bg = floor.layout.background;
     const nativeWidth = bg.nativeWidth || 1000;
-    const avgPixelsPerCm = avgSvgPixelsPerCm * (nativeWidth / 1000);
+    const currentPixelsPerCm = (bg.scale?.calibrated && bg.scale.pixelsPerCm)
+      ? bg.scale.pixelsPerCm
+      : (nativeWidth / 1000);
+    const avgPixelsPerCm = avgSvgPixelsPerCm * currentPixelsPerCm;
 
     // Calculate total reference values for display
     const totalPixels = measurements.reduce((sum, m) => sum + m.pixelDistance, 0);

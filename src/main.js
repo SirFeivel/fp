@@ -859,9 +859,22 @@ function initBackgroundControls() {
   function showCalibrationSuccess(avgPixelsPerCm) {
     calibrationInputSection?.classList.add("hidden");
     calibrationSuccess?.classList.remove("hidden");
-    if (calibrationScaleResult) {
-      calibrationScaleResult.textContent = t("floor.calibrateScale")
-        .replace("{px}", avgPixelsPerCm.toFixed(2));
+    const calibrationFailed = document.getElementById("calibrationFailed");
+    calibrationFailed?.classList.add("hidden");
+    // No technical scale info - just confirm success
+  }
+
+  function showCalibrationFailed(variationPct) {
+    calibrationInputSection?.classList.add("hidden");
+    calibrationSuccess?.classList.add("hidden");
+    const calibrationFailed = document.getElementById("calibrationFailed");
+    const calibrationFailedReason = document.getElementById("calibrationFailedReason");
+    if (calibrationFailed) {
+      calibrationFailed.classList.remove("hidden");
+    }
+    if (calibrationFailedReason) {
+      calibrationFailedReason.textContent = t("floor.calibrateFailed")
+        .replace("{pct}", variationPct.toFixed(1));
     }
   }
 
@@ -888,6 +901,10 @@ function initBackgroundControls() {
         } else {
           hideCalibrationPanel();
         }
+      },
+      onFailed: (variationPct) => {
+        // Show failure state - measurements too inconsistent
+        showCalibrationFailed(variationPct);
       },
       onCancel: () => {
         hideCalibrationPanel();
@@ -919,6 +936,43 @@ function initBackgroundControls() {
   // Close calibration success
   btnCloseCalibration?.addEventListener("click", () => {
     hideCalibrationPanel();
+  });
+
+  // Retry calibration after failure
+  const btnRetryCalibration = document.getElementById("btnRetryCalibration");
+  btnRetryCalibration?.addEventListener("click", () => {
+    // Hide failed state and restart
+    const calibrationFailed = document.getElementById("calibrationFailed");
+    calibrationFailed?.classList.add("hidden");
+    if (calibrationMeasurements) calibrationMeasurements.innerHTML = "";
+
+    const svg = document.getElementById("planSvg");
+    if (!svg) return;
+
+    backgroundController.startCalibration(svg, {
+      onStepStart: (step, total) => {
+        updateCalibrationStep(step, total);
+      },
+      onLineDrawn: (pixelDistance, stepNumber) => {
+        showCalibrationInput();
+      },
+      onMeasurementAdded: (measurements) => {
+        addMeasurementDisplay(measurements);
+      },
+      onComplete: (success, avgPixelsPerCm) => {
+        if (success) {
+          showCalibrationSuccess(avgPixelsPerCm);
+        } else {
+          hideCalibrationPanel();
+        }
+      },
+      onFailed: (variationPct) => {
+        showCalibrationFailed(variationPct);
+      },
+      onCancel: () => {
+        hideCalibrationPanel();
+      }
+    });
   });
 
   // Opacity slider
