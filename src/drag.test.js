@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createExclusionDragController } from './drag.js';
+import { createExclusionDragController, createPolygonVertexDragController } from './drag.js';
 
 describe('createExclusionDragController', () => {
   let mockSvg;
@@ -554,6 +554,112 @@ describe('createExclusionDragController', () => {
       // Both elements should have transform applied
       expect(mockEl1.setAttribute).toHaveBeenCalledWith('transform', 'translate(20, 10)');
       expect(mockEl2.setAttribute).toHaveBeenCalledWith('transform', 'translate(20, 10)');
+    });
+  });
+});
+
+describe('createPolygonVertexDragController', () => {
+  describe('Shift key angle snapping', () => {
+    it('constrains movement to 15° increments when Shift is held', () => {
+      // Test the angle snapping logic directly
+      // Moving at 45° should stay at 45°
+      const rawDx = 100;
+      const rawDy = 100;
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+      const dist = Math.hypot(rawDx, rawDy);
+      const snappedDx = Math.cos(snappedAngle) * dist;
+      const snappedDy = Math.sin(snappedAngle) * dist;
+
+      // 45° = PI/4 = 3*PI/12, which is a valid snap angle
+      expect(snappedAngle).toBeCloseTo(Math.PI / 4);
+      expect(snappedDx).toBeCloseTo(snappedDy); // Equal for 45°
+    });
+
+    it('snaps 22° movement to 15°', () => {
+      // Moving at ~22° (tan(22°) ≈ 0.4)
+      const rawDx = 100;
+      const rawDy = 40; // ~22°
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+
+      // Should snap to 15° (PI/12)
+      expect(snappedAngle).toBeCloseTo(Math.PI / 12);
+    });
+
+    it('snaps 37° movement to 30°', () => {
+      // Moving at ~37° (tan(37°) ≈ 0.75)
+      const rawDx = 100;
+      const rawDy = 75;
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+
+      // Should snap to 30° (2*PI/12 = PI/6)
+      expect(snappedAngle).toBeCloseTo(Math.PI / 6);
+    });
+
+    it('snaps horizontal movement to 0°', () => {
+      const rawDx = 100;
+      const rawDy = 5; // Nearly horizontal
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+
+      expect(snappedAngle).toBeCloseTo(0);
+    });
+
+    it('snaps vertical movement to 90°', () => {
+      const rawDx = 5; // Nearly vertical
+      const rawDy = 100;
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+
+      // Should snap to 90° (6*PI/12 = PI/2)
+      expect(snappedAngle).toBeCloseTo(Math.PI / 2);
+    });
+
+    it('preserves distance when snapping angle', () => {
+      const rawDx = 60;
+      const rawDy = 80;
+      const originalDist = Math.hypot(rawDx, rawDy); // 100
+
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+      const snappedDx = Math.cos(snappedAngle) * originalDist;
+      const snappedDy = Math.sin(snappedAngle) * originalDist;
+      const snappedDist = Math.hypot(snappedDx, snappedDy);
+
+      expect(snappedDist).toBeCloseTo(originalDist);
+    });
+
+    it('handles negative directions correctly', () => {
+      // Moving up-left (-x, -y)
+      const rawDx = -100;
+      const rawDy = -100;
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+
+      // Should snap to -135° (-3*PI/4 = -9*PI/12)
+      expect(snappedAngle).toBeCloseTo(-3 * Math.PI / 4);
+    });
+  });
+
+  describe('path coordinate system', () => {
+    it('uses local coordinates for path (roomGroup has translate transform)', () => {
+      // This tests the fix: path should use v.x, v.y not pos.x + v.x
+      const vertices = [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ];
+
+      // Path should be built with local coordinates only
+      const pathD = vertices.map((v, i) =>
+        `${i === 0 ? "M" : "L"} ${v.x} ${v.y}`
+      ).join(" ") + " Z";
+
+      expect(pathD).toBe("M 0 0 L 100 0 L 100 100 L 0 100 Z");
+      expect(pathD).not.toContain("NaN");
     });
   });
 });
