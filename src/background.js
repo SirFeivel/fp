@@ -50,8 +50,9 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
 
   /**
    * Sets the background image for the current floor.
+   * Loads image to get native dimensions for proper calibration.
    */
-  function setBackground(dataUrl, filename) {
+  async function setBackground(dataUrl, filename) {
     const state = store.getState();
     const next = deepClone(state);
     const floor = getCurrentFloor(next);
@@ -61,11 +62,29 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       return;
     }
 
+    // Load image to get native dimensions
+    let nativeWidth = 0;
+    let nativeHeight = 0;
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+      nativeWidth = img.naturalWidth;
+      nativeHeight = img.naturalHeight;
+    } catch (e) {
+      console.warn("Could not get image dimensions:", e);
+    }
+
     floor.layout = floor.layout || { enabled: false, background: null };
     floor.layout.enabled = true;
     floor.layout.background = {
       dataUrl,
       filename,
+      nativeWidth,
+      nativeHeight,
       scale: { calibrated: false, pixelsPerCm: null, referenceLengthCm: null, referencePixels: null },
       position: { x: 0, y: 0 },
       opacity: 0.5,
@@ -463,7 +482,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
   async function handleFileUpload(file) {
     try {
       const { dataUrl, filename } = await processUploadedFile(file);
-      setBackground(dataUrl, filename);
+      await setBackground(dataUrl, filename);
       return true;
     } catch (error) {
       console.error("Background upload failed:", error);
