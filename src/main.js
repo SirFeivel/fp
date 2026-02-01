@@ -2172,9 +2172,6 @@ function updateAllTranslations() {
         const freeformBtn = item;
         freeformBtn.classList.add("active");
 
-        // Get room view container for hints
-        const roomViewContainer = document.querySelector(".svgWrap.planning-svg");
-
         // Get room bounds polygon to restrict drawing within room
         const room = getCurrentRoom(store.getState());
         let roomBoundsPolygon = null;
@@ -2192,7 +2189,6 @@ function updateAllTranslations() {
 
         polygonDrawController.startDrawing({
           disableEdgeSnap: true, // No edge constraint for exclusions
-          hintContainer: roomViewContainer, // Use room view container for hints
           roomBoundsPolygon, // Restrict drawing to within room
           onComplete: (polygonPoints) => {
             freeformBtn.classList.remove("active");

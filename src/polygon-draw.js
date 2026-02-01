@@ -428,7 +428,6 @@ export function createPolygonDrawController({
   let cachedFloor = null; // Cached floor for inside-room checks
   let isMouseInsideRoom = false; // True when mouse is inside an existing room
   let currentMousePoint = null; // Current mouse position for preview
-  let hintContainer = null; // Custom container for hints (for room view)
   let roomBoundsPolygon = null; // For room view: restrict clicks to within room polygon
 
   function pointerToSvgXY(svg, clientX, clientY) {
@@ -462,7 +461,6 @@ export function createPolygonDrawController({
     currentSnapType = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
-    hintContainer = options?.hintContainer || null;
     roomBoundsPolygon = options?.roomBoundsPolygon || null;
 
     // Check if there are existing rooms - if so, enable edge snap mode
@@ -521,7 +519,6 @@ export function createPolygonDrawController({
     cachedFloor = null;
     isMouseInsideRoom = false;
     currentMousePoint = null;
-    hintContainer = null;
     roomBoundsPolygon = null;
 
     if (previewGroup) {
@@ -852,13 +849,11 @@ export function createPolygonDrawController({
     if (!svg) return;
 
     // Check if previewGroup was removed (e.g., by a render cycle during scroll/zoom)
-    // If so, re-create it
+    // If so, re-create and re-attach it
     if (!previewGroup || !previewGroup.parentNode) {
       previewGroup = svgEl("g", { class: "polygon-draw-preview" });
+      svg.appendChild(previewGroup);
     }
-    // Always ensure preview is last child (on top of room content)
-    // appendChild moves existing nodes to the end
-    svg.appendChild(previewGroup);
 
     // Clear previous preview
     previewGroup.innerHTML = "";
@@ -1017,9 +1012,7 @@ export function createPolygonDrawController({
       hintEl = document.createElement("div");
       hintEl.id = "polygonDrawHint";
       hintEl.className = "polygon-draw-hint";
-      // Use custom container if specified, otherwise default to floor view container
-      const container = hintContainer || document.querySelector(".svgWrap.planning-svg");
-      container?.appendChild(hintEl);
+      document.querySelector(".svgWrap.planning-svg")?.appendChild(hintEl);
     }
     hintEl.textContent = text;
   }
