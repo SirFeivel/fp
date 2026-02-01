@@ -143,4 +143,72 @@ describe('computeSkirtingPerimeter', () => {
     expect(d).not.toContain("0 0");
     expect(d).toContain("50 20");
   });
+
+  it('calculates perimeter for freeform room with polygonVertices', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ],
+      exclusions: [],
+      skirting: { enabled: true }
+    };
+    // Square 100x100: perimeter = 400
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(400);
+  });
+
+  it('calculates skirting area for freeform L-shaped room', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 200, y: 0 },
+        { x: 200, y: 100 },
+        { x: 100, y: 100 },
+        { x: 100, y: 200 },
+        { x: 0, y: 200 }
+      ],
+      exclusions: [],
+      skirting: { enabled: true }
+    };
+    const { mp, error } = computeSkirtingArea(room, room.exclusions);
+    expect(error).toBeNull();
+    expect(mp).toBeDefined();
+    expect(mp.length).toBeGreaterThan(0);
+  });
+
+  it('handles freeform room with exclusion', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 200, y: 0 },
+        { x: 200, y: 200 },
+        { x: 0, y: 200 }
+      ],
+      exclusions: [
+        { id: 'ex1', type: 'rect', x: 50, y: 50, w: 30, h: 30, skirtingEnabled: true }
+      ],
+      skirting: { enabled: true }
+    };
+    // Room perimeter: 200 * 4 = 800
+    // Exclusion perimeter: 30 * 4 = 120
+    // Total: 920
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(920);
+  });
+
+  it('returns null for freeform room when skirting is disabled', () => {
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ],
+      exclusions: [],
+      skirting: { enabled: false }
+    };
+    const { mp } = computeSkirtingArea(room, room.exclusions);
+    expect(mp).toBeNull();
+  });
 });

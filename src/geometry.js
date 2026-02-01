@@ -117,19 +117,41 @@ export function computeMultiPolygonPerimeter(mp) {
 export function computeSkirtingArea(room, exclusions) {
   if (!room) return { mp: null, error: "No room" };
 
-  const allSections = getRoomSections(room);
   const roomSkirtingEnabled = room.skirting?.enabled !== false;
-  const activeSections = roomSkirtingEnabled
-    ? allSections.filter(s => s.skirtingEnabled !== false)
-    : [];
   const skirtingExclusions = (exclusions || []).filter(ex => ex.skirtingEnabled !== false);
 
-  if (activeSections.length === 0 && skirtingExclusions.length === 0) {
+  // Handle freeform rooms (with polygonVertices)
+  const isFreeform = room.polygonVertices && room.polygonVertices.length >= 3;
+
+  let totalRoomMP, activeSectionsMP;
+
+  if (isFreeform) {
+    // For freeform rooms, use roomPolygon - no per-section skirting control
+    const mp = roomPolygon(room);
+    totalRoomMP = roomSkirtingEnabled ? mp : null;
+    activeSectionsMP = roomSkirtingEnabled ? mp : null;
+  } else {
+    // For sectioned rooms, use existing logic
+    const allSections = getRoomSections(room);
+    const activeSections = roomSkirtingEnabled
+      ? allSections.filter(s => s.skirtingEnabled !== false)
+      : [];
+
+    if (activeSections.length === 0 && skirtingExclusions.length === 0) {
+      return { mp: null, error: null };
+    }
+
+    const compositeTotal = computeCompositePolygon(allSections);
+    const compositeActive = computeCompositePolygon(activeSections);
+    totalRoomMP = compositeTotal.mp;
+    activeSectionsMP = compositeActive.mp;
+  }
+
+  // Early return if nothing to render
+  if (!activeSectionsMP && skirtingExclusions.length === 0) {
     return { mp: null, error: null };
   }
 
-  const { mp: totalRoomMP } = computeCompositePolygon(allSections);
-  const { mp: activeSectionsMP } = computeCompositePolygon(activeSections);
   const { mp: activeExclusionsMP } = computeExclusionsUnion(skirtingExclusions);
 
   try {

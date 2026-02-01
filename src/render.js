@@ -1602,6 +1602,19 @@ export function renderPlanSvg({
     fill: isExportBW ? "#ffffff" : "#081022"
   }));
 
+  // Room outline - always visible (needed for freeform rooms during exclusion editing)
+  const roomPoly = roomPolygon(currentRoom);
+  if (roomPoly && roomPoly.length > 0) {
+    const pathD = multiPolygonToPathD(roomPoly);
+    svg.appendChild(svgEl("path", {
+      d: pathD,
+      fill: "none",
+      stroke: "rgba(122, 162, 255, 0.4)",
+      "stroke-width": 1.5,
+      "pointer-events": "none"
+    }));
+  }
+
   const suppressDetails = Boolean(selectedExclId);
 
   if (isExportBW) {
@@ -1612,7 +1625,7 @@ export function renderPlanSvg({
   }
 
   // grid
-  if (state.view?.showGrid && !suppressDetails) {
+  if (state.view?.showGrid) {
     const g = svgEl("g", { opacity: 0.8 });
     const minor = 10, major = 100;
     for (let x = minX; x <= maxX; x += minor) {
