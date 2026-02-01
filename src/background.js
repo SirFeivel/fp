@@ -205,10 +205,33 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     calibrationState.clickHandler = (e) => handleCalibrationClick(e);
     svg.addEventListener("click", calibrationState.clickHandler);
 
+    // Add handlers to redraw after zoom/pan (render clears SVG)
+    calibrationState.redrawHandler = () => {
+      requestAnimationFrame(() => redrawCalibrationUI());
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("wheel", calibrationState.redrawHandler);
+      document.addEventListener("pointermove", calibrationState.redrawHandler);
+    }
+
     // Notify UI that step 1 is starting
     callbacks.onStepStart?.(1, REQUIRED_MEASUREMENTS);
 
     return true;
+  }
+
+  /**
+   * Converts screen coordinates to SVG coordinates using CTM.
+   * Properly handles preserveAspectRatio and any transforms.
+   */
+  function screenToSvgCoords(svg, clientX, clientY) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const svgPt = pt.matrixTransform(ctm.inverse());
+    return { x: svgPt.x, y: svgPt.y };
   }
 
   /**
@@ -218,14 +241,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     if (!calibrationState || calibrationState.waitingForInput) return;
 
     const svg = calibrationState.svg;
-    const rect = svg.getBoundingClientRect();
-    const viewBox = svg.viewBox.baseVal;
-
-    // Convert screen coordinates to SVG coordinates
-    const scaleX = viewBox.width / rect.width;
-    const scaleY = viewBox.height / rect.height;
-    const svgX = viewBox.x + (e.clientX - rect.left) * scaleX;
-    const svgY = viewBox.y + (e.clientY - rect.top) * scaleY;
+    const { x: svgX, y: svgY } = screenToSvgCoords(svg, e.clientX, e.clientY);
 
     if (!calibrationState.startPoint) {
       // First click - set start point
@@ -262,58 +278,135 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
   }
 
   /**
+   * Redraws calibration UI elements after render cycle (e.g., zoom).
+   * Called via requestAnimationFrame after wheel events.
+   */
+  function redrawCalibrationUI() {
+    if (!calibrationState) return;
+
+    const svg = calibrationState.svg;
+    if (!svg) return;
+
+    // Check if markers were removed by render
+    const markersRemoved = calibrationState.currentMarkers.length > 0 &&
+      !calibrationState.currentMarkers[0].parentNode;
+
+    if (markersRemoved) {
+      // Re-create markers at stored positions
+      calibrationState.currentMarkers = [];
+
+      if (calibrationState.startPoint) {
+        const marker = createCalibrationMarker(svg, calibrationState.startPoint.x, calibrationState.startPoint.y);
+        calibrationState.currentMarkers.push(marker);
+      }
+
+      if (calibrationState.endPoint) {
+        const marker = createCalibrationMarker(svg, calibrationState.endPoint.x, calibrationState.endPoint.y);
+        calibrationState.currentMarkers.push(marker);
+
+        // Re-create line
+        calibrationState.currentLine = createCalibrationLine(svg, calibrationState.startPoint, calibrationState.endPoint);
+      }
+    }
+  }
+
+  /**
    * Creates a calibration marker at the given point.
+   * Uses thin crosshair with center dot, blue outline with white inside.
    */
   function createCalibrationMarker(svg, x, y) {
     const ns = "http://www.w3.org/2000/svg";
-    const size = 6;
+    const size = 8;
+    const accent = "rgba(122,162,255,1)";
 
     const g = document.createElementNS(ns, "g");
     g.setAttribute("class", "calibration-marker");
 
-    // Crosshair
-    const h = document.createElementNS(ns, "line");
-    h.setAttribute("x1", x - size);
-    h.setAttribute("y1", y);
-    h.setAttribute("x2", x + size);
-    h.setAttribute("y2", y);
-    h.setAttribute("stroke", "#22c55e");
-    h.setAttribute("stroke-width", "2");
+    // Helper to create a line with blue outline and white center
+    const createLine = (x1, y1, x2, y2) => {
+      // Blue outline
+      const outline = document.createElementNS(ns, "line");
+      outline.setAttribute("x1", x1);
+      outline.setAttribute("y1", y1);
+      outline.setAttribute("x2", x2);
+      outline.setAttribute("y2", y2);
+      outline.setAttribute("stroke", accent);
+      outline.setAttribute("stroke-width", "3");
+      outline.setAttribute("stroke-linecap", "round");
+      outline.setAttribute("vector-effect", "non-scaling-stroke");
+      g.appendChild(outline);
 
-    const v = document.createElementNS(ns, "line");
-    v.setAttribute("x1", x);
-    v.setAttribute("y1", y - size);
-    v.setAttribute("x2", x);
-    v.setAttribute("y2", y + size);
-    v.setAttribute("stroke", "#22c55e");
-    v.setAttribute("stroke-width", "2");
+      // White center line
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("stroke", "white");
+      line.setAttribute("stroke-width", "1");
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      g.appendChild(line);
+    };
 
-    g.appendChild(h);
-    g.appendChild(v);
+    // Horizontal crosshair
+    createLine(x - size, y, x + size, y);
+    // Vertical crosshair
+    createLine(x, y - size, x, y + size);
+
+    // Center dot (blue ring with transparent center)
+    const dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", x);
+    dot.setAttribute("cy", y);
+    dot.setAttribute("r", "2.5");
+    dot.setAttribute("fill", "none");
+    dot.setAttribute("stroke", accent);
+    dot.setAttribute("stroke-width", "1.5");
+    dot.setAttribute("vector-effect", "non-scaling-stroke");
+    g.appendChild(dot);
+
     svg.appendChild(g);
-
     return g;
   }
 
   /**
    * Creates a calibration line between two points.
+   * Uses blue outline with white center for visibility.
    */
   function createCalibrationLine(svg, start, end) {
     const ns = "http://www.w3.org/2000/svg";
+    const accent = "rgba(122,162,255,1)";
 
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("class", "calibration-line");
+
+    // Blue outline
+    const outline = document.createElementNS(ns, "line");
+    outline.setAttribute("x1", start.x);
+    outline.setAttribute("y1", start.y);
+    outline.setAttribute("x2", end.x);
+    outline.setAttribute("y2", end.y);
+    outline.setAttribute("stroke", accent);
+    outline.setAttribute("stroke-width", "5");
+    outline.setAttribute("stroke-linecap", "round");
+    outline.setAttribute("vector-effect", "non-scaling-stroke");
+    g.appendChild(outline);
+
+    // White dashed center line
     const line = document.createElementNS(ns, "line");
     line.setAttribute("x1", start.x);
     line.setAttribute("y1", start.y);
     line.setAttribute("x2", end.x);
     line.setAttribute("y2", end.y);
-    line.setAttribute("stroke", "#22c55e");
-    line.setAttribute("stroke-width", "2");
-    line.setAttribute("stroke-dasharray", "4,4");
-    line.setAttribute("class", "calibration-line");
+    line.setAttribute("stroke", "white");
+    line.setAttribute("stroke-width", "1.6");
+    line.setAttribute("stroke-dasharray", "6,4");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    g.appendChild(line);
 
-    svg.appendChild(line);
-
-    return line;
+    svg.appendChild(g);
+    return g;
   }
 
   /**
@@ -446,11 +539,15 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
   function cleanupCalibration() {
     if (!calibrationState) return;
 
-    const { svg, clickHandler, currentMarkers, currentLine } = calibrationState;
+    const { svg, clickHandler, redrawHandler, currentMarkers, currentLine } = calibrationState;
 
-    // Remove event listener
+    // Remove event listeners
     if (clickHandler) {
       svg.removeEventListener("click", clickHandler);
+    }
+    if (redrawHandler && typeof document !== "undefined") {
+      document.removeEventListener("wheel", redrawHandler);
+      document.removeEventListener("pointermove", redrawHandler);
     }
 
     // Reset cursor
