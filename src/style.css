@@ -1658,7 +1658,13 @@ body{
 
 .skirting-room-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: rgba(0,0,0,0.12);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .skirting-room-floor {
@@ -1694,6 +1700,7 @@ body{
 
 .skirting-room-name {
   font-size: var(--fs-sm);
+  color: var(--text);
 }
 
 .skirting-room-toggle {
