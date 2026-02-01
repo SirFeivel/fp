@@ -429,6 +429,7 @@ export function createPolygonDrawController({
   let isMouseInsideRoom = false; // True when mouse is inside an existing room
   let currentMousePoint = null; // Current mouse position for preview
   let hintContainer = null; // Custom container for hints (for room view)
+  let roomBoundsPolygon = null; // For room view: restrict clicks to within room polygon
 
   function pointerToSvgXY(svg, clientX, clientY) {
     const pt = svg.createSVGPoint();
@@ -462,6 +463,7 @@ export function createPolygonDrawController({
     isMouseInsideRoom = false;
     currentMousePoint = null;
     hintContainer = options?.hintContainer || null;
+    roomBoundsPolygon = options?.roomBoundsPolygon || null;
 
     // Check if there are existing rooms - if so, enable edge snap mode
     // UNLESS disableEdgeSnap is set (for exclusions which don't need shared edges)
@@ -520,6 +522,7 @@ export function createPolygonDrawController({
     isMouseInsideRoom = false;
     currentMousePoint = null;
     hintContainer = null;
+    roomBoundsPolygon = null;
 
     if (previewGroup) {
       previewGroup.remove();
@@ -621,7 +624,13 @@ export function createPolygonDrawController({
       snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
     }
 
-    // Reject clicks inside existing rooms
+    // For room view (exclusions): restrict clicks to within room bounds
+    if (roomBoundsPolygon && !isPointInPolygon(snappedPoint, roomBoundsPolygon)) {
+      // Point is outside room bounds - don't add it
+      return;
+    }
+
+    // Reject clicks inside existing rooms (floor view)
     if (cachedFloor && isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null) {
       // Point is inside a room - don't add it
       return;

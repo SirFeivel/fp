@@ -1554,8 +1554,26 @@ body{
   cursor: crosshair;
 }
 
+/* Force crosshair cursor on ALL children during drawing mode */
+#planSvg.drawing-polygon *,
+#planSvgFullscreen.drawing-polygon * {
+  cursor: crosshair !important;
+}
+
+/* Disable pointer events on room content during drawing (except preview) */
+#planSvg.drawing-polygon > *:not(.polygon-draw-preview),
+#planSvgFullscreen.drawing-polygon > *:not(.polygon-draw-preview) {
+  pointer-events: none;
+}
+
+/* Re-enable pointer events on the preview itself */
+#planSvg.drawing-polygon .polygon-draw-preview,
+#planSvgFullscreen.drawing-polygon .polygon-draw-preview {
+  pointer-events: auto;
+}
+
 .polygon-draw-preview .close-target {
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 .polygon-draw-hint {

@@ -12,7 +12,7 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
-import { getRoomBounds } from "./geometry.js";
+import { getRoomBounds, roomPolygon } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -2172,12 +2172,28 @@ function updateAllTranslations() {
         const freeformBtn = item;
         freeformBtn.classList.add("active");
 
-        // Get room view container for hints (not floor view container)
-        const roomViewContainer = document.querySelector(".svgWrap:not(.planning-svg)");
+        // Get room view container for hints
+        const roomViewContainer = document.querySelector(".svgWrap.planning-svg");
+
+        // Get room bounds polygon to restrict drawing within room
+        const room = getCurrentRoom(store.getState());
+        let roomBoundsPolygon = null;
+        if (room) {
+          try {
+            const mp = roomPolygon(room);
+            // Extract outer ring of first polygon (room boundary)
+            if (mp && mp[0] && mp[0][0]) {
+              roomBoundsPolygon = mp[0][0]; // [[x,y], [x,y], ...]
+            }
+          } catch (e) {
+            console.warn("Could not get room polygon for bounds check:", e);
+          }
+        }
 
         polygonDrawController.startDrawing({
           disableEdgeSnap: true, // No edge constraint for exclusions
           hintContainer: roomViewContainer, // Use room view container for hints
+          roomBoundsPolygon, // Restrict drawing to within room
           onComplete: (polygonPoints) => {
             freeformBtn.classList.remove("active");
 
