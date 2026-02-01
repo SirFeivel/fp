@@ -1816,6 +1816,28 @@ function updateAllTranslations() {
     setRoomSkirtingEnabled(room.skirting?.enabled === false);
   });
 
+  // Delete key - delete selected element (exclusion or section)
+  document.addEventListener("keydown", (e) => {
+    if (isInlineEditing()) return;
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
+    const target = e.target;
+    if (target?.isContentEditable) return;
+    const tag = target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+    if (selectedExclId) {
+      e.preventDefault();
+      updateExclusionInline({ id: selectedExclId, key: "__delete__" });
+    } else if (selectedSectionId) {
+      const room = getCurrentRoom(store.getState());
+      const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
+      if (sectionIndex > 0) {
+        e.preventDefault();
+        updateSectionInline({ id: selectedSectionId, key: "__delete__" });
+      }
+    }
+  });
+
   const langSelect = document.getElementById("langSelect");
   if (langSelect) {
     langSelect.value = getLanguage();
