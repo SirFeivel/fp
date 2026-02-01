@@ -1763,42 +1763,6 @@ export function renderPlanSvg({
 
       addSectionEditableLabel(`${fmtCm(section.widthCm)} cm`, section.widthCm, "widthCm", section.x + section.widthCm / 2, section.y - pad, "middle", 0);
       addSectionEditableLabel(`${fmtCm(section.heightCm)} cm`, section.heightCm, "heightCm", section.x + section.widthCm + pad, section.y + section.heightCm / 2, "middle", 90);
-
-      // Delete button (X icon) - matching exclusion style
-      if (sections.length > 1) {
-        const removeBtnX = section.x + section.widthCm + 12;
-        const removeBtnY = section.y - pad;
-        const removeGroup = svgEl("g");
-        const crossStyle = {
-          stroke: "rgba(239,68,68,0.95)",
-          "stroke-width": 1.6,
-          "stroke-linecap": "round",
-          cursor: "pointer"
-        };
-        const crossSize = 2;
-        removeGroup.appendChild(svgEl("line", {
-          ...crossStyle,
-          x1: removeBtnX - crossSize,
-          y1: removeBtnY - crossSize,
-          x2: removeBtnX + crossSize,
-          y2: removeBtnY + crossSize
-        }));
-        removeGroup.appendChild(svgEl("line", {
-          ...crossStyle,
-          x1: removeBtnX - crossSize,
-          y1: removeBtnY + crossSize,
-          x2: removeBtnX + crossSize,
-          y2: removeBtnY - crossSize
-        }));
-        removeGroup.addEventListener("pointerdown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (onSectionInlineEdit) {
-            onSectionInlineEdit({ id: section.id, key: "__delete__" });
-          }
-        });
-        gSec.appendChild(removeGroup);
-      }
     }
   }
 
@@ -2304,51 +2268,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         labelGroup.addEventListener("click", openEdit);
       };
 
-      const box = ex.type === "rect"
-        ? { minX: ex.x, minY: ex.y, maxX: ex.x + ex.w, maxY: ex.y + ex.h }
-        : ex.type === "circle"
-          ? { minX: ex.cx - ex.r, minY: ex.cy - ex.r, maxX: ex.cx + ex.r, maxY: ex.cy + ex.r }
-          : {
-            minX: Math.min(ex.p1.x, ex.p2.x, ex.p3.x),
-            minY: Math.min(ex.p1.y, ex.p2.y, ex.p3.y),
-            maxX: Math.max(ex.p1.x, ex.p2.x, ex.p3.x),
-            maxY: Math.max(ex.p1.y, ex.p2.y, ex.p3.y)
-          };
-
       const pad = 10;
-      // Consistent delete button position: top-right corner (matching section pattern)
-      const removeBtnX = box.maxX + 12;
-      const removeBtnY = box.minY - pad;
-      const removeGroup = svgEl("g");
-      const crossStyle = {
-        stroke: "rgba(239,68,68,0.95)",
-        "stroke-width": 1.6,
-        "stroke-linecap": "round",
-        cursor: "pointer"
-      };
-      const crossSize = 2;
-      removeGroup.appendChild(svgEl("line", {
-        ...crossStyle,
-        x1: removeBtnX - crossSize,
-        y1: removeBtnY - crossSize,
-        x2: removeBtnX + crossSize,
-        y2: removeBtnY + crossSize
-      }));
-      removeGroup.appendChild(svgEl("line", {
-        ...crossStyle,
-        x1: removeBtnX - crossSize,
-        y1: removeBtnY + crossSize,
-        x2: removeBtnX + crossSize,
-        y2: removeBtnY - crossSize
-      }));
-      removeGroup.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (onInlineEdit) {
-          onInlineEdit({ id: ex.id, key: "__delete__" });
-        }
-      });
-      gEx.appendChild(removeGroup);
 
       if (ex.type === "rect") {
         // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
