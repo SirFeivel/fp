@@ -441,6 +441,61 @@ describe('createExclusionDragController', () => {
       expect(movedTri.p3.y).toBe(55); // 40 + 15
     });
 
+    it('commits final state with updated freeform position on drag end', async () => {
+      const exclusions = [{
+        id: 'ex1',
+        type: 'freeform',
+        vertices: [
+          { x: 10, y: 10 },
+          { x: 60, y: 10 },
+          { x: 60, y: 50 },
+          { x: 10, y: 50 }
+        ]
+      }];
+      const { controller, commit } = createMockController(exclusions);
+
+      const mockEl = { setAttribute: vi.fn(), removeAttribute: vi.fn() };
+      mockElements = [mockEl];
+
+      const mockDownEvent = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        currentTarget: { getAttribute: () => 'ex1' },
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100
+      };
+
+      mockSvg._transformedX = 100;
+      mockSvg._transformedY = 100;
+
+      controller.onExclPointerDown(mockDownEvent);
+
+      // Move by (30, 20)
+      mockSvg._transformedX = 130;
+      mockSvg._transformedY = 120;
+      pointerMoveHandler({ clientX: 130, clientY: 120 });
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      // End drag
+      pointerUpHandler({});
+
+      expect(commit).toHaveBeenCalled();
+
+      const committedState = commit.mock.calls[0][1];
+      const movedFreeform = committedState.floors[0].rooms[0].exclusions[0];
+
+      // All vertices should be offset by the drag amount
+      expect(movedFreeform.vertices[0].x).toBe(40); // 10 + 30
+      expect(movedFreeform.vertices[0].y).toBe(30); // 10 + 20
+      expect(movedFreeform.vertices[1].x).toBe(90); // 60 + 30
+      expect(movedFreeform.vertices[1].y).toBe(30); // 10 + 20
+      expect(movedFreeform.vertices[2].x).toBe(90); // 60 + 30
+      expect(movedFreeform.vertices[2].y).toBe(70); // 50 + 20
+      expect(movedFreeform.vertices[3].x).toBe(40); // 10 + 30
+      expect(movedFreeform.vertices[3].y).toBe(70); // 50 + 20
+    });
+
     it('does not commit when no movement occurred', async () => {
       const exclusions = [{ id: 'ex1', type: 'rect', x: 10, y: 20, w: 50, h: 30 }];
       const { controller, commit } = createMockController(exclusions);

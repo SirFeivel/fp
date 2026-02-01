@@ -464,6 +464,114 @@ describe('exclusionToPolygon', () => {
     ]);
   });
 
+  it('converts freeform exclusion', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 50 },
+        { x: 0, y: 50 },
+      ],
+    };
+    const result = exclusionToPolygon(ex);
+
+    expect(result).toEqual([
+      [
+        [
+          [0, 0],
+          [50, 0],
+          [50, 50],
+          [0, 50],
+          [0, 0],
+        ],
+      ],
+    ]);
+  });
+
+  it('converts freeform exclusion with triangle shape', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [
+        { x: 10, y: 10 },
+        { x: 60, y: 10 },
+        { x: 35, y: 50 },
+      ],
+    };
+    const result = exclusionToPolygon(ex);
+
+    expect(result).toEqual([
+      [
+        [
+          [10, 10],
+          [60, 10],
+          [35, 50],
+          [10, 10],
+        ],
+      ],
+    ]);
+  });
+
+  it('auto-closes freeform ring if not already closed', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+      ],
+    };
+    const result = exclusionToPolygon(ex);
+
+    // Should have 4 points (3 original + closing point)
+    expect(result[0][0].length).toBe(4);
+    expect(result[0][0][0]).toEqual([0, 0]);
+    expect(result[0][0][3]).toEqual([0, 0]); // Closing point matches first
+  });
+
+  it('does not duplicate closing point if already closed', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 50 },
+        { x: 0, y: 0 }, // Already closed
+      ],
+    };
+    const result = exclusionToPolygon(ex);
+
+    // Should still have 4 points, not 5
+    expect(result[0][0].length).toBe(4);
+  });
+
+  it('returns null for freeform with less than 3 vertices', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+      ],
+    };
+    const result = exclusionToPolygon(ex);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for freeform with no vertices', () => {
+    const ex = {
+      type: 'freeform',
+      vertices: [],
+    };
+    const result = exclusionToPolygon(ex);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for freeform with missing vertices property', () => {
+    const ex = { type: 'freeform' };
+    const result = exclusionToPolygon(ex);
+    expect(result).toBeNull();
+  });
+
   it('returns null for invalid type', () => {
     const ex = { type: 'invalid' };
     const result = exclusionToPolygon(ex);
