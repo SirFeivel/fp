@@ -688,36 +688,9 @@ export function createPolygonDrawController({
 
     // If no geometry snap, use angle constraint or grid snap
     if (!snappedPoint) {
-      if (e.shiftKey && lastPoint && points.length >= MIN_POINTS) {
-        const firstPoint = points[0];
-
-        // Calculate snapped angles from both endpoints toward the mouse
-        const angleFromLast = Math.atan2(svgPoint.y - lastPoint.y, svgPoint.x - lastPoint.x);
-        const snappedAngleFromLast = Math.round(angleFromLast / (Math.PI / 12)) * (Math.PI / 12);
-
-        const angleFromFirst = Math.atan2(svgPoint.y - firstPoint.y, svgPoint.x - firstPoint.x);
-        const snappedAngleFromFirst = Math.round(angleFromFirst / (Math.PI / 12)) * (Math.PI / 12);
-
-        // Find intersection of two lines:
-        // Line 1: from lastPoint at snappedAngleFromLast
-        // Line 2: from firstPoint at snappedAngleFromFirst
-        const intersection = findLineIntersection(
-          lastPoint, snappedAngleFromLast,
-          firstPoint, snappedAngleFromFirst
-        );
-
-        if (intersection) {
-          snappedPoint = {
-            x: snapToGrid(intersection.x),
-            y: snapToGrid(intersection.y)
-          };
-        } else {
-          // Lines are parallel, fall back to normal snap
-          snappedPoint = snapPoint(svgPoint, lastPoint, true);
-        }
-      } else {
-        snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
-      }
+      // Shift snaps angle to previous point only - no dual-constraint
+      // To close the polygon, click near the first point
+      snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
     }
 
     // Check if the snapped point is inside any existing room

@@ -1633,8 +1633,17 @@ export function createPolygonVertexDragController({
     if (!svg) return;
 
     const current = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const rawDx = current.x - drag.startMouse.x;
-    const rawDy = current.y - drag.startMouse.y;
+    let rawDx = current.x - drag.startMouse.x;
+    let rawDy = current.y - drag.startMouse.y;
+
+    // Shift key: constrain to 15° angle increments (matching freeform drawing)
+    if (e.shiftKey) {
+      const angle = Math.atan2(rawDy, rawDx);
+      const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+      const dist = Math.hypot(rawDx, rawDy);
+      rawDx = Math.cos(snappedAngle) * dist;
+      rawDy = Math.sin(snappedAngle) * dist;
+    }
 
     // Snap to 0.5cm grid
     drag.currentDx = snapToHalfCm(rawDx);
@@ -1663,9 +1672,9 @@ export function createPolygonVertexDragController({
         }
         return v;
       });
-      const pos = room.floorPosition || { x: 0, y: 0 };
+      // Use local coordinates - the roomGroup already has translate(pos.x, pos.y)
       const pathD = vertices.map((v, i) =>
-        `${i === 0 ? "M" : "L"} ${pos.x + v.x} ${pos.y + v.y}`
+        `${i === 0 ? "M" : "L"} ${v.x} ${v.y}`
       ).join(" ") + " Z";
 
       const roomPath = svg.querySelector(`[data-roomid="${drag.roomId}"] path`);
