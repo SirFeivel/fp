@@ -786,6 +786,7 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
       wrap.appendChild(roomRow);
 
       const sections = getRoomSections(room);
+      if (sections.length < 2) return;
       sections.forEach((sec, secIdx) => {
         const secRow = document.createElement("div");
         secRow.className = "skirting-room-row is-section";
@@ -827,7 +828,7 @@ export function renderCurrentRoomSections(room, { onToggleSection }) {
   const roomEnabled = room.skirting?.enabled !== false;
   const sections = getRoomSections(room);
 
-  if (sections.length === 0) return;
+  if (sections.length < 2) return;
 
   sections.forEach((sec, secIdx) => {
     const secRow = document.createElement("div");
