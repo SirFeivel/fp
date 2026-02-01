@@ -109,6 +109,7 @@ function setSelectedExcl(id) {
   selectedExclId = newId;
   if (id) selectedSectionId = null; // Deselect section when selecting exclusion
   if (changed) renderAll();
+  updateRoomDeleteButtonState();
 }
 function setSelectedId(id) {
   selectedExclId = id || null;
@@ -133,6 +134,7 @@ function handleSectionSelect(id) {
   selectedSectionId = newId;
   if (id) selectedExclId = null; // Deselect exclusion when selecting section
   if (changed) renderAll();
+  updateRoomDeleteButtonState();
 }
 
 // Hook for post-render sync (set by IIFE below)
@@ -655,6 +657,27 @@ function updateFloorControlsState(state) {
     const hasSelection = !!state.selectedRoomId;
     deleteBtn.disabled = !hasSelection;
   }
+}
+
+function updateRoomDeleteButtonState() {
+  const btn = document.getElementById("roomDeleteObject");
+  if (!btn) return;
+
+  // Enable for exclusions
+  if (selectedExclId) {
+    btn.disabled = false;
+    return;
+  }
+
+  // Enable for added sections (index > 0), not origin section
+  if (selectedSectionId) {
+    const room = getCurrentRoom(store.getState());
+    const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
+    btn.disabled = sectionIndex <= 0;
+    return;
+  }
+
+  btn.disabled = true;
 }
 
 function initViewToggle() {
@@ -1916,6 +1939,19 @@ function updateAllTranslations() {
     });
   }
 
+  // Room delete button - deletes selected exclusion or added section
+  document.getElementById("roomDeleteObject")?.addEventListener("click", () => {
+    if (selectedExclId) {
+      updateExclusionInline({ id: selectedExclId, key: "__delete__" });
+    } else if (selectedSectionId) {
+      const room = getCurrentRoom(store.getState());
+      const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
+      if (sectionIndex > 0) {
+        updateSectionInline({ id: selectedSectionId, key: "__delete__" });
+      }
+    }
+  });
+
   // Export UI
   const exportRoomsList = document.getElementById("exportRoomsList");
   exportRoomsList?.addEventListener("change", () => {
@@ -2622,6 +2658,7 @@ function updateAllTranslations() {
     const state = store.getState();
     updateViewToggleUI(state.view?.planningMode || "room");
     updateFloorControlsState(state);
+    updateRoomDeleteButtonState();
     // Update pattern groups controls if in that view
     if (state.view?.planningMode === "patternGroups") {
       updatePatternGroupsControlsState();

@@ -1414,6 +1414,11 @@ body{
   color: var(--accent);
 }
 
+.quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Quick Dropdown */
 .quick-dropdown {
   position: relative;
