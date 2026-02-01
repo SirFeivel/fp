@@ -1386,7 +1386,7 @@ export function renderExclProps({
     const infoDiv = document.createElement("div");
     infoDiv.className = "field span2";
     infoDiv.innerHTML = `<span class="field-label">${t("exclProps.vertices")}</span><span>${ex.vertices.length} ${t("exclProps.points")}</span>`;
-    propsEl.appendChild(infoDiv);
+    wrap.appendChild(infoDiv);
   }
 
   // Add Skirting Toggle for Exclusion
