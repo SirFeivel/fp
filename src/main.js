@@ -567,6 +567,7 @@ function switchToFloorView() {
   if (state.view?.planningMode === "floor") return; // Already in floor view
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
+  cancelCalibrationMode(); // Cancel any active calibration
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "floor";
@@ -578,6 +579,7 @@ function switchToPatternGroupsView() {
   if (state.view?.planningMode === "patternGroups") return; // Already in pattern groups view
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
+  cancelCalibrationMode(); // Cancel any active calibration
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "patternGroups";
@@ -586,6 +588,7 @@ function switchToPatternGroupsView() {
 
 async function switchToRoomView(skipValidation = false) {
   cancelFreeformDrawing(); // Cancel any active freeform drawing
+  cancelCalibrationMode(); // Cancel any active calibration
   const state = store.getState();
   console.log("[ViewSwitch] switchToRoomView called, current mode:", state.view?.planningMode);
   if (state.view?.planningMode === "room") {
@@ -1040,6 +1043,16 @@ function cancelFreeformDrawing() {
   // Also ensure button is reset (in case stopDrawing was already called)
   const drawRoomBtn = document.getElementById("floorDrawRoom");
   if (drawRoomBtn) drawRoomBtn.classList.remove("active");
+}
+
+// Helper to cancel calibration mode and hide panel
+function cancelCalibrationMode() {
+  if (backgroundController.isCalibrating()) {
+    backgroundController.cancelCalibration();
+  }
+  // Also ensure panel is hidden
+  const calibrationPanel = document.getElementById("calibrationPanel");
+  if (calibrationPanel) calibrationPanel.classList.add("hidden");
 }
 
 const roomResizeController = createRoomResizeController({
@@ -1670,6 +1683,7 @@ function updateAllTranslations() {
 
   document.getElementById("floorSelect")?.addEventListener("change", (e) => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
+    cancelCalibrationMode(); // Cancel any active calibration
     structure.selectFloor(e.target.value);
   });
 
@@ -2039,6 +2053,7 @@ function updateAllTranslations() {
   if (planningFloorSelect) {
     planningFloorSelect.addEventListener("change", (e) => {
       cancelFreeformDrawing(); // Cancel any active freeform drawing
+      cancelCalibrationMode(); // Cancel any active calibration
       structure.selectFloor(e.target.value);
     });
   }
@@ -2138,6 +2153,7 @@ function updateAllTranslations() {
   // Floor view room management - Add rectangle room
   document.getElementById("floorAddRoom")?.addEventListener("click", () => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
+    cancelCalibrationMode(); // Cancel any active calibration
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -2851,6 +2867,7 @@ function updateAllTranslations() {
   // Floor quick controls (in floor view bottom bar)
   document.getElementById("floorQuickSelect")?.addEventListener("change", (e) => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
+    cancelCalibrationMode(); // Cancel any active calibration
     structure.selectFloor(e.target.value);
   });
 
