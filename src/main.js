@@ -2163,6 +2163,30 @@ function updateAllTranslations() {
         newRoom.floorPosition.x = maxRight;
         newRoom.floorPosition.y = topAtMaxRight;
       }
+    } else {
+      // No rooms yet - place in center of visible area
+      const viewportKey = `floor:${floor.id}`;
+      const vp = getViewport(viewportKey);
+      if (vp?.effectiveViewBox) {
+        const vb = vp.effectiveViewBox;
+        newRoom.floorPosition.x = Math.round(vb.minX + (vb.width - newRoom.widthCm) / 2);
+        newRoom.floorPosition.y = Math.round(vb.minY + (vb.height - newRoom.heightCm) / 2);
+      } else {
+        // Fallback: calculate center based on background image if present
+        const bg = nextFloor.layout?.background;
+        if (bg?.nativeWidth && bg?.nativeHeight) {
+          const nativeW = bg.nativeWidth;
+          let pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
+          const imgWidth = nativeW / pixelsPerCm;
+          const imgHeight = bg.nativeHeight / pixelsPerCm;
+          newRoom.floorPosition.x = Math.round((imgWidth - newRoom.widthCm) / 2);
+          newRoom.floorPosition.y = Math.round((imgHeight - newRoom.heightCm) / 2);
+        } else {
+          // No background - use default canvas center
+          newRoom.floorPosition.x = 350;
+          newRoom.floorPosition.y = 250;
+        }
+      }
     }
 
     nextFloor.rooms.push(newRoom);

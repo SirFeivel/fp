@@ -2727,7 +2727,7 @@ export function renderFloorCanvas({
     return;
   }
 
-  // Get floor bounds - use default if no rooms yet (for background tracing)
+  // Get floor bounds - include background image extent if present
   let bounds;
   if (floor.rooms?.length) {
     bounds = getFloorBounds(floor);
@@ -2735,6 +2735,34 @@ export function renderFloorCanvas({
     // No rooms yet - use a default canvas size for background tracing
     bounds = { minX: 0, minY: 0, maxX: 1000, maxY: 800, width: 1000, height: 800 };
   }
+
+  // Expand bounds to include background image if present
+  const bg = floor.layout?.background;
+  if (bg?.nativeWidth && bg?.nativeHeight) {
+    const nativeW = bg.nativeWidth;
+    const nativeH = bg.nativeHeight;
+    let pixelsPerCm;
+    if (bg.scale?.calibrated && bg.scale.pixelsPerCm) {
+      pixelsPerCm = bg.scale.pixelsPerCm;
+    } else {
+      pixelsPerCm = nativeW / 1000;
+    }
+    const imgWidth = nativeW / pixelsPerCm;
+    const imgHeight = nativeH / pixelsPerCm;
+    const imgX = bg.position?.x || 0;
+    const imgY = bg.position?.y || 0;
+
+    // Expand bounds to include image
+    bounds = {
+      minX: Math.min(bounds.minX, imgX),
+      minY: Math.min(bounds.minY, imgY),
+      maxX: Math.max(bounds.maxX, imgX + imgWidth),
+      maxY: Math.max(bounds.maxY, imgY + imgHeight),
+    };
+    bounds.width = bounds.maxX - bounds.minX;
+    bounds.height = bounds.maxY - bounds.minY;
+  }
+
   const padding = 80; // Padding around the floor
 
   const baseViewBox = {
@@ -2777,31 +2805,37 @@ export function renderFloorCanvas({
       preserveAspectRatio: "xMinYMin meet"
     };
 
-    // Apply scale if calibrated
+    // Always render at native size with scale transform for consistency
+    // This ensures calibration and rendering use the same coordinate system
+    const nativeW = bg.nativeWidth || 1000;
+    const nativeH = bg.nativeHeight || 1000;
+
+    let pixelsPerCm;
     if (bg.scale?.calibrated && bg.scale.pixelsPerCm) {
-      const scale = 1 / bg.scale.pixelsPerCm;
-      imgAttrs.transform = `scale(${scale})`;
+      pixelsPerCm = bg.scale.pixelsPerCm;
     } else {
-      // Without calibration, use a default size based on floor bounds
-      const defaultWidth = bounds.maxX - bounds.minX + 200;
-      const defaultHeight = bounds.maxY - bounds.minY + 200;
-      imgAttrs.width = defaultWidth;
-      imgAttrs.height = defaultHeight;
+      // Default: fit image to ~1000 cm wide
+      pixelsPerCm = nativeW / 1000;
     }
+
+    const scale = 1 / pixelsPerCm;
+    imgAttrs.transform = `scale(${scale})`;
 
     const imgEl = svgEl("image", imgAttrs);
     svg.appendChild(imgEl);
   }
 
-  // Render grid if enabled
+  // Render grid if enabled - use viewBox with extra padding for aspect ratio letterboxing
   if (state.view?.showGrid) {
     const gridGroup = svgEl("g", { opacity: 0.5 });
     const minor = 10, major = 100;
+    // Add extra padding to cover letterboxing from preserveAspectRatio
+    const gridPadding = Math.max(viewBox.width, viewBox.height) * 0.5;
     const gridBounds = {
-      minX: Math.floor(bounds.minX / major) * major - major,
-      minY: Math.floor(bounds.minY / major) * major - major,
-      maxX: Math.ceil(bounds.maxX / major) * major + major,
-      maxY: Math.ceil(bounds.maxY / major) * major + major
+      minX: Math.floor((viewBox.minX - gridPadding) / major) * major,
+      minY: Math.floor((viewBox.minY - gridPadding) / major) * major,
+      maxX: Math.ceil((viewBox.minX + viewBox.width + gridPadding) / major) * major,
+      maxY: Math.ceil((viewBox.minY + viewBox.height + gridPadding) / major) * major
     };
 
     for (let x = gridBounds.minX; x <= gridBounds.maxX; x += minor) {
@@ -3295,15 +3329,16 @@ export function renderPatternGroupsCanvas({
     fill: "#081022"
   }));
 
-  // Render grid
+  // Render grid - use viewBox with extra padding for aspect ratio letterboxing
   if (state.view?.showGrid) {
     const gridGroup = svgEl("g", { opacity: 0.5 });
     const minor = 10, major = 100;
+    const gridPadding = Math.max(viewBox.width, viewBox.height) * 0.5;
     const gridBounds = {
-      minX: Math.floor(bounds.minX / major) * major - major,
-      minY: Math.floor(bounds.minY / major) * major - major,
-      maxX: Math.ceil(bounds.maxX / major) * major + major,
-      maxY: Math.ceil(bounds.maxY / major) * major + major
+      minX: Math.floor((viewBox.minX - gridPadding) / major) * major,
+      minY: Math.floor((viewBox.minY - gridPadding) / major) * major,
+      maxX: Math.ceil((viewBox.minX + viewBox.width + gridPadding) / major) * major,
+      maxY: Math.ceil((viewBox.minY + viewBox.height + gridPadding) / major) * major
     };
 
     for (let x = gridBounds.minX; x <= gridBounds.maxX; x += minor) {

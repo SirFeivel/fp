@@ -393,9 +393,16 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       return;
     }
 
-    // Calculate average pixelsPerCm from all measurements
+    // Calculate average pixelsPerCm from all measurements (in SVG units)
     const measurements = calibrationState.measurements;
-    const avgPixelsPerCm = measurements.reduce((sum, m) => sum + m.pixelsPerCm, 0) / measurements.length;
+    const avgSvgPixelsPerCm = measurements.reduce((sum, m) => sum + m.pixelsPerCm, 0) / measurements.length;
+
+    // Convert to native image pixels
+    // During calibration, image was displayed at scale = 1000/nativeWidth
+    // So: nativePixels = svgUnits * (nativeWidth / 1000)
+    const bg = floor.layout.background;
+    const nativeWidth = bg.nativeWidth || 1000;
+    const avgPixelsPerCm = avgSvgPixelsPerCm * (nativeWidth / 1000);
 
     // Calculate total reference values for display
     const totalPixels = measurements.reduce((sum, m) => sum + m.pixelDistance, 0);

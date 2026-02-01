@@ -121,9 +121,20 @@ export function createStructureController({
   /**
    * Find a position for a new room on a free edge of existing rooms
    */
-  function findConnectedPositionForNewRoom(newRoom, existingRooms) {
-    // If no existing rooms, place at origin
+  function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
+    // If no existing rooms, center on background image or use origin
     if (!existingRooms || existingRooms.length === 0) {
+      const bg = floor?.layout?.background;
+      if (bg?.nativeWidth && bg?.nativeHeight) {
+        const nativeW = bg.nativeWidth;
+        const pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
+        const imgWidth = nativeW / pixelsPerCm;
+        const imgHeight = bg.nativeHeight / pixelsPerCm;
+        return {
+          x: Math.round((imgWidth - newRoom.widthCm) / 2),
+          y: Math.round((imgHeight - newRoom.heightCm) / 2)
+        };
+      }
       return { x: 0, y: 0 };
     }
 
@@ -185,7 +196,7 @@ export function createStructureController({
     };
 
     // Find a connected position for the new room
-    const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms);
+    const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms, currentFloor);
     newRoom.floorPosition = connectedPos;
 
     currentFloor.rooms.push(newRoom);
