@@ -495,6 +495,7 @@ export function createPolygonDrawController({
     svg.addEventListener("mousemove", handleMouseMove);
     svg.addEventListener("contextmenu", handleRightClick);
     svg.addEventListener("wheel", handleWheel, { passive: true });
+    svg.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
 
     return true;
@@ -527,8 +528,12 @@ export function createPolygonDrawController({
       svg.removeEventListener("mousemove", handleMouseMove);
       svg.removeEventListener("contextmenu", handleRightClick);
       svg.removeEventListener("wheel", handleWheel);
+      svg.removeEventListener("pointerdown", handlePointerDown);
     }
     document.removeEventListener("keydown", handleKeyDown);
+    // Clean up any active panning listeners
+    document.removeEventListener("pointermove", handlePanningMove);
+    document.removeEventListener("pointerup", handlePanningEnd);
 
     removeHint();
 
@@ -785,8 +790,37 @@ export function createPolygonDrawController({
     // After wheel zoom, the render cycle clears the SVG and removes our previewGroup.
     // Schedule updatePreview after the zoom-pan controller finishes its render.
     requestAnimationFrame(() => {
-      updatePreview();
+      updatePreview(currentMousePoint);
     });
+  }
+
+  function handlePointerDown(e) {
+    if (!isDrawing) return;
+    // Middle mouse button starts panning - we need to keep preview alive during pan
+    if (e.button === 1) {
+      document.addEventListener("pointermove", handlePanningMove);
+      document.addEventListener("pointerup", handlePanningEnd);
+    }
+  }
+
+  function handlePanningMove() {
+    if (!isDrawing) return;
+    // During panning, the render cycle clears the SVG and removes our previewGroup.
+    // Use requestAnimationFrame to redraw after the zoom-pan controller finishes its render.
+    requestAnimationFrame(() => {
+      updatePreview(currentMousePoint);
+    });
+  }
+
+  function handlePanningEnd(e) {
+    if (e.button === 1) {
+      document.removeEventListener("pointermove", handlePanningMove);
+      document.removeEventListener("pointerup", handlePanningEnd);
+      // Final update after panning ends
+      requestAnimationFrame(() => {
+        updatePreview(currentMousePoint);
+      });
+    }
   }
 
   function handleKeyDown(e) {
