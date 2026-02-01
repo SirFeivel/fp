@@ -366,14 +366,12 @@ function renderPlanningSection(state, opts) {
   } else if (isPatternGroupsView) {
     // Pattern Groups view - similar to floor view but with group visualization
     const floor = getCurrentFloor(state);
-    console.log("[PatternGroups] Rendering canvas, floor:", floor?.id, "rooms:", floor?.rooms?.length, "selectedRoomId:", state.selectedRoomId);
     renderPatternGroupsCanvas({
       state,
       floor,
       selectedRoomId: state.selectedRoomId,
       activeGroupId: activeTargetGroupId,
       onRoomClick: (roomId) => {
-        console.log("[PatternGroups] Room clicked:", roomId);
         const next = deepClone(store.getState());
         next.selectedRoomId = roomId;
 
@@ -405,7 +403,6 @@ function renderPlanningSection(state, opts) {
     updatePatternGroupsControlsState();
   } else {
     const metrics = isDrag ? null : computePlanMetrics(state);
-    if (metrics) console.log("metrics", metrics);
 
     renderPlanSvg({
       state,
@@ -590,9 +587,7 @@ async function switchToRoomView(skipValidation = false) {
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
   const state = store.getState();
-  console.log("[ViewSwitch] switchToRoomView called, current mode:", state.view?.planningMode);
   if (state.view?.planningMode === "room") {
-    console.log("[ViewSwitch] Already in room view, returning");
     return;
   }
 
@@ -708,8 +703,6 @@ function updatePatternGroupsControlsState() {
   const room = floor?.rooms?.find(r => r.id === roomId);
   const group = room ? getRoomPatternGroup(floor, roomId) : null;
 
-  console.log("[PatternGroups] updateControlsState - roomId:", roomId, "room found:", !!room, "group:", group?.id);
-
   const createBtn = document.getElementById("pgCreateGroup");
   const addBtn = document.getElementById("pgAddToGroup");
   const removeBtn = document.getElementById("pgRemoveFromGroup");
@@ -717,14 +710,10 @@ function updatePatternGroupsControlsState() {
   const dissolveBtn = document.getElementById("pgDissolveGroup");
   const statusLabel = document.getElementById("pgStatusLabel");
 
-  console.log("[PatternGroups] Buttons found - create:", !!createBtn, "add:", !!addBtn);
-
   // Update button states based on selection and group membership
   const hasRoom = !!room;
   const isInGroup = !!group;
   const isOrigin = isInGroup && group.originRoomId === roomId;
-
-  console.log("[PatternGroups] Button state - hasRoom:", hasRoom, "isInGroup:", isInGroup, "create disabled:", !hasRoom || isInGroup);
 
   // Create: enabled if room selected and NOT in any group
   if (createBtn) createBtn.disabled = !hasRoom || isInGroup;
@@ -2344,21 +2333,17 @@ function updateAllTranslations() {
 
   // Pattern Groups View - Button handlers (same pattern as floor view buttons)
   const pgCreateGroupBtn = document.getElementById("pgCreateGroup");
-  console.log("[PatternGroups] Init - pgCreateGroup button found:", !!pgCreateGroupBtn);
   pgCreateGroupBtn?.addEventListener("click", () => {
-    console.log("[PatternGroups] pgCreateGroup click handler fired");
     const state = store.getState();
     const next = deepClone(state);
     const floor = next.floors?.find(f => f.id === next.selectedFloorId);
     const roomId = next.selectedRoomId;
 
     if (!floor || !roomId) {
-      console.log("[PatternGroups] Create aborted - no floor or roomId");
       return;
     }
 
     const group = createPatternGroup(floor, roomId);
-    console.log("[PatternGroups] Group created:", group);
     if (group) {
       activeTargetGroupId = group.id;
       store.commit(t("patternGroups.created") || "Pattern group created", next, { onRender: renderAll, updateMetaCb: updateMeta });
