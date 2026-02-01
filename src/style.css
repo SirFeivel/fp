@@ -1667,7 +1667,7 @@ body{
   border: 1px solid var(--line);
   border-radius: var(--r-xs);
   background: rgba(0,0,0,0.12);
-  max-height: 200px;
+  max-height: 160px;
   overflow-y: auto;
 }
 
@@ -1886,9 +1886,6 @@ body{
   border-bottom: 1px dashed rgba(0,0,0,0.15);
 }
 
-.export-room-checkbox {
-  /* Uses .checkbox base styles */
-}
 
 .export-room-item:last-child {
   border-bottom: none;

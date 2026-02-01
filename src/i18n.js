@@ -60,7 +60,8 @@ const translations = {
       displayOptions: "Anzeigeoptionen",
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
-      removalMode: "Entfernungsmodus"
+      removalMode: "Entfernungsmodus",
+      deleteSelected: "Auswahl löschen"
     },
     floor: {
       uploadBg: "Bild",
@@ -661,7 +662,8 @@ const translations = {
       displayOptions: "Display Options",
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
-      removalMode: "Removal mode"
+      removalMode: "Removal mode",
+      deleteSelected: "Delete selected"
     },
     floor: {
       uploadBg: "Image",
