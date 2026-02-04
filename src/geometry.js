@@ -9,14 +9,7 @@ import {
   BOND_PERIOD_MAX,
   BOND_PERIOD_EPSILON
 } from "./constants.js";
-import {
-  getRoomSections,
-  computeCompositePolygon,
-  computeCompositeBounds,
-  rectToPolygon
-} from "./composite.js";
-
-export { getRoomSections } from "./composite.js";
+import { rectToPolygon } from "./composite.js";
 
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -25,7 +18,7 @@ export function svgEl(tag, attrs = {}) {
 }
 
 export function roomPolygon(room) {
-  // If room has polygon vertices (from draw mode), use those
+  // Room must have polygon vertices (v8+ requirement)
   if (room?.polygonVertices && room.polygonVertices.length >= 3) {
     const ring = room.polygonVertices.map(p => [p.x, p.y]);
     // Close the ring if not already closed
@@ -36,22 +29,12 @@ export function roomPolygon(room) {
     return [[ring]];
   }
 
-  const sections = getRoomSections(room);
-  if (sections.length === 0) {
-    return [[[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]]];
-  }
-
-  const { mp, error } = computeCompositePolygon(sections);
-  if (error || !mp) {
-    // Return empty if there's an error, as migration should have handled valid legacy dimensions
-    return [[[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]]];
-  }
-
-  return mp;
+  // Return empty polygon if no valid polygonVertices
+  return [[[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]];
 }
 
 export function getRoomBounds(room) {
-  // If room has polygon vertices (from draw mode), calculate bounds from those
+  // Room must have polygon vertices (v8+ requirement)
   if (room?.polygonVertices && room.polygonVertices.length >= 3) {
     let minX = Infinity, minY = Infinity;
     let maxX = -Infinity, maxY = -Infinity;
@@ -71,11 +54,8 @@ export function getRoomBounds(room) {
     };
   }
 
-  const sections = getRoomSections(room);
-  if (sections.length === 0) {
-    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
-  }
-  return computeCompositeBounds(sections);
+  // Return empty bounds if no valid polygonVertices
+  return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
 }
 
 export function multiPolygonToPathD(mp) {
@@ -120,35 +100,22 @@ export function computeSkirtingArea(room, exclusions) {
   const roomSkirtingEnabled = room.skirting?.enabled !== false;
   const skirtingExclusions = (exclusions || []).filter(ex => ex.skirtingEnabled !== false);
 
-  // Handle freeform rooms (with polygonVertices)
-  const isFreeform = room.polygonVertices && room.polygonVertices.length >= 3;
-
-  let totalRoomMP, activeSectionsMP;
-
-  if (isFreeform) {
-    // For freeform rooms, use roomPolygon - no per-section skirting control
-    const mp = roomPolygon(room);
-    totalRoomMP = roomSkirtingEnabled ? mp : null;
-    activeSectionsMP = roomSkirtingEnabled ? mp : null;
-  } else {
-    // For sectioned rooms, use existing logic
-    const allSections = getRoomSections(room);
-    const activeSections = roomSkirtingEnabled
-      ? allSections.filter(s => s.skirtingEnabled !== false)
-      : [];
-
-    if (activeSections.length === 0 && skirtingExclusions.length === 0) {
+  // Room must have polygonVertices (v8+ requirement)
+  if (!room.polygonVertices || room.polygonVertices.length < 3) {
+    if (skirtingExclusions.length === 0) {
       return { mp: null, error: null };
     }
-
-    const compositeTotal = computeCompositePolygon(allSections);
-    const compositeActive = computeCompositePolygon(activeSections);
-    totalRoomMP = compositeTotal.mp;
-    activeSectionsMP = compositeActive.mp;
+    // Only exclusions, no room polygon
+    const { mp: activeExclusionsMP } = computeExclusionsUnion(skirtingExclusions);
+    return { mp: activeExclusionsMP, error: null };
   }
 
+  const mp = roomPolygon(room);
+  const totalRoomMP = roomSkirtingEnabled ? mp : null;
+  const activeRoomMP = roomSkirtingEnabled ? mp : null;
+
   // Early return if nothing to render
-  if (!activeSectionsMP && skirtingExclusions.length === 0) {
+  if (!activeRoomMP && skirtingExclusions.length === 0) {
     return { mp: null, error: null };
   }
 
@@ -156,13 +123,13 @@ export function computeSkirtingArea(room, exclusions) {
 
   try {
     let resultMP;
-    if (!activeSectionsMP) {
+    if (!activeRoomMP) {
       resultMP = activeExclusionsMP;
     } else if (!activeExclusionsMP) {
-      resultMP = activeSectionsMP;
+      resultMP = activeRoomMP;
     } else {
-      // XOR for independent toggles: (Sections - Exclusions) + (Exclusions - Sections)
-      resultMP = polygonClipping.xor(activeSectionsMP, activeExclusionsMP);
+      // XOR for independent toggles: (Room - Exclusions) + (Exclusions - Room)
+      resultMP = polygonClipping.xor(activeRoomMP, activeExclusionsMP);
     }
 
     if (!resultMP) return { mp: null, error: null };
@@ -174,7 +141,7 @@ export function computeSkirtingArea(room, exclusions) {
 
     return { mp: resultMP, error: null };
   } catch (e) {
-    return { mp: activeSectionsMP || activeExclusionsMP, error: String(e?.message || e) };
+    return { mp: activeRoomMP || activeExclusionsMP, error: String(e?.message || e) };
   }
 }
 

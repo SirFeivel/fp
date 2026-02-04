@@ -16,6 +16,7 @@ import {
 } from './core.js';
 import { clearMetricsCache } from './calc.js';
 import { areRoomsAdjacent } from './floor_geometry.js';
+import { computeCompositePolygon } from './composite.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
@@ -42,6 +43,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 6) {
       s = migrateV6ToV7(s);
     }
+    if (s.meta?.version === 7) {
+      s = migrateV7ToV8(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -63,13 +67,6 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         for (const floor of s.floors) {
           if (floor.rooms && Array.isArray(floor.rooms)) {
             for (const room of floor.rooms) {
-              if (room.sections && Array.isArray(room.sections)) {
-                for (const sec of room.sections) {
-                  if (sec.skirtingEnabled === undefined) {
-                    sec.skirtingEnabled = true;
-                  }
-                }
-              }
               if (!room.tile) room.tile = deepClone(globalTile);
               if (!room.tile.shape) room.tile.shape = "rect";
               if (room.tile.reference === undefined) room.tile.reference = "";
@@ -182,10 +179,14 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               }
             }
 
-            if (room.sections && Array.isArray(room.sections)) {
-              for (const sec of room.sections) {
-                if (sec.skirtingEnabled === undefined) sec.skirtingEnabled = true;
-              }
+            // Ensure room has polygonVertices (v8+ requirement)
+            if (!room.polygonVertices || room.polygonVertices.length < 3) {
+              room.polygonVertices = [
+                { x: 0, y: 0 },
+                { x: 300, y: 0 },
+                { x: 300, y: 300 },
+                { x: 0, y: 300 }
+              ];
             }
           }
         }
@@ -397,6 +398,85 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     s.meta.version = 7;
+    return s;
+  }
+
+  function migrateV7ToV8(s) {
+    // Convert room.sections to room.polygonVertices
+    for (const floor of s.floors || []) {
+      for (const room of floor.rooms || []) {
+        // Skip if room already has polygonVertices
+        if (room.polygonVertices && room.polygonVertices.length >= 3) {
+          delete room.sections;
+          continue;
+        }
+
+        // Convert sections to polygonVertices
+        if (room.sections && Array.isArray(room.sections) && room.sections.length > 0) {
+          const validSections = room.sections.filter(s => s.widthCm > 0 && s.heightCm > 0);
+
+          if (validSections.length === 0) {
+            // No valid sections, create default rectangle
+            room.polygonVertices = [
+              { x: 0, y: 0 },
+              { x: 300, y: 0 },
+              { x: 300, y: 300 },
+              { x: 0, y: 300 }
+            ];
+          } else if (validSections.length === 1) {
+            // Single section - convert directly to rectangle
+            const sec = validSections[0];
+            room.polygonVertices = [
+              { x: sec.x, y: sec.y },
+              { x: sec.x + sec.widthCm, y: sec.y },
+              { x: sec.x + sec.widthCm, y: sec.y + sec.heightCm },
+              { x: sec.x, y: sec.y + sec.heightCm }
+            ];
+          } else {
+            // Multiple sections - union them into a single polygon
+            const { mp, error } = computeCompositePolygon(validSections);
+
+            if (mp && mp.length > 0 && mp[0] && mp[0][0] && mp[0][0].length > 0) {
+              // Take the outer ring of the first polygon
+              const outerRing = mp[0][0];
+              // Convert to polygonVertices format (remove closing duplicate point)
+              room.polygonVertices = [];
+              for (let i = 0; i < outerRing.length - 1; i++) {
+                room.polygonVertices.push({ x: outerRing[i][0], y: outerRing[i][1] });
+              }
+            } else {
+              // Fallback to bounding box if union fails
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const sec of validSections) {
+                minX = Math.min(minX, sec.x);
+                minY = Math.min(minY, sec.y);
+                maxX = Math.max(maxX, sec.x + sec.widthCm);
+                maxY = Math.max(maxY, sec.y + sec.heightCm);
+              }
+              room.polygonVertices = [
+                { x: minX, y: minY },
+                { x: maxX, y: minY },
+                { x: maxX, y: maxY },
+                { x: minX, y: maxY }
+              ];
+            }
+          }
+
+          // Delete sections after conversion
+          delete room.sections;
+        } else if (!room.polygonVertices) {
+          // No sections and no polygonVertices - create default rectangle
+          room.polygonVertices = [
+            { x: 0, y: 0 },
+            { x: 300, y: 0 },
+            { x: 300, y: 300 },
+            { x: 0, y: 300 }
+          ];
+        }
+      }
+    }
+
+    s.meta.version = 8;
     return s;
   }
 

@@ -3,7 +3,6 @@
 
 import polygonClipping from 'polygon-clipping';
 import { getRoomBounds, roomPolygon } from './geometry.js';
-import { getRoomSections } from './composite.js';
 
 /**
  * Compute floor bounds encompassing all rooms

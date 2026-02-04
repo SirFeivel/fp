@@ -2,13 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { 
-  hexToRgb, 
-  renderWarnings, 
-  renderMetrics, 
+import {
+  hexToRgb,
+  renderWarnings,
+  renderMetrics,
   renderStateView,
   renderExclProps,
-  renderSectionProps,
   renderSkirtingRoomList,
   renderRoomForm,
   renderPlanSvg
@@ -111,12 +110,14 @@ describe('render.js smoke tests', () => {
     room.skirting.type = 'bought';
     room.skirting.boughtWidthCm = 100;
     room.skirting.boughtPricePerPiece = 10;
-    
-    // In V4, we must update the section dimensions
-    if (room.sections && room.sections[0]) {
-      room.sections[0].widthCm = 100;
-      room.sections[0].heightCm = 100;
-    }
+
+    // Set room to 100x100 via polygonVertices
+    room.polygonVertices = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
 
     renderMetrics(state);
 
@@ -195,37 +196,24 @@ describe('render.js smoke tests', () => {
   });
 
 
-  it('renderSectionProps renders skirting toggle for section', () => {
-    document.body.innerHTML = '<div id="sectionProps"></div>';
-    const currentSec = { id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true };
-    const args = {
-      state: {},
-      selectedSectionId: 's1',
-      getSelectedSection: () => currentSec,
-      commitSectionProps: vi.fn()
-    };
-
-    renderSectionProps(args);
-    const toggle = document.getElementById('secSkirtingEnabled');
-    expect(toggle).not.toBeNull();
-    expect(toggle.checked).toBe(true);
-  });
-
-  it('renderSkirtingRoomList renders room and section toggles', () => {
+  it('renderSkirtingRoomList renders room toggles', () => {
     document.body.innerHTML = '<div id="skirtingRoomsList"></div>';
     const state = defaultStateWithRoom();
     state.floors[0].name = "Floor 1";
     const room = state.floors[0].rooms[0];
     room.name = "Living";
-    room.sections = [
-      { id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true },
-      { id: 's2', x: 100, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: false }
+    room.polygonVertices = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 0, y: 100 }
     ];
 
     renderSkirtingRoomList(state, { onToggleRoom: vi.fn(), onToggleSection: vi.fn() });
 
+    // With sections removed, only one toggle per room (no section toggles)
     const inputs = document.querySelectorAll('#skirtingRoomsList input[type="checkbox"]');
-    expect(inputs.length).toBe(3);
+    expect(inputs.length).toBe(1);
   });
 
   it('renderPlanSvg renders skirting paths when enabled', () => {
@@ -234,10 +222,13 @@ describe('render.js smoke tests', () => {
     state.view.showSkirting = true;
     const room = state.floors[0].rooms[0];
     room.skirting.enabled = true;
-    if (room.sections && room.sections[0]) {
-      room.sections[0].widthCm = 100;
-      room.sections[0].heightCm = 100;
-    }
+    // Ensure room has valid polygonVertices
+    room.polygonVertices = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
 
     renderPlanSvg({
       state,

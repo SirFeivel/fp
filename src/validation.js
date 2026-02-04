@@ -5,7 +5,6 @@
 
 import { t } from "./i18n.js";
 import { getCurrentRoom, getCurrentFloor } from "./core.js";
-import { getRoomSections, computeCompositeBounds, validateSections as validateSectionsGeometry } from "./composite.js";
 import { getRoomBounds } from "./geometry.js";
 import { validateFloorConnectivity } from "./floor_geometry.js";
 
@@ -67,23 +66,42 @@ export function validateState(s) {
     // Return early - no room-level validation needed
     return { errors, warns };
   } else {
-    // Check if room is free-form (has polygonVertices) or sections-based
-    const isFreeForm = currentRoom.polygonVertices && currentRoom.polygonVertices.length >= 3;
-    const sections = getRoomSections(currentRoom);
-
-    if (!isFreeForm && sections.length === 0) {
-      // Only show error if room has neither valid polygon nor sections
+    // Validate polygonVertices - must have at least 3 vertices to form a valid polygon
+    const pv = currentRoom.polygonVertices;
+    if (!pv || !Array.isArray(pv) || pv.length < 3) {
       errors.push({
         title: t("validation.roomWidthInvalid"),
         text: t("validation.roomWidthText")
       });
-    } else if (!isFreeForm && sections.length > 0) {
-      // Validate sections for sections-based rooms
-      const sectionsValidation = validateSectionsGeometry(sections);
-      errors.push(...sectionsValidation.errors);
-      warns.push(...sectionsValidation.warnings);
+    } else {
+      // Check for invalid vertex coordinates (NaN, undefined, non-numbers)
+      const hasInvalidCoords = pv.some(p =>
+        !p ||
+        typeof p.x !== 'number' || !Number.isFinite(p.x) ||
+        typeof p.y !== 'number' || !Number.isFinite(p.y)
+      );
+      if (hasInvalidCoords) {
+        errors.push({
+          title: t("validation.roomWidthInvalid"),
+          text: t("validation.roomWidthText")
+        });
+      } else {
+        // Check that polygon has non-zero area (width and height)
+        const bounds = getRoomBounds(currentRoom);
+        if (!bounds || bounds.width <= 0) {
+          errors.push({
+            title: t("validation.roomWidthInvalid"),
+            text: t("validation.roomWidthText")
+          });
+        }
+        if (!bounds || bounds.height <= 0) {
+          errors.push({
+            title: t("validation.roomHeightInvalid"),
+            text: t("validation.roomHeightText")
+          });
+        }
+      }
     }
-    // Free-form rooms with valid polygonVertices pass validation
   }
 
   // Use getRoomBounds which handles both free-form and sections-based rooms

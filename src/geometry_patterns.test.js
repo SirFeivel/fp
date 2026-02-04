@@ -21,7 +21,12 @@ function createPatternState({
       id: floorId,
       rooms: [{
         id: roomId,
-        sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomW, heightCm: roomH }],
+        polygonVertices: [
+          { x: 0, y: 0 },
+          { x: roomW, y: 0 },
+          { x: roomW, y: roomH },
+          { x: 0, y: roomH }
+        ],
         tile: { widthCm: tileW, heightCm: tileH, shape: tileShape },
         grout: { widthCm: grout },
         pattern: {
@@ -142,7 +147,12 @@ describe('Geometry Patterns Extended Tests', () => {
             id: floorId,
             rooms: [{
               id: roomId,
-              sections: [{ id: 'sec1', x: 0, y: 0, widthCm: 200, heightCm: 200 }],
+              polygonVertices: [
+                { x: 0, y: 0 },
+                { x: 200, y: 0 },
+                { x: 200, y: 200 },
+                { x: 0, y: 200 }
+              ],
               tile: { widthCm: 30, heightCm: 10, shape: 'rect' },
               grout: { widthCm: 0.2 },
               pattern: {

@@ -1,7 +1,6 @@
 // src/drag.js
 import { deepClone, getCurrentRoom } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
-import { getRoomSections } from "./composite.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
@@ -773,505 +772,6 @@ function rectsShareEdge(a, b) {
 }
 
 /**
- * Check if a section is connected to at least one other section
- */
-function isSectionConnected(section, otherSections) {
-  if (otherSections.length === 0) return true; // Single section is always valid
-  return otherSections.some(other => rectsShareEdge(section, other));
-}
-
-/**
- * Find snap positions where the section would connect to other sections
- */
-function findSnapPositions(section, otherSections, dx, dy) {
-  const snapPositions = [];
-
-  for (const other of otherSections) {
-    // Snap to right edge of other
-    snapPositions.push({
-      x: other.x + other.widthCm,
-      y: other.y, // Align tops
-      desc: "right-top"
-    });
-    snapPositions.push({
-      x: other.x + other.widthCm,
-      y: other.y + other.heightCm - section.heightCm, // Align bottoms
-      desc: "right-bottom"
-    });
-
-    // Snap to left edge of other
-    snapPositions.push({
-      x: other.x - section.widthCm,
-      y: other.y,
-      desc: "left-top"
-    });
-    snapPositions.push({
-      x: other.x - section.widthCm,
-      y: other.y + other.heightCm - section.heightCm,
-      desc: "left-bottom"
-    });
-
-    // Snap to bottom edge of other
-    snapPositions.push({
-      x: other.x,
-      y: other.y + other.heightCm,
-      desc: "bottom-left"
-    });
-    snapPositions.push({
-      x: other.x + other.widthCm - section.widthCm,
-      y: other.y + other.heightCm,
-      desc: "bottom-right"
-    });
-
-    // Snap to top edge of other
-    snapPositions.push({
-      x: other.x,
-      y: other.y - section.heightCm,
-      desc: "top-left"
-    });
-    snapPositions.push({
-      x: other.x + other.widthCm - section.widthCm,
-      y: other.y - section.heightCm,
-      desc: "top-right"
-    });
-  }
-
-  return snapPositions;
-}
-
-/**
- * Find the nearest valid snap position for a section
- */
-function findNearestValidPosition(section, otherSections, desiredX, desiredY) {
-  const testSection = { ...section, x: desiredX, y: desiredY };
-
-  // Check if desired position is already valid
-  if (isSectionConnected(testSection, otherSections)) {
-    return { x: desiredX, y: desiredY };
-  }
-
-  // Find snap positions
-  const snapPositions = findSnapPositions(section, otherSections, 0, 0);
-
-  let bestPos = null;
-  let bestDist = Infinity;
-
-  for (const pos of snapPositions) {
-    const testPos = { ...section, x: pos.x, y: pos.y };
-    if (isSectionConnected(testPos, otherSections)) {
-      const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPos = pos;
-      }
-    }
-  }
-
-  return bestPos || { x: section.x, y: section.y }; // Fall back to original position
-}
-
-function findSectionElements(id) {
-  return document.querySelectorAll(`[data-secid="${id}"]`);
-}
-
-function findSectionResizeHandles(id) {
-  return document.querySelectorAll(`[data-secid="${id}"][data-resize-handle]`);
-}
-
-/**
- * Wire drag handlers for sections inside the planSvg.
- * Sections must maintain connectivity with other sections.
- */
-export function createSectionDragController({
-  getSvg,
-  getState,
-  commit,
-  render,
-  getSelectedSection,
-  setSelectedSection,
-  setSelectedIdOnly,
-  getSelectedId,
-  getMoveLabel,
-  getResizeLabel
-}) {
-  let drag = null;
-  let resize = null;
-  let dragStartState = null;
-  let pendingFrame = false;
-  let lastMoveEvent = null;
-
-  function applyDragMove(e) {
-    if (!drag) return;
-
-    const svg = getSvg();
-    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const rawDx = curMouse.x - drag.startMouse.x;
-    const rawDy = curMouse.y - drag.startMouse.y;
-
-    const desiredX = drag.startShape.x + rawDx;
-    const desiredY = drag.startShape.y + rawDy;
-
-    // Find nearest valid position that maintains connectivity
-    const validPos = findNearestValidPosition(
-      drag.startShape,
-      drag.otherSections,
-      desiredX,
-      desiredY
-    );
-
-    const dx = snapToMm(validPos.x - drag.startShape.x);
-    const dy = snapToMm(validPos.y - drag.startShape.y);
-
-    drag.currentDx = dx;
-    drag.currentDy = dy;
-
-    // Apply CSS transform
-    const elements = findSectionElements(drag.id);
-    elements.forEach(el => {
-      if (!el.hasAttribute("data-resize-handle")) {
-        el.setAttribute("transform", `translate(${dx}, ${dy})`);
-      }
-    });
-
-    // Update overlay
-    const text = `x ${formatCm(validPos.x)} cm · y ${formatCm(validPos.y)} cm`;
-    const center = {
-      x: validPos.x + drag.startShape.widthCm / 2,
-      y: validPos.y + drag.startShape.heightCm / 2
-    };
-    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
-  }
-
-  function scheduleDragMove(e) {
-    lastMoveEvent = e;
-    if (pendingFrame) return;
-    pendingFrame = true;
-    requestAnimationFrame(() => {
-      pendingFrame = false;
-      const evt = lastMoveEvent;
-      lastMoveEvent = null;
-      if (evt) applyDragMove(evt);
-    });
-  }
-
-  function onSvgPointerMove(e) {
-    if (!drag) return;
-    scheduleDragMove(e);
-  }
-
-  function showDragOverlay(text, svg, cursorClient, fallbackSvgPoint) {
-    const el = getResizeOverlay();
-    if (!el) return;
-    showResizeOverlay(text, cursorClient.x, cursorClient.y);
-    const rect = el.getBoundingClientRect();
-    const margin = 8;
-    const overflow =
-      rect.left < margin ||
-      rect.right > window.innerWidth - margin ||
-      rect.top < margin ||
-      rect.bottom > window.innerHeight - margin;
-
-    if (overflow && fallbackSvgPoint) {
-      const pos = svgPointToClient(svg, fallbackSvgPoint.x, fallbackSvgPoint.y);
-      showResizeOverlay(text, pos.x, pos.y, { mode: "center" });
-    }
-  }
-
-  function onSvgPointerUp(e) {
-    const svg = getSvg();
-    svg.removeEventListener("pointermove", onSvgPointerMove);
-    try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
-    hideResizeOverlay();
-
-    if (!drag || !dragStartState) return;
-
-    const dx = drag.currentDx || 0;
-    const dy = drag.currentDy || 0;
-    const hasMoved = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
-
-    if (hasMoved) {
-      const finalState = deepClone(dragStartState);
-      const finalRoom = getCurrentRoom(finalState);
-      const sec = finalRoom?.sections?.find(s => s.id === drag.id);
-
-      if (sec) {
-        sec.x += dx;
-        sec.y += dy;
-      }
-
-      commit(getMoveLabel(), finalState);
-    } else {
-      // No movement - selection already set in pointerdown, just trigger render
-      const elements = findSectionElements(drag.id);
-      elements.forEach(el => el.removeAttribute("transform"));
-      // Use render() instead of setSelectedSection() since ID is already set
-      // This avoids redundant state changes
-      if (render) render();
-    }
-
-    drag = null;
-    dragStartState = null;
-  }
-
-  function onSectionPointerDown(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const id = e.currentTarget.getAttribute("data-secid");
-    if (!id) return;
-
-    const state = getState();
-    const room = getCurrentRoom(state);
-    const sections = getRoomSections(room);
-
-    // Only allow dragging if there are multiple sections
-    if (sections.length < 2) return;
-
-    const sec = sections.find(s => s.id === id);
-    if (!sec) return;
-
-    // Set selection state and do a fast render (skip tiles for performance)
-    if (setSelectedIdOnly) {
-      setSelectedIdOnly(id);
-    }
-    if (render) {
-      render({ mode: "drag" });
-    }
-
-    const svg = getSvg();
-    svg.setPointerCapture(e.pointerId);
-
-    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    dragStartState = deepClone(state);
-
-    const otherSections = sections.filter(s => s.id !== id);
-
-    drag = {
-      id,
-      startMouse,
-      startShape: deepClone(sec),
-      currentDx: 0,
-      currentDy: 0,
-      otherSections
-    };
-
-    const text = `x ${formatCm(sec.x)} cm · y ${formatCm(sec.y)} cm`;
-    const center = {
-      x: sec.x + sec.widthCm / 2,
-      y: sec.y + sec.heightCm / 2
-    };
-    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
-
-    svg.addEventListener("pointermove", onSvgPointerMove);
-    svg.addEventListener("pointerup", onSvgPointerUp, { once: true });
-    svg.addEventListener("pointercancel", onSvgPointerUp, { once: true });
-  }
-
-  // --- Resize handling ---
-
-  function getSectionResizeDims(startShape, handleType, dx, dy) {
-    let newX = startShape.x;
-    let newY = startShape.y;
-    let newW = startShape.widthCm;
-    let newH = startShape.heightCm;
-
-    if (handleType.includes("w")) {
-      newX = startShape.x + dx;
-      newW = Math.max(10, startShape.widthCm - dx);
-    }
-    if (handleType.includes("e")) {
-      newW = Math.max(10, startShape.widthCm + dx);
-    }
-    if (handleType.includes("n")) {
-      newY = startShape.y + dy;
-      newH = Math.max(10, startShape.heightCm - dy);
-    }
-    if (handleType.includes("s")) {
-      newH = Math.max(10, startShape.heightCm + dy);
-    }
-
-    return { newX, newY, newW, newH };
-  }
-
-  function applyResize(e) {
-    if (!resize) return;
-
-    const svg = getSvg();
-    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = curMouse.x - resize.startMouse.x;
-    const dy = curMouse.y - resize.startMouse.y;
-
-    resize.currentDx = dx;
-    resize.currentDy = dy;
-
-    const { startShape, handleType } = resize;
-    const dims = getSectionResizeDims(startShape, handleType, dx, dy);
-
-    // Check if resized section would still be connected
-    const testSection = {
-      ...startShape,
-      x: dims.newX,
-      y: dims.newY,
-      widthCm: dims.newW,
-      heightCm: dims.newH
-    };
-
-    const isValid = isSectionConnected(testSection, resize.otherSections);
-
-    // Update section rect
-    const elements = findSectionElements(resize.id);
-    elements.forEach(el => {
-      if (!el.hasAttribute("data-resize-handle")) {
-        el.setAttribute("x", dims.newX);
-        el.setAttribute("y", dims.newY);
-        el.setAttribute("width", dims.newW);
-        el.setAttribute("height", dims.newH);
-        el.setAttribute("stroke", isValid ? "rgba(122,162,255,1)" : "rgba(239,68,68,0.95)");
-      }
-    });
-
-    // Update overlay
-    const overlayText = `${formatCm(dims.newW)} x ${formatCm(dims.newH)} cm`;
-    showResizeOverlay(overlayText, e.clientX, e.clientY);
-
-    // Update handle positions
-    updateSectionResizeHandlePositions(resize.id, dims);
-  }
-
-  function updateSectionResizeHandlePositions(id, dims) {
-    const handles = findSectionResizeHandles(id);
-    const { newX, newY, newW, newH } = dims;
-
-    handles.forEach(handle => {
-      const ht = handle.getAttribute("data-resize-handle");
-      const positions = {
-        nw: { cx: newX, cy: newY },
-        ne: { cx: newX + newW, cy: newY },
-        sw: { cx: newX, cy: newY + newH },
-        se: { cx: newX + newW, cy: newY + newH },
-        n: { cx: newX + newW / 2, cy: newY },
-        s: { cx: newX + newW / 2, cy: newY + newH },
-        w: { cx: newX, cy: newY + newH / 2 },
-        e: { cx: newX + newW, cy: newY + newH / 2 }
-      };
-
-      if (positions[ht]) {
-        handle.setAttribute("cx", positions[ht].cx);
-        handle.setAttribute("cy", positions[ht].cy);
-      }
-    });
-  }
-
-  function scheduleResize(e) {
-    lastMoveEvent = e;
-    if (pendingFrame) return;
-    pendingFrame = true;
-    requestAnimationFrame(() => {
-      pendingFrame = false;
-      const evt = lastMoveEvent;
-      lastMoveEvent = null;
-      if (evt) applyResize(evt);
-    });
-  }
-
-  function onResizePointerMove(e) {
-    if (!resize) return;
-    scheduleResize(e);
-  }
-
-  function onResizePointerUp(e) {
-    const svg = getSvg();
-    svg.removeEventListener("pointermove", onResizePointerMove);
-    hideResizeOverlay();
-
-    if (!resize || !dragStartState) return;
-
-    const dx = resize.currentDx || 0;
-    const dy = resize.currentDy || 0;
-    const hasResized = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
-
-    if (hasResized) {
-      const { startShape, handleType } = resize;
-      const dims = getSectionResizeDims(startShape, handleType, dx, dy);
-
-      // Check connectivity before committing
-      const testSection = {
-        ...startShape,
-        x: dims.newX,
-        y: dims.newY,
-        widthCm: dims.newW,
-        heightCm: dims.newH
-      };
-
-      if (isSectionConnected(testSection, resize.otherSections)) {
-        const finalState = deepClone(dragStartState);
-        const finalRoom = getCurrentRoom(finalState);
-        const sec = finalRoom?.sections?.find(s => s.id === resize.id);
-
-        if (sec) {
-          sec.x = dims.newX;
-          sec.y = dims.newY;
-          sec.widthCm = dims.newW;
-          sec.heightCm = dims.newH;
-        }
-
-        const label = getResizeLabel ? getResizeLabel() : "Resized section";
-        commit(label, finalState);
-      } else {
-        // Invalid resize - revert
-        render();
-      }
-    } else {
-      render();
-    }
-
-    resize = null;
-    dragStartState = null;
-  }
-
-  function onSectionResizeHandlePointerDown(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const id = e.currentTarget.getAttribute("data-secid");
-    const handleType = e.currentTarget.getAttribute("data-resize-handle");
-    if (!id || !handleType) return;
-
-    const state = getState();
-    const room = getCurrentRoom(state);
-    const sections = getRoomSections(room);
-    const sec = sections.find(s => s.id === id);
-    if (!sec) return;
-
-    const svg = getSvg();
-    svg.setPointerCapture(e.pointerId);
-
-    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    dragStartState = deepClone(state);
-
-    const otherSections = sections.filter(s => s.id !== id);
-
-    resize = {
-      id,
-      handleType,
-      startMouse,
-      startShape: deepClone(sec),
-      currentDx: 0,
-      currentDy: 0,
-      otherSections
-    };
-
-    showResizeOverlay(`${formatCm(sec.widthCm)} x ${formatCm(sec.heightCm)} cm`, e.clientX, e.clientY);
-
-    svg.addEventListener("pointermove", onResizePointerMove);
-    svg.addEventListener("pointerup", onResizePointerUp, { once: true });
-    svg.addEventListener("pointercancel", onResizePointerUp, { once: true });
-  }
-
-  return { onSectionPointerDown, onSectionResizeHandlePointerDown };
-}
-
-/**
  * Creates a drag controller for repositioning rooms on the floor canvas.
  * Used in Floor View mode.
  */
@@ -1444,7 +944,8 @@ export function createRoomResizeController({
     if (!floor) return;
 
     const room = floor.rooms?.find(r => r.id === roomId);
-    if (!room || !room.sections?.length) return;
+    // Only allow resize for simple rectangular rooms (4 vertices)
+    if (!room || !room.polygonVertices || room.polygonVertices.length !== 4) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1454,8 +955,8 @@ export function createRoomResizeController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     resizeStartState = deepClone(state);
 
-    // Get initial room dimensions from first section
-    const section = room.sections[0];
+    // Get initial room dimensions from polygonVertices bounds
+    const bounds = getRoomBounds(room);
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     resize = {
@@ -1463,18 +964,16 @@ export function createRoomResizeController({
       handleType,
       startMouse,
       startPos: { ...pos },
-      startSection: {
-        x: section.x,
-        y: section.y,
-        widthCm: section.widthCm,
-        heightCm: section.heightCm
+      startDims: {
+        widthCm: bounds.width,
+        heightCm: bounds.height
       },
       currentDx: 0,
       currentDy: 0
     };
 
     showResizeOverlay(
-      `${formatCm(section.widthCm)} × ${formatCm(section.heightCm)} cm`,
+      `${formatCm(bounds.width)} × ${formatCm(bounds.height)} cm`,
       e.clientX,
       e.clientY
     );
@@ -1502,8 +1001,8 @@ export function createRoomResizeController({
     resize.currentDy = dy;
 
     // Calculate new dimensions based on handle type
-    let newWidth = resize.startSection.widthCm;
-    let newHeight = resize.startSection.heightCm;
+    let newWidth = resize.startDims.widthCm;
+    let newHeight = resize.startDims.heightCm;
     let newPosX = resize.startPos.x;
     let newPosY = resize.startPos.y;
 
@@ -1511,19 +1010,19 @@ export function createRoomResizeController({
 
     // Horizontal resizing
     if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startSection.widthCm + dx);
+      newWidth = Math.max(50, resize.startDims.widthCm + dx);
     } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startSection.widthCm - 50);
-      newWidth = resize.startSection.widthCm - widthChange;
+      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
+      newWidth = resize.startDims.widthCm - widthChange;
       newPosX = resize.startPos.x + widthChange;
     }
 
     // Vertical resizing
     if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startSection.heightCm + dy);
+      newHeight = Math.max(50, resize.startDims.heightCm + dy);
     } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startSection.heightCm - 50);
-      newHeight = resize.startSection.heightCm - heightChange;
+      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
+      newHeight = resize.startDims.heightCm - heightChange;
       newPosY = resize.startPos.y + heightChange;
     }
 
@@ -1558,30 +1057,30 @@ export function createRoomResizeController({
     const dx = resize.currentDx;
     const dy = resize.currentDy;
 
-    let newWidth = resize.startSection.widthCm;
-    let newHeight = resize.startSection.heightCm;
+    let newWidth = resize.startDims.widthCm;
+    let newHeight = resize.startDims.heightCm;
     let newPosX = resize.startPos.x;
     let newPosY = resize.startPos.y;
 
     if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startSection.widthCm + dx);
+      newWidth = Math.max(50, resize.startDims.widthCm + dx);
     } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startSection.widthCm - 50);
-      newWidth = resize.startSection.widthCm - widthChange;
+      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
+      newWidth = resize.startDims.widthCm - widthChange;
       newPosX = resize.startPos.x + widthChange;
     }
 
     if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startSection.heightCm + dy);
+      newHeight = Math.max(50, resize.startDims.heightCm + dy);
     } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startSection.heightCm - 50);
-      newHeight = resize.startSection.heightCm - heightChange;
+      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
+      newHeight = resize.startDims.heightCm - heightChange;
       newPosY = resize.startPos.y + heightChange;
     }
 
     const hasChanges =
-      newWidth !== resize.startSection.widthCm ||
-      newHeight !== resize.startSection.heightCm ||
+      newWidth !== resize.startDims.widthCm ||
+      newHeight !== resize.startDims.heightCm ||
       newPosX !== resize.startPos.x ||
       newPosY !== resize.startPos.y;
 
@@ -1590,10 +1089,15 @@ export function createRoomResizeController({
       const floor = getCurrentFloor(next);
       const room = floor?.rooms?.find(r => r.id === resize.roomId);
 
-      if (room && room.sections?.length > 0) {
+      if (room && room.polygonVertices?.length === 4) {
         room.floorPosition = { x: newPosX, y: newPosY };
-        room.sections[0].widthCm = newWidth;
-        room.sections[0].heightCm = newHeight;
+        // Update polygonVertices for rectangle
+        room.polygonVertices = [
+          { x: 0, y: 0 },
+          { x: newWidth, y: 0 },
+          { x: newWidth, y: newHeight },
+          { x: 0, y: newHeight }
+        ];
         // Also update legacy dimensions for compatibility
         room.widthCm = newWidth;
         room.heightCm = newHeight;

@@ -1,7 +1,7 @@
 // src/ui.js
 import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
 import { t } from "./i18n.js";
-import { getRoomSections } from "./composite.js";
+// Sections have been removed - rooms now use polygonVertices only
 import { computeProjectTotals } from "./calc.js";
 import { getUiState, setUiState } from "./ui_state.js";
 import { showConfirm, showAlert } from "./dialog.js";
@@ -45,14 +45,12 @@ async function handleImportFile(file, { validateState, commit }) {
 export function bindUI({
   store,
   excl,
-  sections,
   renderAll,
   refreshProjectSelect,
   updateMeta,
   validateState,
   defaultStateFn,
   setSelectedExcl,
-  setSelectedSection,
   resetErrors
 }) {
   let tileEditActive = false;
@@ -571,11 +569,6 @@ export function bindUI({
     sel.addEventListener("change", () => setSelectedExcl(sel.value || null));
   }
 
-  function bindSectionsList() {
-    const sel = document.getElementById("sectionsList");
-    if (!sel) return;
-    sel.addEventListener("change", () => setSelectedSection(sel.value || null));
-  }
 
   function bindSettingsPanelSelectionReset() {
     const settingsPanel = document.getElementById("settingsPanel");
@@ -679,7 +672,6 @@ export function bindUI({
     });
     if (confirmed) {
       setSelectedExcl(null);
-      setSelectedSection(null);
       resetErrors();
       store.commit(t("session.reset"), defaultStateFn(), {
         onRender: renderAll,
@@ -1148,15 +1140,6 @@ export function bindUI({
     commitFn: commitFromRoomInputs,
   });
 
-
-  // Sections
-  document.getElementById("btnAddSection")?.addEventListener("click", () => {
-    if (sections) sections.addSection("right");
-  });
-  document.getElementById("btnDeleteSection")?.addEventListener("click", () => {
-    if (sections) sections.deleteSelectedSection();
-  });
-  bindSectionsList();
 
   // Exclusions
   document.getElementById("btnAddRect")?.addEventListener("click", excl.addRect);

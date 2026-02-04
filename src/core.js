@@ -139,16 +139,11 @@ export function createDefaultRoom(name = "Raum", widthCm = 600, heightCm = 400) 
       mode: "independent",
       linkedRoomId: null
     },
-    sections: [
-      {
-        id: uuid(),
-        label: "Hauptbereich",
-        x: 0,
-        y: 0,
-        widthCm,
-        heightCm,
-        skirtingEnabled: true
-      }
+    polygonVertices: [
+      { x: 0, y: 0 },
+      { x: widthCm, y: 0 },
+      { x: widthCm, y: heightCm },
+      { x: 0, y: heightCm }
     ],
     exclusions: [],
     tile: {

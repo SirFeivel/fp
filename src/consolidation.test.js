@@ -16,7 +16,7 @@ describe('Commercial Consolidation', () => {
             {
               id: uuid(),
               name: 'Room A',
-              sections: [{ id: uuid(), x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: false }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 10, heightCm: 10, reference: 'Marble' },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -25,7 +25,7 @@ describe('Commercial Consolidation', () => {
             {
               id: uuid(),
               name: 'Room B',
-              sections: [{ id: uuid(), x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: false }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 10, heightCm: 10, reference: 'Marble' },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -65,7 +65,7 @@ describe('Commercial Consolidation', () => {
             {
               id: uuid(),
               name: 'Room A',
-              sections: [{ id: uuid(), x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -105,7 +105,7 @@ describe('Commercial Consolidation', () => {
             {
               id: uuid(),
               name: 'Room A',
-              sections: [{ id: uuid(), x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -114,7 +114,7 @@ describe('Commercial Consolidation', () => {
             {
               id: uuid(),
               name: 'Room B',
-              sections: [{ id: uuid(), x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },

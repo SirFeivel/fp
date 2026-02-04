@@ -485,7 +485,7 @@ function getMetricsKey(state, room) {
     grout: room.grout,
     pattern: room.pattern,
     exclusions: room.exclusions,
-    sections: room.sections,
+    polygonVertices: room.polygonVertices,
     waste: state?.waste,
   });
 }

@@ -92,12 +92,22 @@ describe('Checkbox Styling', () => {
             {
               id: 'r1',
               name: 'Room 1',
-              sections: [{ widthCm: 200, heightCm: 300 }]
+              polygonVertices: [
+                { x: 0, y: 0 },
+                { x: 200, y: 0 },
+                { x: 200, y: 300 },
+                { x: 0, y: 300 }
+              ]
             },
             {
               id: 'r2',
               name: 'Room 2',
-              sections: [{ widthCm: 150, heightCm: 250 }]
+              polygonVertices: [
+                { x: 0, y: 0 },
+                { x: 150, y: 0 },
+                { x: 150, y: 250 },
+                { x: 0, y: 250 }
+              ]
             }
           ]
         }],

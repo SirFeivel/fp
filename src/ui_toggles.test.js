@@ -13,7 +13,7 @@ function makeState() {
           {
             id: "r1",
             name: "Room",
-            sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
             tile: { widthCm: 40, heightCm: 20, shape: "rect", reference: "" },
             grout: { widthCm: 0.2, colorHex: "#ffffff" },
             pattern: { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: "tl", xCm: 0, yCm: 0 } },
@@ -64,14 +64,12 @@ describe("UI toggles", () => {
     bindUI({
       store,
       excl: {},
-      sections: {},
       renderAll: vi.fn(),
       refreshProjectSelect: vi.fn(),
       updateMeta: vi.fn(),
       validateState: () => ({ errors: [], warns: [] }),
       defaultStateFn: () => makeState(),
       setSelectedExcl: vi.fn(),
-      setSelectedSection: vi.fn(),
       resetErrors: vi.fn()
     });
 
@@ -103,14 +101,12 @@ describe("UI toggles", () => {
     bindUI({
       store,
       excl: {},
-      sections: {},
       renderAll: vi.fn(),
       refreshProjectSelect: vi.fn(),
       updateMeta: vi.fn(),
       validateState: () => ({ errors: [], warns: [] }),
       defaultStateFn: () => makeState(),
       setSelectedExcl: vi.fn(),
-      setSelectedSection: vi.fn(),
       resetErrors: vi.fn()
     });
 

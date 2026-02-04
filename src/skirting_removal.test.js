@@ -4,7 +4,7 @@ import { computeSkirtingSegments } from './geometry.js';
 describe('Skirting Exclusions', () => {
   it('respects manual skirting exclusions in excludedSkirts', () => {
     const room = {
-      sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
       exclusions: [],
       excludedSkirts: []
     };
@@ -31,7 +31,7 @@ describe('Skirting Exclusions', () => {
 
   it('normalizes skirting IDs regardless of direction', () => {
     const room = {
-      sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100, skirtingEnabled: true }],
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
       exclusions: [],
       excludedSkirts: []
     };

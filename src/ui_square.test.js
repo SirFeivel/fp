@@ -66,7 +66,6 @@ describe('Square and Rectangle Tile UI logic', () => {
         <input id="debugShowNeeds" type="checkbox" />
       </div>
       <select id="exclList"></select>
-      <select id="sectionsList"></select>
       <select id="projectSelect">
         <option value="">– none –</option>
         <option value="p1">Project 1</option>
@@ -102,17 +101,15 @@ describe('Square and Rectangle Tile UI logic', () => {
     const refreshProjectSelect = vi.fn();
     const updateMeta = vi.fn();
 
-    bindUI({ 
-      store, 
-      renderAll, 
-      validateState, 
-      refreshProjectSelect, 
+    bindUI({
+      store,
+      renderAll,
+      validateState,
+      refreshProjectSelect,
       updateMeta,
       excl: { getSelectedExcl: () => null },
-      sections: { getSelectedSection: () => null },
       defaultStateFn: () => ({}),
       setSelectedExcl: vi.fn(),
-      setSelectedSection: vi.fn(),
       resetErrors: vi.fn()
     });
   });

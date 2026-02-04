@@ -13,7 +13,7 @@ describe('Tile Removal', () => {
         rooms: [{
           id: 'r1',
           name: 'Room 1',
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
           tile: { widthCm: 50, heightCm: 50, shape: 'rect' },
           pattern: { type: 'grid' },
           excludedTiles: []
@@ -55,7 +55,7 @@ describe('Tile Removal', () => {
         rooms: [{
           id: 'r1',
           name: 'Room 1',
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
           tile: { widthCm: 50, heightCm: 50, shape: 'rect' },
           pattern: { type: 'grid' },
           excludedTiles: []

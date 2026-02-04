@@ -48,7 +48,12 @@ function herringboneState({ roomW = 100, roomH = 200, tileW = 10, tileH = 20, gr
       id: 'floor-1',
       rooms: [{
         id: 'room-1',
-        sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomW, heightCm: roomH }],
+        polygonVertices: [
+          { x: 0, y: 0 },
+          { x: roomW, y: 0 },
+          { x: roomW, y: roomH },
+          { x: 0, y: roomH }
+        ],
         tile: { widthCm: tileW, heightCm: tileH },
         grout: { widthCm: grout },
         pattern: {
@@ -78,7 +83,12 @@ function createPatternState({
       id: 'floor-1',
       rooms: [{
         id: 'room-1',
-        sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomW, heightCm: roomH }],
+        polygonVertices: [
+          { x: 0, y: 0 },
+          { x: roomW, y: 0 },
+          { x: roomW, y: roomH },
+          { x: 0, y: roomH }
+        ],
         tile: { widthCm: tileW, heightCm: tileH, shape: 'rect' },
         grout: { widthCm: grout },
         pattern: {
@@ -114,7 +124,14 @@ function createRoomPolygon(width, height) {
 
 describe('roomPolygon', () => {
   it('creates correct polygon for room dimensions', () => {
-    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }] };
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 200 },
+        { x: 0, y: 200 }
+      ]
+    };
     const result = roomPolygon(room);
 
     expect(result).toEqual([
@@ -131,7 +148,7 @@ describe('roomPolygon', () => {
   });
 
   it('handles zero dimensions', () => {
-    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 0, heightCm: 0 }] };
+    const room = { polygonVertices: [] };
     const result = roomPolygon(room);
 
     expect(result).toBeDefined();
@@ -194,22 +211,22 @@ describe('roomPolygon', () => {
     expect(ring.length).toBe(5);
   });
 
-  it('prefers polygonVertices over sections when both exist', () => {
+  it('creates correct polygon for triangle room', () => {
     const room = {
       polygonVertices: [
         { x: 0, y: 0 },
         { x: 50, y: 0 },
         { x: 25, y: 50 }
-      ],
-      sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }]
+      ]
     };
     const result = roomPolygon(room);
 
-    // Should use polygonVertices (triangle), not sections (rectangle)
-    expect(result[0][0].length).toBe(4);  // Triangle has 3 points + closing point
+    // Triangle has 3 points + closing point = 4 points
+    expect(result[0][0].length).toBe(4);
     expect(result[0][0][0]).toEqual([0, 0]);
     expect(result[0][0][1]).toEqual([50, 0]);
     expect(result[0][0][2]).toEqual([25, 50]);
+    expect(result[0][0][3]).toEqual([0, 0]); // Closing point
   });
 });
 
@@ -615,7 +632,14 @@ describe('computeExclusionsUnion', () => {
 
 describe('computeAvailableArea', () => {
   it('returns full room when no exclusions', () => {
-    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
     const result = computeAvailableArea(room, []);
 
     expect(result.error).toBeNull();
@@ -626,7 +650,14 @@ describe('computeAvailableArea', () => {
   });
 
   it('subtracts exclusion from room', () => {
-    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
     const exclusions = [{ type: 'rect', x: 0, y: 0, w: 50, h: 50 }];
     const result = computeAvailableArea(room, exclusions);
 
@@ -638,7 +669,14 @@ describe('computeAvailableArea', () => {
   });
 
   it('handles exclusion covering entire room', () => {
-    const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 100 }] };
+    const room = {
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    };
     const exclusions = [{ type: 'rect', x: 0, y: 0, w: 100, h: 100 }];
     const result = computeAvailableArea(room, exclusions);
 
@@ -649,7 +687,14 @@ describe('computeAvailableArea', () => {
 });
 
 describe('computeOriginPoint', () => {
-  const room = { sections: [{ id: 's1', x: 0, y: 0, widthCm: 100, heightCm: 200 }] };
+  const room = {
+    polygonVertices: [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 200 },
+      { x: 0, y: 200 }
+    ]
+  };
 
   it('computes top-left origin', () => {
     const pattern = { origin: { preset: 'tl' } };
@@ -707,7 +752,12 @@ describe('tilesForPreviewHerringbone', () => {
         id: 'floor-1',
         rooms: [{
           id: 'room-1',
-          sections: [{ id: 'sec1', x: 0, y: 0, widthCm: roomWidth, heightCm: roomHeight }],
+          polygonVertices: [
+            { x: 0, y: 0 },
+            { x: roomWidth, y: 0 },
+            { x: roomWidth, y: roomHeight },
+            { x: 0, y: roomHeight }
+          ],
           tile: { widthCm: tileWidth, heightCm: tileHeight },
           grout: { widthCm: grout },
           pattern: {
@@ -894,18 +944,20 @@ describe('tilesForPreviewHerringbone', () => {
     expect(coverageRatio).toBeGreaterThan(0.95);
   });
 
-  it('renders herringbone with sections and 45° rotation', () => {
+  it('renders herringbone with L-shaped room and 45° rotation', () => {
+    // L-shaped room: main area 600x400 + extension 300x400 to the right
+    // Union creates an L-shape polygon
     const state = {
       floors: [{
         id: 'floor-1',
         rooms: [{
           id: 'room-1',
           name: 'Room',
-          widthCm: 600,
-          heightCm: 400,
-          sections: [
-            { id: 'main', x: 0, y: 0, widthCm: 600, heightCm: 400 },
-            { id: 'ext', x: 600, y: 0, widthCm: 300, heightCm: 400 }
+          polygonVertices: [
+            { x: 0, y: 0 },
+            { x: 900, y: 0 },
+            { x: 900, y: 400 },
+            { x: 0, y: 400 }
           ],
           exclusions: [],
           tile: { widthCm: 10, heightCm: 40, shape: 'rect' },

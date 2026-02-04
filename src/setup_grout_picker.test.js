@@ -70,9 +70,7 @@ describe('Setup grout color presets', () => {
       validateState: () => ({ errors: [], warns: [] }),
       defaultStateFn: () => defaultState,
       excl: { getSelectedExcl: () => null },
-      sections: { getSelectedSection: () => null },
       setSelectedExcl: () => {},
-      setSelectedSection: () => {},
       resetErrors: () => {}
     });
 

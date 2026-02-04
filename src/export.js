@@ -5,6 +5,7 @@ import { t } from "./i18n.js";
 import { getCurrentRoom, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { renderPlanSvg } from "./render.js";
 import { getRalMatch } from "./ral.js";
+import { getRoomBounds } from "./geometry.js";
 
 function dateStamp() {
   const d = new Date();
@@ -45,8 +46,8 @@ export function buildRoomExportModel(state, roomId) {
     floorName: floor?.name || "",
     roomName: room.name || "",
     roomDimensionsCm: {
-      width: Math.round(room.sections?.[0]?.widthCm || 0),
-      length: Math.round(room.sections?.[0]?.heightCm || 0)
+      width: Math.round(getRoomBounds(room).width || 0),
+      length: Math.round(getRoomBounds(room).height || 0)
     },
     roomAreaM2: metrics.ok ? metrics.data.area.netAreaM2 : 0,
     tile: {

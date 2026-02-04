@@ -40,7 +40,7 @@ describe('getFloorBounds', () => {
       rooms: [{
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ id: 's1', x: 0, y: 0, widthCm: 400, heightCm: 300 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }]
       }]
     };
     const bounds = getFloorBounds(floor);
@@ -57,7 +57,7 @@ describe('getFloorBounds', () => {
       rooms: [{
         id: 'r1',
         floorPosition: { x: 100, y: 50 },
-        sections: [{ id: 's1', x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
       }]
     };
     const bounds = getFloorBounds(floor);
@@ -73,12 +73,12 @@ describe('getFloorBounds', () => {
         {
           id: 'r1',
           floorPosition: { x: 0, y: 0 },
-          sections: [{ id: 's1', x: 0, y: 0, widthCm: 300, heightCm: 200 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 200 }, { x: 0, y: 200 }]
         },
         {
           id: 'r2',
           floorPosition: { x: 350, y: 0 },
-          sections: [{ id: 's2', x: 0, y: 0, widthCm: 250, heightCm: 300 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 250, y: 0 }, { x: 250, y: 300 }, { x: 0, y: 300 }]
         }
       ]
     };
@@ -95,7 +95,7 @@ describe('getFloorBounds', () => {
     const floor = {
       rooms: [{
         id: 'r1',
-        sections: [{ id: 's1', x: 0, y: 0, widthCm: 200, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }]
       }]
     };
     const bounds = getFloorBounds(floor);
@@ -185,11 +185,11 @@ describe('areRoomsAdjacent', () => {
   it('detects adjacent rooms sharing vertical edge', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     const roomB = {
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 150 }, { x: 0, y: 150 }]
     };
     expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
   });
@@ -197,11 +197,11 @@ describe('areRoomsAdjacent', () => {
   it('detects adjacent rooms sharing horizontal edge', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 0, y: 100 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
   });
@@ -209,11 +209,11 @@ describe('areRoomsAdjacent', () => {
   it('detects rooms with small gap as adjacent with tolerance', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 200.5, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 100 }, { x: 0, y: 100 }]
     };
     expect(areRoomsAdjacent(roomA, roomB, 1)).toBe(true);
   });
@@ -221,22 +221,22 @@ describe('areRoomsAdjacent', () => {
   it('detects non-adjacent rooms with large gap', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 250, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 100 }, { x: 0, y: 100 }]
     };
     expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
   });
 
   it('handles rooms with missing floorPosition', () => {
     const roomA = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
   });
@@ -246,11 +246,11 @@ describe('areRoomsAdjacent', () => {
     // Room B: 100x100 at (100, 100) - only touches at corner (100, 100)
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 100 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     // Should be false - only corner touch, no shared edge
     expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
@@ -261,11 +261,11 @@ describe('areRoomsAdjacent', () => {
     // Room B: 100x100 at (100, 95) - shares only 5cm of edge
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 95 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     // Default minimum is 10cm, they share only 5cm
     expect(areRoomsAdjacent(roomA, roomB)).toBe(false);
@@ -276,11 +276,11 @@ describe('areRoomsAdjacent', () => {
     // Room B: 100x100 at (100, 90) - shares exactly 10cm of edge
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 90 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     // Should be true - shares exactly 10cm (from y=90 to y=100)
     expect(areRoomsAdjacent(roomA, roomB)).toBe(true);
@@ -289,11 +289,11 @@ describe('areRoomsAdjacent', () => {
   it('allows custom minimum shared length', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 95 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     // With minSharedLength=5, should be adjacent (shares 5cm)
     expect(areRoomsAdjacent(roomA, roomB, 1, 5)).toBe(true);
@@ -351,11 +351,11 @@ describe('getSharedEdgeLength', () => {
   it('returns correct shared length for fully aligned edges', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const sharedLength = getSharedEdgeLength(roomA, roomB);
     expect(sharedLength).toBe(100);
@@ -364,11 +364,11 @@ describe('getSharedEdgeLength', () => {
   it('returns correct shared length for partially aligned edges', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 50 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const sharedLength = getSharedEdgeLength(roomA, roomB);
     expect(sharedLength).toBe(50); // Overlap from y=50 to y=100
@@ -377,11 +377,11 @@ describe('getSharedEdgeLength', () => {
   it('returns zero for non-touching rooms', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const sharedLength = getSharedEdgeLength(roomA, roomB);
     expect(sharedLength).toBe(0);
@@ -395,17 +395,17 @@ describe('findAdjacentRooms', () => {
         {
           id: 'r1',
           floorPosition: { x: 0, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
         },
         {
           id: 'r2',
           floorPosition: { x: 200, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 150 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 150 }, { x: 0, y: 150 }]
         },
         {
           id: 'r3',
           floorPosition: { x: 500, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         }
       ]
     };
@@ -419,7 +419,7 @@ describe('findAdjacentRooms', () => {
       rooms: [{
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }]
     };
     const adjacent = findAdjacentRooms(floor, 'nonexistent');
@@ -431,7 +431,7 @@ describe('findAdjacentRooms', () => {
       rooms: [{
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }]
     };
     const adjacent = findAdjacentRooms(floor, 'r1');
@@ -443,7 +443,7 @@ describe('getRoomAbsoluteBounds', () => {
   it('returns absolute bounds for room at origin', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     const bounds = getRoomAbsoluteBounds(room);
     expect(bounds.left).toBe(0);
@@ -455,7 +455,7 @@ describe('getRoomAbsoluteBounds', () => {
   it('returns absolute bounds for room with offset', () => {
     const room = {
       floorPosition: { x: 100, y: 50 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     const bounds = getRoomAbsoluteBounds(room);
     expect(bounds.left).toBe(100);
@@ -506,11 +506,11 @@ describe('doRoomsOverlap', () => {
   it('detects overlapping rooms', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     const roomB = {
       floorPosition: { x: 100, y: 50 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     expect(doRoomsOverlap(roomA, roomB)).toBe(true);
   });
@@ -518,11 +518,11 @@ describe('doRoomsOverlap', () => {
   it('returns false for adjacent rooms (touching but not overlapping)', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     const roomB = {
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     };
     expect(doRoomsOverlap(roomA, roomB)).toBe(false);
   });
@@ -530,11 +530,11 @@ describe('doRoomsOverlap', () => {
   it('returns false for separated rooms', () => {
     const roomA = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const roomB = {
       floorPosition: { x: 300, y: 300 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     expect(doRoomsOverlap(roomA, roomB)).toBe(false);
   });
@@ -544,11 +544,11 @@ describe('wouldRoomOverlap', () => {
   it('detects overlap at proposed position', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 150, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Moving room to x=100 would overlap with other room at x=150
     expect(wouldRoomOverlap(room, otherRooms, 100, 0)).toBe(true);
@@ -557,11 +557,11 @@ describe('wouldRoomOverlap', () => {
   it('returns false when no overlap at proposed position', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     expect(wouldRoomOverlap(room, otherRooms, 50, 0)).toBe(false);
   });
@@ -570,11 +570,11 @@ describe('wouldRoomOverlap', () => {
 describe('findRoomSnapPositions', () => {
   it('generates snap positions at edges of other rooms', () => {
     const room = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 150, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 150 }, { x: 0, y: 150 }]
     }];
     const positions = findRoomSnapPositions(room, otherRooms);
     // Should have positions for all 4 edges × 2 alignment options = 8 positions
@@ -589,11 +589,11 @@ describe('findNearestNonOverlappingPosition', () => {
   it('returns desired position when no overlap', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 300, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     const result = findNearestNonOverlappingPosition(room, otherRooms, 50, 50);
     expect(result).toEqual({ x: 50, y: 50 });
@@ -602,11 +602,11 @@ describe('findNearestNonOverlappingPosition', () => {
   it('snaps to adjacent position when overlap detected', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 150, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Trying to move to x=100 would overlap - should snap to x=50 (adjacent left) or x=150 (adjacent right)
     const result = findNearestNonOverlappingPosition(room, otherRooms, 100, 0);
@@ -617,11 +617,11 @@ describe('findNearestNonOverlappingPosition', () => {
   it('pushes room out of overlap when no snap within threshold', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 50, y: 50 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Trying to move to exact same position as other room
     const result = findNearestNonOverlappingPosition(room, otherRooms, 50, 50, 10);
@@ -634,7 +634,7 @@ describe('isRoomConnected', () => {
   it('returns true for single room (no other rooms)', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     expect(isRoomConnected(room, [], 0, 0)).toBe(true);
   });
@@ -642,11 +642,11 @@ describe('isRoomConnected', () => {
   it('returns true when room is adjacent to another room', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 100, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Room at x=0 is adjacent to room at x=100 (they share an edge at x=100)
     expect(isRoomConnected(room, otherRooms, 0, 0)).toBe(true);
@@ -655,11 +655,11 @@ describe('isRoomConnected', () => {
   it('returns false when room is not adjacent to any other room', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 300, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Room at x=0 with width 100 ends at x=100, other room starts at x=300
     // They don't share an edge
@@ -669,11 +669,11 @@ describe('isRoomConnected', () => {
   it('detects connection when moving room to adjacent position', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Room moved to x=100 would be adjacent to room at x=200
     expect(isRoomConnected(room, otherRooms, 100, 0)).toBe(true);
@@ -684,7 +684,7 @@ describe('findNearestConnectedPosition', () => {
   it('returns desired position for single room', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const result = findNearestConnectedPosition(room, [], 50, 50);
     expect(result).toEqual({ x: 50, y: 50 });
@@ -693,11 +693,11 @@ describe('findNearestConnectedPosition', () => {
   it('returns desired position when already connected and non-overlapping', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 100, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Desired position x=0 is adjacent to other room at x=100
     const result = findNearestConnectedPosition(room, otherRooms, 0, 0);
@@ -707,11 +707,11 @@ describe('findNearestConnectedPosition', () => {
   it('snaps to connected position when desired position would be disconnected', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 200, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Trying to move to x=-100 would disconnect from other room
     const result = findNearestConnectedPosition(room, otherRooms, -100, 0);
@@ -724,11 +724,11 @@ describe('findNearestConnectedPosition', () => {
   it('prevents free-floating rooms', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const otherRooms = [{
       floorPosition: { x: 100, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     // Trying to move far away (free-floating)
     const result = findNearestConnectedPosition(room, otherRooms, 500, 500);
@@ -741,11 +741,11 @@ describe('findNearestConnectedPosition', () => {
   it('finds valid position along edges when direct snap not available', () => {
     const room = {
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 50 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }]
     };
     const otherRooms = [{
       floorPosition: { x: 0, y: 50 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 200 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }]
     }];
     // Room is currently connected (shares edge at y=50)
     // Trying to move to an invalid position
@@ -761,7 +761,7 @@ describe('getAllFreeEdges', () => {
     const rooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     const freeEdges = getAllFreeEdges(rooms, 10);
     // Single room has 4 free edges (all sides)
@@ -776,12 +776,12 @@ describe('getAllFreeEdges', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
     const freeEdges = getAllFreeEdges(rooms, 10);
@@ -795,7 +795,7 @@ describe('getAllFreeEdges', () => {
     const rooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 5 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 5 }, { x: 0, y: 5 }]
     }];
     // With minLength=10, the 5cm edges should be excluded
     const freeEdges = getAllFreeEdges(rooms, 10);
@@ -806,7 +806,7 @@ describe('getAllFreeEdges', () => {
 describe('findPositionOnFreeEdge', () => {
   it('returns origin for empty floor', () => {
     const newRoom = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const result = findPositionOnFreeEdge(newRoom, []);
     expect(result).toEqual({ x: 0, y: 0, edge: null });
@@ -814,12 +814,12 @@ describe('findPositionOnFreeEdge', () => {
 
   it('places new room to the right of single room', () => {
     const newRoom = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const existingRooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     }];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
     expect(result).not.toBeNull();
@@ -829,12 +829,12 @@ describe('findPositionOnFreeEdge', () => {
 
   it('places new room below existing room when preferred', () => {
     const newRoom = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const existingRooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     }];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'bottom');
     expect(result).not.toBeNull();
@@ -843,19 +843,19 @@ describe('findPositionOnFreeEdge', () => {
 
   it('finds free edge when some edges are occupied', () => {
     const newRoom = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     // Two rooms side by side - the right edge of r1 is occupied by r2
     const existingRooms = [
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
@@ -866,12 +866,12 @@ describe('findPositionOnFreeEdge', () => {
 
   it('returns connected and non-overlapping position', () => {
     const newRoom = {
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     };
     const existingRooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 200, heightCm: 150 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }]
     }];
     const result = findPositionOnFreeEdge(newRoom, existingRooms);
     expect(result).not.toBeNull();
@@ -893,7 +893,7 @@ describe('findConnectedRoomGroups', () => {
     const rooms = [{
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
     const groups = findConnectedRoomGroups(rooms);
     expect(groups).toEqual([['r1']]);
@@ -904,17 +904,17 @@ describe('findConnectedRoomGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r3',
         floorPosition: { x: 200, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
     const groups = findConnectedRoomGroups(rooms);
@@ -927,17 +927,17 @@ describe('findConnectedRoomGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r3',
         floorPosition: { x: 500, y: 0 }, // Disconnected - 300cm gap
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
     const groups = findConnectedRoomGroups(rooms);
@@ -952,12 +952,12 @@ describe('findConnectedRoomGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 100 }, // Only touches at corner (100, 100)
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
     const groups = findConnectedRoomGroups(rooms);
@@ -977,7 +977,7 @@ describe('validateFloorConnectivity', () => {
         id: 'r1',
         name: 'Room 1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }]
     };
     const result = validateFloorConnectivity(floor);
@@ -991,13 +991,13 @@ describe('validateFloorConnectivity', () => {
           id: 'r1',
           name: 'Room 1',
           floorPosition: { x: 0, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         },
         {
           id: 'r2',
           name: 'Room 2',
           floorPosition: { x: 100, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         }
       ]
     };
@@ -1013,13 +1013,13 @@ describe('validateFloorConnectivity', () => {
           id: 'r1',
           name: 'Room 1',
           floorPosition: { x: 0, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         },
         {
           id: 'r2',
           name: 'Room 2',
           floorPosition: { x: 500, y: 0 }, // Disconnected
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         }
       ]
     };
@@ -1037,13 +1037,13 @@ describe('validateFloorConnectivity', () => {
           id: 'r1',
           name: 'Kitchen',
           floorPosition: { x: 0, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         },
         {
           id: 'r2',
           name: 'Bedroom',
           floorPosition: { x: 500, y: 0 },
-          sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
         }
       ]
     };
@@ -1071,7 +1071,7 @@ describe('subtractOverlappingAreas', () => {
       id: 'r1',
       name: 'Room 1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
 
     const result = subtractOverlappingAreas(newRoom, existingRooms);
@@ -1095,7 +1095,7 @@ describe('subtractOverlappingAreas', () => {
       id: 'r1',
       name: 'Room 1',
       floorPosition: { x: 0, y: 0 },
-      sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
     }];
 
     const result = subtractOverlappingAreas(newRoom, existingRooms);
@@ -1145,12 +1145,12 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
 
@@ -1165,13 +1165,13 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: true }
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: true }
       }
     ];
@@ -1188,19 +1188,19 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'A',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: true }
       },
       {
         id: 'B',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: false }
       },
       {
         id: 'C',
         floorPosition: { x: 200, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: true }
       }
     ];
@@ -1224,23 +1224,23 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'A',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'B',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: false }
       },
       {
         id: 'C',
         floorPosition: { x: 200, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'D',
         floorPosition: { x: 300, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
 
@@ -1267,13 +1267,13 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: false }
       },
       {
         id: 'r2',
         floorPosition: { x: 100, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
         patternLinking: { enabled: false }
       }
     ];
@@ -1289,12 +1289,12 @@ describe('findPatternLinkedGroups', () => {
       {
         id: 'r1',
         floorPosition: { x: 0, y: 0 },
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       },
       {
         id: 'r2',
         floorPosition: { x: 500, y: 500 }, // Far away, not adjacent
-        sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }]
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
       }
     ];
 

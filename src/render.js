@@ -16,7 +16,7 @@ import {
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
 } from "./geometry.js";
-import { getRoomSections, computeCompositePolygon, computeCompositeBounds } from "./composite.js";
+// Sections have been removed - rooms now use polygonVertices only
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
@@ -550,33 +550,6 @@ export function renderRoomForm(state) {
   });
 }
 
-export function renderSectionsList(state, selectedSectionId) {
-  const sel = document.getElementById("sectionsList");
-  if (!sel) return;
-
-  sel.innerHTML = "";
-  const currentRoom = getCurrentRoom(state);
-  const sections = getRoomSections(currentRoom);
-
-  if (!sections.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = t("project.none");
-    sel.appendChild(opt);
-    sel.disabled = true;
-    return;
-  }
-
-  sel.disabled = false;
-  for (const sec of sections) {
-    const opt = document.createElement("option");
-    opt.value = sec.id;
-    const label = sec.label || `Section ${sec.id}`;
-    opt.textContent = `${label} (${sec.widthCm}×${sec.heightCm} cm)`;
-    if (sec.id === selectedSectionId) opt.selected = true;
-    sel.appendChild(opt);
-  }
-}
 
 export function renderTilePresets(state, selectedId, setSelectedId) {
   const list = document.getElementById("tilePresetList");
@@ -785,79 +758,11 @@ export function renderSkirtingRoomList(state, { onToggleRoom, onToggleSection })
         onToggleRoom?.(room.id, Boolean(roomInput.checked));
       });
       wrap.appendChild(roomRow);
-
-      const sections = getRoomSections(room);
-      if (sections.length < 2) return;
-      sections.forEach((sec, secIdx) => {
-        const secRow = document.createElement("div");
-        secRow.className = "skirting-room-row is-section";
-        if (!roomEnabled) secRow.classList.add("is-disabled");
-        const secName = sec.label || `${t("room.section")} ${secIdx + 1}`;
-        const secNameEl = document.createElement("div");
-        secNameEl.className = "skirting-room-name";
-        secNameEl.textContent = `${t("room.section")}: ${secName}`;
-        const secToggle = document.createElement("label");
-        secToggle.className = "toggle-switch skirting-room-toggle";
-        const secInput = document.createElement("input");
-        secInput.type = "checkbox";
-        secInput.checked = sec.skirtingEnabled !== false;
-        secInput.dataset.roomId = room.id;
-        secInput.dataset.secId = sec.id;
-        if (!roomEnabled) secInput.disabled = true;
-        const secSlider = document.createElement("div");
-        secSlider.className = "toggle-slider";
-        secRow.appendChild(secNameEl);
-        secToggle.appendChild(secInput);
-        secToggle.appendChild(secSlider);
-        secRow.appendChild(secToggle);
-        secInput.addEventListener("change", () => {
-          onToggleSection?.(room.id, sec.id, Boolean(secInput.checked));
-        });
-        wrap.appendChild(secRow);
-      });
+      // Sections have been removed - rooms now use polygonVertices only
     });
   });
 }
 
-export function renderCurrentRoomSections(room, { onToggleSection }) {
-  const wrap = document.getElementById("currentRoomSectionsList");
-  if (!wrap) return;
-  wrap.innerHTML = "";
-
-  if (!room) return;
-
-  const roomEnabled = room.skirting?.enabled !== false;
-  const sections = getRoomSections(room);
-
-  if (sections.length < 2) return;
-
-  sections.forEach((sec, secIdx) => {
-    const secRow = document.createElement("div");
-    secRow.className = "skirting-room-row is-section";
-    if (!roomEnabled) secRow.classList.add("is-disabled");
-    const secName = sec.label || `${t("room.section")} ${secIdx + 1}`;
-    const secNameEl = document.createElement("div");
-    secNameEl.className = "skirting-room-name";
-    secNameEl.textContent = secName;
-    const secToggle = document.createElement("label");
-    secToggle.className = "toggle-switch skirting-room-toggle";
-    const secInput = document.createElement("input");
-    secInput.type = "checkbox";
-    secInput.checked = sec.skirtingEnabled !== false;
-    secInput.dataset.secId = sec.id;
-    if (!roomEnabled) secInput.disabled = true;
-    const secSlider = document.createElement("div");
-    secSlider.className = "toggle-slider";
-    secRow.appendChild(secNameEl);
-    secToggle.appendChild(secInput);
-    secToggle.appendChild(secSlider);
-    secRow.appendChild(secToggle);
-    secInput.addEventListener("change", () => {
-      onToggleSection?.(room.id, sec.id, Boolean(secInput.checked));
-    });
-    wrap.appendChild(secRow);
-  });
-}
 
 export function renderTilePresetPicker(state, currentRoom) {
   const sel = document.getElementById("tilePresetSelect");
@@ -901,81 +806,6 @@ export function renderSkirtingPresetPicker(state) {
   });
 }
 
-export function renderSectionProps({
-  state,
-  selectedSectionId,
-  getSelectedSection,
-  commitSectionProps
-}) {
-  const wrap = document.getElementById("sectionProps");
-  if (!wrap) return;
-
-  const sec = getSelectedSection();
-  wrap.innerHTML = "";
-
-  if (!sec) {
-    const div = document.createElement("div");
-    div.className = "meta subtle span2";
-    div.textContent = t("room.noSectionSelected");
-    wrap.appendChild(div);
-    return;
-  }
-
-  const field = (label, id, value, step = "0.1") => {
-    const d = document.createElement("div");
-    d.className = "field";
-    d.innerHTML = `<label>${escapeHTML(
-      label
-    )}</label><input id="${id}" type="number" step="${step}" />`;
-    wrap.appendChild(d);
-    const inp = d.querySelector("input");
-    inp.value = value;
-    inp.addEventListener("blur", () => commitSectionProps(t("room.sectionChanged")));
-    inp.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        inp.blur();
-      }
-    });
-    return inp;
-  };
-
-  const labelDiv = document.createElement("div");
-  labelDiv.className = "field span2";
-  labelDiv.innerHTML = `<label>${t("secProps.label")}</label><input id="secLabel" type="text" />`;
-  wrap.appendChild(labelDiv);
-  const labelInp = labelDiv.querySelector("input");
-  labelInp.value = sec.label || "";
-  labelInp.addEventListener("blur", () => commitSectionProps(t("room.sectionChanged")));
-  labelInp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      labelInp.blur();
-    }
-  });
-
-  field(t("secProps.x"), "secX", sec.x, "1");
-  field(t("secProps.y"), "secY", sec.y, "1");
-  field(t("secProps.width"), "secW", sec.widthCm, "0.1");
-  field(t("secProps.height"), "secH", sec.heightCm, "0.1");
-
-  // Add Skirting Toggle for Section
-  const div = document.createElement("div");
-  div.className = "field span2";
-  div.innerHTML = `
-    <label class="toggle-switch">
-      <span class="toggle-label">${t("skirting.sectionEnabled")}</span>
-      <input id="secSkirtingEnabled" type="checkbox" ${sec.skirtingEnabled !== false ? "checked" : ""}>
-      <div class="toggle-slider"></div>
-    </label>
-  `;
-  wrap.appendChild(div);
-
-  const inp = div.querySelector("#secSkirtingEnabled");
-  inp.addEventListener("change", () => {
-    commitSectionProps(t("room.sectionChanged"));
-  });
-}
 
 export function renderReferencePicker(state) {
   const dl = document.getElementById("tileReferences");
@@ -1565,8 +1395,6 @@ export function renderPlanSvg({
     closeSvgEdit(false);
   }
 
-  const sections = getRoomSections(currentRoom);
-
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
   const dimMargin = isExportBW ? 18 : 0;
@@ -1660,279 +1488,6 @@ export function renderPlanSvg({
     }));
   }
 
-  // room sections
-  const gSec = svgEl("g");
-  for (const section of sections) {
-    if (!(section.widthCm > 0 && section.heightCm > 0)) continue;
-
-    const isSectionSelected = section.id === selectedSectionId;
-    const sectionRect = svgEl("rect", {
-      x: section.x,
-      y: section.y,
-      width: section.widthCm,
-      height: section.heightCm,
-      fill: isExportBW ? "none" : (isSectionSelected ? "rgba(122,162,255,0.15)" : "rgba(122,162,255,0.06)"),
-      stroke: isExportBW ? "#111111" : (isSectionSelected ? "rgba(122,162,255,1)" : "rgba(122,162,255,0.8)"),
-      "stroke-width": isExportBW ? 1.2 : (isSectionSelected ? 2 : 1.2),
-      cursor: sections.length > 1 ? "move" : "default",
-      "data-secid": section.id
-    });
-
-    // Add click handler for selection (only if multiple sections)
-    if (sections.length > 1 && setSelectedSection) {
-      sectionRect.addEventListener("click", (e) => {
-        e.stopPropagation();
-        setSelectedSection(section.id);
-      });
-      if (onSectionPointerDown) {
-        sectionRect.addEventListener("pointerdown", onSectionPointerDown);
-      }
-    }
-
-    gSec.appendChild(sectionRect);
-
-    if (section.label && sections.length > 1) {
-      const sectionLabel = svgEl("text", {
-        x: section.x + 8,
-        y: section.y + 18,
-        fill: isSectionSelected ? "rgba(231,238,252,0.95)" : "rgba(231,238,252,0.70)",
-        "font-size": 12,
-        "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-        "pointer-events": "none"
-      });
-      sectionLabel.textContent = section.label;
-      gSec.appendChild(sectionLabel);
-    }
-
-    // Add resize handles and dimension labels for selected section
-    if (isSectionSelected && sections.length > 1) {
-      const handleRadius = 6;
-      const handleStyle = {
-        fill: "var(--accent, #3b82f6)",
-        stroke: "#fff",
-        "stroke-width": 1.5,
-        cursor: "pointer",
-        "data-secid": section.id
-      };
-      const pad = 10;
-
-      // Corner handles (nw, ne, sw, se) and edge handles (n, s, e, w)
-      const handles = [
-        { type: "nw", x: section.x, y: section.y, cursor: "nwse-resize" },
-        { type: "ne", x: section.x + section.widthCm, y: section.y, cursor: "nesw-resize" },
-        { type: "sw", x: section.x, y: section.y + section.heightCm, cursor: "nesw-resize" },
-        { type: "se", x: section.x + section.widthCm, y: section.y + section.heightCm, cursor: "nwse-resize" },
-        { type: "n", x: section.x + section.widthCm / 2, y: section.y, cursor: "ns-resize" },
-        { type: "s", x: section.x + section.widthCm / 2, y: section.y + section.heightCm, cursor: "ns-resize" },
-        { type: "w", x: section.x, y: section.y + section.heightCm / 2, cursor: "ew-resize" },
-        { type: "e", x: section.x + section.widthCm, y: section.y + section.heightCm / 2, cursor: "ew-resize" }
-      ];
-
-      handles.forEach(h => {
-        const handle = svgEl("circle", {
-          ...handleStyle,
-          cx: h.x,
-          cy: h.y,
-          r: handleRadius,
-          cursor: h.cursor,
-          "data-resize-handle": h.type
-        });
-        if (onSectionResizeHandlePointerDown) {
-          handle.addEventListener("pointerdown", onSectionResizeHandlePointerDown);
-        }
-        gSec.appendChild(handle);
-      });
-
-      // Editable dimension labels (matching exclusion pattern)
-      const addSectionEditableLabel = (text, value, key, x, y, anchor = "middle", angle = 0) => {
-        let finalAngle = angle;
-        if (finalAngle > 90 || finalAngle < -90) {
-          finalAngle += 180;
-        }
-        const labelGroup = addPillLabel(text, x, y, {
-          anchor,
-          angle: finalAngle,
-          parent: gSec
-        });
-        if (!onSectionInlineEdit) return;
-        const openEdit = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          labelGroup.style.display = "none";
-          startSvgEdit({
-            svg,
-            x,
-            y,
-            angle: finalAngle,
-            value,
-            textStyle: labelBaseStyle,
-            onCommit: (nextVal) => {
-              labelGroup.style.display = "";
-              onSectionInlineEdit({ id: section.id, key, value: nextVal });
-            },
-            onCancel: () => {
-              labelGroup.style.display = "";
-            },
-            anchor
-          });
-        };
-        labelGroup.addEventListener("pointerdown", openEdit);
-        labelGroup.addEventListener("click", openEdit);
-      };
-
-      addSectionEditableLabel(`${fmtCm(section.widthCm)} cm`, section.widthCm, "widthCm", section.x + section.widthCm / 2, section.y - pad, "middle", 0);
-      addSectionEditableLabel(`${fmtCm(section.heightCm)} cm`, section.heightCm, "heightCm", section.x + section.widthCm + pad, section.y + section.heightCm / 2, "middle", 90);
-    }
-  }
-
-  // Add "+" indicators on all outer edges for adding new sections
-  if (onAddSectionAtEdge && !selectedExclId) {
-    const plusBtnRadius = 10;
-    const plusBtnOffset = 25; // Distance from edge
-    const plusStyle = {
-      fill: "rgba(122,162,255,0.15)",
-      stroke: "rgba(122,162,255,0.8)",
-      "stroke-width": 1.5,
-      cursor: "pointer"
-    };
-    const plusLineStyle = {
-      stroke: "rgba(122,162,255,0.9)",
-      "stroke-width": 2,
-      "stroke-linecap": "round",
-      "pointer-events": "none"
-    };
-    const plusSize = 5;
-
-    // Helper to check if two edges overlap (share a segment)
-    const edgesOverlap = (a1, a2, b1, b2) => {
-      const min1 = Math.min(a1, a2);
-      const max1 = Math.max(a1, a2);
-      const min2 = Math.min(b1, b2);
-      const max2 = Math.max(b1, b2);
-      const overlapStart = Math.max(min1, min2);
-      const overlapEnd = Math.min(max1, max2);
-      return overlapEnd - overlapStart > 0.01; // More than a point
-    };
-
-    // Check if a section edge is adjacent to another section
-    const isEdgeShared = (sec, edge) => {
-      const eps = 0.01;
-      for (const other of sections) {
-        if (other.id === sec.id) continue;
-
-        const oLeft = other.x;
-        const oRight = other.x + other.widthCm;
-        const oTop = other.y;
-        const oBottom = other.y + other.heightCm;
-
-        const sLeft = sec.x;
-        const sRight = sec.x + sec.widthCm;
-        const sTop = sec.y;
-        const sBottom = sec.y + sec.heightCm;
-
-        if (edge === "right" && Math.abs(sRight - oLeft) < eps) {
-          if (edgesOverlap(sTop, sBottom, oTop, oBottom)) return true;
-        }
-        if (edge === "left" && Math.abs(sLeft - oRight) < eps) {
-          if (edgesOverlap(sTop, sBottom, oTop, oBottom)) return true;
-        }
-        if (edge === "bottom" && Math.abs(sBottom - oTop) < eps) {
-          if (edgesOverlap(sLeft, sRight, oLeft, oRight)) return true;
-        }
-        if (edge === "top" && Math.abs(sTop - oBottom) < eps) {
-          if (edgesOverlap(sLeft, sRight, oLeft, oRight)) return true;
-        }
-      }
-      return false;
-    };
-
-    // Collect all outer edges from all sections
-    const outerEdges = [];
-    for (const sec of sections) {
-      if (!(sec.widthCm > 0 && sec.heightCm > 0)) continue;
-
-      const sLeft = sec.x;
-      const sRight = sec.x + sec.widthCm;
-      const sTop = sec.y;
-      const sBottom = sec.y + sec.heightCm;
-
-      // Check each edge
-      if (!isEdgeShared(sec, "right")) {
-        outerEdges.push({
-          dir: "right",
-          x: sRight + plusBtnOffset,
-          y: (sTop + sBottom) / 2,
-          edgeInfo: { x: sRight, y1: sTop, y2: sBottom, secId: sec.id }
-        });
-      }
-      if (!isEdgeShared(sec, "left")) {
-        outerEdges.push({
-          dir: "left",
-          x: sLeft - plusBtnOffset,
-          y: (sTop + sBottom) / 2,
-          edgeInfo: { x: sLeft, y1: sTop, y2: sBottom, secId: sec.id }
-        });
-      }
-      if (!isEdgeShared(sec, "bottom")) {
-        outerEdges.push({
-          dir: "bottom",
-          x: (sLeft + sRight) / 2,
-          y: sBottom + plusBtnOffset,
-          edgeInfo: { y: sBottom, x1: sLeft, x2: sRight, secId: sec.id }
-        });
-      }
-      if (!isEdgeShared(sec, "top")) {
-        outerEdges.push({
-          dir: "top",
-          x: (sLeft + sRight) / 2,
-          y: sTop - plusBtnOffset,
-          edgeInfo: { y: sTop, x1: sLeft, x2: sRight, secId: sec.id }
-        });
-      }
-    }
-
-    // Render "+" button for each outer edge
-    outerEdges.forEach(btn => {
-      const btnGroup = svgEl("g", { cursor: "pointer" });
-
-      // Circle background
-      btnGroup.appendChild(svgEl("circle", {
-        ...plusStyle,
-        cx: btn.x,
-        cy: btn.y,
-        r: plusBtnRadius
-      }));
-
-      // Plus sign (horizontal line)
-      btnGroup.appendChild(svgEl("line", {
-        ...plusLineStyle,
-        x1: btn.x - plusSize,
-        y1: btn.y,
-        x2: btn.x + plusSize,
-        y2: btn.y
-      }));
-
-      // Plus sign (vertical line)
-      btnGroup.appendChild(svgEl("line", {
-        ...plusLineStyle,
-        x1: btn.x,
-        y1: btn.y - plusSize,
-        x2: btn.x,
-        y2: btn.y + plusSize
-      }));
-
-      btnGroup.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onAddSectionAtEdge(btn.dir, btn.edgeInfo);
-      });
-
-      gSec.appendChild(btnGroup);
-    });
-  }
-
-  svg.appendChild(gSec);
-
   // Update dynamic plan title in header
   const planTitleEl = document.getElementById("planTitle");
   if (planTitleEl) {
@@ -1940,8 +1495,7 @@ export function renderPlanSvg({
     const floorName = currentFloor?.name || "–";
     const roomName = currentRoom?.name || "–";
     const totalArea = (w * h / 10000).toFixed(2);
-    const sectionInfo = sections.length > 1 ? ` (${sections.length} ${t("room.sectionsList")})` : "";
-    planTitleEl.textContent = `${floorName} / ${roomName} — ${totalArea} m²${sectionInfo}`;
+    planTitleEl.textContent = `${floorName} / ${roomName} — ${totalArea} m²`;
   }
 
   // tiles
@@ -2729,9 +2283,9 @@ export function renderExportTab(state, selection = null) {
 
       const meta = document.createElement("div");
       meta.className = "export-room-meta";
-      const section = room.sections?.[0];
-      if (section) {
-        meta.textContent = `${Math.round(section.widthCm)} x ${Math.round(section.heightCm)} cm`;
+      const bounds = getRoomBounds(room);
+      if (bounds.width > 0 && bounds.height > 0) {
+        meta.textContent = `${Math.round(bounds.width)} x ${Math.round(bounds.height)} cm`;
       } else {
         meta.textContent = "–";
       }
@@ -3066,8 +2620,9 @@ export function renderFloorCanvas({
 
     svg.appendChild(roomGroup);
 
-    // Add resize handles for selected room (only for rectangle rooms with sections)
-    if (isSelected && onRoomResizePointerDown && room.sections?.length > 0 && !room.polygonVertices) {
+    // Add resize handles for selected room (only for simple rectangular rooms)
+    const isSimpleRect = room.polygonVertices?.length === 4;
+    if (isSelected && onRoomResizePointerDown && isSimpleRect) {
       const handleRadius = 6;
       const handles = [
         { type: "nw", x: roomBounds.minX, y: roomBounds.minY, cursor: "nwse-resize" },

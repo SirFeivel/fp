@@ -5,9 +5,8 @@ import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController, createSectionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController } from "./drag.js";
+import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
-import { createSectionsController } from "./sections.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
@@ -31,14 +30,11 @@ import {
   renderExclList,
   renderExclProps,
   renderSkirtingRoomList,
-  renderCurrentRoomSections,
   renderPlanSvg,
   renderFloorCanvas,
   renderPatternGroupsCanvas,
-  renderSectionsList,
   renderTilePresets,
   renderSkirtingPresets,
-  renderSectionProps,
   renderCommercialTab,
   renderExportTab
 } from "./render.js";
@@ -64,7 +60,6 @@ const store = createStateStore(defaultState, validateState);
 window.__fpStore = store; // keep for console testing
 
 let selectedExclId = null;
-let selectedSectionId = null;
 let selectedTilePresetId = null;
 let selectedSkirtingPresetId = null;
 let lastUnionError = null;
@@ -105,9 +100,8 @@ function refreshProjectSelect() {
 
 function setSelectedExcl(id) {
   const newId = id || null;
-  const changed = selectedExclId !== newId || (id && selectedSectionId);
+  const changed = selectedExclId !== newId;
   selectedExclId = newId;
-  if (id) selectedSectionId = null; // Deselect section when selecting exclusion
   if (changed) renderAll();
   updateRoomDeleteButtonState();
 }
@@ -115,27 +109,9 @@ function setSelectedId(id) {
   selectedExclId = id || null;
 }
 
-function setSelectedSection(id) {
-  selectedSectionId = id || null;
-  renderAll();
-}
-function setSelectedSectionId(id) {
-  selectedSectionId = id || null;
-}
-
 // Track target pattern group for "Add to Group" action
 // Set when clicking on a room that belongs to a group
 let activeTargetGroupId = null;
-
-// Handle section selection - deselects exclusion when selecting section
-function handleSectionSelect(id) {
-  const newId = id || null;
-  const changed = selectedSectionId !== newId || (id && selectedExclId);
-  selectedSectionId = newId;
-  if (id) selectedExclId = null; // Deselect exclusion when selecting section
-  if (changed) renderAll();
-  updateRoomDeleteButtonState();
-}
 
 // Hook for post-render sync (set by IIFE below)
 let afterRenderHook = null;
@@ -168,8 +144,6 @@ function resolveRenderScope(label, opts) {
     t("exclusions.deleted"),
     t("exclusions.changed"),
     t("exclusions.moved"),
-    t("room.sectionAdded"),
-    t("room.sectionDeleted"),
     t("waste.changed"),
     t("waste.optimizeChanged")
   ]);
@@ -221,23 +195,11 @@ function renderPlanningSection(state, opts) {
   renderRoomForm(state);
   renderTilePatternForm(state);
 
-  renderSectionsList(state, selectedSectionId);
   renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
   renderSkirtingPresets(state, selectedSkirtingPresetId, (id) => { selectedSkirtingPresetId = id; });
   renderSkirtingRoomList(state, {
-    onToggleRoom: setRoomSkirtingEnabledById,
-    onToggleSection: setSectionSkirtingEnabledById
+    onToggleRoom: setRoomSkirtingEnabledById
   });
-  renderCurrentRoomSections(getCurrentRoom(state), {
-    onToggleSection: setSectionSkirtingEnabledById
-  });
-  renderSectionProps({
-    state,
-    selectedSectionId,
-    getSelectedSection: sections.getSelectedSection,
-    commitSectionProps: sections.commitSectionProps
-  });
-
   renderExclList(state, selectedExclId);
   renderExclProps({
     state,
@@ -285,16 +247,22 @@ function renderPlanningSection(state, opts) {
         const numVal = parseFloat(value);
         if (!Number.isFinite(numVal) || numVal < 1) return;
 
-        // Update both section and legacy dimensions
+        // Update polygonVertices for rectangular room
+        if (room.polygonVertices?.length === 4) {
+          const bounds = getRoomBounds(room);
+          const newW = key === "widthCm" ? numVal : bounds.width;
+          const newH = key === "heightCm" ? numVal : bounds.height;
+          room.polygonVertices = [
+            { x: 0, y: 0 },
+            { x: newW, y: 0 },
+            { x: newW, y: newH },
+            { x: 0, y: newH }
+          ];
+        }
+        // Also update legacy dimensions for compatibility
         if (key === "widthCm") {
-          if (room.sections?.length > 0) {
-            room.sections[0].widthCm = numVal;
-          }
           room.widthCm = numVal;
         } else if (key === "heightCm") {
-          if (room.sections?.length > 0) {
-            room.sections[0].heightCm = numVal;
-          }
           room.heightCm = numVal;
         }
 
@@ -416,14 +384,7 @@ function renderPlanningSection(state, opts) {
       setLastUnionError: (v) => (lastUnionError = v),
       setLastTileError: (v) => (lastTileError = v),
       metrics,
-      skipTiles: isDrag,
-      // Section callbacks
-      selectedSectionId,
-      setSelectedSection: handleSectionSelect,
-      onSectionPointerDown: sectionDragController.onSectionPointerDown,
-      onSectionResizeHandlePointerDown: sectionDragController.onSectionResizeHandlePointerDown,
-      onSectionInlineEdit: updateSectionInline,
-      onAddSectionAtEdge: (direction, edgeInfo) => sections.addSection(direction, edgeInfo)
+      skipTiles: isDrag
     });
   }
 }
@@ -664,21 +625,8 @@ function updateRoomDeleteButtonState() {
   const btn = document.getElementById("roomDeleteObject");
   if (!btn) return;
 
-  // Enable for exclusions
-  if (selectedExclId) {
-    btn.disabled = false;
-    return;
-  }
-
-  // Enable for added sections (index > 0), not origin section
-  if (selectedSectionId) {
-    const room = getCurrentRoom(store.getState());
-    const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
-    btn.disabled = sectionIndex <= 0;
-    return;
-  }
-
-  btn.disabled = true;
+  // Enable only for exclusions
+  btn.disabled = !selectedExclId;
 }
 
 function initViewToggle() {
@@ -998,13 +946,6 @@ const excl = createExclusionsController({
   setSelectedId
 });
 
-const sections = createSectionsController({
-  getState: () => store.getState(),
-  commit: commitViaStore,
-  getSelectedId: () => selectedSectionId,
-  setSelectedId: setSelectedSectionId
-});
-
 const structure = createStructureController({
   store,
   renderAll,
@@ -1038,19 +979,6 @@ const dragController = createExclusionDragController({
   onDragEnd: () => {
     lastExclDragAt = Date.now();
   }
-});
-
-const sectionDragController = createSectionDragController({
-  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
-  getState: () => store.getState(),
-  commit: (label, next) => commitViaStore(label, next),
-  render: (label) => renderAll(label),
-  getSelectedSection: () => sections.getSelectedSection(),
-  setSelectedSection: handleSectionSelect,
-  setSelectedIdOnly: setSelectedSectionId,
-  getSelectedId: () => selectedSectionId,
-  getMoveLabel: () => t("room.sectionMoved") || "Section moved",
-  getResizeLabel: () => t("room.sectionResized") || "Section resized"
 });
 
 const roomDragController = createRoomDragController({
@@ -1164,35 +1092,6 @@ function setRoomSkirtingEnabledById(roomId, enabled) {
   commitViaStore(t("skirting.changed"), next);
 }
 
-function setSectionSkirtingEnabled(id, enabled) {
-  if (!id) return;
-  const next = deepClone(store.getState());
-  const room = getCurrentRoom(next);
-  if (!room || !room.sections) return;
-  const sec = room.sections.find(s => s.id === id);
-  if (!sec) return;
-  sec.skirtingEnabled = enabled;
-  commitViaStore(t("room.sectionChanged") || "Section changed", next);
-}
-
-function setSectionSkirtingEnabledById(roomId, sectionId, enabled) {
-  if (!roomId || !sectionId) return;
-  const next = deepClone(store.getState());
-  let targetRoom = null;
-  for (const floor of next.floors || []) {
-    const match = floor.rooms?.find(r => r.id === roomId);
-    if (match) {
-      targetRoom = match;
-      break;
-    }
-  }
-  if (!targetRoom || !targetRoom.sections) return;
-  const sec = targetRoom.sections.find(s => s.id === sectionId);
-  if (!sec) return;
-  sec.skirtingEnabled = enabled;
-  commitViaStore(t("room.sectionChanged") || "Section changed", next);
-}
-
 function setExclusionSkirtingEnabled(id, enabled) {
   if (!id) return;
   const next = deepClone(store.getState());
@@ -1301,38 +1200,6 @@ function updateExclusionInline({ id, key, value }) {
   }
 
   commitViaStore(t("exclusions.changed"), next);
-}
-
-function updateSectionInline({ id, key, value }) {
-  if (key !== "__delete__" && !Number.isFinite(value)) return;
-
-  const next = deepClone(store.getState());
-  const room = getCurrentRoom(next);
-  if (!room || !room.sections) return;
-
-  const sec = room.sections.find(s => s.id === id);
-  if (!sec) return;
-
-  if (key === "__delete__") {
-    room.sections = room.sections.filter(s => s.id !== id);
-    if (room.sections.length === 0) {
-      delete room.sections;
-      handleSectionSelect(null);
-    } else {
-      handleSectionSelect(room.sections.at(-1)?.id ?? null);
-    }
-    commitViaStore(t("room.sectionDeleted") || "Section deleted", next);
-    return;
-  }
-
-  // Handle dimension edits
-  if (key === "widthCm") {
-    sec.widthCm = Math.max(1, value);
-  } else if (key === "heightCm") {
-    sec.heightCm = Math.max(1, value);
-  }
-
-  commitViaStore(t("room.sectionChanged") || "Section changed", next);
 }
 
 function nudgeSelectedExclusion(dx, dy) {
@@ -1709,14 +1576,12 @@ function updateAllTranslations() {
   bindUI({
     store,
     excl,
-    sections,
     renderAll,
     refreshProjectSelect,
     updateMeta,
     validateState,
     defaultStateFn: defaultState,
     setSelectedExcl,
-    setSelectedSection,
     resetErrors: () => {
       lastUnionError = null;
       lastTileError = null;
@@ -1806,17 +1671,10 @@ function updateAllTranslations() {
       return;
     }
 
-    if (selectedSectionId) {
-      const sec = room.sections?.find(s => s.id === selectedSectionId);
-      if (!sec) return;
-      setSectionSkirtingEnabled(selectedSectionId, sec.skirtingEnabled === false);
-      return;
-    }
-
     setRoomSkirtingEnabled(room.skirting?.enabled === false);
   });
 
-  // Delete key - delete selected element (exclusion or section)
+  // Delete key - delete selected exclusion
   document.addEventListener("keydown", (e) => {
     if (isInlineEditing()) return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
@@ -1828,13 +1686,6 @@ function updateAllTranslations() {
     if (selectedExclId) {
       e.preventDefault();
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
-    } else if (selectedSectionId) {
-      const room = getCurrentRoom(store.getState());
-      const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
-      if (sectionIndex > 0) {
-        e.preventDefault();
-        updateSectionInline({ id: selectedSectionId, key: "__delete__" });
-      }
     }
   });
 
@@ -2032,16 +1883,10 @@ function updateAllTranslations() {
     });
   }
 
-  // Room delete button - deletes selected exclusion or added section
+  // Room delete button - deletes selected exclusion
   document.getElementById("roomDeleteObject")?.addEventListener("click", () => {
     if (selectedExclId) {
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
-    } else if (selectedSectionId) {
-      const room = getCurrentRoom(store.getState());
-      const sectionIndex = room?.sections?.findIndex(s => s.id === selectedSectionId) ?? -1;
-      if (sectionIndex > 0) {
-        updateSectionInline({ id: selectedSectionId, key: "__delete__" });
-      }
     }
   });
 
@@ -2265,13 +2110,18 @@ function updateAllTranslations() {
     const next = deepClone(state);
     const nextFloor = next.floors.find(f => f.id === floor.id);
 
-    // Create new room with default size
+    // Create new room with default size using polygonVertices
     const newRoom = {
       id: uuid(),
       name: t("room.newRoom") || "New Room",
       widthCm: 300,
       heightCm: 300,
-      sections: [{ id: uuid(), label: "Main", x: 0, y: 0, widthCm: 300, heightCm: 300, skirtingEnabled: true }],
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 300 },
+        { x: 0, y: 300 }
+      ],
       exclusions: [],
       tile: { widthCm: 60, heightCm: 30, shape: "rect" },
       grout: { widthCm: 0.3, color: "#999999" },
@@ -2608,16 +2458,8 @@ function updateAllTranslations() {
     // Update area display
     const planningArea = document.getElementById("planningArea");
     if (planningArea && room) {
-      const sections = room.sections || [];
-      let totalArea = 0;
-      if (sections.length > 0) {
-        sections.forEach(s => {
-          totalArea += (s.widthCm || 0) * (s.heightCm || 0) / 10000;
-        });
-      } else {
-        // Legacy: use room dimensions directly
-        totalArea = (room.widthCm || 0) * (room.heightCm || 0) / 10000;
-      }
+      const bounds = getRoomBounds(room);
+      const totalArea = (bounds.width * bounds.height) / 10000;
       planningArea.textContent = totalArea.toFixed(2) + " m²";
     }
   }
@@ -3012,7 +2854,7 @@ function updateAllTranslations() {
     }
   });
 
-  // Room dimensions (sync with first section)
+  // Room dimensions (uses polygonVertices bounds)
   const roomWidthInput = document.getElementById("roomWidth");
   const roomLengthInput = document.getElementById("roomLength");
 
@@ -3022,21 +2864,10 @@ function updateAllTranslations() {
       ?.find(f => f.id === state.selectedFloorId)
       ?.rooms?.find(r => r.id === state.selectedRoomId);
 
-    if (room?.sections?.length > 0) {
-      const firstSection = room.sections[0];
-      if (roomWidthInput) roomWidthInput.value = firstSection.widthCm || "";
-      if (roomLengthInput) roomLengthInput.value = firstSection.heightCm || "";
-    }
-
-    // Show/hide sections panel based on count
-    const sectionsPanel = document.getElementById("sectionsPanel");
-    const sectionsHint = document.getElementById("sectionsHint");
-    if (room?.sections?.length > 1) {
-      sectionsPanel?.classList.remove("hidden");
-      if (sectionsHint) sectionsHint.style.display = "none";
-    } else {
-      sectionsPanel?.classList.add("hidden");
-      if (sectionsHint) sectionsHint.style.display = "";
+    if (room?.polygonVertices?.length >= 3) {
+      const bounds = getRoomBounds(room);
+      if (roomWidthInput) roomWidthInput.value = bounds.width || "";
+      if (roomLengthInput) roomLengthInput.value = bounds.height || "";
     }
   }
 
@@ -3048,7 +2879,8 @@ function updateAllTranslations() {
     if (floorIdx < 0 || roomIdx < 0) return;
 
     const room = state.floors[floorIdx].rooms[roomIdx];
-    if (!room.sections?.length) return;
+    // Only allow dimension editing for simple rectangular rooms (4 vertices)
+    if (!room.polygonVertices || room.polygonVertices.length !== 4) return;
 
     const newW = parseFloat(roomWidthInput?.value) || 0;
     const newH = parseFloat(roomLengthInput?.value) || 0;
@@ -3056,19 +2888,20 @@ function updateAllTranslations() {
     if (newW <= 0 || newH <= 0) return;
 
     const next = JSON.parse(JSON.stringify(state));
-    next.floors[floorIdx].rooms[roomIdx].sections[0].widthCm = newW;
-    next.floors[floorIdx].rooms[roomIdx].sections[0].heightCm = newH;
+    next.floors[floorIdx].rooms[roomIdx].polygonVertices = [
+      { x: 0, y: 0 },
+      { x: newW, y: 0 },
+      { x: newW, y: newH },
+      { x: 0, y: newH }
+    ];
+    next.floors[floorIdx].rooms[roomIdx].widthCm = newW;
+    next.floors[floorIdx].rooms[roomIdx].heightCm = newH;
 
     commitViaStore(t("room.changed"), next);
   }
 
   roomWidthInput?.addEventListener("change", commitDimensions);
   roomLengthInput?.addEventListener("change", commitDimensions);
-
-  // Alternative add section button
-  document.getElementById("btnAddSectionAlt")?.addEventListener("click", () => {
-    sections.addSection();
-  });
 
   updateAllTranslations();
   renderAll(hadSession ? t("init.withSession") : t("init.default"));

@@ -5,14 +5,21 @@ function createTestState(opts = {}) {
   const floorId = 'test-floor';
   const roomId = 'test-room';
 
-  const sections = opts.sections || [
-    { id: 'sec1', x: 0, y: 0, widthCm: opts.roomW || 400, heightCm: opts.roomH || 500 }
+  const roomW = opts.roomW || 400;
+  const roomH = opts.roomH || 500;
+
+  // Use polygonVertices instead of sections (v8+ format)
+  const polygonVertices = opts.polygonVertices || [
+    { x: 0, y: 0 },
+    { x: roomW, y: 0 },
+    { x: roomW, y: roomH },
+    { x: 0, y: roomH }
   ];
 
   const baseRoom = {
     id: roomId,
     name: opts.roomName || 'Test Room',
-    sections,
+    polygonVertices,
     exclusions: opts.exclusions || [],
     tile: opts.tile || { widthCm: 30, heightCm: 60 },
     grout: opts.grout || { widthCm: 1 },
@@ -21,7 +28,7 @@ function createTestState(opts = {}) {
   };
 
   const newState = {
-    meta: { version: 4 },
+    meta: { version: 8 },
     project: { name: 'Test Project' },
     floors: [{
       id: floorId,

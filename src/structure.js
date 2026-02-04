@@ -173,7 +173,12 @@ export function createStructureController({
     const newRoom = {
       id: uuid(),
       name: `Raum ${currentFloor.rooms.length + 1}`,
-      sections: [{ id: uuid(), label: "Hauptbereich", x: 0, y: 0, widthCm: 600, heightCm: 400, skirtingEnabled: true }],
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 600, y: 0 },
+        { x: 600, y: 400 },
+        { x: 0, y: 400 }
+      ],
       exclusions: [],
       excludedTiles: [],
       excludedSkirts: [],

@@ -5,9 +5,9 @@ describe('validateState', () => {
   function createTestState(opts = {}) {
     const widthCm = opts.hasOwnProperty('roomW') ? opts.roomW : 400;
     const heightCm = opts.hasOwnProperty('roomH') ? opts.roomH : 500;
-    const sections = opts.sections || [
-      { id: 'sec1', x: 0, y: 0, widthCm, heightCm }
-    ];
+    const polygonVertices = opts.hasOwnProperty('polygonVertices')
+      ? opts.polygonVertices
+      : [{ x: 0, y: 0 }, { x: widthCm, y: 0 }, { x: widthCm, y: heightCm }, { x: 0, y: heightCm }];
     return {
       tilePresets: [{
         id: 'preset1',
@@ -27,7 +27,7 @@ describe('validateState', () => {
         rooms: [{
           id: 'room1',
           name: 'Test Room',
-          sections,
+          polygonVertices,
           exclusions: opts.exclusions || [],
           tile: { widthCm: 30, heightCm: 60, reference: "Standard", ...opts.tile },
           grout: { widthCm: 1, ...opts.grout },
@@ -65,7 +65,16 @@ describe('validateState', () => {
   });
 
   it('detects negative room width', () => {
-    const state = createTestState({ roomW: -100 });
+    // With polygonVertices, negative dimensions create mirrored but valid polygons
+    // We need to test with invalid coordinates instead
+    const state = createTestState({
+      polygonVertices: [
+        { x: NaN, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
@@ -261,22 +270,34 @@ describe('validateState', () => {
     expect(result.warns.length).toBeGreaterThan(0);
   });
 
-  it('handles NaN values in room dimensions', () => {
-    const state = createTestState({ roomW: NaN });
+  it('handles NaN values in polygon coordinates', () => {
+    const state = createTestState({
+      polygonVertices: [
+        { x: 0, y: NaN },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('handles undefined room dimensions', () => {
-    const state = createTestState({ roomW: undefined, roomH: undefined });
+  it('handles undefined room polygon', () => {
+    const state = createTestState({ polygonVertices: undefined });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('detects string values in dimensions', () => {
-    const state = createTestState({ roomW: 'invalid' });
+  it('detects invalid polygon with less than 3 vertices', () => {
+    const state = createTestState({
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 }
+      ]
+    });
 
     const result = validateState(state);
     expect(result.errors.length).toBeGreaterThan(0);

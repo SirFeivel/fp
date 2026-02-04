@@ -12,7 +12,7 @@ describe('computeProjectTotals', () => {
           rooms: [
             {
               id: 'r1',
-              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }], // 1m2
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], // 1m2
               tile: { widthCm: 50, heightCm: 50 },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -20,7 +20,7 @@ describe('computeProjectTotals', () => {
             },
             {
               id: 'r2',
-              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }], // 1m2
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], // 1m2
               tile: { widthCm: 50, heightCm: 50 },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -52,7 +52,7 @@ describe('computeProjectTotals', () => {
           rooms: [
             {
               id: 'r1',
-              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 100, heightCm: 100 },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -65,7 +65,7 @@ describe('computeProjectTotals', () => {
           rooms: [
             {
               id: 'r2',
-              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 100, heightCm: 100 },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
@@ -102,7 +102,7 @@ describe('computeProjectTotals', () => {
           rooms: [
             {
               id: 'r1',
-              sections: [{ x: 0, y: 0, widthCm: 100, heightCm: 100 }],
+              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
               tile: { widthCm: 50, heightCm: 50 },
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },

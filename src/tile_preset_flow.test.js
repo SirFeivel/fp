@@ -64,14 +64,12 @@ describe("tile preset lifecycle flow", () => {
     bindUI({
       store,
       excl: {},
-      sections: {},
       renderAll: vi.fn(),
       refreshProjectSelect: vi.fn(),
       updateMeta: vi.fn(),
       validateState: () => ({ errors: [], warns: [] }),
       defaultStateFn: defaultState,
       setSelectedExcl: vi.fn(),
-      setSelectedSection: vi.fn(),
       resetErrors: vi.fn()
     });
 
