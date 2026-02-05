@@ -20,7 +20,8 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface } from "./surface.js";
+import { createSurface, unfoldRoomWalls } from "./surface.js";
+import { createThreeViewController } from "./three-view.js";
 
 import {
   renderWarnings,
@@ -68,6 +69,7 @@ let lastUnionError = null;
 let lastTileError = null;
 let lastExclDragAt = 0;
 const exportSelection = new Set();
+let threeViewController = null;
 
 function updateMeta() {
   const last = store.getLastSavedAt();
@@ -187,6 +189,62 @@ function renderSetupSection(state) {
   structure.renderRoomSelect();
 }
 
+function handleWallDoubleClick(roomId, edgeIndex) {
+  const state = store.getState();
+  const floor = getCurrentFloor(state);
+  if (!floor) return;
+
+  // Look for existing wall surface matching this edge
+  const existingWall = floor.rooms.find(
+    r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
+  );
+
+  if (existingWall) {
+    // Select it and switch to room view
+    const next = deepClone(state);
+    next.selectedRoomId = existingWall.id;
+    next.view = next.view || {};
+    next.view.planningMode = "room";
+    store.commit("View wall surface", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    return;
+  }
+
+  // Wall doesn't exist yet — unfold all walls, find the matching one
+  const room = floor.rooms.find(r => r.id === roomId);
+  if (!room || !room.polygonVertices) return;
+
+  const walls = unfoldRoomWalls(room, room.wallHeightCm ?? 200);
+  if (walls.length === 0) return;
+
+  const next = deepClone(state);
+  const nextFloor = next.floors.find(f => f.id === floor.id);
+
+  for (const wall of walls) {
+    nextFloor.rooms.push(wall);
+  }
+
+  // Pattern group: original room as origin, walls as members
+  const existingGroup = getRoomPatternGroup(nextFloor, room.id);
+  let group = existingGroup;
+  if (!group) {
+    group = createPatternGroup(nextFloor, room.id);
+  }
+  if (group) {
+    for (const wall of walls) {
+      addRoomToPatternGroup(nextFloor, group.id, wall.id);
+    }
+  }
+
+  // Find and select the wall matching the clicked edge
+  const targetWall = walls.find(w => w.wallEdgeIndex === edgeIndex);
+  if (targetWall) {
+    next.selectedRoomId = targetWall.id;
+  }
+  next.view = next.view || {};
+  next.view.planningMode = "room";
+  store.commit("3D wall → room view", next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
 function renderPlanningSection(state, opts) {
   const isDrag = opts?.mode === "drag";
   const planningMode = state.view?.planningMode || "room";
@@ -214,7 +272,23 @@ function renderPlanningSection(state, opts) {
   if (!isDrag) renderMetrics(state);
 
   // Render either floor canvas or room canvas based on view mode
-  if (isFloorView) {
+  if (planningMode === "3d") {
+    if (!threeViewController) {
+      threeViewController = createThreeViewController({
+        canvas: document.getElementById("threeDCanvas"),
+        onWallDoubleClick: ({ edgeIndex, roomId }) => handleWallDoubleClick(roomId, edgeIndex),
+        onHoverChange: (info) => {
+          const el = document.getElementById("threeDHoverInfo");
+          if (el) el.textContent = info ? info.label : "";
+        }
+      });
+    }
+    const room = getCurrentRoom(state);
+    if (room) {
+      threeViewController.start();
+      threeViewController.buildScene(room);
+    }
+  } else if (isFloorView) {
     const floor = getCurrentFloor(state);
     renderFloorCanvas({
       state,
@@ -554,6 +628,22 @@ function switchToPatternGroupsView() {
   store.commit(t("view.switchedToPatternGroups") || "Switched to Pattern Groups", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
+function switchTo3DView() {
+  const state = store.getState();
+  if (state.view?.planningMode === "3d") return;
+
+  cancelFreeformDrawing();
+  cancelCalibrationMode();
+
+  const room = getCurrentRoom(state);
+  if (!room || !room.polygonVertices) return;
+
+  const next = deepClone(state);
+  next.view = next.view || {};
+  next.view.planningMode = "3d";
+  store.commit("Switched to 3D view", next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
 async function switchToRoomView(skipValidation = false) {
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
@@ -604,12 +694,16 @@ function updateViewToggleUI(planningMode) {
   const floorControls = document.getElementById("floorQuickControls");
   const patternGroupsControls = document.getElementById("patternGroupsQuickControls");
   const roomControls = document.getElementById("roomQuickControls");
+  const threeDControls = document.getElementById("threeDQuickControls");
+  const threeDCanvas = document.getElementById("threeDCanvas");
+  const planSvg = document.getElementById("planSvg");
   const roomSelectLabel = document.getElementById("roomSelectLabel");
   const groupSelectLabel = document.getElementById("groupSelectLabel");
 
   const isFloorView = planningMode === "floor";
   const isPatternGroupsView = planningMode === "patternGroups";
-  const isRoomView = !isFloorView && !isPatternGroupsView;
+  const is3DView = planningMode === "3d";
+  const isRoomView = planningMode === "room" || (!isFloorView && !isPatternGroupsView && !is3DView);
 
   if (floorBtn) floorBtn.classList.toggle("active", isFloorView);
   if (patternGroupsBtn) patternGroupsBtn.classList.toggle("active", isPatternGroupsView);
@@ -617,8 +711,13 @@ function updateViewToggleUI(planningMode) {
   if (floorControls) floorControls.style.display = isFloorView ? "" : "none";
   if (patternGroupsControls) patternGroupsControls.style.display = isPatternGroupsView ? "" : "none";
   if (roomControls) roomControls.style.display = isRoomView ? "" : "none";
+  if (threeDControls) threeDControls.style.display = is3DView ? "" : "none";
+  if (planSvg) planSvg.style.display = is3DView ? "none" : "";
+  if (threeDCanvas) threeDCanvas.style.display = is3DView ? "block" : "none";
   if (roomSelectLabel) roomSelectLabel.style.display = isPatternGroupsView ? "none" : "";
   if (groupSelectLabel) groupSelectLabel.style.display = isPatternGroupsView ? "" : "none";
+
+  if (!is3DView && threeViewController?.isActive()) threeViewController.stop();
 }
 
 function updateFloorControlsState(state) {
@@ -2227,6 +2326,20 @@ function updateAllTranslations() {
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
+  // Floor view - Open 3D room view
+  document.getElementById("floorUnfold3D")?.addEventListener("click", () => {
+    switchTo3DView();
+  });
+
+  // 3D view quick controls
+  document.getElementById("threeDBackToFloor")?.addEventListener("click", () => {
+    switchToFloorView();
+  });
+  document.getElementById("threeDResetCamera")?.addEventListener("click", () => {
+    threeViewController?.resetCamera();
+  });
+
+
   document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
     const state = store.getState();
     const floor = getCurrentFloor(state);
@@ -2948,6 +3061,14 @@ function updateAllTranslations() {
 
   roomWidthInput?.addEventListener("change", commitDimensions);
   roomLengthInput?.addEventListener("change", commitDimensions);
+
+  // Resize observer for 3D canvas
+  const svgWrap = document.querySelector(".svgWrap");
+  if (svgWrap) {
+    new ResizeObserver(() => {
+      if (threeViewController?.isActive()) threeViewController.resize();
+    }).observe(svgWrap);
+  }
 
   updateAllTranslations();
   renderAll(hadSession ? t("init.withSession") : t("init.default"));

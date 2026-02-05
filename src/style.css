@@ -2438,6 +2438,14 @@ body{
   min-height:0;
 }
 
+#threeDCanvas{
+  width:100%;
+  height:100%;
+  flex:1;
+  display:block;
+  min-height:0;
+}
+
 .resize-metrics{
   position: fixed;
   z-index: 10000;
