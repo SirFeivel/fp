@@ -59,6 +59,7 @@ export function unfoldRoomWalls(room, heightCm) {
       polygonVertices: localVerts,
     });
     wall.sourceRoomId = room.id;
+    wall.wallEdgeIndex = i;
     wall.floorPosition = { x: minX, y: minY };
     walls.push(wall);
   }

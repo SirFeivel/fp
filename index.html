@@ -453,6 +453,7 @@
           <div class="planning-preview-area">
             <div class="svgWrap planning-svg">
               <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+              <canvas id="threeDCanvas" style="display:none;"></canvas>
               <div id="resizeMetrics" class="resize-metrics hidden"></div>
 
               <!-- Scale indicator for calibrated floor view -->
@@ -656,6 +657,28 @@
                   <span id="pgZoomLevel" class="zoom-indicator">100%</span>
                   <button id="pgZoomIn" class="quick-btn zoom-btn" title="Zoom In (+)">+</button>
                   <button id="pgZoomReset" class="quick-btn zoom-btn" title="Reset Zoom (0)">⊙</button>
+                </div>
+              </div>
+
+              <!-- 3D View Quick Controls (hidden by default) -->
+              <div class="quick-controls" id="threeDQuickControls" style="display: none;">
+                <div class="quick-actions">
+                  <button id="threeDBackToFloor" class="quick-btn" title="Back to Floor View">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="19" y1="12" x2="5" y2="12"></line>
+                      <polyline points="12 19 5 12 12 5"></polyline>
+                    </svg>
+                    Back
+                  </button>
+                  <button id="threeDResetCamera" class="quick-btn" title="Reset Camera">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="quick-control-group">
+                  <span class="quick-label" id="threeDHoverInfo"></span>
                 </div>
               </div>
 
