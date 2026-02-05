@@ -1761,7 +1761,6 @@ function updateAllTranslations() {
           return;
         }
         setSelectedExcl(null);
-        setSelectedSection(null);
         lastUnionError = null;
         lastTileError = null;
         renderAll(`${t("project.loaded")}: ${res.name}`);
@@ -1800,7 +1799,6 @@ function updateAllTranslations() {
       });
       if (confirmed) {
         setSelectedExcl(null);
-        setSelectedSection(null);
         lastUnionError = null;
         lastTileError = null;
         store.commit(t("session.reset"), defaultState(), {
