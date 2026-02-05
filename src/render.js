@@ -21,6 +21,10 @@ import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewpo
 import { getFloorBounds } from "./floor_geometry.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
+function isCircleRoom(room) {
+  return room?.circle && room.circle.r > 0;
+}
+
 let activeSvgEdit = null;
 
 function closeSvgEdit(commit) {
@@ -1424,16 +1428,27 @@ export function renderPlanSvg({
   }));
 
   // Room outline - always visible (needed for freeform rooms during exclusion editing)
-  const roomPoly = roomPolygon(currentRoom);
-  if (roomPoly && roomPoly.length > 0) {
-    const pathD = multiPolygonToPathD(roomPoly);
-    svg.appendChild(svgEl("path", {
-      d: pathD,
+  if (isCircleRoom(currentRoom)) {
+    const { cx, cy, r } = currentRoom.circle;
+    svg.appendChild(svgEl("circle", {
+      cx, cy, r,
       fill: "none",
       stroke: "rgba(122, 162, 255, 0.4)",
       "stroke-width": 1.5,
       "pointer-events": "none"
     }));
+  } else {
+    const roomPoly = roomPolygon(currentRoom);
+    if (roomPoly && roomPoly.length > 0) {
+      const pathD = multiPolygonToPathD(roomPoly);
+      svg.appendChild(svgEl("path", {
+        d: pathD,
+        fill: "none",
+        stroke: "rgba(122, 162, 255, 0.4)",
+        "stroke-width": 1.5,
+        "pointer-events": "none"
+      }));
+    }
   }
 
   const suppressDetails = Boolean(selectedExclId);
@@ -2472,8 +2487,18 @@ export function renderFloorCanvas({
 
     // Get room polygon for rendering (in room-local coordinates)
     // The group transform handles floor positioning
+    if (isCircleRoom(room)) {
+      const { cx, cy, r } = room.circle;
+      roomGroup.appendChild(svgEl("circle", {
+        cx, cy, r,
+        fill: isSelected ? "rgba(59, 130, 246, 0.25)" : "rgba(100, 150, 200, 0.15)",
+        stroke: isSelected ? "#3b82f6" : "rgba(200, 220, 255, 0.5)",
+        "stroke-width": isSelected ? 3 : 2
+      }));
+    }
+
     const roomPoly = roomPolygon(room);
-    if (roomPoly && roomPoly.length > 0) {
+    if (!isCircleRoom(room) && roomPoly && roomPoly.length > 0) {
       // Convert polygon to path
       const pathD = multiPolygonToPathD(roomPoly);
 
@@ -2977,30 +3002,51 @@ export function renderPatternGroupsCanvas({
     const isOrigin = patternGroup?.originRoomId === room.id;
     const isActiveGroup = isInGroup && patternGroup.id === activeGroupId;
 
+    // Determine colors based on group membership and active state
+    let fillColor, strokeColor, strokeWidth;
+
+    if (isActiveGroup) {
+      fillColor = isOrigin ? "rgba(59, 130, 246, 0.35)" : "rgba(59, 130, 246, 0.2)";
+      strokeColor = "#3b82f6";
+      strokeWidth = isOrigin ? 4 : 3;
+    } else if (isInGroup) {
+      fillColor = "rgba(100, 116, 139, 0.2)";
+      strokeColor = "rgba(148, 163, 184, 0.8)";
+      strokeWidth = 3;
+    } else {
+      fillColor = "rgba(100, 116, 139, 0.15)";
+      strokeColor = "rgba(148, 163, 184, 0.5)";
+      strokeWidth = 2;
+    }
+
     // Get room polygon
     const roomPoly = roomPolygon(room);
-    if (roomPoly && roomPoly.length > 0) {
-      const pathD = multiPolygonToPathD(roomPoly);
-
-      // Determine colors based on group membership and active state
-      let fillColor, strokeColor, strokeWidth;
-
-      if (isActiveGroup) {
-        // Active group - blue
-        fillColor = isOrigin ? "rgba(59, 130, 246, 0.35)" : "rgba(59, 130, 246, 0.2)";
-        strokeColor = "#3b82f6";
-        strokeWidth = isOrigin ? 4 : 3;
-      } else if (isInGroup) {
-        // Grouped but not active - neutral with thicker outline
-        fillColor = "rgba(100, 116, 139, 0.2)";
-        strokeColor = "rgba(148, 163, 184, 0.8)";
-        strokeWidth = 3;
-      } else {
-        // Independent room - neutral gray, thin outline
-        fillColor = "rgba(100, 116, 139, 0.15)";
-        strokeColor = "rgba(148, 163, 184, 0.5)";
-        strokeWidth = 2;
+    if (isCircleRoom(room)) {
+      const { cx, cy, r } = room.circle;
+      roomGroup.appendChild(svgEl("circle", {
+        cx, cy, r,
+        fill: fillColor,
+        stroke: strokeColor,
+        "stroke-width": strokeWidth
+      }));
+      if (isSelected) {
+        roomGroup.appendChild(svgEl("circle", {
+          cx, cy, r,
+          fill: "none",
+          stroke: "#ffffff",
+          "stroke-width": 6,
+          "stroke-opacity": 0.6
+        }));
+        roomGroup.appendChild(svgEl("circle", {
+          cx, cy, r,
+          fill: "none",
+          stroke: "#3b82f6",
+          "stroke-width": 3,
+          "stroke-dasharray": "8,4"
+        }));
       }
+    } else if (roomPoly && roomPoly.length > 0) {
+      const pathD = multiPolygonToPathD(roomPoly);
 
       // Room fill
       roomGroup.appendChild(svgEl("path", {

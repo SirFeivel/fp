@@ -20,6 +20,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
+import { createSurface } from "./surface.js";
 
 import {
   renderWarnings,
@@ -2177,6 +2178,57 @@ function updateAllTranslations() {
     next.selectedRoomId = newRoom.id;
 
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  // Floor view - Add circle demo room
+  document.getElementById("floorAddCircle")?.addEventListener("click", () => {
+    cancelFreeformDrawing();
+    cancelCalibrationMode();
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    if (!floor) return;
+
+    const newRoom = createSurface({ name: "Circle", circleRadius: 100, surfaceType: "floor" });
+
+    const next = deepClone(state);
+    const nextFloor = next.floors.find(f => f.id === floor.id);
+
+    // Position new room
+    if (nextFloor.rooms.length > 0) {
+      const position = findPositionOnFreeEdge(newRoom, nextFloor.rooms, 'right');
+      if (position) {
+        newRoom.floorPosition.x = position.x;
+        newRoom.floorPosition.y = position.y;
+      } else {
+        let maxRight = -Infinity;
+        let topAtMaxRight = 0;
+        for (const room of nextFloor.rooms) {
+          const bounds = getRoomAbsoluteBounds(room);
+          if (bounds.right > maxRight) {
+            maxRight = bounds.right;
+            topAtMaxRight = bounds.top;
+          }
+        }
+        newRoom.floorPosition.x = maxRight;
+        newRoom.floorPosition.y = topAtMaxRight;
+      }
+    } else {
+      const viewportKey = `floor:${floor.id}`;
+      const vp = getViewport(viewportKey);
+      if (vp?.effectiveViewBox) {
+        const vb = vp.effectiveViewBox;
+        newRoom.floorPosition.x = Math.round(vb.minX + (vb.width - newRoom.widthCm) / 2);
+        newRoom.floorPosition.y = Math.round(vb.minY + (vb.height - newRoom.heightCm) / 2);
+      } else {
+        newRoom.floorPosition.x = 350;
+        newRoom.floorPosition.y = 250;
+      }
+    }
+
+    nextFloor.rooms.push(newRoom);
+    next.selectedRoomId = newRoom.id;
+
+    store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
   document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {

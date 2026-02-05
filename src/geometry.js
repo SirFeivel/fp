@@ -18,6 +18,18 @@ export function svgEl(tag, attrs = {}) {
 }
 
 export function roomPolygon(room) {
+  // Circle rooms: approximate as polygon for polygon-clipping
+  if (room?.circle && room.circle.r > 0) {
+    const { cx, cy, r } = room.circle;
+    const steps = CIRCLE_APPROXIMATION_STEPS * 4;
+    const ring = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      ring.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    return [[ring]];
+  }
+
   // Room must have polygon vertices (v8+ requirement)
   if (room?.polygonVertices && room.polygonVertices.length >= 3) {
     const ring = room.polygonVertices.map(p => [p.x, p.y]);
@@ -34,6 +46,12 @@ export function roomPolygon(room) {
 }
 
 export function getRoomBounds(room) {
+  // Circle rooms
+  if (room?.circle && room.circle.r > 0) {
+    const { cx, cy, r } = room.circle;
+    return { minX: cx - r, minY: cy - r, maxX: cx + r, maxY: cy + r, width: 2 * r, height: 2 * r };
+  }
+
   // Room must have polygon vertices (v8+ requirement)
   if (room?.polygonVertices && room.polygonVertices.length >= 3) {
     let minX = Infinity, minY = Infinity;
@@ -100,8 +118,8 @@ export function computeSkirtingArea(room, exclusions) {
   const roomSkirtingEnabled = room.skirting?.enabled !== false;
   const skirtingExclusions = (exclusions || []).filter(ex => ex.skirtingEnabled !== false);
 
-  // Room must have polygonVertices (v8+ requirement)
-  if (!room.polygonVertices || room.polygonVertices.length < 3) {
+  // Room must have polygonVertices or circle (v8+ requirement)
+  if (!(room.circle && room.circle.r > 0) && (!room.polygonVertices || room.polygonVertices.length < 3)) {
     if (skirtingExclusions.length === 0) {
       return { mp: null, error: null };
     }

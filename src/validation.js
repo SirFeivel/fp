@@ -66,6 +66,8 @@ export function validateState(s) {
     }
     // Return early - no room-level validation needed
     return { errors, warns };
+  } else if (currentRoom.circle && currentRoom.circle.r > 0) {
+    // Circle room — valid shape, skip polygonVertices check
   } else {
     // Validate polygonVertices - must have at least 3 vertices to form a valid polygon
     const pv = currentRoom.polygonVertices;
