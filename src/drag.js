@@ -944,8 +944,8 @@ export function createRoomResizeController({
     if (!floor) return;
 
     const room = floor.rooms?.find(r => r.id === roomId);
-    // Only allow resize for simple rectangular rooms (4 vertices)
-    if (!room || !room.polygonVertices || room.polygonVertices.length !== 4) return;
+    const isCircle = room?.circle && room.circle.rx > 0;
+    if (!isCircle && (!room || !room.polygonVertices || room.polygonVertices.length !== 4)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -968,6 +968,8 @@ export function createRoomResizeController({
         widthCm: bounds.width,
         heightCm: bounds.height
       },
+      isCircle,
+      startCircle: isCircle ? { ...room.circle } : null,
       currentDx: 0,
       currentDy: 0
     };
@@ -1029,12 +1031,26 @@ export function createRoomResizeController({
     // Update visual during drag
     const roomGroup = svg.querySelector(`[data-roomid="${resize.roomId}"]`);
     if (roomGroup) {
-      roomGroup.setAttribute("transform", `translate(${newPosX}, ${newPosY})`);
-      // Find and update the path
-      const path = roomGroup.querySelector("path");
-      if (path) {
-        const d = `M 0 0 L ${newWidth} 0 L ${newWidth} ${newHeight} L 0 ${newHeight} Z`;
-        path.setAttribute("d", d);
+      if (resize.isCircle) {
+        // For circle/ellipse, compute new rx/ry from dimension changes
+        const newRx = newWidth / 2;
+        const newRy = newHeight / 2;
+        roomGroup.setAttribute("transform", `translate(${newPosX}, ${newPosY})`);
+        const ellipses = roomGroup.querySelectorAll("ellipse");
+        ellipses.forEach(el => {
+          el.setAttribute("cx", newRx);
+          el.setAttribute("cy", newRy);
+          el.setAttribute("rx", newRx);
+          el.setAttribute("ry", newRy);
+        });
+      } else {
+        roomGroup.setAttribute("transform", `translate(${newPosX}, ${newPosY})`);
+        // Find and update the path
+        const path = roomGroup.querySelector("path");
+        if (path) {
+          const d = `M 0 0 L ${newWidth} 0 L ${newWidth} ${newHeight} L 0 ${newHeight} Z`;
+          path.setAttribute("d", d);
+        }
       }
     }
 
@@ -1089,7 +1105,16 @@ export function createRoomResizeController({
       const floor = getCurrentFloor(next);
       const room = floor?.rooms?.find(r => r.id === resize.roomId);
 
-      if (room && room.polygonVertices?.length === 4) {
+      if (room && resize.isCircle && room.circle) {
+        const newRx = newWidth / 2;
+        const newRy = newHeight / 2;
+        room.circle = { cx: newRx, cy: newRy, rx: newRx, ry: newRy };
+        room.floorPosition = { x: newPosX, y: newPosY };
+        room.widthCm = newWidth;
+        room.heightCm = newHeight;
+
+        commit(getResizeLabel?.() || "Room resized", next);
+      } else if (room && room.polygonVertices?.length === 4) {
         room.floorPosition = { x: newPosX, y: newPosY };
         // Update polygonVertices for rectangle
         room.polygonVertices = [

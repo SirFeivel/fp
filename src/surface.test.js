@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createSurface } from "./surface.js";
 import { DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
-import { roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
+import { roomPolygon, computeAvailableArea, tilesForPreview, getRoomBounds } from "./geometry.js";
 
 // --- A. Factory correctness ---
 
@@ -96,7 +96,7 @@ describe("createSurface — factory correctness", () => {
     expect(s.id).toBeTruthy();
     expect(s.widthCm).toBe(200);
     expect(s.heightCm).toBe(200);
-    expect(s.circle).toEqual({ cx: 100, cy: 100, r: 100 });
+    expect(s.circle).toEqual({ cx: 100, cy: 100, rx: 100, ry: 100 });
     expect(s.polygonVertices).toBeNull();
     expect(s.surfaceType).toBe("floor");
   });
@@ -138,6 +138,43 @@ describe("createSurface — circle pipeline integration", () => {
     expect(mp[0]).toHaveLength(1);
     // Ring should have many points (circle approximation + closure)
     expect(mp[0][0].length).toBeGreaterThan(30);
+  });
+
+  it("roomPolygon() works for ellipse (rx !== ry)", () => {
+    const room = {
+      circle: { cx: 150, cy: 100, rx: 150, ry: 100 },
+      widthCm: 300,
+      heightCm: 200
+    };
+    const mp = roomPolygon(room);
+
+    expect(mp).toHaveLength(1);
+    expect(mp[0]).toHaveLength(1);
+    expect(mp[0][0].length).toBeGreaterThan(30);
+
+    // Check that the polygon spans the full ellipse width and height
+    const xs = mp[0][0].map(p => p[0]);
+    const ys = mp[0][0].map(p => p[1]);
+    const polyWidth = Math.max(...xs) - Math.min(...xs);
+    const polyHeight = Math.max(...ys) - Math.min(...ys);
+    expect(polyWidth).toBeCloseTo(300, 0);
+    expect(polyHeight).toBeCloseTo(200, 0);
+  });
+
+  it("getRoomBounds() returns correct asymmetric bounds for ellipse", () => {
+    const room = {
+      circle: { cx: 150, cy: 100, rx: 150, ry: 100 },
+      widthCm: 300,
+      heightCm: 200
+    };
+    const bounds = getRoomBounds(room);
+
+    expect(bounds.minX).toBe(0);
+    expect(bounds.minY).toBe(0);
+    expect(bounds.maxX).toBe(300);
+    expect(bounds.maxY).toBe(200);
+    expect(bounds.width).toBe(300);
+    expect(bounds.height).toBe(200);
   });
 
   it("computeAvailableArea() works with circle surface", () => {

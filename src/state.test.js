@@ -78,7 +78,7 @@ describe("state migrations", () => {
     const state = store.getState();
     const room = state.floors[0].rooms[0];
 
-    expect(state.meta.version).toBe(8);
+    expect(state.meta.version).toBe(9);
     // Sections are converted to polygonVertices
     expect(room.polygonVertices).toBeDefined();
     expect(room.polygonVertices.length).toBe(4);
@@ -124,7 +124,7 @@ describe("state migrations", () => {
     const state = store.getState();
     const room = state.floors[0].rooms[0];
 
-    expect(state.meta.version).toBe(8);
+    expect(state.meta.version).toBe(9);
     expect(Array.isArray(state.tilePresets)).toBe(true);
     expect(Array.isArray(state.skirtingPresets)).toBe(true);
     // Sections are converted to polygonVertices
@@ -179,7 +179,7 @@ describe("state migrations", () => {
     const state = store.getState();
     const room = state.floors[0].rooms[0];
 
-    expect(state.meta.version).toBe(8);
+    expect(state.meta.version).toBe(9);
     expect(room.polygonVertices).toBeDefined();
     // L-shape should have 6 vertices (not 4)
     expect(room.polygonVertices.length).toBe(6);
