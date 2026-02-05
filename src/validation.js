@@ -7,6 +7,7 @@ import { t } from "./i18n.js";
 import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { validateFloorConnectivity } from "./floor_geometry.js";
+import { EPSILON } from "./constants.js";
 
 /**
  * Calculate bounding box for an exclusion shape
@@ -145,7 +146,7 @@ export function validateState(s) {
       const W = Math.min(tileW, tileH);
       const ratio = L / W;
       const nearest = Math.round(ratio);
-      const ratioEps = 1e-6;
+      const ratioEps = EPSILON;
 
       if (patternType === "doubleHerringbone") {
         const doubleRatio = L / (2 * W);

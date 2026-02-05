@@ -52,9 +52,3 @@ export function initMainTabs() {
 
   switchMainTab(finalTab);
 }
-
-// Legacy function - kept for compatibility but now a no-op
-export function initTabs() {
-  // Old sidebar tabs are removed in the new UX
-  // This function is kept to prevent import errors
-}

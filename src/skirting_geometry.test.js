@@ -117,10 +117,10 @@ describe('computeSkirtingPerimeter', () => {
     expect(result).toBe(0);
   });
 
-  it('allows skirting on exclusions even if room/sections are disabled', () => {
+  it('allows skirting on exclusions even if room skirting is disabled', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 500, y: 0 }, { x: 500, y: 500 }, { x: 0, y: 500 }],
-      skirting: { enabled: false }, // Room walls OFF
+      skirting: { enabled: false },
       exclusions: [
         { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true } // Pillar ON
       ]
@@ -129,7 +129,7 @@ describe('computeSkirtingPerimeter', () => {
     expect(computeSkirtingPerimeter(room)).toBeCloseTo(200);
   });
 
-  it('skips room walls when room skirting is disabled but keeps exclusions', () => {
+  it('keeps exclusion skirting when room skirting is disabled', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }],
       skirting: { enabled: false },

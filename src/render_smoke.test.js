@@ -211,7 +211,6 @@ describe('render.js smoke tests', () => {
 
     renderSkirtingRoomList(state, { onToggleRoom: vi.fn(), onToggleSection: vi.fn() });
 
-    // With sections removed, only one toggle per room (no section toggles)
     const inputs = document.querySelectorAll('#skirtingRoomsList input[type="checkbox"]');
     expect(inputs.length).toBe(1);
   });

@@ -385,7 +385,7 @@ describe('validateState', () => {
             id: 'room1',
             name: 'Test Room',
             polygonVertices,
-            // No sections array - this is a free-form room
+            // Free-form room with polygonVertices
             exclusions: opts.exclusions || [],
             tile: { widthCm: 30, heightCm: 60, reference: "Standard", ...opts.tile },
             grout: { widthCm: 1, ...opts.grout },

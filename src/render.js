@@ -16,7 +16,7 @@ import {
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
 } from "./geometry.js";
-// Sections have been removed - rooms now use polygonVertices only
+import { EPSILON } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
@@ -1084,7 +1084,7 @@ export function renderTilePatternForm(state) {
     if (patternTypeSelect) {
       const tw = currentRoom?.tile?.widthCm || 0;
       const th = currentRoom?.tile?.heightCm || 0;
-      const isSquare = Math.abs(tw - th) < 1e-6;
+      const isSquare = Math.abs(tw - th) < EPSILON;
 
       Array.from(patternTypeSelect.options).forEach(opt => {
         if (isSquare && tw > 0) {
@@ -1252,14 +1252,7 @@ export function renderPlanSvg({
   skipTiles = false,
   svgOverride = null,
   includeExclusions = true,
-  exportStyle = null,
-  // Section-related callbacks
-  selectedSectionId = null,
-  setSelectedSection = null,
-  onSectionPointerDown = null,
-  onSectionResizeHandlePointerDown = null,
-  onSectionInlineEdit = null,
-  onAddSectionAtEdge = null
+  exportStyle = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);

@@ -23,8 +23,7 @@ export function createZoomPanController({
   getSvg,
   getCurrentRoomId,
   onViewportChange,
-  getSelectedExclId,
-  getSelectedSectionId
+  getSelectedExclId
 }) {
   let isPanning = false;
   let isSpaceDown = false;
@@ -223,10 +222,9 @@ export function createZoomPanController({
 
     // Arrow keys for panning (only when no exclusion is selected)
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-      // If an exclusion or section is selected, let main.js handle nudging
+      // If an exclusion is selected, let main.js handle nudging
       const selectedExclId = getSelectedExclId?.();
-      const selectedSectionId = getSelectedSectionId?.();
-      if (selectedExclId || selectedSectionId) return;
+      if (selectedExclId) return;
 
       e.preventDefault();
       const step = e.shiftKey ? PAN_KEY_STEP * 3 : PAN_KEY_STEP;

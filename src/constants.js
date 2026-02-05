@@ -18,6 +18,14 @@ export const BOND_PERIOD_MIN = 2;
 export const BOND_PERIOD_MAX = 12;
 export const BOND_PERIOD_EPSILON = 1e-6;
 
+export const EPSILON = 1e-6;
+export const TRIANGULAR_CUT_MIN = 0.45;
+export const TRIANGULAR_CUT_MAX = 0.6;
+export const AREA_RATIO_SCALING_THRESHOLD = 0.75;
+export const COMPLEMENTARY_FIT_MIN = 0.90;
+export const COMPLEMENTARY_FIT_MAX = 1.10;
+export const HEX_STEP_RATIO = 0.75;
+
 export const COLORS = {
   background: "#081022",
   roomFill: "rgba(122,162,255,0.06)",

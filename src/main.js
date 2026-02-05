@@ -19,6 +19,7 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
+import { EPSILON } from "./constants.js";
 
 import {
   renderWarnings,
@@ -1063,8 +1064,7 @@ const zoomPanController = createZoomPanController({
     return state.selectedRoomId;
   },
   onViewportChange: () => renderAll({ mode: "zoom" }),
-  getSelectedExclId: () => selectedExclId,
-  getSelectedSectionId: () => selectedSectionId
+  getSelectedExclId: () => selectedExclId
 });
 
 function setRoomSkirtingEnabled(enabled) {
@@ -1212,7 +1212,7 @@ function nudgeSelectedExclusion(dx, dy) {
   if (!ex) return;
 
   const snap = (v) => Math.round(v * 10) / 10;
-  const isOnGrid = (v) => Math.abs(v - snap(v)) < 1e-6;
+  const isOnGrid = (v) => Math.abs(v - snap(v)) < EPSILON;
   const snapDir = (v, dir) => {
     if (dir === 0) return v;
     if (isOnGrid(v)) return v + dir;

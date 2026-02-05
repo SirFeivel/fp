@@ -1102,7 +1102,7 @@ describe('subtractOverlappingAreas', () => {
     expect(result.modifiedRoomIds).toContain('r1');
     expect(result.errors).toHaveLength(0);
 
-    // The existing room should now have polygonVertices (was converted from sections)
+    // The existing room should now have polygonVertices
     expect(existingRooms[0].polygonVertices).toBeDefined();
     // The room should be narrower (left half only)
     expect(existingRooms[0].widthCm).toBeLessThan(100);

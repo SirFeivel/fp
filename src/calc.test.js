@@ -8,7 +8,6 @@ function createTestState(opts = {}) {
   const roomW = opts.roomW || 400;
   const roomH = opts.roomH || 500;
 
-  // Use polygonVertices instead of sections (v8+ format)
   const polygonVertices = opts.polygonVertices || [
     { x: 0, y: 0 },
     { x: roomW, y: 0 },

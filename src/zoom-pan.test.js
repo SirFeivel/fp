@@ -10,7 +10,6 @@ describe('createZoomPanController', () => {
   let getCurrentRoomId;
   let onViewportChange;
   let getSelectedExclId;
-  let getSelectedSectionId;
   let svg;
 
   beforeEach(() => {
@@ -21,7 +20,6 @@ describe('createZoomPanController', () => {
     getCurrentRoomId = vi.fn(() => 'room-1');
     onViewportChange = vi.fn();
     getSelectedExclId = vi.fn(() => null);
-    getSelectedSectionId = vi.fn(() => null);
 
     setBaseViewBox('room-1', { minX: 0, minY: 0, width: 1000, height: 800 });
   });
@@ -31,14 +29,13 @@ describe('createZoomPanController', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not pan on arrow keys when a section is selected', () => {
-    getSelectedSectionId.mockReturnValue('sec-1');
+  it('does not pan on arrow keys when an exclusion is selected', () => {
+    getSelectedExclId.mockReturnValue('ex-1');
     const controller = createZoomPanController({
       getSvg,
       getCurrentRoomId,
       onViewportChange,
-      getSelectedExclId,
-      getSelectedSectionId
+      getSelectedExclId
     });
 
     controller.attach();

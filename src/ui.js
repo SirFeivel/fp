@@ -1,8 +1,8 @@
 // src/ui.js
 import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
 import { t } from "./i18n.js";
-// Sections have been removed - rooms now use polygonVertices only
 import { computeProjectTotals } from "./calc.js";
+import { EPSILON } from "./constants.js";
 import { getUiState, setUiState } from "./ui_state.js";
 import { showConfirm, showAlert } from "./dialog.js";
 
@@ -638,7 +638,7 @@ export function bindUI({
       if (patternTypeSelect) {
         const tw = Number(document.getElementById("tileW")?.value) || 0;
         const th = Number(document.getElementById("tileH")?.value) || 0;
-        const isSquare = Math.abs(tw - th) < 1e-6;
+        const isSquare = Math.abs(tw - th) < EPSILON;
 
         Array.from(patternTypeSelect.options).forEach(opt => {
           if (isSquare && tw > 0) {

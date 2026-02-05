@@ -7,7 +7,9 @@ import {
   TILE_AREA_TOLERANCE,
   BOND_PERIOD_MIN,
   BOND_PERIOD_MAX,
-  BOND_PERIOD_EPSILON
+  BOND_PERIOD_EPSILON,
+  EPSILON,
+  HEX_STEP_RATIO
 } from "./constants.js";
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -188,12 +190,12 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
 
         for (const [startDist, endDist] of overlaps) {
           const startIdx = Math.floor(startDist / pieceLength);
-          const endIdx = Math.floor((endDist - 1e-6) / pieceLength);
+          const endIdx = Math.floor((endDist - EPSILON) / pieceLength);
 
           for (let j = startIdx; j <= endIdx; j++) {
             const pieceStart = Math.max(startDist, j * pieceLength);
             const pieceEnd = Math.min(endDist, (j + 1) * pieceLength);
-            if (pieceEnd - pieceStart <= 1e-6) continue;
+            if (pieceEnd - pieceStart <= EPSILON) continue;
 
             const segP1 = [p1[0] + unitDx * pieceStart, p1[1] + unitDy * pieceStart];
             const segP2 = [p1[0] + unitDx * pieceEnd, p1[1] + unitDy * pieceEnd];
@@ -221,7 +223,7 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
  * Checks if a segment [p1, p2] lies on the boundary of a MultiPolygon.
  */
 function isSegmentOnBoundary(p1, p2, mp) {
-  const eps = 1e-6;
+  const eps = EPSILON;
   for (const poly of mp) {
     for (const ring of poly) {
       if (ring.length < 2) continue;
@@ -236,7 +238,7 @@ function isSegmentOnBoundary(p1, p2, mp) {
 }
 
 function boundaryOverlapIntervals(p1, p2, mp) {
-  const eps = 1e-6;
+  const eps = EPSILON;
   const dx = p2[0] - p1[0];
   const dy = p2[1] - p1[1];
   const wallLength = Math.sqrt(dx * dx + dy * dy);
@@ -755,7 +757,7 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   const hexWidth = tw;
 
   const stepX = hexWidth + grout;
-  const stepY = hexHeight * 0.75 + grout;
+  const stepY = hexHeight * HEX_STEP_RATIO + grout;
 
   const bounds = getRoomBounds(currentRoom);
   const w = bounds.width;

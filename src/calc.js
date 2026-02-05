@@ -2,6 +2,7 @@
 import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments } from "./geometry.js";
 import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
+import { TRIANGULAR_CUT_MIN, TRIANGULAR_CUT_MAX, AREA_RATIO_SCALING_THRESHOLD, COMPLEMENTARY_FIT_MIN, COMPLEMENTARY_FIT_MAX } from "./constants.js";
 
 /**
  * Calculates material requirements for skirting.
@@ -216,7 +217,7 @@ function analyzeCutTile(tile, tileAreaCm2) {
   const bboxArea = bb.w * bb.h;
   const actualArea = polygon ? multiPolyArea(polygon) : bboxArea;
   const areaRatio = bboxArea > 0 ? actualArea / bboxArea : 1;
-  const isTriangularCut = areaRatio >= 0.45 && areaRatio <= 0.6;
+  const isTriangularCut = areaRatio >= TRIANGULAR_CUT_MIN && areaRatio <= TRIANGULAR_CUT_MAX;
 
   return {
     bb,
@@ -266,7 +267,7 @@ function findComplementaryPairs(tiles, analyses, tw, th) {
       if (!dimMatch) continue;
 
       const combinedArea = a1.actualArea + a2.actualArea;
-      const fitsInOneTile = combinedArea >= tileAreaCm2 * 0.90 && combinedArea <= tileAreaCm2 * 1.10;
+      const fitsInOneTile = combinedArea >= tileAreaCm2 * COMPLEMENTARY_FIT_MIN && combinedArea <= tileAreaCm2 * COMPLEMENTARY_FIT_MAX;
 
       if (fitsInOneTile) {
         pairs.set(idx1, idx2);
@@ -602,7 +603,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
     const polygon = analysis?.polygon || parsePathDToPolygon(tile.d);
     const bboxArea = analysis?.bboxArea || bb.w * bb.h;
     const areaRatio = analysis?.areaRatio || (bboxArea > 0 ? actualArea / bboxArea : 1);
-    const isTriangularCut = analysis?.isTriangularCut || (areaRatio >= 0.45 && areaRatio <= 0.6);
+    const isTriangularCut = analysis?.isTriangularCut || (areaRatio >= TRIANGULAR_CUT_MIN && areaRatio <= TRIANGULAR_CUT_MAX);
 
     const pairedWith = pairs.get(i);
     const pairAlreadyProcessed = pairedWith !== undefined && tileUsage[pairedWith] !== undefined;
@@ -610,7 +611,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
     let effectiveW = bb.w;
     let effectiveH = bb.h;
 
-    if (areaRatio < 0.75 && !isTriangularCut) {
+    if (areaRatio < AREA_RATIO_SCALING_THRESHOLD && !isTriangularCut) {
       const scale = Math.sqrt(areaRatio);
       effectiveW = bb.w * scale;
       effectiveH = bb.h * scale;
