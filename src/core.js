@@ -218,7 +218,6 @@ export function defaultState() {
         offcutSharing: {
           enabled: false
         },
-        walls: [],
         patternGroups: [],
         rooms: []
       }

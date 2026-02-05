@@ -80,7 +80,6 @@ export function createStructureController({
       offcutSharing: {
         enabled: false
       },
-      walls: [],
       patternGroups: [],
       rooms: []
     };

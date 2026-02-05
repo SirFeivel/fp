@@ -144,7 +144,6 @@ describe("state migrations", () => {
           patternLinking: { enabled: false, globalOrigin: { x: 0, y: 0 } },
           offcutSharing: { enabled: false },
           patternGroups: [],
-          walls: [],
           rooms: [
             {
               id: "r1",

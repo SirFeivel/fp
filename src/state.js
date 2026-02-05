@@ -122,7 +122,6 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.layout) floor.layout = { enabled: false, background: null };
         if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
-        if (!floor.walls) floor.walls = [];
         if (!floor.patternGroups) floor.patternGroups = [];
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
@@ -377,10 +376,6 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       if (!floor.patternGroups) {
         floor.patternGroups = [];
       }
-      if (!floor.walls) {
-        floor.walls = [];
-      }
-
       // Add room-level position and pattern link properties
       for (const room of floor.rooms || []) {
         if (!room.floorPosition) {
