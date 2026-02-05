@@ -46,6 +46,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 7) {
       s = migrateV7ToV8(s);
     }
+    if (s.meta?.version === 8) {
+      s = migrateV8ToV9(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -472,6 +475,23 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
 
     s.meta.version = 8;
+    return s;
+  }
+
+  function migrateV8ToV9(s) {
+    // Convert circle rooms from { cx, cy, r } to { cx, cy, rx, ry } (ellipse model)
+    for (const floor of s.floors || []) {
+      for (const room of floor.rooms || []) {
+        if (room.circle && room.circle.r > 0 && room.circle.rx === undefined) {
+          const { cx, cy, r } = room.circle;
+          room.circle = { cx, cy, rx: r, ry: r };
+        }
+        if (room.circle && room.polygonVertices) {
+          room.polygonVertices = null;
+        }
+      }
+    }
+    s.meta.version = 9;
     return s;
   }
 
