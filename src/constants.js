@@ -1,3 +1,5 @@
+export const ROOM_HEIGHT_CM = 200;
+
 export const CIRCLE_APPROXIMATION_STEPS = 48;
 
 export const TILE_MARGIN_MULTIPLIER = 3;

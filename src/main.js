@@ -19,7 +19,7 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
-import { EPSILON } from "./constants.js";
+import { EPSILON, ROOM_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 
 import {
@@ -2225,6 +2225,95 @@ function updateAllTranslations() {
     next.selectedRoomId = newRoom.id;
 
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  // Floor view - Unfold polygon room to 3D net (floor + walls)
+  function unfoldRoomWalls(room, heightCm) {
+    const verts = room.polygonVertices;
+    if (!verts || verts.length < 3) return [];
+
+    const pos = room.floorPosition || { x: 0, y: 0 };
+    const n = verts.length;
+
+    // Signed area to determine winding (shoelace)
+    let area2 = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
+    }
+    // area2 > 0 → CW in screen coords → outward = (dy, -dx)
+    const sign = area2 > 0 ? 1 : -1;
+
+    const walls = [];
+    for (let i = 0; i < n; i++) {
+      const A = verts[i];
+      const B = verts[(i + 1) % n];
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const L = Math.sqrt(dx * dx + dy * dy);
+      if (L < 1) continue; // skip degenerate edges
+
+      // Outward unit normal
+      const nx = sign * dy / L;
+      const ny = sign * -dx / L;
+
+      // Wall corners in global floor coords
+      const corners = [
+        { x: pos.x + A.x, y: pos.y + A.y },
+        { x: pos.x + B.x, y: pos.y + B.y },
+        { x: pos.x + B.x + nx * heightCm, y: pos.y + B.y + ny * heightCm },
+        { x: pos.x + A.x + nx * heightCm, y: pos.y + A.y + ny * heightCm },
+      ];
+
+      // Normalize to local coords
+      let minX = Infinity, minY = Infinity;
+      for (const c of corners) {
+        if (c.x < minX) minX = c.x;
+        if (c.y < minY) minY = c.y;
+      }
+      const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
+
+      const wall = createSurface({
+        name: room.name + " · Wall " + (i + 1),
+        polygonVertices: localVerts,
+      });
+      wall.floorPosition = { x: minX, y: minY };
+      walls.push(wall);
+    }
+    return walls;
+  }
+
+  document.getElementById("floorUnfold3D")?.addEventListener("click", () => {
+    cancelFreeformDrawing();
+    cancelCalibrationMode();
+    const state = store.getState();
+    const floor = getCurrentFloor(state);
+    const room = getCurrentRoom(state);
+    if (!floor || !room || !room.polygonVertices) return;
+
+    const walls = unfoldRoomWalls(room, ROOM_HEIGHT_CM);
+    if (walls.length === 0) return;
+
+    const next = deepClone(state);
+    const nextFloor = next.floors.find(f => f.id === floor.id);
+
+    for (const wall of walls) {
+      nextFloor.rooms.push(wall);
+    }
+
+    // Pattern group: original room as origin, walls as members
+    const existingGroup = getRoomPatternGroup(nextFloor, room.id);
+    let group = existingGroup;
+    if (!group) {
+      group = createPatternGroup(nextFloor, room.id);
+    }
+    if (group) {
+      for (const wall of walls) {
+        addRoomToPatternGroup(nextFloor, group.id, wall.id);
+      }
+    }
+
+    store.commit("3D unfold", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
   document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
