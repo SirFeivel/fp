@@ -722,7 +722,7 @@ export function getAllFreeEdges(rooms, minLength = 10) {
 
 /**
  * Find the best position for a new room on a free edge
- * @param {Object} newRoom - Room to place (needs widthCm, heightCm or sections)
+ * @param {Object} newRoom - Room to place (needs polygonVertices)
  * @param {Array} existingRooms - Existing rooms on the floor
  * @param {string} preference - Placement preference: 'right', 'bottom', 'left', 'top', or 'any'
  * @returns {Object|null} { x, y, edge } or null if no valid position
@@ -934,11 +934,6 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
       };
       existingRoom.widthCm = maxX - minX;
       existingRoom.heightCm = maxY - minY;
-
-      // Remove sections if the room now uses polygon vertices
-      if (existingRoom.sections) {
-        delete existingRoom.sections;
-      }
 
       modifiedRoomIds.push(existingRoom.id);
     } catch (e) {

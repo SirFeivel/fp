@@ -2,7 +2,7 @@ import polygonClipping from "polygon-clipping";
 
 /**
  * Converts a rectangle to a polygon-clipping MultiPolygon format.
- * Useful for walls, exclusions, and other rectangle-based shapes.
+ * Useful for exclusions and other rectangle-based shapes.
  */
 export function rectToPolygon(x, y, w, h) {
   const x1 = x;

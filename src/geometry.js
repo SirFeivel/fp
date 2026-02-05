@@ -9,8 +9,6 @@ import {
   BOND_PERIOD_MAX,
   BOND_PERIOD_EPSILON
 } from "./constants.js";
-import { rectToPolygon } from "./composite.js";
-
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
@@ -544,7 +542,7 @@ function floorDiv(a, b) {
 }
 
 // helper: compute inverse-rotated bounds of the room around origin
-// roomMinX/roomMinY: actual top-left corner of room (may be negative for composite sections)
+// roomMinX/roomMinY: actual top-left corner of room (may be negative for composite rooms)
 function inverseRotatedRoomBounds(w, h, origin, rotRad, roomMinX = 0, roomMinY = 0) {
   const inv = -rotRad;
   const pts = [

@@ -25,7 +25,6 @@ export function getRoomVertices(floor) {
     if (!room || !room.id) continue;
     const pos = room.floorPosition || { x: 0, y: 0 };
 
-    // Get room polygon (handles both freeform and sections-based rooms)
     let mp;
     try {
       mp = roomPolygon(room);
@@ -112,7 +111,6 @@ export function getRoomEdges(floor) {
     if (!room || !room.id) continue;
     const pos = room.floorPosition || { x: 0, y: 0 };
 
-    // Get room polygon (handles both freeform and sections-based rooms)
     let mp;
     try {
       mp = roomPolygon(room);
@@ -1036,7 +1034,7 @@ export function createPolygonDrawController({
   }
 
   /**
-   * Convert drawn polygon to room with sections
+   * Convert drawn polygon to a room
    */
   function createRoomFromPolygon(polygonPoints) {
     if (!polygonPoints || polygonPoints.length < MIN_POINTS) return null;
@@ -1057,8 +1055,6 @@ export function createPolygonDrawController({
 
     // For now, create a room with widthCm/heightCm matching the bounding box
     // and store the polygon vertices for future rendering
-    // The sections-based approach would need to decompose the polygon into rectangles
-
     const room = {
       id: uuid(),
       name: t("room.newRoom") || "New Room",

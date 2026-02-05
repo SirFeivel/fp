@@ -104,7 +104,7 @@ export function validateState(s) {
     }
   }
 
-  // Use getRoomBounds which handles both free-form and sections-based rooms
+  // Use getRoomBounds for room dimensions
   const bounds = getRoomBounds(currentRoom);
   const roomW = bounds.width;
   const roomH = bounds.height;
