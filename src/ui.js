@@ -1,5 +1,6 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { unfoldRoomWalls } from "./surface.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
 import { EPSILON } from "./constants.js";
@@ -460,6 +461,24 @@ export function bindUI({
       if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled && skirtingTypeEl) {
         nextRoom.skirting.type = "cutout";
       }
+
+      nextRoom.wallHeightCm = Number(document.getElementById("wallHeightCm")?.value) || 200;
+
+      // Regenerate wall surfaces when wallHeightCm changes
+      const nextFloor = getCurrentFloor(next);
+      if (nextFloor) {
+        const oldWalls = nextFloor.rooms.filter(r => r.sourceRoomId === nextRoom.id);
+        if (oldWalls.length > 0) {
+          const newWalls = unfoldRoomWalls(nextRoom, nextRoom.wallHeightCm);
+          for (const oldWall of oldWalls) {
+            const idx = nextFloor.rooms.indexOf(oldWall);
+            if (idx !== -1) nextFloor.rooms.splice(idx, 1);
+          }
+          for (const wall of newWalls) {
+            nextFloor.rooms.push(wall);
+          }
+        }
+      }
     }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -750,6 +769,11 @@ export function bindUI({
     commitFn: commitFromProjectInputs
   });
   wireInputCommit(document.getElementById("roomName"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("room.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("wallHeightCm"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs

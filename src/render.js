@@ -542,6 +542,9 @@ export function renderRoomForm(state) {
     if (skirtingPresetRow) skirtingPresetRow.style.display = isBought ? "flex" : "none";
   }
 
+  const wallHeightEl = document.getElementById("wallHeightCm");
+  if (wallHeightEl) wallHeightEl.value = currentRoom?.wallHeightCm ?? 200;
+
   // Update other collapsible sections' arrows
   ["structureContent", "roomDetailsContent"].forEach(id => {
     const content = document.getElementById(id);

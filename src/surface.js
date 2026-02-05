@@ -13,6 +13,58 @@ const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
 
 const FLOOR_TYPES = ["floor"];
 
+export function unfoldRoomWalls(room, heightCm) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+
+  // Signed area to determine winding (shoelace)
+  let area2 = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
+  }
+  const sign = area2 > 0 ? 1 : -1;
+
+  const walls = [];
+  for (let i = 0; i < n; i++) {
+    const A = verts[i];
+    const B = verts[(i + 1) % n];
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const L = Math.sqrt(dx * dx + dy * dy);
+    if (L < 1) continue;
+
+    const nx = sign * dy / L;
+    const ny = sign * -dx / L;
+
+    const corners = [
+      { x: pos.x + A.x, y: pos.y + A.y },
+      { x: pos.x + B.x, y: pos.y + B.y },
+      { x: pos.x + B.x + nx * heightCm, y: pos.y + B.y + ny * heightCm },
+      { x: pos.x + A.x + nx * heightCm, y: pos.y + A.y + ny * heightCm },
+    ];
+
+    let minX = Infinity, minY = Infinity;
+    for (const c of corners) {
+      if (c.x < minX) minX = c.x;
+      if (c.y < minY) minY = c.y;
+    }
+    const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
+
+    const wall = createSurface({
+      name: room.name + " · Wall " + (i + 1),
+      polygonVertices: localVerts,
+    });
+    wall.sourceRoomId = room.id;
+    wall.floorPosition = { x: minX, y: minY };
+    walls.push(wall);
+  }
+  return walls;
+}
+
 export function createSurface(opts = {}) {
   // Resolved lazily to support circular imports (core.js → surface.js → core.js)
   const DEFAULT_TILE = {
@@ -113,6 +165,7 @@ export function createSurface(opts = {}) {
     exclusions: opts.exclusions || [],
     excludedTiles: opts.excludedTiles || [],
     excludedSkirts: opts.excludedSkirts || [],
+    wallHeightCm: opts.wallHeightCm ?? 200,
     skirting,
     floorPosition,
     patternLink,
