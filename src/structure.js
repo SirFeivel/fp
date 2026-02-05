@@ -1,7 +1,8 @@
-import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_CONFIG } from './core.js';
+import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate } from './core.js';
 import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 import { showAlert } from './dialog.js';
+import { createSurface } from './surface.js';
 
 export function createStructureController({
   store,
@@ -169,35 +170,21 @@ export function createStructureController({
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
     const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
-    const newRoom = {
-      id: uuid(),
+    const newRoom = createSurface({
       name: `Raum ${currentFloor.rooms.length + 1}`,
-      polygonVertices: [
-        { x: 0, y: 0 },
-        { x: 600, y: 0 },
-        { x: 600, y: 400 },
-        { x: 0, y: 400 }
-      ],
-      exclusions: [],
-      excludedTiles: [],
-      excludedSkirts: [],
+      widthCm: 600,
+      heightCm: 400,
       tile: {
         widthCm: defaultPreset.widthCm,
         heightCm: defaultPreset.heightCm,
         shape: defaultPreset.shape || "rect",
-        reference: presetName
+        reference: presetName,
       },
-      grout: { widthCm: defaultPreset.groutWidthCm, colorHex: defaultPreset.groutColorHex },
-      pattern: {
-        type: "grid",
-        bondFraction: 0.5,
-        rotationDeg: 0,
-        offsetXcm: 0,
-        offsetYcm: 0,
-        origin: { preset: "tl", xCm: 0, yCm: 0 }
+      grout: {
+        widthCm: defaultPreset.groutWidthCm,
+        colorHex: defaultPreset.groutColorHex,
       },
-      skirting: { ...DEFAULT_SKIRTING_CONFIG }
-    };
+    });
 
     // Find a connected position for the new room
     const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms, currentFloor);

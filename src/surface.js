@@ -1,18 +1,6 @@
 // src/surface.js — Universal tileable surface factory
 import { uuid, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_CONFIG } from "./core.js";
 
-const DEFAULT_TILE = {
-  widthCm: DEFAULT_TILE_PRESET.widthCm,
-  heightCm: DEFAULT_TILE_PRESET.heightCm,
-  shape: DEFAULT_TILE_PRESET.shape,
-  reference: "Standard",
-};
-
-const DEFAULT_GROUT = {
-  widthCm: DEFAULT_TILE_PRESET.groutWidthCm,
-  colorHex: DEFAULT_TILE_PRESET.groutColorHex,
-};
-
 const DEFAULT_PATTERN = {
   type: "grid",
   bondFraction: 0.5,
@@ -26,6 +14,17 @@ const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
 const FLOOR_TYPES = ["floor"];
 
 export function createSurface(opts = {}) {
+  // Resolved lazily to support circular imports (core.js → surface.js → core.js)
+  const DEFAULT_TILE = {
+    widthCm: DEFAULT_TILE_PRESET.widthCm,
+    heightCm: DEFAULT_TILE_PRESET.heightCm,
+    shape: DEFAULT_TILE_PRESET.shape,
+    reference: "Standard",
+  };
+  const DEFAULT_GROUT = {
+    widthCm: DEFAULT_TILE_PRESET.groutWidthCm,
+    colorHex: DEFAULT_TILE_PRESET.groutColorHex,
+  };
   // --- Shape resolution ---
   let polygonVertices;
   let widthCm;
@@ -36,7 +35,7 @@ export function createSurface(opts = {}) {
     const r = opts.circleRadius;
     widthCm = 2 * r;
     heightCm = 2 * r;
-    circle = { cx: r, cy: r, r };
+    circle = { cx: r, cy: r, rx: r, ry: r };
     polygonVertices = null;
   } else if (opts.polygonVertices && opts.polygonVertices.length >= 3) {
     polygonVertices = opts.polygonVertices.map(p => ({ x: p.x, y: p.y }));

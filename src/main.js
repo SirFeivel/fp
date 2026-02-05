@@ -249,8 +249,16 @@ function renderPlanningSection(state, opts) {
         const numVal = parseFloat(value);
         if (!Number.isFinite(numVal) || numVal < 1) return;
 
+        // Update circle/ellipse room
+        if (room.circle && room.circle.rx > 0) {
+          const rx = key === "widthCm" ? numVal / 2 : room.circle.rx;
+          const ry = key === "heightCm" ? numVal / 2 : room.circle.ry;
+          room.circle = { cx: rx, cy: ry, rx, ry };
+          room.widthCm = 2 * rx;
+          room.heightCm = 2 * ry;
+        }
         // Update polygonVertices for rectangular room
-        if (room.polygonVertices?.length === 4) {
+        else if (room.polygonVertices?.length === 4) {
           const bounds = getRoomBounds(room);
           const newW = key === "widthCm" ? numVal : bounds.width;
           const newH = key === "heightCm" ? numVal : bounds.height;
@@ -2109,24 +2117,12 @@ function updateAllTranslations() {
     const next = deepClone(state);
     const nextFloor = next.floors.find(f => f.id === floor.id);
 
-    // Create new room with default size using polygonVertices
-    const newRoom = {
-      id: uuid(),
+    // Create new room with default size using createSurface
+    const newRoom = createSurface({
       name: t("room.newRoom") || "New Room",
       widthCm: 300,
       heightCm: 300,
-      polygonVertices: [
-        { x: 0, y: 0 },
-        { x: 300, y: 0 },
-        { x: 300, y: 300 },
-        { x: 0, y: 300 }
-      ],
-      exclusions: [],
-      tile: { widthCm: 60, heightCm: 30, shape: "rect" },
-      grout: { widthCm: 0.3, color: "#999999" },
-      pattern: { type: "grid", offsetPercent: 50, angle: 0, startCorner: "topLeft" },
-      floorPosition: { x: 0, y: 0 }
-    };
+    });
 
     // Position new room on a free edge of existing rooms
     if (nextFloor.rooms.length > 0) {

@@ -2,8 +2,8 @@
 // Controller for drawing room polygons by clicking vertices
 
 import { svgEl, roomPolygon } from "./geometry.js";
-import { uuid } from "./core.js";
 import { t } from "./i18n.js";
+import { createSurface } from "./surface.js";
 
 const MIN_POINTS = 3;
 const CLOSE_THRESHOLD_PX = 15; // Pixels to detect closing click on first point
@@ -1039,40 +1039,22 @@ export function createPolygonDrawController({
   function createRoomFromPolygon(polygonPoints) {
     if (!polygonPoints || polygonPoints.length < MIN_POINTS) return null;
 
-    // Calculate bounding box
     let minX = Infinity, minY = Infinity;
-    let maxX = -Infinity, maxY = -Infinity;
-
     for (const p of polygonPoints) {
       minX = Math.min(minX, p.x);
       minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
     }
 
-    const width = maxX - minX;
-    const height = maxY - minY;
+    const localVertices = polygonPoints.map(p => ({
+      x: Math.round(p.x - minX),
+      y: Math.round(p.y - minY),
+    }));
 
-    // For now, create a room with widthCm/heightCm matching the bounding box
-    // and store the polygon vertices for future rendering
-    const room = {
-      id: uuid(),
+    return createSurface({
       name: t("room.newRoom") || "New Room",
-      widthCm: Math.round(width),
-      heightCm: Math.round(height),
-      exclusions: [],
-      tile: { widthCm: 60, heightCm: 30, shape: "rect" },
-      grout: { widthCm: 0.3, color: "#999999" },
-      pattern: { type: "grid", offsetPercent: 50, angle: 0, startCorner: "topLeft" },
+      polygonVertices: localVertices,
       floorPosition: { x: Math.round(minX), y: Math.round(minY) },
-      // Store polygon vertices relative to floorPosition
-      polygonVertices: polygonPoints.map(p => ({
-        x: Math.round(p.x - minX),
-        y: Math.round(p.y - minY)
-      }))
-    };
-
-    return room;
+    });
   }
 
   return {

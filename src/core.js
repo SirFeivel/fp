@@ -1,5 +1,6 @@
 // src/core.js
 import { t } from "./i18n.js";
+import { createSurface } from "./surface.js";
 export const LS_SESSION = "fp.session.v1";
 export const LS_PROJECTS = "fp.projects.v1";
 
@@ -126,53 +127,11 @@ export const DEFAULT_SKIRTING_CONFIG = {
 };
 
 /**
- * Creates a default room object with all required properties.
- * Use this to add rooms to a floor.
- */
-export function createDefaultRoom(name = "Raum", widthCm = 600, heightCm = 400) {
-  const roomId = uuid();
-  return {
-    id: roomId,
-    name,
-    floorPosition: { x: 0, y: 0 },
-    patternLink: {
-      mode: "independent",
-      linkedRoomId: null
-    },
-    polygonVertices: [
-      { x: 0, y: 0 },
-      { x: widthCm, y: 0 },
-      { x: widthCm, y: heightCm },
-      { x: 0, y: heightCm }
-    ],
-    exclusions: [],
-    tile: {
-      widthCm: DEFAULT_TILE_PRESET.widthCm,
-      heightCm: DEFAULT_TILE_PRESET.heightCm,
-      shape: DEFAULT_TILE_PRESET.shape,
-      reference: "Standard"
-    },
-    grout: { widthCm: DEFAULT_TILE_PRESET.groutWidthCm, colorHex: DEFAULT_TILE_PRESET.groutColorHex },
-    pattern: {
-      type: "grid",
-      bondFraction: 0.5,
-      rotationDeg: 0,
-      offsetXcm: 0,
-      offsetYcm: 0,
-      origin: { preset: "tl", xCm: 0, yCm: 0 }
-    },
-    skirting: {
-      ...DEFAULT_SKIRTING_CONFIG
-    }
-  };
-}
-
-/**
  * Returns a default state with one room (for backwards compatibility in tests).
  */
 export function defaultStateWithRoom() {
   const state = defaultState();
-  const room = createDefaultRoom();
+  const room = createSurface({ name: "Raum", widthCm: 600, heightCm: 400 });
   state.floors[0].rooms.push(room);
   state.selectedRoomId = room.id;
   state.view.planningMode = "room";
