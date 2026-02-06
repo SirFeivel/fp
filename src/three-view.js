@@ -8,8 +8,7 @@ const FLOOR_OPACITY = 0.25;      // matches rgba(59,130,246,0.25)
 const WALL_COLOR = 0x6496c8;     // unselected room fill tone (rgb(100,150,200))
 const WALL_HOVER_COLOR = 0x3b82f6; // selection blue (#3b82f6)
 const EDGE_COLOR = 0xc8dcff;     // room stroke (rgba(200,220,255))
-const SURFACE_HIGHLIGHT_COLOR = 0x3b82f6; // selected surface highlight (same blue as accent)
-const SURFACE_HIGHLIGHT_OPACITY = 0.45;   // brighter than normal floor
+const SURFACE_HIGHLIGHT_OPACITY = 0.45;   // hover/selected floor opacity
 const BG_COLOR = 0x081022;       // .svgWrap background
 
 // --- Tile path parsing helpers ---
@@ -273,7 +272,7 @@ const UNSELECTED_EDGE_COLOR = 0x6b7280;
  * Creates a Three.js 3D view controller for floor visualization.
  * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function, onRoomSelect: Function }} opts
  */
-export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDoubleClick, onHoverChange, onRoomSelect }) {
+export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDoubleClick, onHoverChange, onRoomSelect, onSurfaceSelect }) {
   let renderer, camera, controls, scene;
   let animFrameId = null;
   let active = false;
@@ -365,13 +364,21 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       addRoomToScene(roomDesc, isSel, isSel ? selectedSurfaceEdgeIndex : null);
     }
 
-    // Apply hover state to the selected surface wall
+    // Apply hover state to the selected surface (wall or floor)
     if (selectedSurfaceEdgeIndex != null) {
       const match = wallMeshes.find(
         m => m.userData.roomId === selectedRoomId && m.userData.edgeIndex === selectedSurfaceEdgeIndex
       );
       if (match) {
         match.material.color.setHex(WALL_HOVER_COLOR);
+        hoveredMesh = match;
+      }
+    } else if (selectedSurfaceEdgeIndex === null && selectedRoomId) {
+      // Floor surface selected — highlight it
+      const match = floorMeshes.find(m => m.userData.roomId === selectedRoomId);
+      if (match) {
+        match.material.color.setHex(WALL_HOVER_COLOR);
+        match.material.opacity = SURFACE_HIGHLIGHT_OPACITY;
         hoveredMesh = match;
       }
     }
@@ -406,23 +413,22 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
 
     const hasTiles = roomDesc.floorTiles?.length > 0;
     const groutColor = hasTiles ? parseHexColor(roomDesc.groutColor) : null;
-    const isFloorHighlighted = isSelected && selectedSurfaceEdgeIndex === null;
 
     const floorColor = hasTiles
       ? groutColor
-      : (isFloorHighlighted ? SURFACE_HIGHLIGHT_COLOR : (isSelected ? FLOOR_COLOR : UNSELECTED_FLOOR_COLOR));
+      : (isSelected ? FLOOR_COLOR : UNSELECTED_FLOOR_COLOR);
     const floorOpacity = hasTiles
       ? 1.0
-      : (isFloorHighlighted ? SURFACE_HIGHLIGHT_OPACITY : (isSelected ? FLOOR_OPACITY : UNSELECTED_FLOOR_OPACITY));
+      : (isSelected ? FLOOR_OPACITY : UNSELECTED_FLOOR_OPACITY);
 
     const floorMat = new THREE.MeshBasicMaterial({
       color: floorColor,
-      transparent: !hasTiles,
+      transparent: true,
       opacity: floorOpacity,
       side: THREE.DoubleSide,
     });
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-    floorMesh.userData = { type: "floor", roomId: roomDesc.id };
+    floorMesh.userData = { type: "floor", roomId: roomDesc.id, baseColor: floorMat.color.getHex(), baseOpacity: floorOpacity };
     scene.add(floorMesh);
     floorMeshes.push(floorMesh);
 
@@ -591,19 +597,30 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(wallMeshes, false);
 
-    const hit = hits.length > 0 ? hits[0].object : null;
+    // Check walls first, then floors
+    let hit = null;
+    const wallHits = raycaster.intersectObjects(wallMeshes, false);
+    if (wallHits.length > 0) {
+      hit = wallHits[0].object;
+    } else {
+      const floorHits = raycaster.intersectObjects(floorMeshes, false);
+      if (floorHits.length > 0) hit = floorHits[0].object;
+    }
+
     if (hit !== hoveredMesh) {
       // Unhover previous
       if (hoveredMesh) {
         hoveredMesh.material.color.setHex(hoveredMesh.userData.baseColor ?? WALL_COLOR);
+        if (hoveredMesh.userData.baseOpacity != null) hoveredMesh.material.opacity = hoveredMesh.userData.baseOpacity;
       }
       hoveredMesh = hit;
       if (hoveredMesh) {
         hoveredMesh.material.color.setHex(WALL_HOVER_COLOR);
-        const idx = hoveredMesh.userData.edgeIndex;
-        onHoverChange?.({ label: `Wall ${idx + 1}` });
+        if (hoveredMesh.userData.type === "floor") hoveredMesh.material.opacity = SURFACE_HIGHLIGHT_OPACITY;
+        const isFloor = hoveredMesh.userData.type === "floor";
+        const label = isFloor ? "Floor" : `Wall ${hoveredMesh.userData.edgeIndex + 1}`;
+        onHoverChange?.({ label });
       } else {
         onHoverChange?.(null);
       }
@@ -658,17 +675,24 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
 
     raycaster.setFromCamera(pointer, camera);
 
-    // Check floor meshes first, then wall meshes
+    // Check walls first (surface select), then floors
+    const wallHits = raycaster.intersectObjects(wallMeshes, false);
+    if (wallHits.length > 0) {
+      const mesh = wallHits[0].object;
+      const roomId = mesh.userData.roomId;
+      if (roomId) {
+        if (onSurfaceSelect) onSurfaceSelect({ roomId, edgeIndex: mesh.userData.edgeIndex });
+        else onRoomSelect?.({ roomId });
+      }
+      return;
+    }
     const floorHits = raycaster.intersectObjects(floorMeshes, false);
     if (floorHits.length > 0) {
       const roomId = floorHits[0].object.userData.roomId;
-      if (roomId) onRoomSelect?.({ roomId });
-      return;
-    }
-    const wallHits = raycaster.intersectObjects(wallMeshes, false);
-    if (wallHits.length > 0) {
-      const roomId = wallHits[0].object.userData.roomId;
-      if (roomId) onRoomSelect?.({ roomId });
+      if (roomId) {
+        if (onSurfaceSelect) onSurfaceSelect({ roomId, edgeIndex: null });
+        else onRoomSelect?.({ roomId });
+      }
     }
   }
 

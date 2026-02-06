@@ -322,11 +322,12 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   );
 
   if (existingWall) {
-    // Select and switch to room view
+    // Double-click drills into 2D editing
     const next = deepClone(state);
     next.selectedRoomId = existingWall.id;
     next.view = next.view || {};
     next.view.planningMode = "room";
+    next.view.use3D = false;
     store.commit("View wall surface", next, { onRender: renderAll, updateMetaCb: updateMeta });
     return;
   }
@@ -358,6 +359,7 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   }
   next.view = next.view || {};
   next.view.planningMode = "room";
+  next.view.use3D = false;
   store.commit("3D wall → room view", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
@@ -399,18 +401,49 @@ function renderPlanningSection(state, opts) {
         canvas: document.getElementById("threeDCanvas"),
         onWallDoubleClick: ({ edgeIndex, roomId }) => handleWallDoubleClick(roomId, edgeIndex),
         onRoomDoubleClick: ({ roomId }) => {
-          // In floor 3D: drill down to room level (stay in 3D)
           const s = store.getState();
           if (s.view?.planningMode === "floor") {
+            // Floor 3D: drill down to room level (stay in 3D)
             const next = deepClone(s);
             next.selectedRoomId = roomId;
             next.view.planningMode = "room";
             store.commit("Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+          } else {
+            // Room 3D: double-click floor → open in 2D
+            const next = deepClone(s);
+            next.selectedRoomId = roomId;
+            next.view = next.view || {};
+            next.view.use3D = false;
+            store.commit("Floor surface opened", next, { onRender: renderAll, updateMetaCb: updateMeta });
           }
         },
         onHoverChange: (info) => {
           const el = document.getElementById("threeDHoverInfo");
           if (el) el.textContent = info ? info.label : "";
+        },
+        onSurfaceSelect: ({ roomId, edgeIndex }) => {
+          // Single-click on wall/floor in 3D → select that surface
+          const current = store.getState();
+          const floor = getCurrentFloor(current);
+          if (!floor) return;
+          if (edgeIndex != null) {
+            // Find the wall room for this edge
+            const wallRoom = floor.rooms.find(
+              r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
+            );
+            if (wallRoom && current.selectedRoomId !== wallRoom.id) {
+              const next = deepClone(current);
+              next.selectedRoomId = wallRoom.id;
+              store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+            }
+          } else {
+            // Floor surface — select the room itself
+            if (current.selectedRoomId !== roomId) {
+              const next = deepClone(current);
+              next.selectedRoomId = roomId;
+              store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+            }
+          }
         },
         onRoomSelect: ({ roomId }) => {
           const current = store.getState();
