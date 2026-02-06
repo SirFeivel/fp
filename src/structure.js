@@ -95,19 +95,23 @@ export function createStructureController({
       return;
     }
 
-    // Get walls for the current room
-    const walls = currentFloor.rooms.filter(r => r.sourceRoomId === currentRoom.id);
+    // Resolve to parent room if a wall is currently selected
+    const parentRoom = currentRoom.sourceRoomId
+      ? currentFloor.rooms.find(r => r.id === currentRoom.sourceRoomId) || currentRoom
+      : currentRoom;
 
-    if (walls.length === 0) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = t("structure.noWalls") || "No walls";
-      sel.appendChild(opt);
-      sel.disabled = true;
-      return;
-    }
+    // Get walls for this room
+    const walls = currentFloor.rooms.filter(r => r.sourceRoomId === parentRoom.id);
 
     sel.disabled = false;
+
+    // Floor surface (the room itself) is always the first entry
+    const floorOpt = document.createElement("option");
+    floorOpt.value = parentRoom.id;
+    floorOpt.textContent = t("tabs.floorSurface") || "Floor";
+    if (parentRoom.id === state.selectedRoomId) floorOpt.selected = true;
+    sel.appendChild(floorOpt);
+
     for (const wall of walls) {
       const opt = document.createElement("option");
       opt.value = wall.id;

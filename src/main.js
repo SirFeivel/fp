@@ -1949,18 +1949,17 @@ function updateAllTranslations() {
   });
 
   document.getElementById("wallSelect")?.addEventListener("change", (e) => {
-    const wallId = e.target.value;
-    if (wallId) {
-      // When selecting a wall, turn off 3D (walls are 2D only)
-      const s = store.getState();
-      const next = deepClone(s);
-      next.selectedRoomId = wallId;
-      next.view = next.view || {};
-      next.view.use3D = false;
-      store.commit("Wall selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
-    } else {
-      structure.selectRoom(wallId);
-    }
+    const surfaceId = e.target.value;
+    if (!surfaceId) return;
+    const s = store.getState();
+    const floor = getCurrentFloor(s);
+    const target = floor?.rooms?.find(r => r.id === surfaceId);
+    const isWall = Boolean(target?.sourceRoomId);
+    const next = deepClone(s);
+    next.selectedRoomId = surfaceId;
+    next.view = next.view || {};
+    if (isWall) next.view.use3D = false; // walls are 2D only
+    store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
   // Pattern groups dropdown in quick controls bar
@@ -2922,28 +2921,38 @@ function updateAllTranslations() {
       });
     }
 
-    // Sync wall selector (show walls for current room)
+    // Sync surface selector (floor + walls for current room)
     const wallSelect = document.getElementById("wallSelect");
     if (wallSelect) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
       wallSelect.innerHTML = "";
 
-      // Get walls for the current room
+      // Resolve to parent room if a wall is selected
+      let parentRoom = room;
       let walls = [];
       if (room) {
-        // If current selection is a wall, get walls from its parent room
-        const parentRoomId = room.sourceRoomId || room.id;
-        walls = floor?.rooms?.filter(r => r.sourceRoomId === parentRoomId) || [];
+        if (room.sourceRoomId) {
+          parentRoom = floor?.rooms?.find(r => r.id === room.sourceRoomId) || room;
+        }
+        walls = floor?.rooms?.filter(r => r.sourceRoomId === parentRoom.id) || [];
       }
 
-      if (walls.length === 0) {
+      if (!parentRoom) {
         const opt = document.createElement("option");
         opt.value = "";
-        opt.textContent = "No walls";
+        opt.textContent = "—";
         wallSelect.appendChild(opt);
         wallSelect.disabled = true;
       } else {
         wallSelect.disabled = false;
+
+        // Floor surface (the room itself) is the first entry
+        const floorOpt = document.createElement("option");
+        floorOpt.value = parentRoom.id;
+        floorOpt.textContent = t("tabs.floorSurface") || "Floor";
+        if (parentRoom.id === state.selectedRoomId) floorOpt.selected = true;
+        wallSelect.appendChild(floorOpt);
+
         walls.forEach(w => {
           const opt = document.createElement("option");
           opt.value = w.id;
