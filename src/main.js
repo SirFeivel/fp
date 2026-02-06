@@ -2692,6 +2692,12 @@ function updateAllTranslations() {
       const next = deepClone(state);
       const nextFloor = next.floors.find(f => f.id === state.selectedFloorId);
 
+      // Name with counter based on existing non-wall rooms
+      if (nextFloor) {
+        const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
+        newRoom.name = `${t("room.newRoom")} ${floorRoomCount + 1}`;
+      }
+
       if (nextFloor) {
         // Subtract overlapping areas from existing rooms
         const { modifiedRoomIds, errors } = subtractOverlappingAreas(newRoom, nextFloor.rooms);

@@ -228,8 +228,9 @@ export function createStructureController({
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
     const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
+    const floorRoomCount = currentFloor.rooms.filter(r => !r.sourceRoomId).length;
     const newRoom = createSurface({
-      name: `Raum ${currentFloor.rooms.length + 1}`,
+      name: `${t("room.newRoom")} ${floorRoomCount + 1}`,
       widthCm: 600,
       heightCm: 400,
       tile: {
