@@ -61,6 +61,9 @@ const translations = {
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
       showWalls: "Wände anzeigen",
+      view2D: "2D",
+      view3D: "3D",
+      exit3D: "3D beenden",
       removalMode: "Entfernungsmodus",
       deleteSelected: "Auswahl löschen"
     },
@@ -659,6 +662,9 @@ const translations = {
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
       showWalls: "Show walls",
+      view2D: "2D",
+      view3D: "3D",
+      exit3D: "Exit 3D",
       removalMode: "Removal mode",
       deleteSelected: "Delete selected"
     },

@@ -52,6 +52,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 9) {
       s = migrateV9ToV10(s);
     }
+    if (s.meta?.version === 10) {
+      s = migrateV10ToV11(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -108,6 +111,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.view.showFloorTiles === undefined) s.view.showFloorTiles = false;
     if (s.view.showWalls === undefined) s.view.showWalls = false;
     if (s.view.showWalls3D === undefined) s.view.showWalls3D = false;
+    if (s.view.use3D === undefined) s.view.use3D = false;
+    if (s.view.planningMode === "3d") { s.view.planningMode = "floor"; s.view.use3D = true; }
     if (s.view.planningMode === undefined) s.view.planningMode = "room";
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;
@@ -512,6 +517,22 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     // This is safer and avoids import issues during state normalization
 
     console.log('[Migration v9->v10] Skipping wall generation in migration - walls will be created on demand');
+
+    return s;
+  }
+
+  function migrateV10ToV11(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 11;
+
+    // Convert planningMode "3d" to orthogonal use3D flag
+    if (s.view?.planningMode === "3d") {
+      s.view.planningMode = "floor";
+      s.view.use3D = true;
+    }
+    if (s.view) {
+      if (s.view.use3D === undefined) s.view.use3D = false;
+    }
 
     return s;
   }

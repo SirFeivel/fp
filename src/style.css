@@ -800,6 +800,12 @@ body{
   color: #fff;
 }
 
+.view-toggle-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .view-toggle-btn svg {
   width: 14px;
   height: 14px;

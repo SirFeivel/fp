@@ -427,6 +427,15 @@
                 </button>
               </div>
               <div class="view-toggle-divider"></div>
+              <div class="view-toggle" id="renderModeToggle">
+                <button id="view2DBtn" class="view-toggle-btn active" title="2D View">
+                  <span>2D</span>
+                </button>
+                <button id="view3DBtn" class="view-toggle-btn" title="3D View">
+                  <span>3D</span>
+                </button>
+              </div>
+              <div class="view-toggle-divider"></div>
               <label class="planning-room-select">
                 <span data-i18n="tabs.floor">Floor:</span>
                 <select id="planningFloorSelect"></select>
@@ -509,13 +518,6 @@
                   <button id="floorAddCircle" class="quick-btn" title="Demo: Circle">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
-                    </svg>
-                  </button>
-                  <button id="floorUnfold3D" class="quick-btn" title="Unfold room to 3D net">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M4 8l8-4 8 4v8l-8 4-8-4z"/>
-                      <path d="M4 8l8 4 8-4"/>
-                      <line x1="12" y1="12" x2="12" y2="20"/>
                     </svg>
                   </button>
                   <button id="floorDeleteRoom" class="quick-btn danger" title="Delete selected room" disabled>
@@ -685,12 +687,12 @@
               <!-- 3D View Quick Controls (hidden by default) -->
               <div class="quick-controls" id="threeDQuickControls" style="display: none;">
                 <div class="quick-actions">
-                  <button id="threeDBackToFloor" class="quick-btn" title="Back to Floor View">
+                  <button id="threeDBackToFloor" class="quick-btn" title="Exit 3D">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="19" y1="12" x2="5" y2="12"></line>
                       <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
-                    Back
+                    <span data-i18n="planning.exit3D">Exit 3D</span>
                   </button>
                   <button id="threeDResetCamera" class="quick-btn" title="Reset Camera">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

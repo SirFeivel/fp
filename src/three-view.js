@@ -271,7 +271,7 @@ const UNSELECTED_EDGE_COLOR = 0x6b7280;
  * Creates a Three.js 3D view controller for floor visualization.
  * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function, onRoomSelect: Function }} opts
  */
-export function createThreeViewController({ canvas, onWallDoubleClick, onHoverChange, onRoomSelect }) {
+export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDoubleClick, onHoverChange, onRoomSelect }) {
   let renderer, camera, controls, scene;
   let animFrameId = null;
   let active = false;
@@ -602,14 +602,23 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(wallMeshes, false);
 
-    if (hits.length > 0) {
-      const mesh = hits[0].object;
+    // Check walls first (higher priority — drill into wall view)
+    const wallHits = raycaster.intersectObjects(wallMeshes, false);
+    if (wallHits.length > 0) {
+      const mesh = wallHits[0].object;
       onWallDoubleClick?.({
         edgeIndex: mesh.userData.edgeIndex,
         roomId: mesh.userData.roomId,
       });
+      return;
+    }
+
+    // Then check floor meshes (drill into room)
+    const floorHits = raycaster.intersectObjects(floorMeshes, false);
+    if (floorHits.length > 0) {
+      const roomId = floorHits[0].object.userData.roomId;
+      if (roomId) onRoomDoubleClick?.({ roomId });
     }
   }
 

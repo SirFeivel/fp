@@ -91,7 +91,7 @@ describe('safeParseJSON', () => {
 describe('defaultState', () => {
   it('should create state with valid structure', () => {
     const state = defaultState();
-    expect(state.meta.version).toBe(10);
+    expect(state.meta.version).toBe(11);
     expect(state.floors).toHaveLength(1);
     expect(state.floors[0].rooms).toHaveLength(0); // No rooms by default
     expect(state.view.planningMode).toBe('floor'); // Starts in floor view
