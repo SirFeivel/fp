@@ -1999,6 +1999,52 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     svg.appendChild(t2);
   }
 
+  // Wall surfaces in single-room view: rotate so the floor edge sits at the bottom
+  if (currentRoom.sourceRoomId != null && currentRoom.wallEdgeIndex != null
+      && currentRoom.polygonVertices?.length >= 4) {
+    const v0 = currentRoom.polygonVertices[0];
+    const v1 = currentRoom.polygonVertices[1];
+    const edgeAngleDeg = Math.atan2(v1.y - v0.y, v1.x - v0.x) * 180 / Math.PI;
+
+    let rotDeg = -edgeAngleDeg;
+
+    // Determine whether the floor edge ends up at the bottom (larger Y) after
+    // the initial rotation; if not, flip 180° so it does.
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const rotRad = rotDeg * Math.PI / 180;
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+    const floorY = (v0.x - cx) * sinR + (v0.y - cy) * cosR + cy;
+    const ceilY = (currentRoom.polygonVertices[3].x - cx) * sinR
+                + (currentRoom.polygonVertices[3].y - cy) * cosR + cy;
+    if (floorY < ceilY) rotDeg += 180;
+
+    // Normalise to [0, 360) and skip if effectively zero
+    const normRot = ((rotDeg % 360) + 360) % 360;
+    if (normRot > 0.1 && normRot < 359.9) {
+      const g = svgEl("g", { transform: `rotate(${rotDeg} ${cx} ${cy})` });
+      while (svg.firstChild) g.appendChild(svg.firstChild);
+      svg.appendChild(g);
+
+      // Recompute viewBox from the rotated polygon bounds
+      const finalRad = rotDeg * Math.PI / 180;
+      const cosF = Math.cos(finalRad), sinF = Math.sin(finalRad);
+      let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
+      for (const v of currentRoom.polygonVertices) {
+        const rx = cx + (v.x - cx) * cosF - (v.y - cy) * sinF;
+        const ry = cy + (v.x - cx) * sinF + (v.y - cy) * cosF;
+        rMinX = Math.min(rMinX, rx);
+        rMinY = Math.min(rMinY, ry);
+        rMaxX = Math.max(rMaxX, rx);
+        rMaxY = Math.max(rMaxY, ry);
+      }
+      const rW = rMaxX - rMinX;
+      const rH = rMaxY - rMinY;
+      svg.setAttribute("viewBox",
+        `${rMinX - viewBoxPadding} ${rMinY - viewBoxPadding} ${rW + 2 * viewBoxPadding} ${rH + 2 * viewBoxPadding}`);
+    }
+  }
+
   const svgFullscreen = !svgOverride ? document.getElementById("planSvgFullscreen") : null;
   if (svgFullscreen) {
     svgFullscreen.innerHTML = svg.innerHTML;

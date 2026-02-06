@@ -20,7 +20,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface, unfoldRoomWalls } from "./surface.js";
+import { createSurface, unfoldRoomWalls, transformWallExclusions } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
 
 import {
@@ -58,56 +58,6 @@ import {
   computePatternGroupOrigin
 } from "./pattern-groups.js";
 import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
-
-/**
- * Transform exclusions from parallelogram surface coords to axis-aligned rectangular coords.
- * The stored wall surface has parallelogram polygonVertices (P0,P1,P2,P3).
- * We compute parametric (t,s) in the parallelogram, then map to (t*edgeLength, s*wallH).
- * All exclusion types are converted to freeform with transformed vertices.
- */
-function transformWallExclusions(exclusions, surfaceVerts, edgeLength, wallH) {
-  if (!exclusions?.length || !surfaceVerts || surfaceVerts.length < 4) return [];
-  const P0 = surfaceVerts[0];
-  const U = { x: surfaceVerts[1].x - P0.x, y: surfaceVerts[1].y - P0.y };
-  const V = { x: surfaceVerts[3].x - P0.x, y: surfaceVerts[3].y - P0.y };
-  const det = U.x * V.y - U.y * V.x;
-  if (Math.abs(det) < 0.001) return [];
-  const invDet = 1 / det;
-
-  function mapPoint(px, py) {
-    const dx = px - P0.x, dy = py - P0.y;
-    const t = (V.y * dx - V.x * dy) * invDet;
-    const s = (-U.y * dx + U.x * dy) * invDet;
-    return { x: t * edgeLength, y: s * wallH };
-  }
-
-  return exclusions.map(ex => {
-    let vertices;
-    if (ex.type === "rect") {
-      vertices = [
-        mapPoint(ex.x, ex.y),
-        mapPoint(ex.x + ex.w, ex.y),
-        mapPoint(ex.x + ex.w, ex.y + ex.h),
-        mapPoint(ex.x, ex.y + ex.h),
-      ];
-    } else if (ex.type === "tri") {
-      vertices = [mapPoint(ex.p1.x, ex.p1.y), mapPoint(ex.p2.x, ex.p2.y), mapPoint(ex.p3.x, ex.p3.y)];
-    } else if (ex.type === "circle") {
-      const rx = ex.rx || ex.r || 10;
-      const ry = ex.ry || ex.r || 10;
-      vertices = [];
-      for (let i = 0; i < 48; i++) {
-        const a = (i / 48) * Math.PI * 2;
-        vertices.push(mapPoint(ex.cx + rx * Math.cos(a), ex.cy + ry * Math.sin(a)));
-      }
-    } else if (ex.type === "freeform" && ex.vertices?.length >= 3) {
-      vertices = ex.vertices.map(v => mapPoint(v.x, v.y));
-    } else {
-      return null;
-    }
-    return { type: "freeform", vertices };
-  }).filter(Boolean);
-}
 
 // Store
 const store = createStateStore(defaultState, validateState);
