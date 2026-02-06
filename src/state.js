@@ -101,11 +101,12 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.pattern;
     }
 
-    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, planningMode: "room" };
+    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, showWalls: true, planningMode: "room" };
     if (s.view.showGrid === undefined) s.view.showGrid = true;
     if (s.view.showNeeds === undefined) s.view.showNeeds = false;
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
     if (s.view.showFloorTiles === undefined) s.view.showFloorTiles = false;
+    if (s.view.showWalls === undefined) s.view.showWalls = true;
     if (s.view.planningMode === undefined) s.view.planningMode = "room";
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;

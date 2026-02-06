@@ -510,6 +510,7 @@ export function renderRoomForm(state) {
   if (planningRoomSkirtingEnabled) planningRoomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
+  document.querySelectorAll("#showWalls, #threeDShowWalls, #pgShowWalls").forEach(el => el.checked = Boolean(state.view?.showWalls));
   document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));
 
   const skirting = currentRoom?.skirting;
@@ -2522,9 +2523,12 @@ export function renderFloorCanvas({
     svg.appendChild(gridGroup);
   }
 
+  // Render each room (filter walls if showWalls is false)
+  const roomsToRenderFloor = state.view?.showWalls === false
+    ? floor.rooms.filter(r => !r.sourceRoomId)
+    : floor.rooms;
 
-  // Render each room
-  for (const room of floor.rooms) {
+  for (const room of roomsToRenderFloor) {
     const pos = room.floorPosition || { x: 0, y: 0 };
     const roomGroup = svgEl("g", {
       transform: `translate(${pos.x}, ${pos.y})`,
@@ -3129,8 +3133,12 @@ export function renderPatternGroupsCanvas({
     svg.appendChild(gridGroup);
   }
 
-  // Render each room
-  for (const room of floor.rooms) {
+  // Render each room (filter walls if showWalls is false)
+  const roomsToRenderPG = state.view?.showWalls === false
+    ? floor.rooms.filter(r => !r.sourceRoomId)
+    : floor.rooms;
+
+  for (const room of roomsToRenderPG) {
     const pos = room.floorPosition || { x: 0, y: 0 };
     const roomGroup = svgEl("g", {
       transform: `translate(${pos.x}, ${pos.y})`,

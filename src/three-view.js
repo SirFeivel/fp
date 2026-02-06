@@ -376,47 +376,52 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     scene.add(floorMesh);
 
     // --- Wall meshes ---
+    const showWalls = opts.showWalls !== false;
     const n = verts.length;
-    for (let i = 0; i < n; i++) {
-      const A = verts[i];
-      const B = verts[(i + 1) % n];
+    console.log("🔍 3D buildScene - showWalls:", showWalls);
 
-      const ax = pos.x + A.x, az = pos.y + A.y;
-      const bx = pos.x + B.x, bz = pos.y + B.y;
+    if (showWalls) {
+      for (let i = 0; i < n; i++) {
+        const A = verts[i];
+        const B = verts[(i + 1) % n];
 
-      // Quad: bottom-left, bottom-right, top-right, top-left
-      const positions = new Float32Array([
-        ax, 0, az,
-        bx, 0, bz,
-        bx, wallH, bz,
-        ax, wallH, az,
-      ]);
-      const indices = [0, 1, 2, 0, 2, 3];
+        const ax = pos.x + A.x, az = pos.y + A.y;
+        const bx = pos.x + B.x, bz = pos.y + B.y;
 
-      const wallGeo = new THREE.BufferGeometry();
-      wallGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      wallGeo.setIndex(indices);
-      wallGeo.computeVertexNormals();
+        // Quad: bottom-left, bottom-right, top-right, top-left
+        const positions = new Float32Array([
+          ax, 0, az,
+          bx, 0, bz,
+          bx, wallH, bz,
+          ax, wallH, az,
+        ]);
+        const indices = [0, 1, 2, 0, 2, 3];
 
-      // Use grout color as wall base when tiles are present on this wall
-      const wallHasTiles = (opts.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
-      const wallBaseColor = wallHasTiles ? parseHexColor(opts.groutColor || "#ffffff") : new THREE.Color(WALL_COLOR);
+        const wallGeo = new THREE.BufferGeometry();
+        wallGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        wallGeo.setIndex(indices);
+        wallGeo.computeVertexNormals();
 
-      const wallMat = new THREE.MeshLambertMaterial({
-        color: wallBaseColor,
-        side: THREE.DoubleSide,
-      });
+        // Use grout color as wall base when tiles are present on this wall
+        const wallHasTiles = (opts.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
+        const wallBaseColor = wallHasTiles ? parseHexColor(opts.groutColor || "#ffffff") : new THREE.Color(WALL_COLOR);
 
-      const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-      wallMesh.userData = { type: "wall", edgeIndex: i, roomId: room.id, baseColor: wallBaseColor.getHex() };
-      scene.add(wallMesh);
-      wallMeshes.push(wallMesh);
+        const wallMat = new THREE.MeshLambertMaterial({
+          color: wallBaseColor,
+          side: THREE.DoubleSide,
+        });
 
-      // Edge lines for depth perception
-      const edgesGeo = new THREE.EdgesGeometry(wallGeo);
-      const linesMat = new THREE.LineBasicMaterial({ color: EDGE_COLOR });
-      const lineSegments = new THREE.LineSegments(edgesGeo, linesMat);
-      scene.add(lineSegments);
+        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        wallMesh.userData = { type: "wall", edgeIndex: i, roomId: room.id, baseColor: wallBaseColor.getHex() };
+        scene.add(wallMesh);
+        wallMeshes.push(wallMesh);
+
+        // Edge lines for depth perception
+        const edgesGeo = new THREE.EdgesGeometry(wallGeo);
+        const linesMat = new THREE.LineBasicMaterial({ color: EDGE_COLOR });
+        const lineSegments = new THREE.LineSegments(edgesGeo, linesMat);
+        scene.add(lineSegments);
+      }
     }
 
     // --- Floor tiles + exclusions via renderSurface3D ---

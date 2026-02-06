@@ -60,6 +60,7 @@ const translations = {
       displayOptions: "Anzeigeoptionen",
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
+      showWalls: "Wände anzeigen",
       removalMode: "Entfernungsmodus",
       deleteSelected: "Auswahl löschen"
     },
@@ -657,6 +658,7 @@ const translations = {
       displayOptions: "Display Options",
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
+      showWalls: "Show walls",
       removalMode: "Removal mode",
       deleteSelected: "Delete selected"
     },

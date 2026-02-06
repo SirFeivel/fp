@@ -194,6 +194,7 @@ export function defaultState() {
       showNeeds: false,
       showSkirting: true,
       showFloorTiles: false,
+      showWalls: true,
       planningMode: "floor"  // Start in floor view to add rooms
     }
   };

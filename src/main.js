@@ -302,7 +302,8 @@ function renderPlanningSection(state, opts) {
       const wallData = [];
       const verts = room.polygonVertices;
       const nVerts = verts?.length || 0;
-      if (nVerts >= 3 && avail.mp) {
+      const showWalls = state.view?.showWalls !== false;
+      if (nVerts >= 3 && avail.mp && showWalls) {
         const wallH = room.wallHeightCm ?? 200;
         const patternSettings = effectiveSettings?.pattern || room.pattern;
         const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
@@ -417,6 +418,7 @@ function renderPlanningSection(state, opts) {
         floorExclusions: room.exclusions || [],
         groutColor,
         wallData,
+        showWalls: state.view?.showWalls !== false
       });
     }
   } else if (isFloorView) {
@@ -1187,6 +1189,35 @@ function initBackgroundControls() {
       onRender: renderAll,
       updateMetaCb: updateMeta
     });
+  });
+
+  // Wall visibility toggles - shows/hides walls in floor, pattern groups, and 3D views
+  const showWalls = document.getElementById("showWalls");
+  const pgShowWalls = document.getElementById("pgShowWalls");
+  const threeDShowWalls = document.getElementById("threeDShowWalls");
+
+  const handleWallsToggle = (e) => {
+    console.log("🔍 Wall toggle clicked:", e.target.id, "checked:", e.target.checked);
+    const state = store.getState();
+    const next = deepClone(state);
+
+    next.view = next.view || {};
+    next.view.showWalls = e.target.checked;
+    console.log("🔍 Setting showWalls to:", next.view.showWalls);
+
+    store.commit("Walls visibility toggled", next, {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  };
+
+  showWalls?.addEventListener("change", handleWallsToggle);
+  pgShowWalls?.addEventListener("change", handleWallsToggle);
+  threeDShowWalls?.addEventListener("change", handleWallsToggle);
+  console.log("🔍 Wall toggle listeners attached:", {
+    showWalls: !!showWalls,
+    pgShowWalls: !!pgShowWalls,
+    threeDShowWalls: !!threeDShowWalls
   });
 
 }
