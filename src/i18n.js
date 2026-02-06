@@ -543,6 +543,7 @@ const translations = {
       title: "Debug",
       sectionOptions: "Debug Optionen",
       showNeeds: "Reststück-Bedarf anzeigen",
+      showWalls: "Wände anzeigen (2D)",
       changed: "Debug geändert"
     },
     init: {
@@ -1146,6 +1147,7 @@ const translations = {
       title: "Debug",
       sectionOptions: "Debug Options",
       showNeeds: "Show leftover needs",
+      showWalls: "Show walls (2D)",
       changed: "Debug changed"
     },
     init: {

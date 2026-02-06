@@ -1283,40 +1283,31 @@ function initBackgroundControls() {
     });
   });
 
-  // Wall visibility toggles - shows/hides walls in floor, pattern groups, and 3D views
-  const showWalls = document.getElementById("showWalls");
-  const pgShowWalls = document.getElementById("pgShowWalls");
+  // Wall visibility toggles
+  const debugShowWalls = document.getElementById("debugShowWalls");
   const threeDShowWalls = document.getElementById("threeDShowWalls");
 
-  const handleWalls2DToggle = (e) => {
+  debugShowWalls?.addEventListener("change", (e) => {
     const state = store.getState();
     const next = deepClone(state);
-
     next.view = next.view || {};
     next.view.showWalls = e.target.checked;
-
     store.commit("2D walls visibility toggled", next, {
       onRender: renderAll,
       updateMetaCb: updateMeta
     });
-  };
+  });
 
-  const handleWalls3DToggle = (e) => {
+  threeDShowWalls?.addEventListener("change", (e) => {
     const state = store.getState();
     const next = deepClone(state);
-
     next.view = next.view || {};
     next.view.showWalls3D = e.target.checked;
-
     store.commit("3D walls visibility toggled", next, {
       onRender: renderAll,
       updateMetaCb: updateMeta
     });
-  };
-
-  showWalls?.addEventListener("change", handleWalls2DToggle);
-  pgShowWalls?.addEventListener("change", handleWalls2DToggle);
-  threeDShowWalls?.addEventListener("change", handleWalls3DToggle);
+  });
 
 }
 

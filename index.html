@@ -567,15 +567,6 @@
                       </svg>
                     </span>
                   </label>
-                  <label class="quick-toggle" title="Show Walls">
-                    <input id="showWalls" type="checkbox" />
-                    <span class="quick-toggle-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    </span>
-                  </label>
                 </div>
                 <div class="quick-control-divider"></div>
                 <!-- Zoom Controls (at end, like room view) -->
@@ -663,15 +654,6 @@
                   <label class="quick-toggle" title="Show Grid">
                     <input id="pgShowGrid" type="checkbox" />
                     <span class="quick-toggle-icon">▦</span>
-                  </label>
-                  <label class="quick-toggle" title="Show Walls">
-                    <input id="pgShowWalls" type="checkbox" />
-                    <span class="quick-toggle-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    </span>
                   </label>
                 </div>
                 <div class="quick-control-divider"></div>
@@ -1372,6 +1354,13 @@
           <label class="toggle-switch">
             <span class="toggle-label" data-i18n="debug.showNeeds">Show Offcut Needs</span>
             <input id="debugShowNeeds" type="checkbox" />
+            <div class="toggle-slider"></div>
+          </label>
+        </div>
+        <div class="field">
+          <label class="toggle-switch">
+            <span class="toggle-label" data-i18n="debug.showWalls">Show Walls (2D)</span>
+            <input id="debugShowWalls" type="checkbox" />
             <div class="toggle-slider"></div>
           </label>
         </div>

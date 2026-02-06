@@ -419,15 +419,13 @@ export function bindUI({
     next.view = next.view || {};
     const showGridEl = document.getElementById('showGrid');
     const showSkirtingEl = document.getElementById('showSkirting');
-    const showWallsEl = document.getElementById('showWalls');
+    const debugShowWallsEl = document.getElementById('debugShowWalls');
     const threeDShowWallsEl = document.getElementById('threeDShowWalls');
-    const pgShowWallsEl = document.getElementById('pgShowWalls');
     const removalModeEl = document.getElementById('removalMode');
 
     if (showGridEl) next.view.showGrid = Boolean(showGridEl.checked);
     if (showSkirtingEl) next.view.showSkirting = Boolean(showSkirtingEl.checked);
-    if (showWallsEl) next.view.showWalls = Boolean(showWallsEl.checked);
-    if (pgShowWallsEl) next.view.showWalls = Boolean(pgShowWallsEl.checked);
+    if (debugShowWallsEl) next.view.showWalls = Boolean(debugShowWallsEl.checked);
     if (threeDShowWallsEl) next.view.showWalls3D = Boolean(threeDShowWallsEl.checked);
     if (removalModeEl) next.view.removalMode = Boolean(removalModeEl.checked);
 
