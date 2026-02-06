@@ -2503,8 +2503,9 @@ function updateAllTranslations() {
     const nextFloor = next.floors.find(f => f.id === floor.id);
 
     // Create new room with default size using createSurface
+    const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
     const newRoom = createSurface({
-      name: t("room.newRoom") || "New Room",
+      name: `${t("room.newRoom")} ${floorRoomCount + 1}`,
       widthCm: 300,
       heightCm: 300,
     });
@@ -2583,10 +2584,11 @@ function updateAllTranslations() {
     const floor = getCurrentFloor(state);
     if (!floor) return;
 
-    const newRoom = createSurface({ name: "Circle", circleRadius: 100, surfaceType: "floor" });
-
     const next = deepClone(state);
     const nextFloor = next.floors.find(f => f.id === floor.id);
+
+    const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
+    const newRoom = createSurface({ name: `${t("room.newRoom")} ${floorRoomCount + 1}`, circleRadius: 100, surfaceType: "floor" });
 
     // Position new room
     if (nextFloor.rooms.length > 0) {
