@@ -2524,17 +2524,18 @@ export function renderFloorCanvas({
     svg.appendChild(gridGroup);
   }
 
-  // Render each room (filter walls if showWalls is false)
+  // Render rooms - walls are shown for visualization when enabled but never clickable
   const roomsToRenderFloor = state.view?.showWalls === false
     ? floor.rooms.filter(r => !r.sourceRoomId)
     : floor.rooms;
 
   for (const room of roomsToRenderFloor) {
     const pos = room.floorPosition || { x: 0, y: 0 };
+    const isWall = Boolean(room.sourceRoomId);
     const roomGroup = svgEl("g", {
       transform: `translate(${pos.x}, ${pos.y})`,
       "data-roomid": room.id,
-      cursor: "pointer"
+      cursor: isWall ? "default" : "pointer"
     });
 
     const isSelected = room.id === selectedRoomId;
@@ -2667,34 +2668,36 @@ export function renderFloorCanvas({
 
     roomGroup.appendChild(labelGroup);
 
-    // Event handlers
-    if (onRoomClick) {
-      roomGroup.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onRoomClick(room.id);
-      });
-    }
+    // Event handlers - walls are not interactive (child objects for visualization only)
+    if (!isWall) {
+      if (onRoomClick) {
+        roomGroup.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onRoomClick(room.id);
+        });
+      }
 
-    if (onRoomDoubleClick) {
-      roomGroup.addEventListener("dblclick", (e) => {
-        e.stopPropagation();
-        onRoomDoubleClick(room.id);
-      });
-    }
+      if (onRoomDoubleClick) {
+        roomGroup.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          onRoomDoubleClick(room.id);
+        });
+      }
 
-    if (onRoomPointerDown) {
-      roomGroup.addEventListener("pointerdown", (e) => {
-        if (e.button === 0) { // Left mouse button
-          onRoomPointerDown(e, room.id);
-        }
-      });
+      if (onRoomPointerDown) {
+        roomGroup.addEventListener("pointerdown", (e) => {
+          if (e.button === 0) { // Left mouse button
+            onRoomPointerDown(e, room.id);
+          }
+        });
+      }
     }
 
     svg.appendChild(roomGroup);
 
-    // Add resize handles for selected room (only for simple rectangular rooms)
+    // Add resize handles for selected room (only for simple rectangular rooms, not walls)
     const isSimpleRect = room.polygonVertices?.length === 4;
-    if (isSelected && onRoomResizePointerDown && isSimpleRect && !isCircleRoom(room)) {
+    if (isSelected && !isWall && onRoomResizePointerDown && isSimpleRect && !isCircleRoom(room)) {
       const handleRadius = 6;
       const handles = [
         { type: "nw", x: roomBounds.minX, y: roomBounds.minY, cursor: "nwse-resize" },
@@ -3134,17 +3137,18 @@ export function renderPatternGroupsCanvas({
     svg.appendChild(gridGroup);
   }
 
-  // Render each room (filter walls if showWalls is false)
+  // Render rooms - walls are shown for visualization when enabled but never clickable
   const roomsToRenderPG = state.view?.showWalls === false
     ? floor.rooms.filter(r => !r.sourceRoomId)
     : floor.rooms;
 
   for (const room of roomsToRenderPG) {
     const pos = room.floorPosition || { x: 0, y: 0 };
+    const isWall = Boolean(room.sourceRoomId);
     const roomGroup = svgEl("g", {
       transform: `translate(${pos.x}, ${pos.y})`,
       "data-roomid": room.id,
-      cursor: "pointer"
+      cursor: isWall ? "default" : "pointer"
     });
 
     const isSelected = room.id === selectedRoomId;
@@ -3273,19 +3277,21 @@ export function renderPatternGroupsCanvas({
     textEl.appendChild(document.createTextNode(room.name || t("tabs.room")));
     roomGroup.appendChild(textEl);
 
-    // Event handlers
-    if (onRoomClick) {
-      roomGroup.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onRoomClick(room.id);
-      });
-    }
+    // Event handlers - walls are not interactive (child objects for visualization only)
+    if (!isWall) {
+      if (onRoomClick) {
+        roomGroup.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onRoomClick(room.id);
+        });
+      }
 
-    if (onRoomDoubleClick) {
-      roomGroup.addEventListener("dblclick", (e) => {
-        e.stopPropagation();
-        onRoomDoubleClick(room.id);
-      });
+      if (onRoomDoubleClick) {
+        roomGroup.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          onRoomDoubleClick(room.id);
+        });
+      }
     }
 
     svg.appendChild(roomGroup);

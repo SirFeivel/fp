@@ -261,11 +261,17 @@ function renderSurface3D(opts) {
   return { meshes, lines };
 }
 
+// Non-selected room colors (dimmer than selected)
+const UNSELECTED_FLOOR_COLOR = 0x334155;
+const UNSELECTED_FLOOR_OPACITY = 0.12;
+const UNSELECTED_WALL_COLOR = 0x4a5568;
+const UNSELECTED_EDGE_COLOR = 0x6b7280;
+
 /**
- * Creates a Three.js 3D view controller for room visualization.
- * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function }} opts
+ * Creates a Three.js 3D view controller for floor visualization.
+ * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function, onRoomSelect: Function }} opts
  */
-export function createThreeViewController({ canvas, onWallDoubleClick, onHoverChange }) {
+export function createThreeViewController({ canvas, onWallDoubleClick, onHoverChange, onRoomSelect }) {
   let renderer, camera, controls, scene;
   let animFrameId = null;
   let active = false;
@@ -275,8 +281,14 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let wallMeshes = [];
+  let floorMeshes = [];
   let hoveredMesh = null;
-  let currentRoomId = null;
+
+  // Camera stability: only auto-frame when room set changes
+  let lastFloorRoomIds = null;
+
+  // Click-to-select: anti-drag guard
+  let pointerDownPos = null;
 
   // --- Init (lazy) ---
   function init() {
@@ -306,6 +318,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     // Event listeners on canvas
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("dblclick", onDblClick);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointerup", onPointerUp);
 
     resize();
   }
@@ -323,10 +337,9 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     camera.updateProjectionMatrix();
   }
 
-  // --- Build scene from room data ---
-  function buildScene(room, opts) {
+  // --- Build scene from floor data (multiple rooms) ---
+  function buildScene(floorData) {
     if (!scene) return;
-    currentRoomId = room.id;
 
     // Clear previous objects (keep lights)
     const toRemove = [];
@@ -340,17 +353,32 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
       scene.remove(obj);
     }
     wallMeshes = [];
+    floorMeshes = [];
     hoveredMesh = null;
 
-    const verts = room.polygonVertices;
+    const { rooms, selectedRoomId } = floorData;
+
+    for (const roomDesc of rooms) {
+      addRoomToScene(roomDesc, roomDesc.id === selectedRoomId);
+    }
+
+    // Camera stability: only auto-frame when room set changes
+    const currentIds = rooms.map(r => r.id).sort().join(",");
+    if (currentIds !== lastFloorRoomIds) {
+      lastFloorRoomIds = currentIds;
+      frameCameraOnFloor(rooms);
+    }
+  }
+
+  // --- Add a single room to the scene ---
+  function addRoomToScene(roomDesc, isSelected) {
+    const verts = roomDesc.polygonVertices;
     if (!verts || verts.length < 3) return;
 
-    const pos = room.floorPosition || { x: 0, y: 0 };
-    const wallH = room.wallHeightCm ?? 200;
+    const pos = roomDesc.floorPosition || { x: 0, y: 0 };
+    const wallH = roomDesc.wallHeightCm ?? 200;
 
     // --- Floor mesh ---
-    // Shape is in XY plane; rotateX(-PI/2) maps (sx, sy, 0) → (sx, 0, -sy).
-    // Walls use Z = pos.y + v.y, so negate sy to match after rotation.
     const floorShape = new THREE.Shape();
     floorShape.moveTo(pos.x + verts[0].x, -(pos.y + verts[0].y));
     for (let i = 1; i < verts.length; i++) {
@@ -359,25 +387,34 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     floorShape.closePath();
 
     const floorGeo = new THREE.ShapeGeometry(floorShape);
-    // Rotate from XY to XZ plane (Y-up): swap Y/Z by rotating -90 deg around X
     floorGeo.rotateX(-Math.PI / 2);
 
-    const hasTiles = opts?.floorTiles?.length > 0;
-    const groutColor = hasTiles ? parseHexColor(opts.groutColor) : null;
+    const hasTiles = roomDesc.floorTiles?.length > 0;
+    const groutColor = hasTiles ? parseHexColor(roomDesc.groutColor) : null;
+
+    const floorColor = hasTiles
+      ? groutColor
+      : (isSelected ? FLOOR_COLOR : UNSELECTED_FLOOR_COLOR);
+    const floorOpacity = hasTiles
+      ? 1.0
+      : (isSelected ? FLOOR_OPACITY : UNSELECTED_FLOOR_OPACITY);
 
     const floorMat = new THREE.MeshBasicMaterial({
-      color: hasTiles ? groutColor : FLOOR_COLOR,
+      color: floorColor,
       transparent: !hasTiles,
-      opacity: hasTiles ? 1.0 : FLOOR_OPACITY,
+      opacity: floorOpacity,
       side: THREE.DoubleSide,
     });
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-    floorMesh.userData = { type: "floor" };
+    floorMesh.userData = { type: "floor", roomId: roomDesc.id };
     scene.add(floorMesh);
+    floorMeshes.push(floorMesh);
 
     // --- Wall meshes ---
-    const showWalls = opts.showWalls !== false;
+    const showWalls = roomDesc.showWalls !== false;
     const n = verts.length;
+    const wallColor = isSelected ? WALL_COLOR : UNSELECTED_WALL_COLOR;
+    const edgeColor = isSelected ? EDGE_COLOR : UNSELECTED_EDGE_COLOR;
 
     if (showWalls) {
       for (let i = 0; i < n; i++) {
@@ -387,7 +424,6 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
         const ax = pos.x + A.x, az = pos.y + A.y;
         const bx = pos.x + B.x, bz = pos.y + B.y;
 
-        // Quad: bottom-left, bottom-right, top-right, top-left
         const positions = new Float32Array([
           ax, 0, az,
           bx, 0, bz,
@@ -401,9 +437,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
         wallGeo.setIndex(indices);
         wallGeo.computeVertexNormals();
 
-        // Use grout color as wall base when tiles are present on this wall
-        const wallHasTiles = (opts.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
-        const wallBaseColor = wallHasTiles ? parseHexColor(opts.groutColor || "#ffffff") : new THREE.Color(WALL_COLOR);
+        const wallHasTiles = (roomDesc.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
+        const wallBaseColor = wallHasTiles ? parseHexColor(roomDesc.groutColor || "#ffffff") : new THREE.Color(wallColor);
 
         const wallMat = new THREE.MeshLambertMaterial({
           color: wallBaseColor,
@@ -411,13 +446,12 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
         });
 
         const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-        wallMesh.userData = { type: "wall", edgeIndex: i, roomId: room.id, baseColor: wallBaseColor.getHex() };
+        wallMesh.userData = { type: "wall", edgeIndex: i, roomId: roomDesc.id, baseColor: wallBaseColor.getHex() };
         scene.add(wallMesh);
         wallMeshes.push(wallMesh);
 
-        // Edge lines for depth perception
         const edgesGeo = new THREE.EdgesGeometry(wallGeo);
-        const linesMat = new THREE.LineBasicMaterial({ color: EDGE_COLOR });
+        const linesMat = new THREE.LineBasicMaterial({ color: edgeColor });
         const lineSegments = new THREE.LineSegments(edgesGeo, linesMat);
         scene.add(lineSegments);
       }
@@ -427,20 +461,19 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     if (hasTiles) {
       const floorMapper = createFloorMapper(pos);
       const { meshes, lines } = renderSurface3D({
-        tiles: opts.floorTiles,
-        exclusions: opts.floorExclusions || [],
-        groutColor: opts.groutColor,
+        tiles: roomDesc.floorTiles,
+        exclusions: roomDesc.floorExclusions || [],
+        groutColor: roomDesc.groutColor,
         mapper: floorMapper,
       });
       for (const m of meshes) scene.add(m);
       for (const l of lines) scene.add(l);
-    } else if ((opts.floorExclusions || []).length > 0) {
-      // No tiles but exclusions still need rendering
+    } else if ((roomDesc.floorExclusions || []).length > 0) {
       const floorMapper = createFloorMapper(pos);
       const { meshes, lines } = renderSurface3D({
         tiles: [],
-        exclusions: opts.floorExclusions,
-        groutColor: opts.groutColor || "#ffffff",
+        exclusions: roomDesc.floorExclusions,
+        groutColor: roomDesc.groutColor || "#ffffff",
         mapper: floorMapper,
       });
       for (const m of meshes) scene.add(m);
@@ -449,7 +482,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
 
     // --- Wall tiles + exclusions via renderSurface3D ---
     if (showWalls) {
-      const wallDataArr = opts.wallData || [];
+      const wallDataArr = roomDesc.wallData || [];
       for (const wd of wallDataArr) {
         if (!wd.surfaceVerts) continue;
         const wi = wd.edgeIndex;
@@ -464,7 +497,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
         const { meshes, lines } = renderSurface3D({
           tiles: wd.tiles,
           exclusions: wd.exclusions,
-          groutColor: opts.groutColor || "#ffffff",
+          groutColor: roomDesc.groutColor || "#ffffff",
           mapper,
           tileZBias: -1,
           exclZBias: -2,
@@ -473,33 +506,41 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
         for (const l of lines) scene.add(l);
       }
     }
-
-    // Auto-position camera to frame the room
-    frameCameraOnRoom(verts, pos, wallH);
   }
 
-  function frameCameraOnRoom(verts, pos, wallH) {
-    // Compute bounding box center
+  // --- Camera framing for entire floor ---
+  function frameCameraOnFloor(rooms) {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const v of verts) {
-      const wx = pos.x + v.x;
-      const wz = pos.y + v.y;
-      if (wx < minX) minX = wx;
-      if (wx > maxX) maxX = wx;
-      if (wz < minZ) minZ = wz;
-      if (wz > maxZ) maxZ = wz;
+    let maxWallH = 0;
+
+    for (const roomDesc of rooms) {
+      const pos = roomDesc.floorPosition || { x: 0, y: 0 };
+      const verts = roomDesc.polygonVertices;
+      if (!verts || verts.length < 3) continue;
+      for (const v of verts) {
+        const wx = pos.x + v.x;
+        const wz = pos.y + v.y;
+        if (wx < minX) minX = wx;
+        if (wx > maxX) maxX = wx;
+        if (wz < minZ) minZ = wz;
+        if (wz > maxZ) maxZ = wz;
+      }
+      const wh = roomDesc.wallHeightCm ?? 200;
+      if (wh > maxWallH) maxWallH = wh;
     }
+
+    if (minX === Infinity) return; // no rooms
+
     const cx = (minX + maxX) / 2;
     const cz = (minZ + maxZ) / 2;
-    const cy = wallH / 2;
+    const cy = maxWallH / 2;
 
     const sizeX = maxX - minX;
     const sizeZ = maxZ - minZ;
-    const maxDim = Math.max(sizeX, sizeZ, wallH);
+    const maxDim = Math.max(sizeX, sizeZ, maxWallH);
 
     controls.target.set(cx, cy, cz);
 
-    // Position camera above and to the side
     const dist = maxDim * 1.8;
     camera.position.set(cx + dist * 0.6, cy + dist * 0.8, cz + dist * 0.6);
     camera.lookAt(cx, cy, cz);
@@ -508,10 +549,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
 
   // --- Reset camera ---
   function resetCamera() {
-    if (!scene || wallMeshes.length === 0) return;
-    // Recompute from wall meshes
+    if (!scene) return;
+    const allMeshes = [...wallMeshes, ...floorMeshes];
+    if (allMeshes.length === 0) return;
     const box = new THREE.Box3();
-    for (const m of wallMeshes) box.expandByObject(m);
+    for (const m of allMeshes) box.expandByObject(m);
     const center = new THREE.Vector3();
     box.getCenter(center);
     const size = new THREE.Vector3();
@@ -571,6 +613,40 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     }
   }
 
+  // --- Interaction: click-to-select room ---
+  function onPointerDown(e) {
+    if (!active) return;
+    pointerDownPos = { x: e.clientX, y: e.clientY };
+  }
+
+  function onPointerUp(e) {
+    if (!active || !pointerDownPos) return;
+    const dx = e.clientX - pointerDownPos.x;
+    const dy = e.clientY - pointerDownPos.y;
+    pointerDownPos = null;
+    // Anti-drag guard: only fire click if pointer moved < 5px
+    if (Math.sqrt(dx * dx + dy * dy) >= 5) return;
+
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+
+    // Check floor meshes first, then wall meshes
+    const floorHits = raycaster.intersectObjects(floorMeshes, false);
+    if (floorHits.length > 0) {
+      const roomId = floorHits[0].object.userData.roomId;
+      if (roomId) onRoomSelect?.({ roomId });
+      return;
+    }
+    const wallHits = raycaster.intersectObjects(wallMeshes, false);
+    if (wallHits.length > 0) {
+      const roomId = wallHits[0].object.userData.roomId;
+      if (roomId) onRoomSelect?.({ roomId });
+    }
+  }
+
   // --- Animation loop ---
   function animate() {
     if (!active) return;
@@ -600,6 +676,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     stop();
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("dblclick", onDblClick);
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointerup", onPointerUp);
     if (scene) {
       scene.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();

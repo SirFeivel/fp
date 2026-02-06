@@ -1118,11 +1118,18 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
     return { valid: true, groups: [], message: 'No rooms to validate' };
   }
 
-  if (floor.rooms.length === 1) {
-    return { valid: true, groups: [[floor.rooms[0].id]], message: 'Single room is always valid' };
+  // Filter out wall surfaces (child objects) - only check connectivity for actual floor rooms
+  const floorRooms = floor.rooms.filter(r => !r.sourceRoomId);
+
+  if (floorRooms.length === 0) {
+    return { valid: true, groups: [], message: 'No rooms to validate' };
   }
 
-  const groups = findConnectedRoomGroups(floor.rooms, minSharedLength);
+  if (floorRooms.length === 1) {
+    return { valid: true, groups: [[floorRooms[0].id]], message: 'Single room is always valid' };
+  }
+
+  const groups = findConnectedRoomGroups(floorRooms, minSharedLength);
 
   if (groups.length === 1) {
     return {
@@ -1133,7 +1140,7 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
   }
 
   // Find room names for each group for better error message
-  const roomMap = new Map(floor.rooms.map(r => [r.id, r]));
+  const roomMap = new Map(floorRooms.map(r => [r.id, r]));
   const groupDetails = groups.map(group => ({
     roomIds: group,
     roomNames: group.map(id => roomMap.get(id)?.name || 'Unknown')

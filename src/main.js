@@ -191,6 +191,126 @@ function renderSetupSection(state) {
   structure.renderWallSelect();
 }
 
+function prepareRoom3DData(state, room, floor) {
+  const avail = computeAvailableArea(room, room.exclusions || []);
+  const effectiveSettings = getEffectiveTileSettings(room, floor);
+  const isRemovalMode = Boolean(state.view?.removalMode);
+  let tileResult = null;
+  let groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
+
+  if (avail.mp) {
+    const origin = computePatternGroupOrigin(room, floor);
+    tileResult = tilesForPreview(state, avail.mp, room, isRemovalMode, floor, {
+      originOverride: origin,
+      effectiveSettings
+    });
+    groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
+  }
+
+  // --- Generate wall tile data with seamless origin projection ---
+  const wallData = [];
+  const verts = room.polygonVertices;
+  const nVerts = verts?.length || 0;
+  if (nVerts >= 3 && avail.mp) {
+    const wallH = room.wallHeightCm ?? 200;
+    const patternSettings = effectiveSettings?.pattern || room.pattern;
+    const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
+    const floorOffX = Number(patternSettings?.offsetXcm) || 0;
+    const floorOffY = Number(patternSettings?.offsetYcm) || 0;
+
+    const patternGroupOriginPt = computePatternGroupOrigin(room, floor);
+    const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
+    const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
+
+    const wallSurfaces = floor?.rooms?.filter(
+      r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
+    ) || [];
+    const surfaceByEdge = new Map();
+    for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
+
+    for (let i = 0; i < nVerts; i++) {
+      const A = verts[i];
+      const B = verts[(i + 1) % nVerts];
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const edgeLength = Math.sqrt(dx * dx + dy * dy);
+      if (edgeLength < 1) continue;
+
+      const edgeDirX = dx / edgeLength;
+      const edgeDirY = dy / edgeLength;
+      const edgeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+      const relX = effectiveAnchor.x - A.x;
+      const relY = effectiveAnchor.y - A.y;
+      const wallOriginX = relX * edgeDirX + relY * edgeDirY;
+      const wallOriginY = 0;
+      const wallRotDeg = floorRotDeg - edgeAngleDeg;
+
+      const storedWall = surfaceByEdge.get(i);
+      const wallExclusions = storedWall?.exclusions?.length
+        ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, wallH)
+        : [];
+
+      const wallExcludedTiles = storedWall?.excludedTiles || [];
+      const wallRect = {
+        id: room.id + "_wall_" + i,
+        widthCm: edgeLength,
+        heightCm: wallH,
+        polygonVertices: [
+          { x: 0, y: 0 },
+          { x: edgeLength, y: 0 },
+          { x: edgeLength, y: wallH },
+          { x: 0, y: wallH },
+        ],
+        exclusions: wallExclusions,
+        excludedTiles: wallExcludedTiles,
+        tile: effectiveSettings?.tile || room.tile,
+        grout: effectiveSettings?.grout || room.grout,
+        pattern: {
+          ...(patternSettings || {}),
+          rotationDeg: wallRotDeg,
+          offsetXcm: 0,
+          offsetYcm: 0,
+        },
+      };
+
+      const wallAvail = computeAvailableArea(wallRect, wallExclusions);
+      if (!wallAvail.mp) continue;
+
+      const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+      const wallPatternOverride = wallRect.pattern;
+      const wallEffSettings = {
+        tile: effectiveSettings?.tile || room.tile,
+        grout: effectiveSettings?.grout || room.grout,
+        pattern: wallPatternOverride,
+      };
+      const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
+        originOverride: wallOriginOverride,
+        effectiveSettings: wallEffSettings,
+      });
+
+      wallData.push({
+        edgeIndex: i,
+        tiles: wallResult?.tiles || [],
+        exclusions: wallExclusions,
+        surfaceVerts: wallRect.polygonVertices,
+      });
+    }
+  }
+
+  return {
+    id: room.id,
+    polygonVertices: room.polygonVertices,
+    floorPosition: room.floorPosition || { x: 0, y: 0 },
+    wallHeightCm: room.wallHeightCm ?? 200,
+    floorTiles: tileResult?.tiles || [],
+    floorExclusions: room.exclusions || [],
+    groutColor,
+    wallData,
+    showWalls: state.view?.showWalls3D !== false,
+  };
+}
+
 function handleWallDoubleClick(roomId, edgeIndex) {
   const state = store.getState();
   const floor = getCurrentFloor(state);
@@ -276,137 +396,24 @@ function renderPlanningSection(state, opts) {
         onHoverChange: (info) => {
           const el = document.getElementById("threeDHoverInfo");
           if (el) el.textContent = info ? info.label : "";
+        },
+        onRoomSelect: ({ roomId }) => {
+          const current = store.getState();
+          if (current.selectedRoomId === roomId) return;
+          const next = deepClone(current);
+          next.selectedRoomId = roomId;
+          store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
         }
       });
     }
-    const room = getCurrentRoom(state);
-    if (room) {
+    const floor = getCurrentFloor(state);
+    if (floor) {
       threeViewController.start();
-
-      const floor = getCurrentFloor(state);
-      const avail = computeAvailableArea(room, room.exclusions || []);
-      const effectiveSettings = getEffectiveTileSettings(room, floor);
-      let tileResult = null;
-      let groutColor = "#ffffff";
-      const isRemovalMode = Boolean(state.view?.removalMode);
-      if (avail.mp) {
-        const patternGroupOrigin = computePatternGroupOrigin(room, floor);
-        tileResult = tilesForPreview(state, avail.mp, room, isRemovalMode, floor, {
-          originOverride: patternGroupOrigin,
-          effectiveSettings
-        });
-        groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
-      }
-
-      // --- Generate wall tile data with seamless origin projection ---
-      const wallData = [];
-      const verts = room.polygonVertices;
-      const nVerts = verts?.length || 0;
-      const showWalls3D = state.view?.showWalls3D !== false;
-      if (nVerts >= 3 && avail.mp && showWalls3D) {
-        const wallH = room.wallHeightCm ?? 200;
-        const patternSettings = effectiveSettings?.pattern || room.pattern;
-        const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
-        const floorOffX = Number(patternSettings?.offsetXcm) || 0;
-        const floorOffY = Number(patternSettings?.offsetYcm) || 0;
-
-        // Floor's effective anchor in room-local coords
-        const patternGroupOriginPt = computePatternGroupOrigin(room, floor);
-        const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
-        const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
-
-        // Look up stored wall surfaces for exclusions
-        const wallSurfaces = floor?.rooms?.filter(
-          r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
-        ) || [];
-        const surfaceByEdge = new Map();
-        for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
-
-        for (let i = 0; i < nVerts; i++) {
-          const A = verts[i];
-          const B = verts[(i + 1) % nVerts];
-          const dx = B.x - A.x;
-          const dy = B.y - A.y;
-          const edgeLength = Math.sqrt(dx * dx + dy * dy);
-          if (edgeLength < 1) continue;
-
-          const edgeDirX = dx / edgeLength;
-          const edgeDirY = dy / edgeLength;
-          const edgeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-
-          // Project floor anchor onto wall coordinate system
-          const relX = effectiveAnchor.x - A.x;
-          const relY = effectiveAnchor.y - A.y;
-          const wallOriginX = relX * edgeDirX + relY * edgeDirY; // dot product
-          const wallOriginY = 0; // floor level = bottom of wall
-
-          // Compensate rotation for edge direction
-          const wallRotDeg = floorRotDeg - edgeAngleDeg;
-
-          // Transform exclusions from stored wall surface (parallelogram → rectangle)
-          const storedWall = surfaceByEdge.get(i);
-          const wallExclusions = storedWall?.exclusions?.length
-            ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, wallH)
-            : [];
-
-          // Create rectangular wall "room" for tilesForPreview
-          // Use stored wall surface's excludedTiles (from 2D removal clicks)
-          const wallExcludedTiles = storedWall?.excludedTiles || [];
-          const wallRect = {
-            id: room.id + "_wall_" + i,
-            widthCm: edgeLength,
-            heightCm: wallH,
-            polygonVertices: [
-              { x: 0, y: 0 },
-              { x: edgeLength, y: 0 },
-              { x: edgeLength, y: wallH },
-              { x: 0, y: wallH },
-            ],
-            exclusions: wallExclusions,
-            excludedTiles: wallExcludedTiles,
-            tile: effectiveSettings?.tile || room.tile,
-            grout: effectiveSettings?.grout || room.grout,
-            pattern: {
-              ...(patternSettings || {}),
-              rotationDeg: wallRotDeg,
-              offsetXcm: 0,
-              offsetYcm: 0,
-            },
-          };
-
-          const wallAvail = computeAvailableArea(wallRect, wallExclusions);
-          if (!wallAvail.mp) continue;
-
-          // Always use projected floor origin for seamless 3D continuation
-          // (storedWall is only used for exclusions, not pattern)
-          const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
-          const wallPatternOverride = wallRect.pattern;
-          const wallEffSettings = {
-            tile: effectiveSettings?.tile || room.tile,
-            grout: effectiveSettings?.grout || room.grout,
-            pattern: wallPatternOverride,
-          };
-          const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
-            originOverride: wallOriginOverride,
-            effectiveSettings: wallEffSettings,
-          });
-
-          // Surface verts define the simple rectangle for createWallMapper
-          wallData.push({
-            edgeIndex: i,
-            tiles: wallResult?.tiles || [],
-            exclusions: wallExclusions,
-            surfaceVerts: wallRect.polygonVertices,
-          });
-        }
-      }
-
-      threeViewController.buildScene(room, {
-        floorTiles: tileResult?.tiles || [],
-        floorExclusions: room.exclusions || [],
-        groutColor,
-        wallData,
-        showWalls: state.view?.showWalls3D !== false
+      const floorRooms = floor.rooms.filter(r => !r.sourceRoomId && r.polygonVertices?.length >= 3);
+      const roomDescriptors = floorRooms.map(room => prepareRoom3DData(state, room, floor));
+      threeViewController.buildScene({
+        rooms: roomDescriptors,
+        selectedRoomId: state.selectedRoomId,
       });
     }
   } else if (isFloorView) {
