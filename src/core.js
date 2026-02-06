@@ -194,7 +194,8 @@ export function defaultState() {
       showNeeds: false,
       showSkirting: true,
       showFloorTiles: false,
-      showWalls: true,
+      showWalls: false,      // 2D views (floor, pattern groups)
+      showWalls3D: false,    // 3D view
       planningMode: "floor"  // Start in floor view to add rooms
     }
   };

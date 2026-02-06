@@ -302,8 +302,8 @@ function renderPlanningSection(state, opts) {
       const wallData = [];
       const verts = room.polygonVertices;
       const nVerts = verts?.length || 0;
-      const showWalls = state.view?.showWalls !== false;
-      if (nVerts >= 3 && avail.mp && showWalls) {
+      const showWalls3D = state.view?.showWalls3D !== false;
+      if (nVerts >= 3 && avail.mp && showWalls3D) {
         const wallH = room.wallHeightCm ?? 200;
         const patternSettings = effectiveSettings?.pattern || room.pattern;
         const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
@@ -377,22 +377,10 @@ function renderPlanningSection(state, opts) {
           const wallAvail = computeAvailableArea(wallRect, wallExclusions);
           if (!wallAvail.mp) continue;
 
-          // Use stored wall surface's origin when available so tile IDs match 2D,
-          // otherwise fall back to projected floor origin for seamless continuation
-          let wallOriginOverride;
-          let wallPatternOverride;
-          if (storedWall) {
-            const storedOrigin = computeOriginPoint(storedWall, storedWall.pattern, floor);
-            wallOriginOverride = storedOrigin;
-            wallPatternOverride = {
-              ...(storedWall.pattern || patternSettings || {}),
-              offsetXcm: 0,
-              offsetYcm: 0,
-            };
-          } else {
-            wallOriginOverride = { x: wallOriginX, y: wallOriginY };
-            wallPatternOverride = wallRect.pattern;
-          }
+          // Always use projected floor origin for seamless 3D continuation
+          // (storedWall is only used for exclusions, not pattern)
+          const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+          const wallPatternOverride = wallRect.pattern;
           const wallEffSettings = {
             tile: effectiveSettings?.tile || room.tile,
             grout: effectiveSettings?.grout || room.grout,
@@ -418,7 +406,7 @@ function renderPlanningSection(state, opts) {
         floorExclusions: room.exclusions || [],
         groutColor,
         wallData,
-        showWalls: state.view?.showWalls !== false
+        showWalls: state.view?.showWalls3D !== false
       });
     }
   } else if (isFloorView) {
@@ -1196,29 +1184,35 @@ function initBackgroundControls() {
   const pgShowWalls = document.getElementById("pgShowWalls");
   const threeDShowWalls = document.getElementById("threeDShowWalls");
 
-  const handleWallsToggle = (e) => {
-    console.log("🔍 Wall toggle clicked:", e.target.id, "checked:", e.target.checked);
+  const handleWalls2DToggle = (e) => {
     const state = store.getState();
     const next = deepClone(state);
 
     next.view = next.view || {};
     next.view.showWalls = e.target.checked;
-    console.log("🔍 Setting showWalls to:", next.view.showWalls);
 
-    store.commit("Walls visibility toggled", next, {
+    store.commit("2D walls visibility toggled", next, {
       onRender: renderAll,
       updateMetaCb: updateMeta
     });
   };
 
-  showWalls?.addEventListener("change", handleWallsToggle);
-  pgShowWalls?.addEventListener("change", handleWallsToggle);
-  threeDShowWalls?.addEventListener("change", handleWallsToggle);
-  console.log("🔍 Wall toggle listeners attached:", {
-    showWalls: !!showWalls,
-    pgShowWalls: !!pgShowWalls,
-    threeDShowWalls: !!threeDShowWalls
-  });
+  const handleWalls3DToggle = (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+
+    next.view = next.view || {};
+    next.view.showWalls3D = e.target.checked;
+
+    store.commit("3D walls visibility toggled", next, {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  };
+
+  showWalls?.addEventListener("change", handleWalls2DToggle);
+  pgShowWalls?.addEventListener("change", handleWalls2DToggle);
+  threeDShowWalls?.addEventListener("change", handleWalls3DToggle);
 
 }
 
@@ -2557,9 +2551,18 @@ function updateAllTranslations() {
     const roomIndex = nextFloor.rooms.findIndex(r => r.id === state.selectedRoomId);
 
     if (roomIndex !== -1) {
+      const deletedRoomId = state.selectedRoomId;
+
+      // Delete the room
       nextFloor.rooms.splice(roomIndex, 1);
-      // Select another room if available
-      next.selectedRoomId = nextFloor.rooms[Math.max(0, roomIndex - 1)]?.id || null;
+
+      // Also delete all child walls (rooms with sourceRoomId matching deleted room)
+      nextFloor.rooms = nextFloor.rooms.filter(r => r.sourceRoomId !== deletedRoomId);
+
+      // Select another room if available (skip walls)
+      const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
+      next.selectedRoomId = nonWallRooms[Math.max(0, Math.min(roomIndex, nonWallRooms.length - 1))]?.id || null;
+
       store.commit(t("room.deleted") || "Room deleted", next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
   });

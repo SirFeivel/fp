@@ -274,12 +274,19 @@ export function createStructureController({
     const nextFloor = getCurrentFloor(next);
     if (!nextFloor) return;
 
+    const deletedRoomId = state.selectedRoomId;
     const beforeLen = nextFloor.rooms.length;
-    nextFloor.rooms = nextFloor.rooms.filter(r => r.id !== state.selectedRoomId);
+
+    // Delete the room and all its child walls
+    nextFloor.rooms = nextFloor.rooms.filter(r =>
+      r.id !== deletedRoomId && r.sourceRoomId !== deletedRoomId
+    );
 
     if (nextFloor.rooms.length === beforeLen) return;
 
-    next.selectedRoomId = nextFloor.rooms[0]?.id || null;
+    // Select next non-wall room
+    const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
+    next.selectedRoomId = nonWallRooms[0]?.id || null;
 
     resetSelectedExcl();
     store.commit(t("structure.roomDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });

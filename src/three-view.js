@@ -378,7 +378,6 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     // --- Wall meshes ---
     const showWalls = opts.showWalls !== false;
     const n = verts.length;
-    console.log("🔍 3D buildScene - showWalls:", showWalls);
 
     if (showWalls) {
       for (let i = 0; i < n; i++) {
@@ -449,28 +448,30 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     }
 
     // --- Wall tiles + exclusions via renderSurface3D ---
-    const wallDataArr = opts.wallData || [];
-    for (const wd of wallDataArr) {
-      if (!wd.surfaceVerts) continue;
-      const wi = wd.edgeIndex;
-      const A = verts[wi];
-      const B = verts[(wi + 1) % n];
-      const ax = pos.x + A.x, az = pos.y + A.y;
-      const bx = pos.x + B.x, bz = pos.y + B.y;
+    if (showWalls) {
+      const wallDataArr = opts.wallData || [];
+      for (const wd of wallDataArr) {
+        if (!wd.surfaceVerts) continue;
+        const wi = wd.edgeIndex;
+        const A = verts[wi];
+        const B = verts[(wi + 1) % n];
+        const ax = pos.x + A.x, az = pos.y + A.y;
+        const bx = pos.x + B.x, bz = pos.y + B.y;
 
-      const mapper = createWallMapper(wd.surfaceVerts, ax, az, bx, bz, wallH);
-      if (!mapper) continue;
+        const mapper = createWallMapper(wd.surfaceVerts, ax, az, bx, bz, wallH);
+        if (!mapper) continue;
 
-      const { meshes, lines } = renderSurface3D({
-        tiles: wd.tiles,
-        exclusions: wd.exclusions,
-        groutColor: opts.groutColor || "#ffffff",
-        mapper,
-        tileZBias: -1,
-        exclZBias: -2,
-      });
-      for (const m of meshes) scene.add(m);
-      for (const l of lines) scene.add(l);
+        const { meshes, lines } = renderSurface3D({
+          tiles: wd.tiles,
+          exclusions: wd.exclusions,
+          groutColor: opts.groutColor || "#ffffff",
+          mapper,
+          tileZBias: -1,
+          exclZBias: -2,
+        });
+        for (const m of meshes) scene.add(m);
+        for (const l of lines) scene.add(l);
+      }
     }
 
     // Auto-position camera to frame the room

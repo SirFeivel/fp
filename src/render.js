@@ -510,7 +510,8 @@ export function renderRoomForm(state) {
   if (planningRoomSkirtingEnabled) planningRoomSkirtingEnabled.checked = currentRoom?.skirting?.enabled !== false;
   document.querySelectorAll("#showGrid").forEach(el => el.checked = Boolean(state.view?.showGrid));
   document.querySelectorAll("#showSkirting").forEach(el => el.checked = Boolean(state.view?.showSkirting));
-  document.querySelectorAll("#showWalls, #threeDShowWalls, #pgShowWalls").forEach(el => el.checked = Boolean(state.view?.showWalls));
+  document.querySelectorAll("#showWalls, #pgShowWalls").forEach(el => el.checked = Boolean(state.view?.showWalls));
+  document.querySelectorAll("#threeDShowWalls").forEach(el => el.checked = Boolean(state.view?.showWalls3D));
   document.querySelectorAll("#removalMode").forEach(el => el.checked = Boolean(state.view?.removalMode));
 
   const skirting = currentRoom?.skirting;

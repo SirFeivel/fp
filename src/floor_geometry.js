@@ -216,6 +216,9 @@ export function getSharedEdgeLength(roomA, roomB, tolerance = 1) {
  * @returns {boolean}
  */
 export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 10) {
+  // Skip if either room is a wall (walls don't participate in adjacency)
+  if (roomA.sourceRoomId || roomB.sourceRoomId) return false;
+
   // Quick bounding box check first (optimization)
   const boundsA = getRoomAbsoluteBounds(roomA);
   const boundsB = getRoomAbsoluteBounds(roomB);
@@ -242,10 +245,10 @@ export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 
  */
 export function findAdjacentRooms(floor, roomId, tolerance = 1) {
   const targetRoom = floor?.rooms?.find(r => r.id === roomId);
-  if (!targetRoom) return [];
+  if (!targetRoom || targetRoom.sourceRoomId) return []; // Walls have no adjacent rooms
 
   return floor.rooms.filter(room =>
-    room.id !== roomId && areRoomsAdjacent(targetRoom, room, tolerance)
+    room.id !== roomId && !room.sourceRoomId && areRoomsAdjacent(targetRoom, room, tolerance)
   );
 }
 
@@ -288,6 +291,9 @@ export function getRoomAbsoluteBounds(room) {
  * @returns {boolean}
  */
 export function doRoomsOverlap(roomA, roomB, tolerance = 0.1) {
+  // Walls don't participate in overlap detection (they're vertical surfaces, not floor area)
+  if (roomA.sourceRoomId || roomB.sourceRoomId) return false;
+
   const a = getRoomAbsoluteBounds(roomA);
   const b = getRoomAbsoluteBounds(roomB);
 
@@ -307,11 +313,15 @@ export function doRoomsOverlap(roomA, roomB, tolerance = 0.1) {
  * @returns {boolean}
  */
 export function wouldRoomOverlap(room, otherRooms, newX, newY) {
+  // Walls don't participate in overlap detection
+  if (room.sourceRoomId) return false;
+
   const testRoom = {
     ...room,
     floorPosition: { x: newX, y: newY }
   };
-  return otherRooms.some(other => doRoomsOverlap(testRoom, other));
+  // Filter out walls from collision check
+  return otherRooms.filter(r => !r.sourceRoomId).some(other => doRoomsOverlap(testRoom, other));
 }
 
 /**
@@ -853,6 +863,11 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
     return { modifiedRoomIds, errors };
   }
 
+  // Walls don't participate in area subtraction
+  if (newRoom.sourceRoomId) {
+    return { modifiedRoomIds, errors };
+  }
+
   // Get the new room's polygon in floor coordinates
   const newRoomPolygon = getRoomPolygonOnFloor(newRoom);
   if (!newRoomPolygon || newRoomPolygon.length === 0) {
@@ -860,6 +875,8 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
   }
 
   for (const existingRoom of existingRooms) {
+    // Skip walls - they don't occupy floor space
+    if (existingRoom.sourceRoomId) continue;
     // Skip rooms that clearly don't overlap (bounding box check)
     const newBounds = getRoomAbsoluteBounds(newRoom);
     const existingBounds = getRoomAbsoluteBounds(existingRoom);

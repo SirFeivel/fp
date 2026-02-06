@@ -637,3 +637,55 @@ describe("edge cases and robustness", () => {
     expect(result.point.y).toBe(0);
   });
 });
+
+describe('Wall rooms exclusion', () => {
+  it('getRoomVertices excludes wall vertices', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'room1',
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'wall1',
+          sourceRoomId: 'room1', // Wall marker
+          wallEdgeIndex: 0,
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }]
+        }
+      ]
+    };
+
+    const vertices = getRoomVertices(floor);
+    
+    // Should only get vertices from room1, not wall1
+    expect(vertices.length).toBe(4); // 4 vertices from room1
+    expect(vertices.every(v => v.roomId === 'room1')).toBe(true);
+  });
+
+  it('getRoomEdges excludes wall edges', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'room1',
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'wall1',
+          sourceRoomId: 'room1',
+          wallEdgeIndex: 0,
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }]
+        }
+      ]
+    };
+
+    const edges = getRoomEdges(floor);
+    
+    // Should only get edges from room1, not wall1
+    expect(edges.length).toBe(4); // 4 edges from room1
+    expect(edges.every(e => e.roomId === 'room1')).toBe(true);
+  });
+});
