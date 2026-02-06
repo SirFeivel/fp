@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { svg2pdf } from "svg2pdf.js";
-import { computePlanMetrics, computeSkirtingNeeds, computeProjectTotals, computeGrandTotals, getRoomPricing } from "./calc.js";
+import { computePlanMetrics, computeSkirtingNeeds, computeProjectTotals, computeGrandTotals, getRoomPricing, isWallSurface } from "./calc.js";
 import { t } from "./i18n.js";
 import { getCurrentRoom, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { renderPlanSvg } from "./render.js";
@@ -99,7 +99,7 @@ export function buildCommercialExportModel(state) {
   const skirtingRows = [];
 
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || []).filter(r => !isWallSurface(r))) {
       const metrics = computePlanMetrics(state, room);
       const skirting = computeSkirtingNeeds(state, room);
       const pricing = getRoomPricing(state, room);
@@ -146,7 +146,7 @@ export function buildCommercialExportModel(state) {
 function buildRoomList(state) {
   const list = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || []).filter(r => !isWallSurface(r))) {
       list.push({ floor, room });
     }
   }
@@ -794,7 +794,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const tileAreaForRef = new Map();
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || []).filter(r => !isWallSurface(r))) {
       const ref = room.tile?.reference || t("commercial.defaultMaterial");
       if (!tileAreaForRef.has(ref)) {
         tileAreaForRef.set(ref, calcTileAreaM2(room));
@@ -827,7 +827,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const roomsRows = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || []).filter(r => !isWallSurface(r))) {
       const grand = computeGrandTotals(state, room);
       if (!grand.ok) continue;
       const pricing = getRoomPricing(state, room);
@@ -947,7 +947,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const skirtingRows = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || []).filter(r => !isWallSurface(r))) {
       const skirting = computeSkirtingNeeds(state, room);
       if (!skirting || !skirting.enabled) continue;
       skirtingRows.push([

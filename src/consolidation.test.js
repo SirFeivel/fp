@@ -130,10 +130,135 @@ describe('Commercial Consolidation', () => {
 
     const totals = computeProjectTotals(state);
     const oak = totals.materials.find(m => m.reference === 'Oak');
-    
+
     // Each room needs 8 tiles (4 floor + 4 skirting)
     // Total should be 16 tiles.
     expect(oak.totalTiles).toBe(16);
     expect(oak.netAreaM2).toBe(2);
+  });
+
+  it('multi-floor same-reference material consolidation', () => {
+    const state = {
+      meta: { version: 5 },
+      project: { name: 'Test' },
+      floors: [
+        {
+          id: uuid(),
+          name: 'Floor 1',
+          rooms: [{
+            id: uuid(),
+            name: 'Room A',
+            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+            tile: { widthCm: 10, heightCm: 10, reference: 'Granite' },
+            grout: { widthCm: 0 },
+            pattern: { type: 'grid' },
+            skirting: { enabled: false }
+          }]
+        },
+        {
+          id: uuid(),
+          name: 'Floor 2',
+          rooms: [{
+            id: uuid(),
+            name: 'Room B',
+            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+            tile: { widthCm: 10, heightCm: 10, reference: 'Granite' },
+            grout: { widthCm: 0 },
+            pattern: { type: 'grid' },
+            skirting: { enabled: false }
+          }]
+        }
+      ],
+      pricing: { pricePerM2: 100, packM2: 1, reserveTiles: 0 },
+      materials: {}
+    };
+
+    const totals = computeProjectTotals(state);
+    // Both rooms use "Granite", should consolidate to a single material entry
+    const granite = totals.materials.find(m => m.reference === 'Granite');
+    expect(granite).toBeDefined();
+    expect(granite.netAreaM2).toBe(2);
+    expect(granite.totalTiles).toBe(200); // 100 tiles per 1m2 room (10x10cm = 0.01m2)
+    expect(totals.materials.length).toBe(1);
+  });
+
+  it('wall rooms excluded from consolidation', () => {
+    const floorId = uuid();
+    const state = {
+      meta: { version: 5 },
+      project: { name: 'Test' },
+      floors: [{
+        id: floorId,
+        name: 'Floor 1',
+        rooms: [
+          {
+            id: 'r1',
+            name: 'Room A',
+            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+            tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
+            grout: { widthCm: 0 },
+            pattern: { type: 'grid' },
+            skirting: { enabled: false }
+          },
+          {
+            id: 'w1',
+            name: 'Wall A',
+            sourceRoomId: 'r1',
+            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }],
+            tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
+            grout: { widthCm: 0 },
+            pattern: { type: 'grid' },
+            skirting: { enabled: false }
+          }
+        ]
+      }],
+      selectedFloorId: floorId,
+      pricing: { pricePerM2: 100, packM2: 1, reserveTiles: 0 },
+      materials: {}
+    };
+
+    const totals = computeProjectTotals(state);
+    const oak = totals.materials.find(m => m.reference === 'Oak');
+    expect(oak).toBeDefined();
+    // Only the floor room (1m2) should be counted, not the wall (0.5m2)
+    expect(oak.netAreaM2).toBeCloseTo(1, 2);
+    expect(totals.roomCount).toBe(1);
+    // Wall should be in wallRooms
+    expect(totals.wallRooms.length).toBe(1);
+  });
+
+  it('extraPacks added to adjusted cost', () => {
+    const floorId = uuid();
+    const state = {
+      meta: { version: 5 },
+      project: { name: 'Test' },
+      floors: [{
+        id: floorId,
+        name: 'Floor 1',
+        rooms: [{
+          id: uuid(),
+          name: 'Room A',
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+          tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
+          grout: { widthCm: 0 },
+          pattern: { type: 'grid' },
+          skirting: { enabled: false }
+        }]
+      }],
+      selectedFloorId: floorId,
+      pricing: { pricePerM2: 100, packM2: 1, reserveTiles: 0 },
+      materials: { 'Oak': { pricePerM2: 100, packM2: 1, extraPacks: 3 } }
+    };
+
+    const totals = computeProjectTotals(state);
+    const oak = totals.materials.find(m => m.reference === 'Oak');
+    expect(oak).toBeDefined();
+    // extraPacks = 3, each pack = 1m2 * 100€/m2 = 100€ extra
+    // basePacks = ceil(1m2 / 1m2) = 1
+    // totalPacks = 1 + 3 = 4
+    expect(oak.totalPacks).toBe(4);
+    expect(oak.extraPacks).toBe(3);
+    // adjustedCost = baseCost + 3 * 1 * 100 = baseCost + 300
+    expect(oak.adjustedCost).toBeGreaterThan(oak.totalCost);
   });
 });
