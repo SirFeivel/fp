@@ -59,6 +59,56 @@ import {
 } from "./pattern-groups.js";
 import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
 
+/**
+ * Transform exclusions from parallelogram surface coords to axis-aligned rectangular coords.
+ * The stored wall surface has parallelogram polygonVertices (P0,P1,P2,P3).
+ * We compute parametric (t,s) in the parallelogram, then map to (t*edgeLength, s*wallH).
+ * All exclusion types are converted to freeform with transformed vertices.
+ */
+function transformWallExclusions(exclusions, surfaceVerts, edgeLength, wallH) {
+  if (!exclusions?.length || !surfaceVerts || surfaceVerts.length < 4) return [];
+  const P0 = surfaceVerts[0];
+  const U = { x: surfaceVerts[1].x - P0.x, y: surfaceVerts[1].y - P0.y };
+  const V = { x: surfaceVerts[3].x - P0.x, y: surfaceVerts[3].y - P0.y };
+  const det = U.x * V.y - U.y * V.x;
+  if (Math.abs(det) < 0.001) return [];
+  const invDet = 1 / det;
+
+  function mapPoint(px, py) {
+    const dx = px - P0.x, dy = py - P0.y;
+    const t = (V.y * dx - V.x * dy) * invDet;
+    const s = (-U.y * dx + U.x * dy) * invDet;
+    return { x: t * edgeLength, y: s * wallH };
+  }
+
+  return exclusions.map(ex => {
+    let vertices;
+    if (ex.type === "rect") {
+      vertices = [
+        mapPoint(ex.x, ex.y),
+        mapPoint(ex.x + ex.w, ex.y),
+        mapPoint(ex.x + ex.w, ex.y + ex.h),
+        mapPoint(ex.x, ex.y + ex.h),
+      ];
+    } else if (ex.type === "tri") {
+      vertices = [mapPoint(ex.p1.x, ex.p1.y), mapPoint(ex.p2.x, ex.p2.y), mapPoint(ex.p3.x, ex.p3.y)];
+    } else if (ex.type === "circle") {
+      const rx = ex.rx || ex.r || 10;
+      const ry = ex.ry || ex.r || 10;
+      vertices = [];
+      for (let i = 0; i < 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        vertices.push(mapPoint(ex.cx + rx * Math.cos(a), ex.cy + ry * Math.sin(a)));
+      }
+    } else if (ex.type === "freeform" && ex.vertices?.length >= 3) {
+      vertices = ex.vertices.map(v => mapPoint(v.x, v.y));
+    } else {
+      return null;
+    }
+    return { type: "freeform", vertices };
+  }).filter(Boolean);
+}
+
 // Store
 const store = createStateStore(defaultState, validateState);
 window.__fpStore = store; // keep for console testing
@@ -293,9 +343,10 @@ function renderPlanningSection(state, opts) {
       const effectiveSettings = getEffectiveTileSettings(room, floor);
       let tileResult = null;
       let groutColor = "#ffffff";
+      const isRemovalMode = Boolean(state.view?.removalMode);
       if (avail.mp) {
         const patternGroupOrigin = computePatternGroupOrigin(room, floor);
-        tileResult = tilesForPreview(state, avail.mp, room, false, floor, {
+        tileResult = tilesForPreview(state, avail.mp, room, isRemovalMode, floor, {
           originOverride: patternGroupOrigin,
           effectiveSettings
         });
@@ -318,6 +369,13 @@ function renderPlanningSection(state, opts) {
         const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
         const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
 
+        // Look up stored wall surfaces for exclusions
+        const wallSurfaces = floor?.rooms?.filter(
+          r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
+        ) || [];
+        const surfaceByEdge = new Map();
+        for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
+
         for (let i = 0; i < nVerts; i++) {
           const A = verts[i];
           const B = verts[(i + 1) % nVerts];
@@ -339,7 +397,15 @@ function renderPlanningSection(state, opts) {
           // Compensate rotation for edge direction
           const wallRotDeg = floorRotDeg - edgeAngleDeg;
 
+          // Transform exclusions from stored wall surface (parallelogram → rectangle)
+          const storedWall = surfaceByEdge.get(i);
+          const wallExclusions = storedWall?.exclusions?.length
+            ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, wallH)
+            : [];
+
           // Create rectangular wall "room" for tilesForPreview
+          // Use stored wall surface's excludedTiles (from 2D removal clicks)
+          const wallExcludedTiles = storedWall?.excludedTiles || [];
           const wallRect = {
             id: room.id + "_wall_" + i,
             widthCm: edgeLength,
@@ -350,7 +416,8 @@ function renderPlanningSection(state, opts) {
               { x: edgeLength, y: wallH },
               { x: 0, y: wallH },
             ],
-            exclusions: [],
+            exclusions: wallExclusions,
+            excludedTiles: wallExcludedTiles,
             tile: effectiveSettings?.tile || room.tile,
             grout: effectiveSettings?.grout || room.grout,
             pattern: {
@@ -361,17 +428,31 @@ function renderPlanningSection(state, opts) {
             },
           };
 
-          const wallAvail = computeAvailableArea(wallRect, []);
+          const wallAvail = computeAvailableArea(wallRect, wallExclusions);
           if (!wallAvail.mp) continue;
 
-          // Generate tiles with projected origin
-          const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+          // Use stored wall surface's origin when available so tile IDs match 2D,
+          // otherwise fall back to projected floor origin for seamless continuation
+          let wallOriginOverride;
+          let wallPatternOverride;
+          if (storedWall) {
+            const storedOrigin = computeOriginPoint(storedWall, storedWall.pattern, floor);
+            wallOriginOverride = storedOrigin;
+            wallPatternOverride = {
+              ...(storedWall.pattern || patternSettings || {}),
+              offsetXcm: 0,
+              offsetYcm: 0,
+            };
+          } else {
+            wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+            wallPatternOverride = wallRect.pattern;
+          }
           const wallEffSettings = {
             tile: effectiveSettings?.tile || room.tile,
             grout: effectiveSettings?.grout || room.grout,
-            pattern: wallRect.pattern,
+            pattern: wallPatternOverride,
           };
-          const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, false, floor, {
+          const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
             originOverride: wallOriginOverride,
             effectiveSettings: wallEffSettings,
           });
@@ -380,7 +461,7 @@ function renderPlanningSection(state, opts) {
           wallData.push({
             edgeIndex: i,
             tiles: wallResult?.tiles || [],
-            exclusions: [],
+            exclusions: wallExclusions,
             surfaceVerts: wallRect.polygonVertices,
           });
         }
