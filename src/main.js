@@ -11,7 +11,7 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeOriginPoint } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -302,41 +302,86 @@ function renderPlanningSection(state, opts) {
         groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
       }
 
-      // Generate wall data for ALL edges
+      // --- Generate wall tile data with seamless origin projection ---
       const wallData = [];
-      const nVerts = room.polygonVertices?.length || 0;
-      if (nVerts >= 3) {
-        // Map existing wall surfaces by edge index
-        const wallSurfaces = floor?.rooms?.filter(
-          r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
-        ) || [];
-        const surfaceByEdge = new Map();
-        for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
+      const verts = room.polygonVertices;
+      const nVerts = verts?.length || 0;
+      if (nVerts >= 3 && avail.mp) {
+        const wallH = room.wallHeightCm ?? 200;
+        const patternSettings = effectiveSettings?.pattern || room.pattern;
+        const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
+        const floorOffX = Number(patternSettings?.offsetXcm) || 0;
+        const floorOffY = Number(patternSettings?.offsetYcm) || 0;
 
-        // Generate on-the-fly surfaces for edges without one
-        const tempWalls = unfoldRoomWalls(room, room.wallHeightCm ?? 200);
+        // Floor's effective anchor in room-local coords
+        const patternGroupOriginPt = computePatternGroupOrigin(room, floor);
+        const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
+        const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
 
         for (let i = 0; i < nVerts; i++) {
-          const ws = surfaceByEdge.get(i);
-          const source = ws || tempWalls.find(w => w.wallEdgeIndex === i);
-          if (!source) continue;
+          const A = verts[i];
+          const B = verts[(i + 1) % nVerts];
+          const dx = B.x - A.x;
+          const dy = B.y - A.y;
+          const edgeLength = Math.sqrt(dx * dx + dy * dy);
+          if (edgeLength < 1) continue;
 
-          const wsAvail = computeAvailableArea(source, source.exclusions || []);
-          let wsTiles = [];
-          if (wsAvail.mp) {
-            const wsOrigin = computePatternGroupOrigin(ws || room, floor);
-            const wsSettings = getEffectiveTileSettings(ws || room, floor);
-            const wsResult = tilesForPreview(state, wsAvail.mp, source, false, floor, {
-              originOverride: wsOrigin,
-              effectiveSettings: wsSettings,
-            });
-            wsTiles = wsResult?.tiles || [];
-          }
+          const edgeDirX = dx / edgeLength;
+          const edgeDirY = dy / edgeLength;
+          const edgeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+          // Project floor anchor onto wall coordinate system
+          const relX = effectiveAnchor.x - A.x;
+          const relY = effectiveAnchor.y - A.y;
+          const wallOriginX = relX * edgeDirX + relY * edgeDirY; // dot product
+          const wallOriginY = 0; // floor level = bottom of wall
+
+          // Compensate rotation for edge direction
+          const wallRotDeg = floorRotDeg - edgeAngleDeg;
+
+          // Create rectangular wall "room" for tilesForPreview
+          const wallRect = {
+            id: room.id + "_wall_" + i,
+            widthCm: edgeLength,
+            heightCm: wallH,
+            polygonVertices: [
+              { x: 0, y: 0 },
+              { x: edgeLength, y: 0 },
+              { x: edgeLength, y: wallH },
+              { x: 0, y: wallH },
+            ],
+            exclusions: [],
+            tile: effectiveSettings?.tile || room.tile,
+            grout: effectiveSettings?.grout || room.grout,
+            pattern: {
+              ...(patternSettings || {}),
+              rotationDeg: wallRotDeg,
+              offsetXcm: 0,
+              offsetYcm: 0,
+            },
+          };
+
+          const wallAvail = computeAvailableArea(wallRect, []);
+          if (!wallAvail.mp) continue;
+
+          // Generate tiles with projected origin
+          const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+          const wallEffSettings = {
+            tile: effectiveSettings?.tile || room.tile,
+            grout: effectiveSettings?.grout || room.grout,
+            pattern: wallRect.pattern,
+          };
+          const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, false, floor, {
+            originOverride: wallOriginOverride,
+            effectiveSettings: wallEffSettings,
+          });
+
+          // Surface verts define the simple rectangle for createWallMapper
           wallData.push({
             edgeIndex: i,
-            tiles: wsTiles,
-            exclusions: source.exclusions || [],
-            surfaceVerts: source.polygonVertices,
+            tiles: wallResult?.tiles || [],
+            exclusions: [],
+            surfaceVerts: wallRect.polygonVertices,
           });
         }
       }

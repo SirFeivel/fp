@@ -398,13 +398,17 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
       wallGeo.setIndex(indices);
       wallGeo.computeVertexNormals();
 
+      // Use grout color as wall base when tiles are present on this wall
+      const wallHasTiles = (opts.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
+      const wallBaseColor = wallHasTiles ? parseHexColor(opts.groutColor || "#ffffff") : new THREE.Color(WALL_COLOR);
+
       const wallMat = new THREE.MeshLambertMaterial({
-        color: WALL_COLOR,
+        color: wallBaseColor,
         side: THREE.DoubleSide,
       });
 
       const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-      wallMesh.userData = { type: "wall", edgeIndex: i, roomId: room.id };
+      wallMesh.userData = { type: "wall", edgeIndex: i, roomId: room.id, baseColor: wallBaseColor.getHex() };
       scene.add(wallMesh);
       wallMeshes.push(wallMesh);
 
@@ -529,7 +533,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onHoverCh
     if (hit !== hoveredMesh) {
       // Unhover previous
       if (hoveredMesh) {
-        hoveredMesh.material.color.setHex(WALL_COLOR);
+        hoveredMesh.material.color.setHex(hoveredMesh.userData.baseColor ?? WALL_COLOR);
       }
       hoveredMesh = hit;
       if (hoveredMesh) {
