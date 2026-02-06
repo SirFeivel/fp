@@ -1,7 +1,8 @@
 // src/drag.js
-import { deepClone, getCurrentRoom } from "./core.js";
+import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
+import { ensureRoomWalls } from "./surface.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -1306,6 +1307,9 @@ export function createPolygonVertexDragController({
 
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
+
+        // Regenerate walls after vertex drag
+        ensureRoomWalls(room, floor, { forceRegenerate: true });
 
         commit(getVertexMoveLabel?.() || "Vertex moved", next);
       }

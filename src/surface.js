@@ -67,6 +67,80 @@ export function unfoldRoomWalls(room, heightCm) {
 }
 
 /**
+ * Ensure room has correct wall surfaces matching its current geometry
+ * Idempotent: safe to call multiple times
+ * @param {Object} room - The floor room to generate walls for
+ * @param {Object} floor - The floor object containing rooms array
+ * @param {Object} options - Options { forceRegenerate: boolean }
+ * @returns {Object} { addedWalls: Array, removedWalls: Array, needsPatternGroup: boolean }
+ */
+export function ensureRoomWalls(room, floor, options = {}) {
+  const { forceRegenerate = false } = options;
+
+  // Skip if not a polygon floor room
+  if (!room?.polygonVertices || room.polygonVertices.length < 3 || room.sourceRoomId) {
+    return { addedWalls: [], removedWalls: [], needsPatternGroup: false };
+  }
+
+  const expectedWallCount = room.polygonVertices.length;
+  const existingWalls = floor.rooms.filter(r => r.sourceRoomId === room.id);
+
+  // Check if regeneration needed
+  const needsRegeneration = forceRegenerate ||
+    existingWalls.length !== expectedWallCount ||
+    !wallGeometriesMatch(room, existingWalls);
+
+  if (!needsRegeneration) {
+    return { addedWalls: [], removedWalls: [], needsPatternGroup: false };
+  }
+
+  // Remove old walls
+  const removedWalls = [...existingWalls];
+  for (const wall of existingWalls) {
+    const idx = floor.rooms.indexOf(wall);
+    if (idx !== -1) floor.rooms.splice(idx, 1);
+  }
+
+  // Generate and add new walls
+  const wallHeight = room.wallHeightCm ?? 200;
+  const newWalls = unfoldRoomWalls(room, wallHeight);
+
+  for (const wall of newWalls) {
+    floor.rooms.push(wall);
+  }
+
+  return {
+    addedWalls: newWalls,
+    removedWalls,
+    needsPatternGroup: newWalls.length > 0
+  };
+}
+
+/**
+ * Check if existing walls match the expected geometry for a room
+ * @param {Object} room - The floor room
+ * @param {Array} walls - Array of wall surfaces
+ * @returns {boolean} True if walls match expected geometry
+ */
+function wallGeometriesMatch(room, walls) {
+  if (!walls || walls.length === 0) return false;
+  const expectedCount = room.polygonVertices.length;
+  if (walls.length !== expectedCount) return false;
+
+  const wallsByEdge = new Map();
+  for (const wall of walls) {
+    if (wall.wallEdgeIndex === undefined) return false;
+    wallsByEdge.set(wall.wallEdgeIndex, wall);
+  }
+
+  for (let i = 0; i < expectedCount; i++) {
+    if (!wallsByEdge.has(i)) return false;
+  }
+
+  return true;
+}
+
+/**
  * Transform exclusions from parallelogram wall-surface coords to axis-aligned
  * rectangular coords.  The stored wall surface has parallelogram vertices
  * (P0,P1,P2,P3).  We decompose each point into parametric (t,s) coordinates

@@ -20,7 +20,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface, unfoldRoomWalls, transformWallExclusions } from "./surface.js";
+import { createSurface, unfoldRoomWalls, transformWallExclusions, ensureRoomWalls } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
 
 import {
@@ -188,6 +188,7 @@ function renderSetupSection(state) {
   structure.renderFloorSelect();
   structure.renderFloorName();
   structure.renderRoomSelect();
+  structure.renderWallSelect();
 }
 
 function handleWallDoubleClick(roomId, edgeIndex) {
@@ -195,13 +196,13 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   const floor = getCurrentFloor(state);
   if (!floor) return;
 
-  // Look for existing wall surface matching this edge
+  // Check if wall already exists
   const existingWall = floor.rooms.find(
     r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
   );
 
   if (existingWall) {
-    // Select it and switch to room view
+    // Select and switch to room view
     const next = deepClone(state);
     next.selectedRoomId = existingWall.id;
     next.view = next.view || {};
@@ -210,34 +211,28 @@ function handleWallDoubleClick(roomId, edgeIndex) {
     return;
   }
 
-  // Wall doesn't exist yet — unfold all walls, find the matching one
+  // Generate walls using helper
   const room = floor.rooms.find(r => r.id === roomId);
   if (!room || !room.polygonVertices) return;
-
-  const walls = unfoldRoomWalls(room, room.wallHeightCm ?? 200);
-  if (walls.length === 0) return;
 
   const next = deepClone(state);
   const nextFloor = next.floors.find(f => f.id === floor.id);
 
-  for (const wall of walls) {
-    nextFloor.rooms.push(wall);
-  }
+  const { addedWalls, needsPatternGroup } = ensureRoomWalls(room, nextFloor);
 
-  // Pattern group: original room as origin, walls as members
-  const existingGroup = getRoomPatternGroup(nextFloor, room.id);
-  let group = existingGroup;
-  if (!group) {
-    group = createPatternGroup(nextFloor, room.id);
-  }
-  if (group) {
-    for (const wall of walls) {
-      addRoomToPatternGroup(nextFloor, group.id, wall.id);
+  // Setup pattern group
+  if (needsPatternGroup && addedWalls.length > 0) {
+    const existingGroup = getRoomPatternGroup(nextFloor, room.id);
+    let group = existingGroup || createPatternGroup(nextFloor, room.id);
+    if (group) {
+      for (const wall of addedWalls) {
+        addRoomToPatternGroup(nextFloor, group.id, wall.id);
+      }
     }
   }
 
-  // Find and select the wall matching the clicked edge
-  const targetWall = walls.find(w => w.wallEdgeIndex === edgeIndex);
+  // Select the clicked wall
+  const targetWall = addedWalls.find(w => w.wallEdgeIndex === edgeIndex);
   if (targetWall) {
     next.selectedRoomId = targetWall.id;
   }
@@ -497,6 +492,19 @@ function renderPlanningSection(state, opts) {
         if (!room) return;
 
         room.name = name;
+
+        // Update wall names if this is a floor room (not a wall itself)
+        if (!room.sourceRoomId && floor) {
+          const walls = floor.rooms.filter(r => r.sourceRoomId === room.id);
+          walls.forEach(wall => {
+            // Extract wall number from current name (e.g. "Old Name · Wall 1" -> "1")
+            const match = wall.name.match(/Wall (\d+)$/);
+            if (match) {
+              wall.name = `${name} · Wall ${match[1]}`;
+            }
+          });
+        }
+
         store.commit(t("room.nameChanged") || "Room name changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onPolygonEdgeEdit: ({ id, edgeIndex, length }) => {
@@ -547,6 +555,9 @@ function renderPlanningSection(state, opts) {
 
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
+
+        // Regenerate walls after edge length change
+        ensureRoomWalls(room, floor, { forceRegenerate: true });
 
         store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
@@ -1843,6 +1854,10 @@ function updateAllTranslations() {
     structure.selectRoom(e.target.value);
   });
 
+  document.getElementById("wallSelect")?.addEventListener("change", (e) => {
+    structure.selectRoom(e.target.value); // Select the wall (which is also a room)
+  });
+
   // Pattern groups dropdown in quick controls bar
   document.getElementById("pgGroupSelect")?.addEventListener("change", (e) => {
     activeTargetGroupId = e.target.value || null;
@@ -2408,6 +2423,20 @@ function updateAllTranslations() {
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
 
+    // Auto-generate walls for new room
+    const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
+
+    // Setup pattern group linking floor room to walls
+    if (needsPatternGroup && addedWalls.length > 0) {
+      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+      if (group) {
+        for (const wall of addedWalls) {
+          addRoomToPatternGroup(nextFloor, group.id, wall.id);
+        }
+      }
+    }
+
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -2458,6 +2487,18 @@ function updateAllTranslations() {
 
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
+
+    // Auto-generate walls for circle room (will skip if circle doesn't have polygonVertices)
+    const { addedWalls: circleWalls, needsPatternGroup: circleNeedsGroup } = ensureRoomWalls(newRoom, nextFloor);
+    if (circleNeedsGroup && circleWalls.length > 0) {
+      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+      if (group) {
+        for (const wall of circleWalls) {
+          addRoomToPatternGroup(nextFloor, group.id, wall.id);
+        }
+      }
+    }
 
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
@@ -2522,6 +2563,20 @@ function updateAllTranslations() {
 
         nextFloor.rooms.push(newRoom);
         next.selectedRoomId = newRoom.id;
+
+        // Auto-generate walls for new room
+        const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
+
+        // Setup pattern group linking floor room to walls
+        if (needsPatternGroup && addedWalls.length > 0) {
+          const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+          let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+          if (group) {
+            for (const wall of addedWalls) {
+              addRoomToPatternGroup(nextFloor, group.id, wall.id);
+            }
+          }
+        }
 
         const commitLabel = modifiedRoomIds.length > 0
           ? t("room.addedWithOverlapRemoved") || "Room added (overlap removed from existing rooms)"
@@ -2736,17 +2791,58 @@ function updateAllTranslations() {
       });
     }
 
-    // Sync planning room selector
+    // Sync planning room selector (filter out walls)
     if (planningRoomSelect) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
       planningRoomSelect.innerHTML = "";
-      floor?.rooms?.forEach(r => {
+      const floorRooms = floor?.rooms?.filter(r => !r.sourceRoomId) || [];
+
+      // Determine which room to highlight in the dropdown
+      let roomToSelect = state.selectedRoomId;
+      // If current selection is a wall, select its parent room instead
+      if (room && room.sourceRoomId) {
+        roomToSelect = room.sourceRoomId;
+      }
+
+      floorRooms.forEach(r => {
         const opt = document.createElement("option");
         opt.value = r.id;
         opt.textContent = r.name || "Untitled";
-        if (r.id === state.selectedRoomId) opt.selected = true;
+        if (r.id === roomToSelect) opt.selected = true;
         planningRoomSelect.appendChild(opt);
       });
+    }
+
+    // Sync wall selector (show walls for current room)
+    const wallSelect = document.getElementById("wallSelect");
+    if (wallSelect) {
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      wallSelect.innerHTML = "";
+
+      // Get walls for the current room
+      let walls = [];
+      if (room) {
+        // If current selection is a wall, get walls from its parent room
+        const parentRoomId = room.sourceRoomId || room.id;
+        walls = floor?.rooms?.filter(r => r.sourceRoomId === parentRoomId) || [];
+      }
+
+      if (walls.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No walls";
+        wallSelect.appendChild(opt);
+        wallSelect.disabled = true;
+      } else {
+        wallSelect.disabled = false;
+        walls.forEach(w => {
+          const opt = document.createElement("option");
+          opt.value = w.id;
+          opt.textContent = w.name || "Untitled";
+          if (w.id === state.selectedRoomId) opt.selected = true;
+          wallSelect.appendChild(opt);
+        });
+      }
     }
 
     // Update area display

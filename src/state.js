@@ -49,6 +49,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 8) {
       s = migrateV8ToV9(s);
     }
+    if (s.meta?.version === 9) {
+      s = migrateV9ToV10(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -492,6 +495,22 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
     s.meta.version = 9;
+    return s;
+  }
+
+  function migrateV9ToV10(s) {
+    // Auto-generate wall surfaces for existing polygon rooms
+    s.meta = s.meta || {};
+    s.meta.version = 10;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    // Dynamic imports to avoid circular deps - but we'll skip this in migration
+    // and let the walls be generated on first user interaction instead
+    // This is safer and avoids import issues during state normalization
+
+    console.log('[Migration v9->v10] Skipping wall generation in migration - walls will be created on demand');
+
     return s;
   }
 
