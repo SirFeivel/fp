@@ -512,12 +512,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
     if (!s.floors || !Array.isArray(s.floors)) return s;
 
-    // Dynamic imports to avoid circular deps - but we'll skip this in migration
-    // and let the walls be generated on first user interaction instead
-    // This is safer and avoids import issues during state normalization
-
-    console.log('[Migration v9->v10] Skipping wall generation in migration - walls will be created on demand');
-
+    // Skip wall generation in migration — walls are created on first user interaction
+    // to avoid circular import issues during state normalization.
     return s;
   }
 

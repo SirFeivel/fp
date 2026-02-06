@@ -261,7 +261,6 @@ function findResizeHandles(id) {
 export function createExclusionDragController({
   getSvg, // () => SVGElement
   getState, // () => state
-  setStateDirect, // (nextState) => void
   commit, // (label, nextState) => void
   render, // (label?) => void
   getSelectedExcl, // () => excl or null
@@ -950,6 +949,32 @@ export function createRoomResizeController({
   let resize = null;
   let resizeStartState = null;
 
+  function calcResizeDims(r, dx, dy) {
+    let newWidth = r.startDims.widthCm;
+    let newHeight = r.startDims.heightCm;
+    let newPosX = r.startPos.x;
+    let newPosY = r.startPos.y;
+    const handle = r.handleType;
+
+    if (handle.includes("e")) {
+      newWidth = Math.max(50, r.startDims.widthCm + dx);
+    } else if (handle.includes("w")) {
+      const widthChange = Math.min(dx, r.startDims.widthCm - 50);
+      newWidth = r.startDims.widthCm - widthChange;
+      newPosX = r.startPos.x + widthChange;
+    }
+
+    if (handle.includes("s")) {
+      newHeight = Math.max(50, r.startDims.heightCm + dy);
+    } else if (handle.includes("n")) {
+      const heightChange = Math.min(dy, r.startDims.heightCm - 50);
+      newHeight = r.startDims.heightCm - heightChange;
+      newPosY = r.startPos.y + heightChange;
+    }
+
+    return { newWidth, newHeight, newPosX, newPosY };
+  }
+
   function onRoomResizePointerDown(e, roomId, handleType) {
     const svg = getSvg();
     if (!svg) return;
@@ -1017,31 +1042,7 @@ export function createRoomResizeController({
     resize.currentDx = dx;
     resize.currentDy = dy;
 
-    // Calculate new dimensions based on handle type
-    let newWidth = resize.startDims.widthCm;
-    let newHeight = resize.startDims.heightCm;
-    let newPosX = resize.startPos.x;
-    let newPosY = resize.startPos.y;
-
-    const handle = resize.handleType;
-
-    // Horizontal resizing
-    if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startDims.widthCm + dx);
-    } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
-      newWidth = resize.startDims.widthCm - widthChange;
-      newPosX = resize.startPos.x + widthChange;
-    }
-
-    // Vertical resizing
-    if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startDims.heightCm + dy);
-    } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
-      newHeight = resize.startDims.heightCm - heightChange;
-      newPosY = resize.startPos.y + heightChange;
-    }
+    const { newWidth, newHeight, newPosX, newPosY } = calcResizeDims(resize, dx, dy);
 
     // Update visual during drag
     const roomGroup = svg.querySelector(`[data-roomid="${resize.roomId}"]`);
@@ -1084,30 +1085,7 @@ export function createRoomResizeController({
     hideResizeOverlay();
 
     // Commit changes if dimensions changed
-    const handle = resize.handleType;
-    const dx = resize.currentDx;
-    const dy = resize.currentDy;
-
-    let newWidth = resize.startDims.widthCm;
-    let newHeight = resize.startDims.heightCm;
-    let newPosX = resize.startPos.x;
-    let newPosY = resize.startPos.y;
-
-    if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startDims.widthCm + dx);
-    } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
-      newWidth = resize.startDims.widthCm - widthChange;
-      newPosX = resize.startPos.x + widthChange;
-    }
-
-    if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startDims.heightCm + dy);
-    } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
-      newHeight = resize.startDims.heightCm - heightChange;
-      newPosY = resize.startPos.y + heightChange;
-    }
+    const { newWidth, newHeight, newPosX, newPosY } = calcResizeDims(resize, resize.currentDx, resize.currentDy);
 
     const hasChanges =
       newWidth !== resize.startDims.widthCm ||

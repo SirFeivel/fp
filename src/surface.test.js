@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createSurface, transformWallExclusions } from "./surface.js";
+import { createSurface, transformWallExclusions, unfoldRoomWalls, ensureRoomWalls } from "./surface.js";
 import { DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { roomPolygon, computeAvailableArea, tilesForPreview, getRoomBounds } from "./geometry.js";
 
@@ -432,5 +432,167 @@ describe("transformWallExclusions", () => {
     // Corner at (1.0, 1.0) → (600, 400)
     expect(result[0].vertices[2].x).toBeCloseTo(600);
     expect(result[0].vertices[2].y).toBeCloseTo(400);
+  });
+});
+
+// --- E. unfoldRoomWalls ---
+
+describe("unfoldRoomWalls", () => {
+  it("returns empty array for room without polygonVertices", () => {
+    expect(unfoldRoomWalls({ id: "r1", polygonVertices: null }, 200)).toEqual([]);
+  });
+
+  it("returns empty array for room with fewer than 3 vertices", () => {
+    expect(unfoldRoomWalls({ id: "r1", polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }, 200)).toEqual([]);
+  });
+
+  it("generates one wall per edge for a rectangular room", () => {
+    const room = {
+      id: "r1",
+      name: "Room",
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 300, y: 0 },
+        { x: 300, y: 200 }, { x: 0, y: 200 }
+      ]
+    };
+    const walls = unfoldRoomWalls(room, 250);
+    expect(walls.length).toBe(4);
+    walls.forEach((wall, i) => {
+      expect(wall.sourceRoomId).toBe("r1");
+      expect(wall.wallEdgeIndex).toBe(i);
+      expect(wall.polygonVertices.length).toBe(4);
+      expect(wall.floorPosition).toBeDefined();
+    });
+  });
+
+  it("generates walls for a triangular room", () => {
+    const room = {
+      id: "r1",
+      name: "Tri",
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 100, y: 150 }
+      ]
+    };
+    const walls = unfoldRoomWalls(room, 200);
+    expect(walls.length).toBe(3);
+  });
+
+  it("skips degenerate edges shorter than 1cm", () => {
+    const room = {
+      id: "r1",
+      name: "Room",
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 0.5, y: 0 },
+        { x: 300, y: 0 }, { x: 300, y: 200 }, { x: 0, y: 200 }
+      ]
+    };
+    const walls = unfoldRoomWalls(room, 200);
+    expect(walls.length).toBe(4);
+  });
+
+  it("names walls based on room name and edge index", () => {
+    const room = {
+      id: "r1",
+      name: "Kitchen",
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 300, y: 0 },
+        { x: 300, y: 200 }, { x: 0, y: 200 }
+      ]
+    };
+    const walls = unfoldRoomWalls(room, 200);
+    expect(walls[0].name).toBe("Kitchen · Wall 1");
+    expect(walls[3].name).toBe("Kitchen · Wall 4");
+  });
+
+  it("defaults floorPosition to (0,0) when missing", () => {
+    const room = {
+      id: "r1",
+      name: "Room",
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 100, y: 0 },
+        { x: 100, y: 100 }, { x: 0, y: 100 }
+      ]
+    };
+    const walls = unfoldRoomWalls(room, 200);
+    expect(walls.length).toBe(4);
+  });
+});
+
+// --- F. ensureRoomWalls ---
+
+describe("ensureRoomWalls", () => {
+  it("skips rooms without polygonVertices", () => {
+    const room = { id: "r1", polygonVertices: null };
+    const floor = { id: "f1", rooms: [room] };
+    const result = ensureRoomWalls(room, floor);
+    expect(result.addedWalls).toEqual([]);
+    expect(result.needsPatternGroup).toBe(false);
+  });
+
+  it("skips wall rooms (rooms with sourceRoomId)", () => {
+    const room = createSurface({ widthCm: 300, heightCm: 200 });
+    room.sourceRoomId = "parent1";
+    const floor = { id: "f1", rooms: [room] };
+    const result = ensureRoomWalls(room, floor);
+    expect(result.addedWalls).toEqual([]);
+  });
+
+  it("generates walls for a room with no existing walls", () => {
+    const room = createSurface({ widthCm: 300, heightCm: 200 });
+    const floor = { id: "f1", rooms: [room] };
+    const result = ensureRoomWalls(room, floor);
+
+    expect(result.addedWalls.length).toBe(4);
+    expect(result.needsPatternGroup).toBe(true);
+    expect(floor.rooms.length).toBe(5);
+  });
+
+  it("is idempotent — does not regenerate when walls match", () => {
+    const room = createSurface({ widthCm: 300, heightCm: 200 });
+    const floor = { id: "f1", rooms: [room] };
+
+    ensureRoomWalls(room, floor);
+    expect(floor.rooms.length).toBe(5);
+
+    const result = ensureRoomWalls(room, floor);
+    expect(result.addedWalls).toEqual([]);
+    expect(result.removedWalls).toEqual([]);
+    expect(floor.rooms.length).toBe(5);
+  });
+
+  it("regenerates walls when forceRegenerate is true", () => {
+    const room = createSurface({ widthCm: 300, heightCm: 200 });
+    const floor = { id: "f1", rooms: [room] };
+
+    ensureRoomWalls(room, floor);
+    const oldIds = floor.rooms.filter(r => r.sourceRoomId === room.id).map(w => w.id);
+
+    const result = ensureRoomWalls(room, floor, { forceRegenerate: true });
+    expect(result.addedWalls.length).toBe(4);
+    expect(result.removedWalls.length).toBe(4);
+
+    const newIds = floor.rooms.filter(r => r.sourceRoomId === room.id).map(w => w.id);
+    expect(newIds).not.toEqual(oldIds);
+  });
+
+  it("regenerates walls when vertex count changes", () => {
+    const room = createSurface({ widthCm: 300, heightCm: 200 });
+    const floor = { id: "f1", rooms: [room] };
+
+    ensureRoomWalls(room, floor);
+    expect(floor.rooms.length).toBe(5);
+
+    room.polygonVertices = [
+      { x: 0, y: 0 }, { x: 300, y: 0 }, { x: 150, y: 200 }
+    ];
+
+    const result = ensureRoomWalls(room, floor);
+    expect(result.addedWalls.length).toBe(3);
+    expect(result.removedWalls.length).toBe(4);
+    expect(floor.rooms.length).toBe(4);
   });
 });

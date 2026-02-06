@@ -1340,7 +1340,6 @@ const backgroundController = createBackgroundController({
 const dragController = createExclusionDragController({
   getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
   getState: () => store.getState(),
-  setStateDirect: (s) => store.setStateDirect(s),
   commit: (label, next) => commitViaStore(label, next),
   render: (label) => renderAll(label),
   getSelectedExcl: () => excl.getSelectedExcl(),

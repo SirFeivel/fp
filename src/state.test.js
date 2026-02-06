@@ -185,4 +185,102 @@ describe("state migrations", () => {
     expect(room.polygonVertices.length).toBe(6);
     expect(room.sections).toBeUndefined();
   });
+
+  it("migrates v10 state with planningMode '3d' to v11 with use3D flag", () => {
+    const v10 = {
+      meta: { version: 10, updatedAt: "2026-01-01T00:00:00.000Z" },
+      floors: [
+        {
+          id: "f1",
+          name: "Floor",
+          layout: { enabled: false, background: null },
+          patternLinking: { enabled: false, globalOrigin: { x: 0, y: 0 } },
+          offcutSharing: { enabled: false },
+          patternGroups: [],
+          rooms: [
+            {
+              id: "r1",
+              name: "Room",
+              floorPosition: { x: 0, y: 0 },
+              patternLink: { mode: "independent", linkedRoomId: null },
+              polygonVertices: [
+                { x: 0, y: 0 }, { x: 300, y: 0 },
+                { x: 300, y: 200 }, { x: 0, y: 200 }
+              ],
+              exclusions: [],
+              tile: { widthCm: 20, heightCm: 10, shape: "rect", reference: "" },
+              grout: { widthCm: 0.2, colorHex: "#ffffff" },
+              pattern: { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: "tl", xCm: 0, yCm: 0 } },
+              skirting: { enabled: true, type: "cutout", heightCm: 6, boughtWidthCm: 60, boughtPricePerPiece: 5 }
+            }
+          ]
+        }
+      ],
+      selectedFloorId: "f1",
+      selectedRoomId: "r1",
+      materials: {},
+      tilePresets: [],
+      skirtingPresets: [],
+      pricing: { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0.2 },
+      view: { showGrid: true, showNeeds: false, showSkirting: true, planningMode: "3d" }
+    };
+
+    const store = createStateStore(defaultState, validateStateFn);
+    store.setStateDirect(v10);
+    const state = store.getState();
+
+    expect(state.meta.version).toBe(11);
+    expect(state.view.planningMode).toBe("floor");
+    expect(state.view.use3D).toBe(true);
+  });
+
+  it("migrates v10 state without planningMode '3d' and sets use3D to false", () => {
+    const v10 = {
+      meta: { version: 10, updatedAt: "2026-01-01T00:00:00.000Z" },
+      floors: [
+        {
+          id: "f1",
+          name: "Floor",
+          layout: { enabled: false, background: null },
+          patternLinking: { enabled: false, globalOrigin: { x: 0, y: 0 } },
+          offcutSharing: { enabled: false },
+          patternGroups: [],
+          rooms: [
+            {
+              id: "r1",
+              name: "Room",
+              floorPosition: { x: 0, y: 0 },
+              patternLink: { mode: "independent", linkedRoomId: null },
+              polygonVertices: [
+                { x: 0, y: 0 }, { x: 300, y: 0 },
+                { x: 300, y: 200 }, { x: 0, y: 200 }
+              ],
+              exclusions: [],
+              tile: { widthCm: 20, heightCm: 10, shape: "rect", reference: "" },
+              grout: { widthCm: 0.2, colorHex: "#ffffff" },
+              pattern: { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: "tl", xCm: 0, yCm: 0 } },
+              skirting: { enabled: true, type: "cutout", heightCm: 6, boughtWidthCm: 60, boughtPricePerPiece: 5 }
+            }
+          ]
+        }
+      ],
+      selectedFloorId: "f1",
+      selectedRoomId: "r1",
+      materials: {},
+      tilePresets: [],
+      skirtingPresets: [],
+      pricing: { packM2: 1.44, pricePerM2: 39.9, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0.2 },
+      view: { showGrid: true, showNeeds: false, showSkirting: true, planningMode: "room" }
+    };
+
+    const store = createStateStore(defaultState, validateStateFn);
+    store.setStateDirect(v10);
+    const state = store.getState();
+
+    expect(state.meta.version).toBe(11);
+    expect(state.view.planningMode).toBe("room");
+    expect(state.view.use3D).toBe(false);
+  });
 });
