@@ -365,6 +365,17 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       addRoomToScene(roomDesc, isSel, isSel ? selectedSurfaceEdgeIndex : null);
     }
 
+    // Apply hover state to the selected surface wall
+    if (selectedSurfaceEdgeIndex != null) {
+      const match = wallMeshes.find(
+        m => m.userData.roomId === selectedRoomId && m.userData.edgeIndex === selectedSurfaceEdgeIndex
+      );
+      if (match) {
+        match.material.color.setHex(WALL_HOVER_COLOR);
+        hoveredMesh = match;
+      }
+    }
+
     // Camera stability: only auto-frame when room set changes
     const currentIds = rooms.map(r => r.id).sort().join(",");
     if (currentIds !== lastFloorRoomIds) {
@@ -442,11 +453,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         wallGeo.setIndex(indices);
         wallGeo.computeVertexNormals();
 
-        const isWallHighlighted = selectedSurfaceEdgeIndex === i;
         const wallHasTiles = (roomDesc.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
-        const wallBaseColor = wallHasTiles
-          ? parseHexColor(roomDesc.groutColor || "#ffffff")
-          : new THREE.Color(isWallHighlighted ? SURFACE_HIGHLIGHT_COLOR : wallColor);
+        const wallBaseColor = wallHasTiles ? parseHexColor(roomDesc.groutColor || "#ffffff") : new THREE.Color(wallColor);
 
         const wallMat = new THREE.MeshLambertMaterial({
           color: wallBaseColor,
