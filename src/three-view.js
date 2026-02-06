@@ -8,6 +8,8 @@ const FLOOR_OPACITY = 0.25;      // matches rgba(59,130,246,0.25)
 const WALL_COLOR = 0x6496c8;     // unselected room fill tone (rgb(100,150,200))
 const WALL_HOVER_COLOR = 0x3b82f6; // selection blue (#3b82f6)
 const EDGE_COLOR = 0xc8dcff;     // room stroke (rgba(200,220,255))
+const SURFACE_HIGHLIGHT_COLOR = 0x3b82f6; // selected surface highlight (same blue as accent)
+const SURFACE_HIGHLIGHT_OPACITY = 0.45;   // brighter than normal floor
 const BG_COLOR = 0x081022;       // .svgWrap background
 
 // --- Tile path parsing helpers ---
@@ -356,10 +358,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     floorMeshes = [];
     hoveredMesh = null;
 
-    const { rooms, selectedRoomId } = floorData;
+    const { rooms, selectedRoomId, selectedSurfaceEdgeIndex } = floorData;
 
     for (const roomDesc of rooms) {
-      addRoomToScene(roomDesc, roomDesc.id === selectedRoomId);
+      const isSel = roomDesc.id === selectedRoomId;
+      addRoomToScene(roomDesc, isSel, isSel ? selectedSurfaceEdgeIndex : null);
     }
 
     // Camera stability: only auto-frame when room set changes
@@ -371,7 +374,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
   }
 
   // --- Add a single room to the scene ---
-  function addRoomToScene(roomDesc, isSelected) {
+  // selectedSurfaceEdgeIndex: null = floor highlighted (or no highlight), number = that wall edge highlighted
+  function addRoomToScene(roomDesc, isSelected, selectedSurfaceEdgeIndex = null) {
     const verts = roomDesc.polygonVertices;
     if (!verts || verts.length < 3) return;
 
@@ -391,13 +395,14 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
 
     const hasTiles = roomDesc.floorTiles?.length > 0;
     const groutColor = hasTiles ? parseHexColor(roomDesc.groutColor) : null;
+    const isFloorHighlighted = isSelected && selectedSurfaceEdgeIndex === null;
 
     const floorColor = hasTiles
       ? groutColor
-      : (isSelected ? FLOOR_COLOR : UNSELECTED_FLOOR_COLOR);
+      : (isFloorHighlighted ? SURFACE_HIGHLIGHT_COLOR : (isSelected ? FLOOR_COLOR : UNSELECTED_FLOOR_COLOR));
     const floorOpacity = hasTiles
       ? 1.0
-      : (isSelected ? FLOOR_OPACITY : UNSELECTED_FLOOR_OPACITY);
+      : (isFloorHighlighted ? SURFACE_HIGHLIGHT_OPACITY : (isSelected ? FLOOR_OPACITY : UNSELECTED_FLOOR_OPACITY));
 
     const floorMat = new THREE.MeshBasicMaterial({
       color: floorColor,
@@ -437,8 +442,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         wallGeo.setIndex(indices);
         wallGeo.computeVertexNormals();
 
+        const isWallHighlighted = selectedSurfaceEdgeIndex === i;
         const wallHasTiles = (roomDesc.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
-        const wallBaseColor = wallHasTiles ? parseHexColor(roomDesc.groutColor || "#ffffff") : new THREE.Color(wallColor);
+        const wallBaseColor = wallHasTiles
+          ? parseHexColor(roomDesc.groutColor || "#ffffff")
+          : new THREE.Color(isWallHighlighted ? SURFACE_HIGHLIGHT_COLOR : wallColor);
 
         const wallMat = new THREE.MeshLambertMaterial({
           color: wallBaseColor,

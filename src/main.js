@@ -322,12 +322,11 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   );
 
   if (existingWall) {
-    // Select and switch to room view (wall is 2D only)
+    // Select and switch to room view
     const next = deepClone(state);
     next.selectedRoomId = existingWall.id;
     next.view = next.view || {};
     next.view.planningMode = "room";
-    next.view.use3D = false;
     store.commit("View wall surface", next, { onRender: renderAll, updateMetaCb: updateMeta });
     return;
   }
@@ -359,7 +358,6 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   }
   next.view = next.view || {};
   next.view.planningMode = "room";
-  next.view.use3D = false;
   store.commit("3D wall → room view", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
@@ -391,8 +389,7 @@ function renderPlanningSection(state, opts) {
 
   // Derive effective 3D mode from orthogonal toggle
   const use3D = state.view?.use3D || false;
-  const isWallView = Boolean(getCurrentRoom(state)?.sourceRoomId);
-  const is3DEffective = use3D && !isPatternGroupsView && !isWallView;
+  const is3DEffective = use3D && !isPatternGroupsView;
 
   // Render either 3D, floor canvas, or room canvas based on view mode
   if (is3DEffective) {
@@ -433,11 +430,20 @@ function renderPlanningSection(state, opts) {
         const descriptors = floorRooms.map(room => prepareRoom3DData(state, room, floor));
         threeViewController.buildScene({ rooms: descriptors, selectedRoomId: state.selectedRoomId });
       } else {
-        // Room 3D: single selected room
-        const room = getCurrentRoom(state);
+        // Room 3D: single selected room (resolve wall to parent)
+        let room = getCurrentRoom(state);
+        let selectedSurfaceEdgeIndex = null;
+        if (room?.sourceRoomId) {
+          selectedSurfaceEdgeIndex = room.wallEdgeIndex ?? null;
+          room = floor.rooms.find(r => r.id === room.sourceRoomId) || room;
+        }
         if (room && !room.sourceRoomId && room.polygonVertices?.length >= 3) {
           const descriptor = prepareRoom3DData(state, room, floor);
-          threeViewController.buildScene({ rooms: [descriptor], selectedRoomId: room.id });
+          threeViewController.buildScene({
+            rooms: [descriptor],
+            selectedRoomId: room.id,
+            selectedSurfaceEdgeIndex,
+          });
         }
       }
     }
@@ -800,10 +806,6 @@ function switchToPatternGroupsView() {
 function is3DAvailable(state) {
   const mode = state.view?.planningMode || "room";
   if (mode === "patternGroups") return false;
-  if (mode === "room") {
-    const room = getCurrentRoom(state);
-    if (room?.sourceRoomId) return false; // wall selected — 2D only
-  }
   return true;
 }
 
@@ -1952,13 +1954,8 @@ function updateAllTranslations() {
     const surfaceId = e.target.value;
     if (!surfaceId) return;
     const s = store.getState();
-    const floor = getCurrentFloor(s);
-    const target = floor?.rooms?.find(r => r.id === surfaceId);
-    const isWall = Boolean(target?.sourceRoomId);
     const next = deepClone(s);
     next.selectedRoomId = surfaceId;
-    next.view = next.view || {};
-    if (isWall) next.view.use3D = false; // walls are 2D only
     store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
