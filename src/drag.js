@@ -15,6 +15,44 @@ function pointerToSvgXY(svg, clientX, clientY) {
   return { x: p.x, y: p.y };
 }
 
+/**
+ * Compute the SVG rotation angle applied to wall surfaces in render.js.
+ * Returns 0 for non-wall rooms.
+ */
+function getWallRotationDeg(room) {
+  if (room.sourceRoomId == null || room.wallEdgeIndex == null) return 0;
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 4) return 0;
+
+  const v0 = verts[0], v1 = verts[1];
+  const edgeAngleDeg = Math.atan2(v1.y - v0.y, v1.x - v0.x) * 180 / Math.PI;
+  let rotDeg = -edgeAngleDeg;
+
+  // Determine whether the floor edge ends up at the bottom after rotation
+  const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const rotRad = rotDeg * Math.PI / 180;
+  const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+  const floorY = (v0.x - cx) * sinR + (v0.y - cy) * cosR + cy;
+  const ceilY  = (verts[3].x - cx) * sinR + (verts[3].y - cy) * cosR + cy;
+  if (floorY < ceilY) rotDeg += 180;
+
+  const normRot = ((rotDeg % 360) + 360) % 360;
+  return (normRot > 0.1 && normRot < 359.9) ? rotDeg : 0;
+}
+
+/** Rotate a delta vector by -angleDeg (un-rotate from SVG space to room-local space) */
+function unrotateDelta(dx, dy, angleDeg) {
+  if (angleDeg === 0) return { dx, dy };
+  const rad = -angleDeg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return {
+    dx: dx * cos - dy * sin,
+    dy: dx * sin + dy * cos,
+  };
+}
+
 function snapToMm(value) {
   return Math.round(value * 10) / 10;
 }
@@ -284,12 +322,15 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = snapToMm(curMouse.x - drag.startMouse.x);
-    const dy = snapToMm(curMouse.y - drag.startMouse.y);
+    const svgDx = snapToMm(curMouse.x - drag.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - drag.startMouse.y);
 
-    // Store current delta for final state computation
-    drag.currentDx = dx;
-    drag.currentDy = dy;
+    // Store SVG-space delta for final state computation
+    drag.currentDx = svgDx;
+    drag.currentDy = svgDy;
+
+    // Un-rotate for elements inside the rotated wall <g>
+    const { dx, dy } = unrotateDelta(svgDx, svgDy, drag.wallRotDeg);
 
     // Apply CSS transform to all matching elements (main SVG + fullscreen SVG)
     const elements = findExclElements(drag.id);
@@ -332,11 +373,14 @@ export function createExclusionDragController({
 
     if (!drag || !dragStartState) return;
 
-    const dx = drag.currentDx || 0;
-    const dy = drag.currentDy || 0;
-    const hasMoved = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
+    const svgDx = drag.currentDx || 0;
+    const svgDy = drag.currentDy || 0;
+    const hasMoved = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasMoved) {
+      // Un-rotate delta for wall surfaces (SVG is rotated for display)
+      const { dx, dy } = unrotateDelta(svgDx, svgDy, drag.wallRotDeg);
+
       // Build final state with updated exclusion position
       const finalState = deepClone(dragStartState);
       const finalRoom = getCurrentRoom(finalState);
@@ -429,7 +473,8 @@ export function createExclusionDragController({
       startShape: deepClone(ex),
       currentDx: 0,
       currentDy: 0,
-      bounds
+      bounds,
+      wallRotDeg: getWallRotationDeg(room),
     };
 
     const box = getExclusionBounds(ex, 0, 0);
@@ -452,11 +497,14 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = curMouse.x - resize.startMouse.x;
-    const dy = curMouse.y - resize.startMouse.y;
+    const svgDx = curMouse.x - resize.startMouse.x;
+    const svgDy = curMouse.y - resize.startMouse.y;
 
-    resize.currentDx = dx;
-    resize.currentDy = dy;
+    resize.currentDx = svgDx;
+    resize.currentDy = svgDy;
+
+    // Un-rotate for elements inside the rotated wall <g>
+    const { dx, dy } = unrotateDelta(svgDx, svgDy, resize.wallRotDeg || 0);
 
     // Calculate new dimensions based on handle type and shape
     const { startShape, handleType } = resize;
@@ -474,10 +522,11 @@ export function createExclusionDragController({
     } else if (startShape.type === "circle") {
       const centerX = startShape.cx;
       const centerY = startShape.cy;
-      const distToMouse = Math.sqrt(
-        Math.pow(curMouse.x - centerX, 2) + Math.pow(curMouse.y - centerY, 2)
+      // Un-rotate mouse position relative to center for circle distance
+      const { dx: umx, dy: umy } = unrotateDelta(
+        curMouse.x - centerX, curMouse.y - centerY, resize.wallRotDeg || 0
       );
-      circleR = Math.max(1, distToMouse);
+      circleR = Math.max(1, Math.sqrt(umx * umx + umy * umy));
       overlayText = `Ø ${formatCm(circleR * 2)} cm`;
     } else if (startShape.type === "tri") {
       triPoints = getTriResizePoints(startShape, handleType, dx, dy);
@@ -627,11 +676,14 @@ export function createExclusionDragController({
 
     if (!resize || !dragStartState) return;
 
-    const dx = resize.currentDx || 0;
-    const dy = resize.currentDy || 0;
-    const hasResized = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
+    const svgDx = resize.currentDx || 0;
+    const svgDy = resize.currentDy || 0;
+    const hasResized = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasResized) {
+      // Un-rotate delta for wall surfaces
+      const { dx, dy } = unrotateDelta(svgDx, svgDy, resize.wallRotDeg || 0);
+
       const finalState = deepClone(dragStartState);
       const finalRoom = getCurrentRoom(finalState);
       const excl = finalRoom?.exclusions?.find(x => x.id === resize.id);
@@ -655,11 +707,13 @@ export function createExclusionDragController({
             excl.h = Math.max(1, startShape.h + dy);
           }
         } else if (excl.type === "circle") {
+          // For circle, un-rotate the mouse position relative to center
           const svg = getSvg();
           const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-          excl.r = Math.max(1, Math.sqrt(
-            Math.pow(curMouse.x - startShape.cx, 2) + Math.pow(curMouse.y - startShape.cy, 2)
-          ));
+          const { dx: umx, dy: umy } = unrotateDelta(
+            curMouse.x - startShape.cx, curMouse.y - startShape.cy, resize.wallRotDeg || 0
+          );
+          excl.r = Math.max(1, Math.sqrt(umx * umx + umy * umy));
         } else if (excl.type === "tri") {
           const pointNum = handleType.replace("p", "");
           excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + dx;
@@ -712,7 +766,8 @@ export function createExclusionDragController({
       startMouse,
       startShape: deepClone(ex),
       currentDx: 0,
-      currentDy: 0
+      currentDy: 0,
+      wallRotDeg: getWallRotationDeg(room),
     };
 
     if (ex.type === "rect") {
