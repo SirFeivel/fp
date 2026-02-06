@@ -3,7 +3,7 @@ import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET, getWallSvgRotation, svgToLocalPoint, localToSvgPoint } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -2439,6 +2439,15 @@ function updateAllTranslations() {
             // Extract outer ring of first polygon (room boundary)
             if (mp && mp[0] && mp[0][0]) {
               roomBoundsPolygon = mp[0][0]; // [[x,y], [x,y], ...]
+              // For wall surfaces, transform bounds from room-local to SVG space
+              // (polygon-draw click positions are in SVG root space)
+              const wallRot = getWallSvgRotation(room);
+              if (wallRot) {
+                roomBoundsPolygon = roomBoundsPolygon.map(pt => {
+                  const svgPt = localToSvgPoint(pt[0], pt[1], wallRot);
+                  return [svgPt.x, svgPt.y];
+                });
+              }
             }
           } catch (e) {
             console.warn("Could not get room polygon for bounds check:", e);
@@ -2451,12 +2460,13 @@ function updateAllTranslations() {
           onComplete: (polygonPoints) => {
             freeformBtn.classList.remove("active");
 
-            // Convert to room-local coordinates (room view renders at 0,0)
-            // Points are already in room-local coords in room view
-            const vertices = polygonPoints.map(p => ({
-              x: Math.round(p.x),
-              y: Math.round(p.y)
-            }));
+            // Convert SVG-space points to room-local coordinates
+            // (wall surfaces are rotated in SVG, so points need un-rotating)
+            const wallRot = getWallSvgRotation(getCurrentRoom(store.getState()));
+            const vertices = polygonPoints.map(p => {
+              const local = svgToLocalPoint(p.x, p.y, wallRot);
+              return { x: Math.round(local.x), y: Math.round(local.y) };
+            });
 
             excl.addFreeform(vertices);
           },

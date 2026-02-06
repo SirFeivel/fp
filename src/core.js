@@ -233,6 +233,61 @@ export function getDefaultPricing(state) {
   };
 }
 
+/**
+ * Compute the SVG rotation applied to wall surfaces in render.js.
+ * Returns { angleDeg, cx, cy } or null for non-wall rooms.
+ */
+export function getWallSvgRotation(room) {
+  if (room.sourceRoomId == null || room.wallEdgeIndex == null) return null;
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 4) return null;
+
+  const v0 = verts[0], v1 = verts[1];
+  const edgeAngleDeg = Math.atan2(v1.y - v0.y, v1.x - v0.x) * 180 / Math.PI;
+  let rotDeg = -edgeAngleDeg;
+
+  const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const rotRad = rotDeg * Math.PI / 180;
+  const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+  const floorY = (v0.x - cx) * sinR + (v0.y - cy) * cosR + cy;
+  const ceilY  = (verts[3].x - cx) * sinR + (verts[3].y - cy) * cosR + cy;
+  if (floorY < ceilY) rotDeg += 180;
+
+  const normRot = ((rotDeg % 360) + 360) % 360;
+  if (normRot <= 0.1 || normRot >= 359.9) return null;
+  return { angleDeg: rotDeg, cx, cy };
+}
+
+/** Convert a point from SVG root space to room-local (pre-rotation) space. */
+export function svgToLocalPoint(px, py, wallRot) {
+  if (!wallRot) return { x: px, y: py };
+  const { angleDeg, cx, cy } = wallRot;
+  const rad = -angleDeg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const dx = px - cx, dy = py - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+/** Convert a point from room-local (pre-rotation) space to SVG root space. */
+export function localToSvgPoint(px, py, wallRot) {
+  if (!wallRot) return { x: px, y: py };
+  const { angleDeg, cx, cy } = wallRot;
+  const rad = angleDeg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const dx = px - cx, dy = py - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+/** Un-rotate a delta vector from SVG space to room-local space. */
+export function svgToLocalDelta(dx, dy, wallRot) {
+  if (!wallRot) return { dx, dy };
+  const rad = -wallRot.angleDeg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
+}
+
 export function getDefaultTilePresetTemplate(state) {
   const preset = state?.tilePresets?.find(p => p?.name) || DEFAULT_TILE_PRESET;
   return {
