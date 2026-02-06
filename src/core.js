@@ -142,7 +142,7 @@ export function defaultState() {
   const floorId = uuid();
 
   return {
-    meta: { version: 7, updatedAt: nowISO() },
+    meta: { version: 10, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
@@ -194,6 +194,8 @@ export function defaultState() {
       showNeeds: false,
       showSkirting: true,
       showFloorTiles: false,
+      showWalls: false,      // 2D views (floor, pattern groups)
+      showWalls3D: false,    // 3D view
       planningMode: "floor"  // Start in floor view to add rooms
     }
   };

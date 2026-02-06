@@ -1,5 +1,6 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { ensureRoomWalls } from "./surface.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
 import { EPSILON } from "./constants.js";
@@ -418,10 +419,16 @@ export function bindUI({
     next.view = next.view || {};
     const showGridEl = document.getElementById('showGrid');
     const showSkirtingEl = document.getElementById('showSkirting');
+    const showWallsEl = document.getElementById('showWalls');
+    const threeDShowWallsEl = document.getElementById('threeDShowWalls');
+    const pgShowWallsEl = document.getElementById('pgShowWalls');
     const removalModeEl = document.getElementById('removalMode');
 
     if (showGridEl) next.view.showGrid = Boolean(showGridEl.checked);
     if (showSkirtingEl) next.view.showSkirting = Boolean(showSkirtingEl.checked);
+    if (showWallsEl) next.view.showWalls = Boolean(showWallsEl.checked);
+    if (pgShowWallsEl) next.view.showWalls = Boolean(pgShowWallsEl.checked);
+    if (threeDShowWallsEl) next.view.showWalls3D = Boolean(threeDShowWallsEl.checked);
     if (removalModeEl) next.view.removalMode = Boolean(removalModeEl.checked);
 
     const nextRoom = getCurrentRoom(next);
@@ -459,6 +466,14 @@ export function bindUI({
 
       if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled && skirtingTypeEl) {
         nextRoom.skirting.type = "cutout";
+      }
+
+      nextRoom.wallHeightCm = Number(document.getElementById("wallHeightCm")?.value) || 200;
+
+      // Regenerate walls when height changes
+      const nextFloor = getCurrentFloor(next);
+      if (nextFloor) {
+        ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
       }
     }
 
@@ -750,6 +765,11 @@ export function bindUI({
     commitFn: commitFromProjectInputs
   });
   wireInputCommit(document.getElementById("roomName"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("room.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("wallHeightCm"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs

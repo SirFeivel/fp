@@ -2,7 +2,8 @@ import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetT
 import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 import { showAlert } from './dialog.js';
-import { createSurface } from './surface.js';
+import { createSurface, ensureRoomWalls } from './surface.js';
+import { getRoomPatternGroup, createPatternGroup, addRoomToPatternGroup } from './pattern-groups.js';
 
 export function createStructureController({
   store,
@@ -53,12 +54,65 @@ export function createStructureController({
       return;
     }
 
+    // Filter out walls - only show floor rooms
+    const floorRooms = currentFloor.rooms.filter(r => !r.sourceRoomId);
+
+    if (floorRooms.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("project.none");
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
     sel.disabled = false;
-    for (const room of currentFloor.rooms) {
+    for (const room of floorRooms) {
       const opt = document.createElement("option");
       opt.value = room.id;
       opt.textContent = room.name;
       if (room.id === state.selectedRoomId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function renderWallSelect() {
+    const state = store.getState();
+    const sel = document.getElementById("wallSelect");
+    if (!sel) return;
+
+    sel.innerHTML = "";
+
+    const currentFloor = getCurrentFloor(state);
+    const currentRoom = getCurrentRoom(state);
+
+    if (!currentFloor || !currentRoom) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("project.none");
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
+    // Get walls for the current room
+    const walls = currentFloor.rooms.filter(r => r.sourceRoomId === currentRoom.id);
+
+    if (walls.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("structure.noWalls") || "No walls";
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
+    sel.disabled = false;
+    for (const wall of walls) {
+      const opt = document.createElement("option");
+      opt.value = wall.id;
+      opt.textContent = wall.name;
+      if (wall.id === state.selectedRoomId) opt.selected = true;
       sel.appendChild(opt);
     }
   }
@@ -193,6 +247,20 @@ export function createStructureController({
     currentFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
 
+    // Auto-generate walls for new room
+    const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, currentFloor);
+
+    // Setup pattern group linking floor room to walls
+    if (needsPatternGroup && addedWalls.length > 0) {
+      const existingGroup = getRoomPatternGroup(currentFloor, newRoom.id);
+      let group = existingGroup || createPatternGroup(currentFloor, newRoom.id);
+      if (group) {
+        for (const wall of addedWalls) {
+          addRoomToPatternGroup(currentFloor, group.id, wall.id);
+        }
+      }
+    }
+
     resetSelectedExcl();
     store.commit(t("structure.roomAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
@@ -206,12 +274,19 @@ export function createStructureController({
     const nextFloor = getCurrentFloor(next);
     if (!nextFloor) return;
 
+    const deletedRoomId = state.selectedRoomId;
     const beforeLen = nextFloor.rooms.length;
-    nextFloor.rooms = nextFloor.rooms.filter(r => r.id !== state.selectedRoomId);
+
+    // Delete the room and all its child walls
+    nextFloor.rooms = nextFloor.rooms.filter(r =>
+      r.id !== deletedRoomId && r.sourceRoomId !== deletedRoomId
+    );
 
     if (nextFloor.rooms.length === beforeLen) return;
 
-    next.selectedRoomId = nextFloor.rooms[0]?.id || null;
+    // Select next non-wall room
+    const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
+    next.selectedRoomId = nonWallRooms[0]?.id || null;
 
     resetSelectedExcl();
     store.commit(t("structure.roomDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -269,6 +344,7 @@ export function createStructureController({
     renderFloorSelect,
     renderFloorName,
     renderRoomSelect,
+    renderWallSelect,
     addFloor,
     deleteFloor,
     addRoom,

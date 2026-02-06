@@ -23,6 +23,8 @@ export function getRoomVertices(floor) {
 
   for (const room of floor.rooms) {
     if (!room || !room.id) continue;
+    // Skip walls - they're child objects and shouldn't be vertex snap targets
+    if (room.sourceRoomId) continue;
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     let mp;
@@ -109,6 +111,8 @@ export function getRoomEdges(floor) {
 
   for (const room of floor.rooms) {
     if (!room || !room.id) continue;
+    // Skip walls - they're child objects and shouldn't be edge snap targets
+    if (room.sourceRoomId) continue;
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     let mp;

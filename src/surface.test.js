@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createSurface } from "./surface.js";
+import { createSurface, transformWallExclusions } from "./surface.js";
 import { DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { roomPolygon, computeAvailableArea, tilesForPreview, getRoomBounds } from "./geometry.js";
 
@@ -239,5 +239,198 @@ describe("createSurface — pipeline integration", () => {
     expect(tile).toHaveProperty("d");
     expect(tile).toHaveProperty("isFull");
     expect(tile).toHaveProperty("id");
+  });
+});
+
+// --- D. transformWallExclusions ---
+
+describe("transformWallExclusions", () => {
+  // Axis-aligned rectangle: P0=(0,0), P1=(300,0), P2=(300,200), P3=(0,200)
+  const axisAlignedVerts = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+    { x: 300, y: 200 },
+    { x: 0, y: 200 },
+  ];
+
+  // Parallelogram (wall tilted 45°): same edge length & height but skewed
+  const skewedVerts = [
+    { x: 0, y: 200 },
+    { x: 300, y: 200 },
+    { x: 300, y: 0 },
+    { x: 0, y: 0 },
+  ];
+
+  it("returns [] for empty exclusions", () => {
+    expect(transformWallExclusions([], axisAlignedVerts, 300, 200)).toEqual([]);
+  });
+
+  it("returns [] for null/undefined exclusions", () => {
+    expect(transformWallExclusions(null, axisAlignedVerts, 300, 200)).toEqual([]);
+    expect(transformWallExclusions(undefined, axisAlignedVerts, 300, 200)).toEqual([]);
+  });
+
+  it("returns [] for insufficient surface verts", () => {
+    expect(transformWallExclusions(
+      [{ type: "rect", x: 10, y: 10, w: 20, h: 20 }],
+      [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      300, 200
+    )).toEqual([]);
+  });
+
+  it("returns [] for zero edgeLength or wallH", () => {
+    const ex = [{ type: "rect", x: 10, y: 10, w: 20, h: 20 }];
+    expect(transformWallExclusions(ex, axisAlignedVerts, 0, 200)).toEqual([]);
+    expect(transformWallExclusions(ex, axisAlignedVerts, 300, 0)).toEqual([]);
+    expect(transformWallExclusions(ex, axisAlignedVerts, -1, 200)).toEqual([]);
+  });
+
+  it("returns [] for degenerate (collinear) surface verts", () => {
+    const collinear = [
+      { x: 0, y: 0 }, { x: 100, y: 0 },
+      { x: 200, y: 0 }, { x: 300, y: 0 },
+    ];
+    expect(transformWallExclusions(
+      [{ type: "rect", x: 10, y: 10, w: 20, h: 20 }],
+      collinear, 300, 200
+    )).toEqual([]);
+  });
+
+  it("transforms rect exclusion on axis-aligned surface (identity mapping)", () => {
+    const result = transformWallExclusions(
+      [{ type: "rect", x: 50, y: 50, w: 100, h: 60 }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("freeform");
+    expect(result[0].vertices).toHaveLength(4);
+    // On axis-aligned surface with matching dimensions, coords map 1:1
+    expect(result[0].vertices[0].x).toBeCloseTo(50);
+    expect(result[0].vertices[0].y).toBeCloseTo(50);
+    expect(result[0].vertices[2].x).toBeCloseTo(150);
+    expect(result[0].vertices[2].y).toBeCloseTo(110);
+  });
+
+  it("transforms rect exclusion on flipped surface", () => {
+    // skewedVerts: P0=(0,200), P1=(300,200), P3=(0,0)
+    // U = (300,0), V = (0,-200), so Y is inverted
+    // A full-surface rect should still cover the full target, with flipped Y
+    const result = transformWallExclusions(
+      [{ type: "rect", x: 0, y: 0, w: 300, h: 200 }],
+      skewedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].vertices).toHaveLength(4);
+    // All four corners of the target rect should appear (possibly reordered)
+    const xs = result[0].vertices.map(v => v.x).sort((a, b) => a - b);
+    const ys = result[0].vertices.map(v => v.y).sort((a, b) => a - b);
+    expect(xs[0]).toBeCloseTo(0);
+    expect(xs[1]).toBeCloseTo(0);
+    expect(xs[2]).toBeCloseTo(300);
+    expect(xs[3]).toBeCloseTo(300);
+    expect(ys[0]).toBeCloseTo(0);
+    expect(ys[1]).toBeCloseTo(0);
+    expect(ys[2]).toBeCloseTo(200);
+    expect(ys[3]).toBeCloseTo(200);
+  });
+
+  it("transforms triangle exclusion", () => {
+    const result = transformWallExclusions(
+      [{ type: "tri", p1: { x: 0, y: 0 }, p2: { x: 150, y: 0 }, p3: { x: 75, y: 100 } }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("freeform");
+    expect(result[0].vertices).toHaveLength(3);
+    expect(result[0].vertices[0].x).toBeCloseTo(0);
+    expect(result[0].vertices[0].y).toBeCloseTo(0);
+    expect(result[0].vertices[1].x).toBeCloseTo(150);
+    expect(result[0].vertices[2].x).toBeCloseTo(75);
+    expect(result[0].vertices[2].y).toBeCloseTo(100);
+  });
+
+  it("transforms circle exclusion to 48-point polygon", () => {
+    const result = transformWallExclusions(
+      [{ type: "circle", cx: 150, cy: 100, r: 30 }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("freeform");
+    expect(result[0].vertices).toHaveLength(48);
+    // Center point of circle should roughly map to center
+    const xs = result[0].vertices.map(v => v.x);
+    const ys = result[0].vertices.map(v => v.y);
+    const avgX = xs.reduce((a, b) => a + b) / xs.length;
+    const avgY = ys.reduce((a, b) => a + b) / ys.length;
+    expect(avgX).toBeCloseTo(150, 0);
+    expect(avgY).toBeCloseTo(100, 0);
+  });
+
+  it("transforms circle exclusion with rx/ry (ellipse)", () => {
+    const result = transformWallExclusions(
+      [{ type: "circle", cx: 100, cy: 50, rx: 40, ry: 20 }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].vertices).toHaveLength(48);
+  });
+
+  it("transforms freeform exclusion", () => {
+    const result = transformWallExclusions(
+      [{ type: "freeform", vertices: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 30, y: 40 }] }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("freeform");
+    expect(result[0].vertices).toHaveLength(3);
+    expect(result[0].vertices[0].x).toBeCloseTo(10);
+    expect(result[0].vertices[0].y).toBeCloseTo(10);
+  });
+
+  it("skips unknown exclusion types", () => {
+    const result = transformWallExclusions(
+      [{ type: "unknown" }, { type: "rect", x: 0, y: 0, w: 10, h: 10 }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("freeform");
+  });
+
+  it("skips freeform with fewer than 3 vertices", () => {
+    const result = transformWallExclusions(
+      [{ type: "freeform", vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }] }],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("handles multiple exclusions", () => {
+    const result = transformWallExclusions(
+      [
+        { type: "rect", x: 10, y: 10, w: 20, h: 20 },
+        { type: "tri", p1: { x: 0, y: 0 }, p2: { x: 10, y: 0 }, p3: { x: 5, y: 10 } },
+        { type: "circle", cx: 200, cy: 100, r: 25 },
+      ],
+      axisAlignedVerts, 300, 200
+    );
+    expect(result).toHaveLength(3);
+    expect(result[0].vertices).toHaveLength(4);
+    expect(result[1].vertices).toHaveLength(3);
+    expect(result[2].vertices).toHaveLength(48);
+  });
+
+  it("scales correctly when target dimensions differ from surface", () => {
+    // Surface is 300x200, but we map to 600x400 target
+    const result = transformWallExclusions(
+      [{ type: "rect", x: 150, y: 100, w: 150, h: 100 }],
+      axisAlignedVerts, 600, 400
+    );
+    expect(result).toHaveLength(1);
+    // Original at (0.5, 0.5) parametric → (300, 200) in target
+    expect(result[0].vertices[0].x).toBeCloseTo(300);
+    expect(result[0].vertices[0].y).toBeCloseTo(200);
+    // Corner at (1.0, 1.0) → (600, 400)
+    expect(result[0].vertices[2].x).toBeCloseTo(600);
+    expect(result[0].vertices[2].y).toBeCloseTo(400);
   });
 });

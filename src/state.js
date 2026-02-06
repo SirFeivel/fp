@@ -49,6 +49,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 8) {
       s = migrateV8ToV9(s);
     }
+    if (s.meta?.version === 9) {
+      s = migrateV9ToV10(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -98,11 +101,13 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.pattern;
     }
 
-    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, planningMode: "room" };
+    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, showWalls: true, planningMode: "room" };
     if (s.view.showGrid === undefined) s.view.showGrid = true;
     if (s.view.showNeeds === undefined) s.view.showNeeds = false;
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
     if (s.view.showFloorTiles === undefined) s.view.showFloorTiles = false;
+    if (s.view.showWalls === undefined) s.view.showWalls = false;
+    if (s.view.showWalls3D === undefined) s.view.showWalls3D = false;
     if (s.view.planningMode === undefined) s.view.planningMode = "room";
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;
@@ -492,6 +497,22 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
     s.meta.version = 9;
+    return s;
+  }
+
+  function migrateV9ToV10(s) {
+    // Auto-generate wall surfaces for existing polygon rooms
+    s.meta = s.meta || {};
+    s.meta.version = 10;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    // Dynamic imports to avoid circular deps - but we'll skip this in migration
+    // and let the walls be generated on first user interaction instead
+    // This is safer and avoids import issues during state normalization
+
+    console.log('[Migration v9->v10] Skipping wall generation in migration - walls will be created on demand');
+
     return s;
   }
 

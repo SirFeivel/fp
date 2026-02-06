@@ -11,7 +11,7 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
-import { getRoomBounds, roomPolygon } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeOriginPoint } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -20,7 +20,8 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface } from "./surface.js";
+import { createSurface, unfoldRoomWalls, transformWallExclusions, ensureRoomWalls } from "./surface.js";
+import { createThreeViewController } from "./three-view.js";
 
 import {
   renderWarnings,
@@ -53,7 +54,8 @@ import {
   canJoinPatternGroup,
   getDisconnectedRoomsOnRemoval,
   isPatternGroupChild,
-  getEffectiveTileSettings
+  getEffectiveTileSettings,
+  computePatternGroupOrigin
 } from "./pattern-groups.js";
 import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
 
@@ -68,6 +70,7 @@ let lastUnionError = null;
 let lastTileError = null;
 let lastExclDragAt = 0;
 const exportSelection = new Set();
+let threeViewController = null;
 
 function updateMeta() {
   const last = store.getLastSavedAt();
@@ -185,6 +188,57 @@ function renderSetupSection(state) {
   structure.renderFloorSelect();
   structure.renderFloorName();
   structure.renderRoomSelect();
+  structure.renderWallSelect();
+}
+
+function handleWallDoubleClick(roomId, edgeIndex) {
+  const state = store.getState();
+  const floor = getCurrentFloor(state);
+  if (!floor) return;
+
+  // Check if wall already exists
+  const existingWall = floor.rooms.find(
+    r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
+  );
+
+  if (existingWall) {
+    // Select and switch to room view
+    const next = deepClone(state);
+    next.selectedRoomId = existingWall.id;
+    next.view = next.view || {};
+    next.view.planningMode = "room";
+    store.commit("View wall surface", next, { onRender: renderAll, updateMetaCb: updateMeta });
+    return;
+  }
+
+  // Generate walls using helper
+  const room = floor.rooms.find(r => r.id === roomId);
+  if (!room || !room.polygonVertices) return;
+
+  const next = deepClone(state);
+  const nextFloor = next.floors.find(f => f.id === floor.id);
+
+  const { addedWalls, needsPatternGroup } = ensureRoomWalls(room, nextFloor);
+
+  // Setup pattern group
+  if (needsPatternGroup && addedWalls.length > 0) {
+    const existingGroup = getRoomPatternGroup(nextFloor, room.id);
+    let group = existingGroup || createPatternGroup(nextFloor, room.id);
+    if (group) {
+      for (const wall of addedWalls) {
+        addRoomToPatternGroup(nextFloor, group.id, wall.id);
+      }
+    }
+  }
+
+  // Select the clicked wall
+  const targetWall = addedWalls.find(w => w.wallEdgeIndex === edgeIndex);
+  if (targetWall) {
+    next.selectedRoomId = targetWall.id;
+  }
+  next.view = next.view || {};
+  next.view.planningMode = "room";
+  store.commit("3D wall → room view", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
 function renderPlanningSection(state, opts) {
@@ -214,7 +268,148 @@ function renderPlanningSection(state, opts) {
   if (!isDrag) renderMetrics(state);
 
   // Render either floor canvas or room canvas based on view mode
-  if (isFloorView) {
+  if (planningMode === "3d") {
+    if (!threeViewController) {
+      threeViewController = createThreeViewController({
+        canvas: document.getElementById("threeDCanvas"),
+        onWallDoubleClick: ({ edgeIndex, roomId }) => handleWallDoubleClick(roomId, edgeIndex),
+        onHoverChange: (info) => {
+          const el = document.getElementById("threeDHoverInfo");
+          if (el) el.textContent = info ? info.label : "";
+        }
+      });
+    }
+    const room = getCurrentRoom(state);
+    if (room) {
+      threeViewController.start();
+
+      const floor = getCurrentFloor(state);
+      const avail = computeAvailableArea(room, room.exclusions || []);
+      const effectiveSettings = getEffectiveTileSettings(room, floor);
+      let tileResult = null;
+      let groutColor = "#ffffff";
+      const isRemovalMode = Boolean(state.view?.removalMode);
+      if (avail.mp) {
+        const patternGroupOrigin = computePatternGroupOrigin(room, floor);
+        tileResult = tilesForPreview(state, avail.mp, room, isRemovalMode, floor, {
+          originOverride: patternGroupOrigin,
+          effectiveSettings
+        });
+        groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
+      }
+
+      // --- Generate wall tile data with seamless origin projection ---
+      const wallData = [];
+      const verts = room.polygonVertices;
+      const nVerts = verts?.length || 0;
+      const showWalls3D = state.view?.showWalls3D !== false;
+      if (nVerts >= 3 && avail.mp && showWalls3D) {
+        const wallH = room.wallHeightCm ?? 200;
+        const patternSettings = effectiveSettings?.pattern || room.pattern;
+        const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
+        const floorOffX = Number(patternSettings?.offsetXcm) || 0;
+        const floorOffY = Number(patternSettings?.offsetYcm) || 0;
+
+        // Floor's effective anchor in room-local coords
+        const patternGroupOriginPt = computePatternGroupOrigin(room, floor);
+        const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
+        const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
+
+        // Look up stored wall surfaces for exclusions
+        const wallSurfaces = floor?.rooms?.filter(
+          r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
+        ) || [];
+        const surfaceByEdge = new Map();
+        for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
+
+        for (let i = 0; i < nVerts; i++) {
+          const A = verts[i];
+          const B = verts[(i + 1) % nVerts];
+          const dx = B.x - A.x;
+          const dy = B.y - A.y;
+          const edgeLength = Math.sqrt(dx * dx + dy * dy);
+          if (edgeLength < 1) continue;
+
+          const edgeDirX = dx / edgeLength;
+          const edgeDirY = dy / edgeLength;
+          const edgeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+          // Project floor anchor onto wall coordinate system
+          const relX = effectiveAnchor.x - A.x;
+          const relY = effectiveAnchor.y - A.y;
+          const wallOriginX = relX * edgeDirX + relY * edgeDirY; // dot product
+          const wallOriginY = 0; // floor level = bottom of wall
+
+          // Compensate rotation for edge direction
+          const wallRotDeg = floorRotDeg - edgeAngleDeg;
+
+          // Transform exclusions from stored wall surface (parallelogram → rectangle)
+          const storedWall = surfaceByEdge.get(i);
+          const wallExclusions = storedWall?.exclusions?.length
+            ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, wallH)
+            : [];
+
+          // Create rectangular wall "room" for tilesForPreview
+          // Use stored wall surface's excludedTiles (from 2D removal clicks)
+          const wallExcludedTiles = storedWall?.excludedTiles || [];
+          const wallRect = {
+            id: room.id + "_wall_" + i,
+            widthCm: edgeLength,
+            heightCm: wallH,
+            polygonVertices: [
+              { x: 0, y: 0 },
+              { x: edgeLength, y: 0 },
+              { x: edgeLength, y: wallH },
+              { x: 0, y: wallH },
+            ],
+            exclusions: wallExclusions,
+            excludedTiles: wallExcludedTiles,
+            tile: effectiveSettings?.tile || room.tile,
+            grout: effectiveSettings?.grout || room.grout,
+            pattern: {
+              ...(patternSettings || {}),
+              rotationDeg: wallRotDeg,
+              offsetXcm: 0,
+              offsetYcm: 0,
+            },
+          };
+
+          const wallAvail = computeAvailableArea(wallRect, wallExclusions);
+          if (!wallAvail.mp) continue;
+
+          // Always use projected floor origin for seamless 3D continuation
+          // (storedWall is only used for exclusions, not pattern)
+          const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+          const wallPatternOverride = wallRect.pattern;
+          const wallEffSettings = {
+            tile: effectiveSettings?.tile || room.tile,
+            grout: effectiveSettings?.grout || room.grout,
+            pattern: wallPatternOverride,
+          };
+          const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
+            originOverride: wallOriginOverride,
+            effectiveSettings: wallEffSettings,
+          });
+
+          // Surface verts define the simple rectangle for createWallMapper
+          wallData.push({
+            edgeIndex: i,
+            tiles: wallResult?.tiles || [],
+            exclusions: wallExclusions,
+            surfaceVerts: wallRect.polygonVertices,
+          });
+        }
+      }
+
+      threeViewController.buildScene(room, {
+        floorTiles: tileResult?.tiles || [],
+        floorExclusions: room.exclusions || [],
+        groutColor,
+        wallData,
+        showWalls: state.view?.showWalls3D !== false
+      });
+    }
+  } else if (isFloorView) {
     const floor = getCurrentFloor(state);
     renderFloorCanvas({
       state,
@@ -287,6 +482,19 @@ function renderPlanningSection(state, opts) {
         if (!room) return;
 
         room.name = name;
+
+        // Update wall names if this is a floor room (not a wall itself)
+        if (!room.sourceRoomId && floor) {
+          const walls = floor.rooms.filter(r => r.sourceRoomId === room.id);
+          walls.forEach(wall => {
+            // Extract wall number from current name (e.g. "Old Name · Wall 1" -> "1")
+            const match = wall.name.match(/Wall (\d+)$/);
+            if (match) {
+              wall.name = `${name} · Wall ${match[1]}`;
+            }
+          });
+        }
+
         store.commit(t("room.nameChanged") || "Room name changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onPolygonEdgeEdit: ({ id, edgeIndex, length }) => {
@@ -337,6 +545,9 @@ function renderPlanningSection(state, opts) {
 
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
+
+        // Regenerate walls after edge length change
+        ensureRoomWalls(room, floor, { forceRegenerate: true });
 
         store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
@@ -554,6 +765,22 @@ function switchToPatternGroupsView() {
   store.commit(t("view.switchedToPatternGroups") || "Switched to Pattern Groups", next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
+function switchTo3DView() {
+  const state = store.getState();
+  if (state.view?.planningMode === "3d") return;
+
+  cancelFreeformDrawing();
+  cancelCalibrationMode();
+
+  const room = getCurrentRoom(state);
+  if (!room || !room.polygonVertices) return;
+
+  const next = deepClone(state);
+  next.view = next.view || {};
+  next.view.planningMode = "3d";
+  store.commit("Switched to 3D view", next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
 async function switchToRoomView(skipValidation = false) {
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
@@ -604,12 +831,16 @@ function updateViewToggleUI(planningMode) {
   const floorControls = document.getElementById("floorQuickControls");
   const patternGroupsControls = document.getElementById("patternGroupsQuickControls");
   const roomControls = document.getElementById("roomQuickControls");
+  const threeDControls = document.getElementById("threeDQuickControls");
+  const threeDCanvas = document.getElementById("threeDCanvas");
+  const planSvg = document.getElementById("planSvg");
   const roomSelectLabel = document.getElementById("roomSelectLabel");
   const groupSelectLabel = document.getElementById("groupSelectLabel");
 
   const isFloorView = planningMode === "floor";
   const isPatternGroupsView = planningMode === "patternGroups";
-  const isRoomView = !isFloorView && !isPatternGroupsView;
+  const is3DView = planningMode === "3d";
+  const isRoomView = planningMode === "room" || (!isFloorView && !isPatternGroupsView && !is3DView);
 
   if (floorBtn) floorBtn.classList.toggle("active", isFloorView);
   if (patternGroupsBtn) patternGroupsBtn.classList.toggle("active", isPatternGroupsView);
@@ -617,8 +848,13 @@ function updateViewToggleUI(planningMode) {
   if (floorControls) floorControls.style.display = isFloorView ? "" : "none";
   if (patternGroupsControls) patternGroupsControls.style.display = isPatternGroupsView ? "" : "none";
   if (roomControls) roomControls.style.display = isRoomView ? "" : "none";
+  if (threeDControls) threeDControls.style.display = is3DView ? "" : "none";
+  if (planSvg) planSvg.style.display = is3DView ? "none" : "";
+  if (threeDCanvas) threeDCanvas.style.display = is3DView ? "block" : "none";
   if (roomSelectLabel) roomSelectLabel.style.display = isPatternGroupsView ? "none" : "";
   if (groupSelectLabel) groupSelectLabel.style.display = isPatternGroupsView ? "" : "none";
+
+  if (!is3DView && threeViewController?.isActive()) threeViewController.stop();
 }
 
 function updateFloorControlsState(state) {
@@ -942,6 +1178,41 @@ function initBackgroundControls() {
       updateMetaCb: updateMeta
     });
   });
+
+  // Wall visibility toggles - shows/hides walls in floor, pattern groups, and 3D views
+  const showWalls = document.getElementById("showWalls");
+  const pgShowWalls = document.getElementById("pgShowWalls");
+  const threeDShowWalls = document.getElementById("threeDShowWalls");
+
+  const handleWalls2DToggle = (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+
+    next.view = next.view || {};
+    next.view.showWalls = e.target.checked;
+
+    store.commit("2D walls visibility toggled", next, {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  };
+
+  const handleWalls3DToggle = (e) => {
+    const state = store.getState();
+    const next = deepClone(state);
+
+    next.view = next.view || {};
+    next.view.showWalls3D = e.target.checked;
+
+    store.commit("3D walls visibility toggled", next, {
+      onRender: renderAll,
+      updateMetaCb: updateMeta
+    });
+  };
+
+  showWalls?.addEventListener("change", handleWalls2DToggle);
+  pgShowWalls?.addEventListener("change", handleWalls2DToggle);
+  threeDShowWalls?.addEventListener("change", handleWalls3DToggle);
 
 }
 
@@ -1608,6 +1879,10 @@ function updateAllTranslations() {
     structure.selectRoom(e.target.value);
   });
 
+  document.getElementById("wallSelect")?.addEventListener("change", (e) => {
+    structure.selectRoom(e.target.value); // Select the wall (which is also a room)
+  });
+
   // Pattern groups dropdown in quick controls bar
   document.getElementById("pgGroupSelect")?.addEventListener("change", (e) => {
     activeTargetGroupId = e.target.value || null;
@@ -2173,6 +2448,20 @@ function updateAllTranslations() {
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
 
+    // Auto-generate walls for new room
+    const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
+
+    // Setup pattern group linking floor room to walls
+    if (needsPatternGroup && addedWalls.length > 0) {
+      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+      if (group) {
+        for (const wall of addedWalls) {
+          addRoomToPatternGroup(nextFloor, group.id, wall.id);
+        }
+      }
+    }
+
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -2224,7 +2513,32 @@ function updateAllTranslations() {
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
 
+    // Auto-generate walls for circle room (will skip if circle doesn't have polygonVertices)
+    const { addedWalls: circleWalls, needsPatternGroup: circleNeedsGroup } = ensureRoomWalls(newRoom, nextFloor);
+    if (circleNeedsGroup && circleWalls.length > 0) {
+      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+      if (group) {
+        for (const wall of circleWalls) {
+          addRoomToPatternGroup(nextFloor, group.id, wall.id);
+        }
+      }
+    }
+
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  // Floor view - Open 3D room view
+  document.getElementById("floorUnfold3D")?.addEventListener("click", () => {
+    switchTo3DView();
+  });
+
+  // 3D view quick controls
+  document.getElementById("threeDBackToFloor")?.addEventListener("click", () => {
+    switchToFloorView();
+  });
+  document.getElementById("threeDResetCamera")?.addEventListener("click", () => {
+    threeViewController?.resetCamera();
   });
 
   document.getElementById("floorDeleteRoom")?.addEventListener("click", () => {
@@ -2237,9 +2551,18 @@ function updateAllTranslations() {
     const roomIndex = nextFloor.rooms.findIndex(r => r.id === state.selectedRoomId);
 
     if (roomIndex !== -1) {
+      const deletedRoomId = state.selectedRoomId;
+
+      // Delete the room
       nextFloor.rooms.splice(roomIndex, 1);
-      // Select another room if available
-      next.selectedRoomId = nextFloor.rooms[Math.max(0, roomIndex - 1)]?.id || null;
+
+      // Also delete all child walls (rooms with sourceRoomId matching deleted room)
+      nextFloor.rooms = nextFloor.rooms.filter(r => r.sourceRoomId !== deletedRoomId);
+
+      // Select another room if available (skip walls)
+      const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
+      next.selectedRoomId = nonWallRooms[Math.max(0, Math.min(roomIndex, nonWallRooms.length - 1))]?.id || null;
+
       store.commit(t("room.deleted") || "Room deleted", next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
   });
@@ -2274,6 +2597,20 @@ function updateAllTranslations() {
 
         nextFloor.rooms.push(newRoom);
         next.selectedRoomId = newRoom.id;
+
+        // Auto-generate walls for new room
+        const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
+
+        // Setup pattern group linking floor room to walls
+        if (needsPatternGroup && addedWalls.length > 0) {
+          const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
+          let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
+          if (group) {
+            for (const wall of addedWalls) {
+              addRoomToPatternGroup(nextFloor, group.id, wall.id);
+            }
+          }
+        }
 
         const commitLabel = modifiedRoomIds.length > 0
           ? t("room.addedWithOverlapRemoved") || "Room added (overlap removed from existing rooms)"
@@ -2488,17 +2825,58 @@ function updateAllTranslations() {
       });
     }
 
-    // Sync planning room selector
+    // Sync planning room selector (filter out walls)
     if (planningRoomSelect) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
       planningRoomSelect.innerHTML = "";
-      floor?.rooms?.forEach(r => {
+      const floorRooms = floor?.rooms?.filter(r => !r.sourceRoomId) || [];
+
+      // Determine which room to highlight in the dropdown
+      let roomToSelect = state.selectedRoomId;
+      // If current selection is a wall, select its parent room instead
+      if (room && room.sourceRoomId) {
+        roomToSelect = room.sourceRoomId;
+      }
+
+      floorRooms.forEach(r => {
         const opt = document.createElement("option");
         opt.value = r.id;
         opt.textContent = r.name || "Untitled";
-        if (r.id === state.selectedRoomId) opt.selected = true;
+        if (r.id === roomToSelect) opt.selected = true;
         planningRoomSelect.appendChild(opt);
       });
+    }
+
+    // Sync wall selector (show walls for current room)
+    const wallSelect = document.getElementById("wallSelect");
+    if (wallSelect) {
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      wallSelect.innerHTML = "";
+
+      // Get walls for the current room
+      let walls = [];
+      if (room) {
+        // If current selection is a wall, get walls from its parent room
+        const parentRoomId = room.sourceRoomId || room.id;
+        walls = floor?.rooms?.filter(r => r.sourceRoomId === parentRoomId) || [];
+      }
+
+      if (walls.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No walls";
+        wallSelect.appendChild(opt);
+        wallSelect.disabled = true;
+      } else {
+        wallSelect.disabled = false;
+        walls.forEach(w => {
+          const opt = document.createElement("option");
+          opt.value = w.id;
+          opt.textContent = w.name || "Untitled";
+          if (w.id === state.selectedRoomId) opt.selected = true;
+          wallSelect.appendChild(opt);
+        });
+      }
     }
 
     // Update area display
@@ -2948,6 +3326,14 @@ function updateAllTranslations() {
 
   roomWidthInput?.addEventListener("change", commitDimensions);
   roomLengthInput?.addEventListener("change", commitDimensions);
+
+  // Resize observer for 3D canvas
+  const svgWrap = document.querySelector(".svgWrap");
+  if (svgWrap) {
+    new ResizeObserver(() => {
+      if (threeViewController?.isActive()) threeViewController.resize();
+    }).observe(svgWrap);
+  }
 
   updateAllTranslations();
   renderAll(hadSession ? t("init.withSession") : t("init.default"));

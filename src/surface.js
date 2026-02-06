@@ -13,6 +13,186 @@ const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
 
 const FLOOR_TYPES = ["floor"];
 
+export function unfoldRoomWalls(room, heightCm) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+
+  // Signed area to determine winding (shoelace)
+  let area2 = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
+  }
+  const sign = area2 > 0 ? 1 : -1;
+
+  const walls = [];
+  for (let i = 0; i < n; i++) {
+    const A = verts[i];
+    const B = verts[(i + 1) % n];
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const L = Math.sqrt(dx * dx + dy * dy);
+    if (L < 1) continue;
+
+    const nx = sign * dy / L;
+    const ny = sign * -dx / L;
+
+    const corners = [
+      { x: pos.x + A.x, y: pos.y + A.y },
+      { x: pos.x + B.x, y: pos.y + B.y },
+      { x: pos.x + B.x + nx * heightCm, y: pos.y + B.y + ny * heightCm },
+      { x: pos.x + A.x + nx * heightCm, y: pos.y + A.y + ny * heightCm },
+    ];
+
+    let minX = Infinity, minY = Infinity;
+    for (const c of corners) {
+      if (c.x < minX) minX = c.x;
+      if (c.y < minY) minY = c.y;
+    }
+    const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
+
+    const wall = createSurface({
+      name: room.name + " · Wall " + (i + 1),
+      polygonVertices: localVerts,
+    });
+    wall.sourceRoomId = room.id;
+    wall.wallEdgeIndex = i;
+    wall.floorPosition = { x: minX, y: minY };
+    walls.push(wall);
+  }
+  return walls;
+}
+
+/**
+ * Ensure room has correct wall surfaces matching its current geometry
+ * Idempotent: safe to call multiple times
+ * @param {Object} room - The floor room to generate walls for
+ * @param {Object} floor - The floor object containing rooms array
+ * @param {Object} options - Options { forceRegenerate: boolean }
+ * @returns {Object} { addedWalls: Array, removedWalls: Array, needsPatternGroup: boolean }
+ */
+export function ensureRoomWalls(room, floor, options = {}) {
+  const { forceRegenerate = false } = options;
+
+  // Skip if not a polygon floor room
+  if (!room?.polygonVertices || room.polygonVertices.length < 3 || room.sourceRoomId) {
+    return { addedWalls: [], removedWalls: [], needsPatternGroup: false };
+  }
+
+  const expectedWallCount = room.polygonVertices.length;
+  const existingWalls = floor.rooms.filter(r => r.sourceRoomId === room.id);
+
+  // Check if regeneration needed
+  const needsRegeneration = forceRegenerate ||
+    existingWalls.length !== expectedWallCount ||
+    !wallGeometriesMatch(room, existingWalls);
+
+  if (!needsRegeneration) {
+    return { addedWalls: [], removedWalls: [], needsPatternGroup: false };
+  }
+
+  // Remove old walls
+  const removedWalls = [...existingWalls];
+  for (const wall of existingWalls) {
+    const idx = floor.rooms.indexOf(wall);
+    if (idx !== -1) floor.rooms.splice(idx, 1);
+  }
+
+  // Generate and add new walls
+  const wallHeight = room.wallHeightCm ?? 200;
+  const newWalls = unfoldRoomWalls(room, wallHeight);
+
+  for (const wall of newWalls) {
+    floor.rooms.push(wall);
+  }
+
+  return {
+    addedWalls: newWalls,
+    removedWalls,
+    needsPatternGroup: newWalls.length > 0
+  };
+}
+
+/**
+ * Check if existing walls match the expected geometry for a room
+ * @param {Object} room - The floor room
+ * @param {Array} walls - Array of wall surfaces
+ * @returns {boolean} True if walls match expected geometry
+ */
+function wallGeometriesMatch(room, walls) {
+  if (!walls || walls.length === 0) return false;
+  const expectedCount = room.polygonVertices.length;
+  if (walls.length !== expectedCount) return false;
+
+  const wallsByEdge = new Map();
+  for (const wall of walls) {
+    if (wall.wallEdgeIndex === undefined) return false;
+    wallsByEdge.set(wall.wallEdgeIndex, wall);
+  }
+
+  for (let i = 0; i < expectedCount; i++) {
+    if (!wallsByEdge.has(i)) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Transform exclusions from parallelogram wall-surface coords to axis-aligned
+ * rectangular coords.  The stored wall surface has parallelogram vertices
+ * (P0,P1,P2,P3).  We decompose each point into parametric (t,s) coordinates
+ * within the parallelogram, then map to (t * edgeLength, s * wallH).
+ * Every exclusion type is normalised to a freeform polygon.
+ */
+export function transformWallExclusions(exclusions, surfaceVerts, edgeLength, wallH) {
+  if (!exclusions?.length || !surfaceVerts || surfaceVerts.length < 4) return [];
+  if (edgeLength <= 0 || wallH <= 0) return [];
+
+  const P0 = surfaceVerts[0];
+  const U = { x: surfaceVerts[1].x - P0.x, y: surfaceVerts[1].y - P0.y };
+  const V = { x: surfaceVerts[3].x - P0.x, y: surfaceVerts[3].y - P0.y };
+  const det = U.x * V.y - U.y * V.x;
+  if (Math.abs(det) < 0.001) return [];
+  const invDet = 1 / det;
+
+  function mapPoint(px, py) {
+    const dx = px - P0.x, dy = py - P0.y;
+    const t = (V.y * dx - V.x * dy) * invDet;
+    const s = (-U.y * dx + U.x * dy) * invDet;
+    return { x: t * edgeLength, y: s * wallH };
+  }
+
+  return exclusions.map(ex => {
+    let vertices;
+    if (ex.type === "rect") {
+      vertices = [
+        mapPoint(ex.x, ex.y),
+        mapPoint(ex.x + ex.w, ex.y),
+        mapPoint(ex.x + ex.w, ex.y + ex.h),
+        mapPoint(ex.x, ex.y + ex.h),
+      ];
+    } else if (ex.type === "tri") {
+      vertices = [mapPoint(ex.p1.x, ex.p1.y), mapPoint(ex.p2.x, ex.p2.y), mapPoint(ex.p3.x, ex.p3.y)];
+    } else if (ex.type === "circle") {
+      const rx = ex.rx || ex.r || 10;
+      const ry = ex.ry || ex.r || 10;
+      vertices = [];
+      for (let i = 0; i < 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        vertices.push(mapPoint(ex.cx + rx * Math.cos(a), ex.cy + ry * Math.sin(a)));
+      }
+    } else if (ex.type === "freeform" && ex.vertices?.length >= 3) {
+      vertices = ex.vertices.map(v => mapPoint(v.x, v.y));
+    } else {
+      return null;
+    }
+    return { type: "freeform", vertices };
+  }).filter(Boolean);
+}
+
 export function createSurface(opts = {}) {
   // Resolved lazily to support circular imports (core.js → surface.js → core.js)
   const DEFAULT_TILE = {
@@ -113,6 +293,7 @@ export function createSurface(opts = {}) {
     exclusions: opts.exclusions || [],
     excludedTiles: opts.excludedTiles || [],
     excludedSkirts: opts.excludedSkirts || [],
+    wallHeightCm: opts.wallHeightCm ?? 200,
     skirting,
     floorPosition,
     patternLink,

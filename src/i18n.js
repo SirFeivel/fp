@@ -60,6 +60,7 @@ const translations = {
       displayOptions: "Anzeigeoptionen",
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
+      showWalls: "Wände anzeigen",
       removalMode: "Entfernungsmodus",
       deleteSelected: "Auswahl löschen"
     },
@@ -165,6 +166,7 @@ const translations = {
       title: "Gebäude",
       floor: "Etage",
       room: "Raum",
+      wall: "Wand",
       addFloor: "Etage hinzufügen",
       deleteFloor: "Etage löschen",
       floorName: "Etagenname",
@@ -656,6 +658,7 @@ const translations = {
       displayOptions: "Display Options",
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
+      showWalls: "Show walls",
       removalMode: "Removal mode",
       deleteSelected: "Delete selected"
     },
@@ -761,6 +764,7 @@ const translations = {
       title: "Building",
       floor: "Floor",
       room: "Room",
+      wall: "Wall",
       addFloor: "Add Floor",
       deleteFloor: "Delete Floor",
       floorName: "Floor Name",
