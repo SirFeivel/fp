@@ -1319,8 +1319,7 @@ export function renderPlanSvg({
   selectedWallEdge = null,
   selectedDoorwayId = null,
   onWallClick = null,
-  onDoorwayPointerDown = null,
-  onDoorwayDblClick = null
+  onDoorwayPointerDown = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
@@ -1661,12 +1660,58 @@ export function renderPlanSvg({
           e.stopPropagation();
           if (onDoorwayPointerDown) onDoorwayPointerDown(e, dw.id, i);
         });
-        dwEl.addEventListener("dblclick", (e) => {
-          e.stopPropagation();
-          if (onDoorwayDblClick) onDoorwayDblClick(dw.id, i);
-        });
-
         svg.appendChild(dwEl);
+
+        // Draw dimension indicators for selected doorway
+        if (isDwSel) {
+          const accent = "rgba(122,162,255,1)";
+          const dimOffset = thick + 10;
+          // Offset line away from wall (outward normal direction)
+          const ox = normalX * dimOffset;
+          const oy = normalY * dimOffset;
+          const tick = 6;
+          // Perpendicular to edge (along normal) for whiskers
+          const wx = normalX * tick / 2;
+          const wy = normalY * tick / 2;
+
+          const drawIndicator = (p1, p2, labelText) => {
+            const mx = (p1.x + p2.x) / 2;
+            const my = (p1.y + p2.y) / 2;
+            // Main line
+            svg.appendChild(svgEl("line", {
+              x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+              stroke: accent, "stroke-width": 1, "pointer-events": "none"
+            }));
+            // Whiskers at each end
+            svg.appendChild(svgEl("line", {
+              x1: p1.x - wx, y1: p1.y - wy, x2: p1.x + wx, y2: p1.y + wy,
+              stroke: accent, "stroke-width": 1, "pointer-events": "none"
+            }));
+            svg.appendChild(svgEl("line", {
+              x1: p2.x - wx, y1: p2.y - wy, x2: p2.x + wx, y2: p2.y + wy,
+              stroke: accent, "stroke-width": 1, "pointer-events": "none"
+            }));
+            // Label
+            addPillLabel(`${fmtCm(labelText)}`, mx, my - 4, { parent: svg });
+          };
+
+          const edgeStart = { x: A.x + ox, y: A.y + oy };
+          const dwOuterStart = { x: iS.x + ox, y: iS.y + oy };
+          const dwOuterEnd = { x: iE.x + ox, y: iE.y + oy };
+          const edgeEnd = { x: B.x + ox, y: B.y + oy };
+
+          // Left distance (corner → doorway start)
+          if (dwStart > 1) {
+            drawIndicator(edgeStart, dwOuterStart, dwStart);
+          }
+          // Doorway width
+          drawIndicator(dwOuterStart, dwOuterEnd, dwWidth);
+          // Right distance (doorway end → corner)
+          const rightDist = L - dwEnd;
+          if (rightDist > 1) {
+            drawIndicator(dwOuterEnd, edgeEnd, rightDist);
+          }
+        }
       }
     }
   }

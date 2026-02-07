@@ -1326,19 +1326,18 @@ export function createDoorwayDragController({
   render,
   getSelectedDoorwayId,
   setSelectedDoorway,
-  getMoveLabel
+  getMoveLabel,
+  onDblClick
 }) {
   let drag = null;
   let dragStartState = null;
   let pendingFrame = false;
   let lastMoveEvent = null;
-  let pendingRenderTimer = null;
+  let lastClickTime = 0;
+  let lastClickDoorwayId = null;
 
   function cancelPendingRender() {
-    if (pendingRenderTimer) {
-      clearTimeout(pendingRenderTimer);
-      pendingRenderTimer = null;
-    }
+    // kept for API compatibility (called by main.js onDoorwayDblClick)
   }
 
   function applyDragMove(e) {
@@ -1424,14 +1423,9 @@ export function createDoorwayDragController({
       }
       commit(getMoveLabel?.() || "Doorway moved", finalState);
     }
-    // No movement: do nothing here — let click/dblclick fire naturally on the element.
-    // Selection was already set in pointerdown. A deferred render updates visuals.
-    cancelPendingRender();
     if (!drag.activated) {
-      pendingRenderTimer = setTimeout(() => {
-        pendingRenderTimer = null;
-        if (render) render();
-      }, 350);
+      // No movement — render immediately to show selection + indicators
+      if (render) render();
     }
 
     drag = null;
@@ -1440,7 +1434,20 @@ export function createDoorwayDragController({
 
   function onDoorwayPointerDown(e, doorwayId, edgeIndex) {
     e.stopPropagation();
-    cancelPendingRender();
+
+    // Manual dblclick detection — two pointerdowns on same doorway within 400ms
+    const now = Date.now();
+    if (doorwayId === lastClickDoorwayId && now - lastClickTime < 400) {
+      lastClickTime = 0;
+      lastClickDoorwayId = null;
+      // Fire the dblclick callback directly via the render callback's onDoorwayDblClick
+      // The SVG element's dblclick listener handles this, but since render may have
+      // replaced the element, we call it from main.js via the returned handler
+      if (onDblClick) onDblClick(doorwayId, edgeIndex);
+      return;
+    }
+    lastClickTime = now;
+    lastClickDoorwayId = doorwayId;
 
     if (setSelectedDoorway) setSelectedDoorway(doorwayId);
 

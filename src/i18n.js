@@ -222,8 +222,8 @@ const translations = {
       doorwayHeight: "Höhe (cm)",
       doorwayChanged: "Türöffnung geändert",
       doorwayElevation: "Höhe ab Boden (cm)",
-      doorwayDistNear: "Abstand nahe Ecke (cm)",
-      doorwayDistFar: "Abstand ferne Ecke (cm)",
+      doorwayDistNear: "Abstand linke Ecke (cm)",
+      doorwayDistFar: "Abstand rechte Ecke (cm)",
       doorwayMaxHeight: "Höhe begrenzt: Wandhöhe {0} cm",
       doorwayMaxWidth: "Breite begrenzt: Wandlänge {0} cm",
       selectWallFirst: "Zuerst eine Wand auswählen"
@@ -849,8 +849,8 @@ const translations = {
       doorwayHeight: "Height (cm)",
       doorwayChanged: "Doorway changed",
       doorwayElevation: "Elevation from floor (cm)",
-      doorwayDistNear: "Distance from near corner (cm)",
-      doorwayDistFar: "Distance from far corner (cm)",
+      doorwayDistNear: "Distance from left corner (cm)",
+      doorwayDistFar: "Distance from right corner (cm)",
       doorwayMaxHeight: "Height limited: wall height {0} cm",
       doorwayMaxWidth: "Width limited: wall length {0} cm",
       selectWallFirst: "Select a wall first"

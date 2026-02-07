@@ -829,11 +829,7 @@ function renderPlanningSection(state, opts) {
         selectedExclId = null;
         setSelectedWallEdge(edgeIndex);
       },
-      onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
-      onDoorwayDblClick: (doorwayId, edgeIndex) => {
-        doorwayDragController.cancelPendingRender();
-        showDoorwayEditorDialog(doorwayId, edgeIndex);
-      }
+      onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown
     });
   }
   updateDoorButtonState();
@@ -1528,7 +1524,10 @@ const doorwayDragController = createDoorwayDragController({
     selectedDoorwayId = id;
     updateRoomDeleteButtonState();
   },
-  getMoveLabel: () => t("edge.doorwayChanged")
+  getMoveLabel: () => t("edge.doorwayChanged"),
+  onDblClick: (doorwayId, edgeIndex) => {
+    showDoorwayEditorDialog(doorwayId, edgeIndex);
+  }
 });
 
 const roomDragController = createRoomDragController({
