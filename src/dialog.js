@@ -413,6 +413,8 @@ export function showDoorwayEditor({
   title,
   doorway,
   edgeLength,
+  heightStartCm = 200,
+  heightEndCm = 200,
   confirmText = t("dialog.confirm") || "Confirm",
   cancelText = t("dialog.cancel") || "Cancel"
 }) {
@@ -460,6 +462,9 @@ export function showDoorwayEditor({
         ${spinnerField(t("edge.doorwayElevation"), "dwEdElevation", elev, 0)}
         ${spinnerField(t("edge.doorwayDistNear"), "dwEdDistNear", Number(off.toFixed(1)), 0)}
         ${spinnerField(t("edge.doorwayDistFar"), "dwEdDistFar", Number(farDist.toFixed(1)), 0)}
+        <div id="dwEdConstraintWarn" class="warnItem tile-edit-warning hidden">
+          <div class="wText" id="dwEdConstraintWarnText"></div>
+        </div>
       </div>
     `;
 
@@ -470,8 +475,9 @@ export function showDoorwayEditor({
         if (!input) return;
         const step = parseFloat(input.step) || 1;
         const min = parseFloat(input.min) || 0;
+        const max = input.max !== "" ? parseFloat(input.max) : Infinity;
         let value = parseFloat(input.value) || 0;
-        if (btn.dataset.action === "increment") value += step;
+        if (btn.dataset.action === "increment") value = Math.min(max, value + step);
         else if (btn.dataset.action === "decrement") value = Math.max(min, value - step);
         input.value = value;
         input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -481,21 +487,71 @@ export function showDoorwayEditor({
     const nearInput = document.getElementById("dwEdDistNear");
     const farInput = document.getElementById("dwEdDistFar");
     const widthInput = document.getElementById("dwEdWidth");
+    const heightInput = document.getElementById("dwEdHeight");
+    const elevInput = document.getElementById("dwEdElevation");
+
+    // Compute minimum wall height over the doorway span (accounts for slope)
+    const getMaxDoorH = () => {
+      const offset = parseFloat(nearInput.value) || 0;
+      const curW = parseFloat(widthInput.value) || 0;
+      const L = edgeLength || 1;
+      const hAtStart = heightStartCm + (heightEndCm - heightStartCm) * (offset / L);
+      const hAtEnd = heightStartCm + (heightEndCm - heightStartCm) * (Math.min(offset + curW, L) / L);
+      return Math.min(hAtStart, hAtEnd);
+    };
+
+    const warnEl = document.getElementById("dwEdConstraintWarn");
+    const warnTextEl = document.getElementById("dwEdConstraintWarnText");
+
+    const enforceMax = (input, max) => {
+      const m = Math.max(0, Math.round(max));
+      input.max = m;
+      if ((parseFloat(input.value) || 0) > m) input.value = m;
+    };
+
+    const updateConstraints = () => {
+      const maxH = getMaxDoorH();
+      const curElev = parseFloat(elevInput.value) || 0;
+      const curH = parseFloat(heightInput.value) || 0;
+      const curNear = parseFloat(nearInput.value) || 0;
+
+      enforceMax(widthInput, edgeLength - curNear);
+      enforceMax(heightInput, maxH - curElev);
+      enforceMax(elevInput, maxH - curH);
+
+      // Collect active constraint messages
+      const messages = [];
+      if ((parseFloat(widthInput.value) || 0) >= parseFloat(widthInput.max) - 0.5) {
+        messages.push(t("edge.doorwayMaxWidth").replace("{0}", Math.round(edgeLength)));
+      }
+      if (curElev + (parseFloat(heightInput.value) || 0) >= maxH - 0.5) {
+        messages.push(t("edge.doorwayMaxHeight").replace("{0}", Math.round(maxH)));
+      }
+      if (warnEl) {
+        warnEl.classList.toggle("hidden", messages.length === 0);
+        if (messages.length && warnTextEl) warnTextEl.textContent = messages.join(" · ");
+      }
+    };
 
     const syncFar = () => {
       const curW = parseFloat(widthInput.value) || 0;
       const curNear = parseFloat(nearInput.value) || 0;
       farInput.value = Number(Math.max(0, edgeLength - curNear - curW).toFixed(1));
+      updateConstraints();
     };
     const syncNear = () => {
       const curW = parseFloat(widthInput.value) || 0;
       const curFar = parseFloat(farInput.value) || 0;
       nearInput.value = Number(Math.max(0, edgeLength - curFar - curW).toFixed(1));
+      updateConstraints();
     };
 
     nearInput.addEventListener("input", syncFar);
     farInput.addEventListener("input", syncNear);
     widthInput.addEventListener("input", syncFar);
+    heightInput.addEventListener("input", updateConstraints);
+    elevInput.addEventListener("input", updateConstraints);
+    updateConstraints();
 
     overlay.classList.remove("hidden");
     dialog.classList.remove("hidden");
@@ -513,10 +569,11 @@ export function showDoorwayEditor({
     };
 
     const onConfirm = () => {
+      updateConstraints();
       const result = {
         widthCm: parseFloat(widthInput.value) || w,
-        heightCm: parseFloat(document.getElementById("dwEdHeight").value) || h,
-        elevationCm: parseFloat(document.getElementById("dwEdElevation").value) || 0,
+        heightCm: parseFloat(heightInput.value) || h,
+        elevationCm: parseFloat(elevInput.value) || 0,
         offsetCm: parseFloat(nearInput.value) || 0
       };
       cleanup();

@@ -224,6 +224,8 @@ const translations = {
       doorwayElevation: "Höhe ab Boden (cm)",
       doorwayDistNear: "Abstand nahe Ecke (cm)",
       doorwayDistFar: "Abstand ferne Ecke (cm)",
+      doorwayMaxHeight: "Höhe begrenzt: Wandhöhe {0} cm",
+      doorwayMaxWidth: "Breite begrenzt: Wandlänge {0} cm",
       selectWallFirst: "Zuerst eine Wand auswählen"
     },
     skirting: {
@@ -849,6 +851,8 @@ const translations = {
       doorwayElevation: "Elevation from floor (cm)",
       doorwayDistNear: "Distance from near corner (cm)",
       doorwayDistFar: "Distance from far corner (cm)",
+      doorwayMaxHeight: "Height limited: wall height {0} cm",
+      doorwayMaxWidth: "Width limited: wall length {0} cm",
       selectWallFirst: "Select a wall first"
     },
     skirting: {

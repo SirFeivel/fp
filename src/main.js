@@ -152,11 +152,14 @@ function addDoorwayToWall(edgeIndex) {
   const ep = room.edgeProperties[edgeIndex];
   if (!ep.doorways) ep.doorways = [];
   const wallH = room.wallHeightCm ?? 200;
+  const hStart = ep.heightStartCm ?? wallH;
+  const hEnd = ep.heightEndCm ?? wallH;
+  const minWallH = Math.min(hStart, hEnd);
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
     offsetCm: 0,
     widthCm: 101,
-    heightCm: Math.min(211, wallH - 40),
+    heightCm: Math.min(211, Math.max(0, minWallH - 40)),
     elevationCm: 0
   };
   ep.doorways.push(newDw);
@@ -193,16 +196,21 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   const dw = ep.doorways?.find(d => d.id === doorwayId);
   if (!dw) return;
 
-  // Compute edge length
+  // Compute edge length and wall heights at each end
   const verts = room.polygonVertices;
   const A = verts[edgeIndex];
   const B = verts[(edgeIndex + 1) % verts.length];
   const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+  const wallH = room.wallHeightCm ?? 200;
+  const heightStartCm = ep.heightStartCm ?? wallH;
+  const heightEndCm = ep.heightEndCm ?? wallH;
 
   const result = await showDoorwayEditor({
     title: t("edge.doorway"),
     doorway: dw,
     edgeLength,
+    heightStartCm,
+    heightEndCm,
     confirmText: t("dialog.confirm") || "Confirm",
     cancelText: t("dialog.cancel") || "Cancel"
   });
