@@ -833,12 +833,37 @@ export function bindUI({
     if (idx < 0 || idx >= room.edgeProperties.length) return;
     const ep = room.edgeProperties[idx];
     if (!ep.doorways) ep.doorways = [];
+    const dwWidth = 101;
+    const dwHeight = 211;
+    const dwElevation = 0;
+
+    // Find non-overlapping position along the edge
+    const verts = room.polygonVertices;
+    if (!verts || verts.length < 3) return;
+    const A = verts[idx];
+    const B = verts[(idx + 1) % verts.length];
+    const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+
+    const vOverlapping = ep.doorways.filter(sib => {
+      return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
+        dwElevation + dwHeight > (sib.elevationCm ?? 0);
+    });
+    const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
+    let offsetCm = null;
+    let cursor = 0;
+    for (const sib of sorted) {
+      if (sib.offsetCm - cursor >= dwWidth) { offsetCm = cursor; break; }
+      cursor = sib.offsetCm + sib.widthCm;
+    }
+    if (offsetCm === null && edgeLength - cursor >= dwWidth) offsetCm = cursor;
+    if (offsetCm === null) return;
+
     ep.doorways.push({
       id: crypto?.randomUUID?.() || String(Date.now()),
-      offsetCm: 50,
-      widthCm: 101,
-      heightCm: 211,
-      elevationCm: 0
+      offsetCm,
+      widthCm: dwWidth,
+      heightCm: dwHeight,
+      elevationCm: dwElevation
     });
     const nextFloor = getCurrentFloor(next);
     if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });

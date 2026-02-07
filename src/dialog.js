@@ -415,6 +415,7 @@ export function showDoorwayEditor({
   edgeLength,
   heightStartCm = 200,
   heightEndCm = 200,
+  siblings = [],
   confirmText = t("dialog.confirm") || "Confirm",
   cancelText = t("dialog.cancel") || "Cancel"
 }) {
@@ -509,6 +510,19 @@ export function showDoorwayEditor({
       if ((parseFloat(input.value) || 0) > m) input.value = m;
     };
 
+    const checkOverlap = () => {
+      const curOff = parseFloat(nearInput.value) || 0;
+      const curW = parseFloat(widthInput.value) || 0;
+      const curElev = parseFloat(elevInput.value) || 0;
+      const curH = parseFloat(heightInput.value) || 0;
+      for (const sib of siblings) {
+        const hOverlap = curOff < sib.offsetCm + sib.widthCm && curOff + curW > sib.offsetCm;
+        const vOverlap = curElev < (sib.elevationCm ?? 0) + sib.heightCm && curElev + curH > (sib.elevationCm ?? 0);
+        if (hOverlap && vOverlap) return true;
+      }
+      return false;
+    };
+
     const updateConstraints = () => {
       const maxH = getMaxDoorH();
       const curElev = parseFloat(elevInput.value) || 0;
@@ -527,10 +541,16 @@ export function showDoorwayEditor({
       if (curElev + (parseFloat(heightInput.value) || 0) >= maxH - 0.5) {
         messages.push(t("edge.doorwayMaxHeight").replace("{0}", Math.round(maxH)));
       }
+      const hasOverlap = checkOverlap();
+      if (hasOverlap) {
+        messages.push(t("edge.doorwayOverlap"));
+      }
       if (warnEl) {
         warnEl.classList.toggle("hidden", messages.length === 0);
         if (messages.length && warnTextEl) warnTextEl.textContent = messages.join(" · ");
       }
+      // Disable confirm when overlapping
+      confirmBtn.disabled = hasOverlap;
     };
 
     const syncFar = () => {

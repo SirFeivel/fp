@@ -155,12 +155,49 @@ function addDoorwayToWall(edgeIndex) {
   const hStart = ep.heightStartCm ?? wallH;
   const hEnd = ep.heightEndCm ?? wallH;
   const minWallH = Math.min(hStart, hEnd);
+
+  const verts = room.polygonVertices;
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % verts.length];
+  const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+
+  const dwWidth = 101;
+  const dwHeight = Math.min(211, Math.max(0, minWallH - 40));
+  const dwElevation = 0;
+
+  // Find non-overlapping position along the edge
+  // Collect siblings that vertically overlap with the new doorway
+  const vOverlapping = ep.doorways.filter(sib => {
+    return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
+      dwElevation + dwHeight > (sib.elevationCm ?? 0);
+  });
+
+  // Sort by offset and find first gap that fits
+  const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
+  let offsetCm = null;
+  let cursor = 0;
+  for (const sib of sorted) {
+    if (sib.offsetCm - cursor >= dwWidth) {
+      offsetCm = cursor;
+      break;
+    }
+    cursor = sib.offsetCm + sib.widthCm;
+  }
+  if (offsetCm === null && edgeLength - cursor >= dwWidth) {
+    offsetCm = cursor;
+  }
+
+  if (offsetCm === null) {
+    showAlert(t("edge.doorwayNoSpace"));
+    return;
+  }
+
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
-    offsetCm: 0,
-    widthCm: 101,
-    heightCm: Math.min(211, Math.max(0, minWallH - 40)),
-    elevationCm: 0
+    offsetCm,
+    widthCm: dwWidth,
+    heightCm: dwHeight,
+    elevationCm: dwElevation
   };
   ep.doorways.push(newDw);
   const nextFloor = getCurrentFloor(next);
@@ -205,12 +242,15 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   const heightStartCm = ep.heightStartCm ?? wallH;
   const heightEndCm = ep.heightEndCm ?? wallH;
 
+  const siblings = (ep.doorways || []).filter(d => d.id !== doorwayId);
+
   const result = await showDoorwayEditor({
     title: t("edge.doorway"),
     doorway: dw,
     edgeLength,
     heightStartCm,
     heightEndCm,
+    siblings,
     confirmText: t("dialog.confirm") || "Confirm",
     cancelText: t("dialog.cancel") || "Cancel"
   });

@@ -1358,8 +1358,8 @@ export function createDoorwayDragController({
     }
     if (!drag.activated) return;
 
-    // Clamp offset
-    const newOffset = Math.max(0, Math.min(drag.maxOffset, drag.startOffset + projectedDelta));
+    // Clamp offset (respects wall bounds + sibling doorways)
+    const newOffset = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + projectedDelta));
     drag.currentOffset = newOffset;
 
     // Move the doorway element along the edge
@@ -1476,6 +1476,24 @@ export function createDoorwayDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     dragStartState = deepClone(state);
 
+    // Compute drag bounds considering sibling doorways (prevent overlap)
+    let minOffset = 0;
+    let maxOffset = Math.max(0, L - dw.widthCm);
+    const siblings = (ep?.doorways || []).filter(d => d.id !== doorwayId);
+    for (const sib of siblings) {
+      // Only constrain against siblings that vertically overlap
+      const vOverlap = (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
+        (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
+      if (!vOverlap) continue;
+      if (sib.offsetCm + sib.widthCm <= dw.offsetCm + 0.01) {
+        // Sibling is to the left — its right edge is our minimum
+        minOffset = Math.max(minOffset, sib.offsetCm + sib.widthCm);
+      } else if (sib.offsetCm >= dw.offsetCm + dw.widthCm - 0.01) {
+        // Sibling is to the right — can't go past it
+        maxOffset = Math.min(maxOffset, sib.offsetCm - dw.widthCm);
+      }
+    }
+
     drag = {
       doorwayId,
       edgeIndex,
@@ -1484,7 +1502,8 @@ export function createDoorwayDragController({
       currentOffset: dw.offsetCm,
       edgeDirX,
       edgeDirY,
-      maxOffset: Math.max(0, L - dw.widthCm),
+      minOffset,
+      maxOffset,
       startInner: { x: A.x + edgeDirX * dw.offsetCm, y: A.y + edgeDirY * dw.offsetCm },
       activated: false
     };

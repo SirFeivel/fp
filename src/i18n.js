@@ -226,6 +226,8 @@ const translations = {
       doorwayDistFar: "Abstand rechte Ecke (cm)",
       doorwayMaxHeight: "Höhe begrenzt: Wandhöhe {0} cm",
       doorwayMaxWidth: "Breite begrenzt: Wandlänge {0} cm",
+      doorwayOverlap: "Überlappt mit anderer Türöffnung",
+      doorwayNoSpace: "Kein Platz für weitere Türöffnung auf dieser Wand",
       selectWallFirst: "Zuerst eine Wand auswählen"
     },
     skirting: {
@@ -853,6 +855,8 @@ const translations = {
       doorwayDistFar: "Distance from right corner (cm)",
       doorwayMaxHeight: "Height limited: wall height {0} cm",
       doorwayMaxWidth: "Width limited: wall length {0} cm",
+      doorwayOverlap: "Overlaps with another doorway",
+      doorwayNoSpace: "No space for another doorway on this wall",
       selectWallFirst: "Select a wall first"
     },
     skirting: {
