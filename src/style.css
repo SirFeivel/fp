@@ -3285,3 +3285,8 @@ hr{
     display: none;
   }
 }
+
+.doorway-editor-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.doorway-editor-field { display: flex; flex-direction: column; gap: 4px; }
+.doorway-editor-field label { font-size: var(--fs-sm); color: var(--muted); font-weight: 500; }
+.doorway-editor-field .dialog-input { width: 100%; }

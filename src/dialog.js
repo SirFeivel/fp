@@ -398,3 +398,151 @@ export function showSelect({
     document.addEventListener("keydown", onKeydown);
   });
 }
+
+/**
+ * Show a multi-field doorway editor dialog
+ * @param {Object} options
+ * @param {string} options.title - Dialog title
+ * @param {Object} options.doorway - Current doorway data {widthCm, heightCm, elevationCm, offsetCm}
+ * @param {number} options.edgeLength - Length of the wall edge in cm
+ * @param {string} [options.confirmText] - Confirm button text
+ * @param {string} [options.cancelText] - Cancel button text
+ * @returns {Promise<{widthCm, heightCm, elevationCm, offsetCm} | null>}
+ */
+export function showDoorwayEditor({
+  title,
+  doorway,
+  edgeLength,
+  confirmText = t("dialog.confirm") || "Confirm",
+  cancelText = t("dialog.cancel") || "Cancel"
+}) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("dialogOverlay");
+    const dialog = document.getElementById("dialogModal");
+    const titleEl = document.getElementById("dialogTitle");
+    const messageEl = document.getElementById("dialogMessage");
+    const inputSection = document.getElementById("dialogInputSection");
+    const confirmBtn = document.getElementById("dialogConfirmBtn");
+    const cancelBtn = document.getElementById("dialogCancelBtn");
+
+    if (!overlay || !dialog) {
+      resolve(null);
+      return;
+    }
+
+    const w = doorway.widthCm ?? 101;
+    const h = doorway.heightCm ?? 211;
+    const elev = doorway.elevationCm ?? 0;
+    const off = doorway.offsetCm ?? 0;
+    const farDist = Math.max(0, edgeLength - off - w);
+
+    titleEl.textContent = title;
+    inputSection.classList.add("hidden");
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+    confirmBtn.classList.remove("danger");
+    confirmBtn.classList.add("primary");
+
+    const spinnerField = (label, id, value, min = 0, step = 1) => `
+      <div class="doorway-editor-field">
+        <label>${label}</label>
+        <div class="quick-spinner">
+          <button type="button" class="quick-spinner-btn" data-action="decrement" data-target="${id}">\u2212</button>
+          <input type="number" class="quick-input no-spinner dialog-input" id="${id}" value="${value}" min="${min}" step="${step}">
+          <button type="button" class="quick-spinner-btn" data-action="increment" data-target="${id}">+</button>
+        </div>
+      </div>`;
+
+    messageEl.innerHTML = `
+      <div class="doorway-editor-form">
+        ${spinnerField(t("edge.doorwayWidth"), "dwEdWidth", w, 1)}
+        ${spinnerField(t("edge.doorwayHeight"), "dwEdHeight", h, 1)}
+        ${spinnerField(t("edge.doorwayElevation"), "dwEdElevation", elev, 0)}
+        ${spinnerField(t("edge.doorwayDistNear"), "dwEdDistNear", Number(off.toFixed(1)), 0)}
+        ${spinnerField(t("edge.doorwayDistFar"), "dwEdDistFar", Number(farDist.toFixed(1)), 0)}
+      </div>
+    `;
+
+    // Wire spinner buttons (dynamically added, not covered by page-load querySelectorAll)
+    messageEl.querySelectorAll(".quick-spinner-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const input = document.getElementById(btn.dataset.target);
+        if (!input) return;
+        const step = parseFloat(input.step) || 1;
+        const min = parseFloat(input.min) || 0;
+        let value = parseFloat(input.value) || 0;
+        if (btn.dataset.action === "increment") value += step;
+        else if (btn.dataset.action === "decrement") value = Math.max(min, value - step);
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    });
+
+    const nearInput = document.getElementById("dwEdDistNear");
+    const farInput = document.getElementById("dwEdDistFar");
+    const widthInput = document.getElementById("dwEdWidth");
+
+    const syncFar = () => {
+      const curW = parseFloat(widthInput.value) || 0;
+      const curNear = parseFloat(nearInput.value) || 0;
+      farInput.value = Number(Math.max(0, edgeLength - curNear - curW).toFixed(1));
+    };
+    const syncNear = () => {
+      const curW = parseFloat(widthInput.value) || 0;
+      const curFar = parseFloat(farInput.value) || 0;
+      nearInput.value = Number(Math.max(0, edgeLength - curFar - curW).toFixed(1));
+    };
+
+    nearInput.addEventListener("input", syncFar);
+    farInput.addEventListener("input", syncNear);
+    widthInput.addEventListener("input", syncFar);
+
+    overlay.classList.remove("hidden");
+    dialog.classList.remove("hidden");
+
+    widthInput.focus();
+    widthInput.select();
+
+    const cleanup = () => {
+      overlay.classList.add("hidden");
+      dialog.classList.add("hidden");
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onOverlayClick);
+      document.removeEventListener("keydown", onKeydown);
+    };
+
+    const onConfirm = () => {
+      const result = {
+        widthCm: parseFloat(widthInput.value) || w,
+        heightCm: parseFloat(document.getElementById("dwEdHeight").value) || h,
+        elevationCm: parseFloat(document.getElementById("dwEdElevation").value) || 0,
+        offsetCm: parseFloat(nearInput.value) || 0
+      };
+      cleanup();
+      resolve(result);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onOverlayClick = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    const onKeydown = (e) => {
+      if (e.key === "Escape") {
+        onCancel();
+      } else if (e.key === "Enter") {
+        onConfirm();
+      }
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onOverlayClick);
+    document.addEventListener("keydown", onKeydown);
+  });
+}

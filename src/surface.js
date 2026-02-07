@@ -37,14 +37,19 @@ export function unfoldRoomWalls(room, heightCm) {
     const L = Math.sqrt(dx * dx + dy * dy);
     if (L < 1) continue;
 
+    // Per-edge heights from edgeProperties (fallback to uniform heightCm)
+    const ep = room.edgeProperties?.[i];
+    const hStart = ep?.heightStartCm ?? heightCm;
+    const hEnd = ep?.heightEndCm ?? heightCm;
+
     const nx = sign * dy / L;
     const ny = sign * -dx / L;
 
     const corners = [
       { x: pos.x + A.x, y: pos.y + A.y },
       { x: pos.x + B.x, y: pos.y + B.y },
-      { x: pos.x + B.x + nx * heightCm, y: pos.y + B.y + ny * heightCm },
-      { x: pos.x + A.x + nx * heightCm, y: pos.y + A.y + ny * heightCm },
+      { x: pos.x + B.x + nx * hEnd, y: pos.y + B.y + ny * hEnd },
+      { x: pos.x + A.x + nx * hStart, y: pos.y + A.y + ny * hStart },
     ];
 
     let minX = Infinity, minY = Infinity;
@@ -54,12 +59,29 @@ export function unfoldRoomWalls(room, heightCm) {
     }
     const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
 
+    // Inject doorway exclusions into wall surface
+    const doorwayExclusions = [];
+    if (ep?.doorways?.length > 0) {
+      for (const dw of ep.doorways) {
+        doorwayExclusions.push({
+          type: "rect",
+          x: dw.offsetCm,
+          y: dw.elevationCm || 0,
+          w: dw.widthCm,
+          h: dw.heightCm
+        });
+      }
+    }
+
     const wall = createSurface({
       name: room.name + " · Wall " + (i + 1),
       polygonVertices: localVerts,
+      exclusions: doorwayExclusions,
     });
     wall.sourceRoomId = room.id;
     wall.wallEdgeIndex = i;
+    wall.heightStartCm = hStart;
+    wall.heightEndCm = hEnd;
     wall.floorPosition = { x: minX, y: minY };
     walls.push(wall);
   }

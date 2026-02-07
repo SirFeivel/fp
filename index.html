@@ -774,6 +774,13 @@
                       </button>
                     </div>
                   </div>
+                  <button id="quickAddDoorway" class="quick-btn" title="Add Doorway" data-i18n-title="edge.addDoorway" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 21V3h18v18H3z"/>
+                      <path d="M9 21V11h6v10"/>
+                      <circle cx="14" cy="16" r="1"/>
+                    </svg>
+                  </button>
                   <button id="roomDeleteObject" class="quick-btn danger" title="Delete selected" data-i18n-title="planning.deleteSelected" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -1057,6 +1064,33 @@
                   <label>Wall Height (cm)</label>
                   <input id="wallHeightCm" type="number" min="1" step="1" value="200" />
                 </div>
+              </div>
+            </div>
+
+            <!-- Edge / Wall Properties -->
+            <div class="panel-section" id="edgePropertiesSection">
+              <h4 class="panel-section-title" data-i18n="edge.properties">Wall Properties</h4>
+              <div class="panel-fields">
+                <div class="field">
+                  <label data-i18n="edge.selectEdge">Select Edge</label>
+                  <select id="edgeSelect"></select>
+                </div>
+                <div class="field">
+                  <label data-i18n="edge.thickness">Wall Thickness (cm)</label>
+                  <input id="edgeThickness" type="number" min="1" step="1" value="12" />
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="edge.heightStart">Height Start (cm)</label>
+                    <input id="edgeHeightStart" type="number" min="1" step="1" value="200" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="edge.heightEnd">Height End (cm)</label>
+                    <input id="edgeHeightEnd" type="number" min="1" step="1" value="200" />
+                  </div>
+                </div>
+                <div id="doorwaysList"></div>
+                <button id="addDoorwayBtn" class="btn btn-small" data-i18n="edge.addDoorway">Add Doorway</button>
               </div>
             </div>
 

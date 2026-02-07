@@ -1315,3 +1315,177 @@ export function createPolygonVertexDragController({
 
   return { onVertexPointerDown };
 }
+
+/**
+ * Drag controller for doorways — constrained to wall edge direction.
+ */
+export function createDoorwayDragController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getSelectedDoorwayId,
+  setSelectedDoorway,
+  getMoveLabel
+}) {
+  let drag = null;
+  let dragStartState = null;
+  let pendingFrame = false;
+  let lastMoveEvent = null;
+  let pendingRenderTimer = null;
+
+  function cancelPendingRender() {
+    if (pendingRenderTimer) {
+      clearTimeout(pendingRenderTimer);
+      pendingRenderTimer = null;
+    }
+  }
+
+  function applyDragMove(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+
+    // Project mouse delta onto edge direction
+    const dx = curMouse.x - drag.startMouse.x;
+    const dy = curMouse.y - drag.startMouse.y;
+    const projectedDelta = dx * drag.edgeDirX + dy * drag.edgeDirY;
+
+    // Activate drag mode on first significant movement (lazy pointer capture)
+    if (!drag.activated && Math.abs(projectedDelta) > 2) {
+      drag.activated = true;
+      svg.setPointerCapture(e.pointerId);
+    }
+    if (!drag.activated) return;
+
+    // Clamp offset
+    const newOffset = Math.max(0, Math.min(drag.maxOffset, drag.startOffset + projectedDelta));
+    drag.currentOffset = newOffset;
+
+    // Move the doorway element along the edge
+    const deltaAlongEdge = newOffset - drag.startOffset;
+    const translateX = deltaAlongEdge * drag.edgeDirX;
+    const translateY = deltaAlongEdge * drag.edgeDirY;
+
+    const elements = document.querySelectorAll(`[data-doorway-id="${drag.doorwayId}"]`);
+    elements.forEach(el => {
+      el.setAttribute("transform", `translate(${translateX}, ${translateY})`);
+    });
+
+    // Show overlay
+    const text = `${formatCm(newOffset)} cm`;
+    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, {
+      x: drag.startInner.x + deltaAlongEdge * drag.edgeDirX,
+      y: drag.startInner.y + deltaAlongEdge * drag.edgeDirY
+    });
+  }
+
+  function scheduleDragMove(e) {
+    lastMoveEvent = e;
+    if (pendingFrame) return;
+    pendingFrame = true;
+    requestAnimationFrame(() => {
+      pendingFrame = false;
+      const evt = lastMoveEvent;
+      lastMoveEvent = null;
+      if (evt) applyDragMove(evt);
+    });
+  }
+
+  function onSvgPointerMove(e) {
+    if (!drag) return;
+    scheduleDragMove(e);
+  }
+
+  function onSvgPointerUp() {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onSvgPointerMove);
+    hideResizeOverlay();
+
+    if (!drag || !dragStartState) {
+      drag = null;
+      dragStartState = null;
+      return;
+    }
+
+    if (drag.activated) {
+      // Actual drag happened — commit
+      const finalState = deepClone(dragStartState);
+      const room = getCurrentRoom(finalState);
+      const floor = getCurrentFloor(finalState);
+      const ep = room?.edgeProperties?.[drag.edgeIndex];
+      const dw = ep?.doorways?.find(d => d.id === drag.doorwayId);
+      if (dw) {
+        dw.offsetCm = snapToMm(drag.currentOffset);
+      }
+      if (room && floor) {
+        ensureRoomWalls(room, floor, { forceRegenerate: true });
+      }
+      commit(getMoveLabel?.() || "Doorway moved", finalState);
+    }
+    // No movement: do nothing here — let click/dblclick fire naturally on the element.
+    // Selection was already set in pointerdown. A deferred render updates visuals.
+    cancelPendingRender();
+    if (!drag.activated) {
+      pendingRenderTimer = setTimeout(() => {
+        pendingRenderTimer = null;
+        if (render) render();
+      }, 350);
+    }
+
+    drag = null;
+    dragStartState = null;
+  }
+
+  function onDoorwayPointerDown(e, doorwayId, edgeIndex) {
+    e.stopPropagation();
+    cancelPendingRender();
+
+    if (setSelectedDoorway) setSelectedDoorway(doorwayId);
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    if (!room?.polygonVertices?.length) return;
+
+    const verts = room.polygonVertices;
+    const A = verts[edgeIndex];
+    const B = verts[(edgeIndex + 1) % verts.length];
+    const edgeDx = B.x - A.x;
+    const edgeDy = B.y - A.y;
+    const L = Math.hypot(edgeDx, edgeDy);
+    if (L < 1) return;
+
+    const edgeDirX = edgeDx / L;
+    const edgeDirY = edgeDy / L;
+
+    const ep = room.edgeProperties?.[edgeIndex];
+    const dw = ep?.doorways?.find(d => d.id === doorwayId);
+    if (!dw) return;
+
+    const svg = getSvg();
+    // NO setPointerCapture here — deferred until actual movement to preserve click/dblclick
+
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    dragStartState = deepClone(state);
+
+    drag = {
+      doorwayId,
+      edgeIndex,
+      startMouse,
+      startOffset: dw.offsetCm,
+      currentOffset: dw.offsetCm,
+      edgeDirX,
+      edgeDirY,
+      maxOffset: Math.max(0, L - dw.widthCm),
+      startInner: { x: A.x + edgeDirX * dw.offsetCm, y: A.y + edgeDirY * dw.offsetCm },
+      activated: false
+    };
+
+    svg.addEventListener("pointermove", onSvgPointerMove);
+    svg.addEventListener("pointerup", onSvgPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onSvgPointerUp, { once: true });
+  }
+
+  return { onDoorwayPointerDown, cancelPendingRender };
+}

@@ -468,6 +468,37 @@ export function bindUI({
 
       nextRoom.wallHeightCm = Number(document.getElementById("wallHeightCm")?.value) || 200;
 
+      // Read edge properties from UI
+      const edgeSelectEl = document.getElementById("edgeSelect");
+      if (edgeSelectEl && Array.isArray(nextRoom.edgeProperties)) {
+        const idx = Number(edgeSelectEl.value) || 0;
+        if (idx >= 0 && idx < nextRoom.edgeProperties.length) {
+          const ep = nextRoom.edgeProperties[idx];
+          ep.thicknessCm = Number(document.getElementById("edgeThickness")?.value) || 12;
+          ep.heightStartCm = Number(document.getElementById("edgeHeightStart")?.value) || 200;
+          ep.heightEndCm = Number(document.getElementById("edgeHeightEnd")?.value) || 200;
+
+          // Read doorway inputs
+          const dwContainer = document.getElementById("doorwaysList");
+          if (dwContainer) {
+            const offsets = dwContainer.querySelectorAll(".dw-offset");
+            const widths = dwContainer.querySelectorAll(".dw-width");
+            const heights = dwContainer.querySelectorAll(".dw-height");
+            if (offsets.length > 0) {
+              ep.doorways = [];
+              for (let d = 0; d < offsets.length; d++) {
+                ep.doorways.push({
+                  id: nextRoom.edgeProperties[idx]?.doorways?.[d]?.id || crypto?.randomUUID?.() || String(Date.now()),
+                  offsetCm: Number(offsets[d].value) || 0,
+                  widthCm: Number(widths[d]?.value) || 80,
+                  heightCm: Number(heights[d]?.value) || 200
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Regenerate walls when height changes
       const nextFloor = getCurrentFloor(next);
       if (nextFloor) {
@@ -772,6 +803,69 @@ export function bindUI({
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
+
+  // Edge property inputs
+  const edgeSelectEl = document.getElementById("edgeSelect");
+  edgeSelectEl?.addEventListener("change", () => renderAll());
+  wireInputCommit(document.getElementById("edgeThickness"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("edgeHeightStart"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("edgeHeightEnd"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+
+  // Add doorway button
+  document.getElementById("addDoorwayBtn")?.addEventListener("click", () => {
+    const state = store.getState();
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    if (!room || !Array.isArray(room.edgeProperties)) return;
+    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
+    if (idx < 0 || idx >= room.edgeProperties.length) return;
+    const ep = room.edgeProperties[idx];
+    if (!ep.doorways) ep.doorways = [];
+    ep.doorways.push({
+      id: crypto?.randomUUID?.() || String(Date.now()),
+      offsetCm: 50,
+      widthCm: 101,
+      heightCm: 211,
+      elevationCm: 0
+    });
+    const nextFloor = getCurrentFloor(next);
+    if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  // Doorway remove & edit (event delegation)
+  document.getElementById("doorwaysList")?.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("dw-remove")) return;
+    const dwIdx = Number(e.target.dataset.dwIdx);
+    const state = store.getState();
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    if (!room || !Array.isArray(room.edgeProperties)) return;
+    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
+    if (idx < 0 || idx >= room.edgeProperties.length) return;
+    room.edgeProperties[idx].doorways.splice(dwIdx, 1);
+    const nextFloor = getCurrentFloor(next);
+    if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+  document.getElementById("doorwaysList")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("dw-offset") || e.target.classList.contains("dw-width") || e.target.classList.contains("dw-height")) {
+      commitFromRoomInputs(t("edge.doorwayChanged"));
+    }
+  });
+
   wireInputCommit(document.getElementById("tileReference"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("tile.changed"),

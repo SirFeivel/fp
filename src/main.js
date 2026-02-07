@@ -5,14 +5,14 @@ import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET, getWallSvgRotation, svgToLocalPoint, localToSvgPoint } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController } from "./drag.js";
+import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeOriginPoint } from "./geometry.js";
-import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, getEdgeFreeSegmentsByIndex } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -57,7 +57,7 @@ import {
   getEffectiveTileSettings,
   computePatternGroupOrigin
 } from "./pattern-groups.js";
-import { showConfirm, showAlert, showPrompt, showSelect } from "./dialog.js";
+import { showConfirm, showAlert, showPrompt, showSelect, showDoorwayEditor } from "./dialog.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -69,6 +69,8 @@ let selectedSkirtingPresetId = null;
 let lastUnionError = null;
 let lastTileError = null;
 let lastExclDragAt = 0;
+let selectedWallEdge = null;
+let selectedDoorwayId = null;
 const exportSelection = new Set();
 let threeViewController = null;
 
@@ -112,6 +114,115 @@ function setSelectedExcl(id) {
 }
 function setSelectedId(id) {
   selectedExclId = id || null;
+}
+
+function setSelectedWallEdge(idx) {
+  selectedWallEdge = idx;
+  selectedDoorwayId = null;
+  updateDoorButtonState();
+  updateRoomDeleteButtonState();
+  renderAll();
+}
+
+function setSelectedDoorway(id) {
+  selectedDoorwayId = id || null;
+  updateRoomDeleteButtonState();
+  renderAll();
+}
+
+function updateDoorButtonState() {
+  const btn = document.getElementById("quickAddDoorway");
+  if (!btn) return;
+  const state = store.getState();
+  const room = getCurrentRoom(state);
+  const planningMode = state.view?.planningMode || "room";
+  btn.disabled = !(selectedWallEdge !== null && planningMode === "room" && room && !isCircleRoom(room));
+}
+
+function isCircleRoom(room) {
+  return room?.circle && room.circle.rx > 0;
+}
+
+function addDoorwayToWall(edgeIndex) {
+  const state = store.getState();
+  const next = structuredClone(state);
+  const room = getCurrentRoom(next);
+  if (!room || !Array.isArray(room.edgeProperties)) return;
+  if (edgeIndex < 0 || edgeIndex >= room.edgeProperties.length) return;
+  const ep = room.edgeProperties[edgeIndex];
+  if (!ep.doorways) ep.doorways = [];
+  const wallH = room.wallHeightCm ?? 200;
+  const newDw = {
+    id: crypto?.randomUUID?.() || String(Date.now()),
+    offsetCm: 0,
+    widthCm: 101,
+    heightCm: Math.min(211, wallH - 40),
+    elevationCm: 0
+  };
+  ep.doorways.push(newDw);
+  const nextFloor = getCurrentFloor(next);
+  if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+  selectedDoorwayId = newDw.id;
+  store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+}
+
+function deleteDoorway(doorwayId) {
+  const state = store.getState();
+  const next = structuredClone(state);
+  const room = getCurrentRoom(next);
+  if (!room?.edgeProperties) return;
+  for (const ep of room.edgeProperties) {
+    if (!ep.doorways) continue;
+    const idx = ep.doorways.findIndex(d => d.id === doorwayId);
+    if (idx >= 0) {
+      ep.doorways.splice(idx, 1);
+      const nextFloor = getCurrentFloor(next);
+      if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+      selectedDoorwayId = null;
+      store.commit(t("edge.removeDoorway"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+      return;
+    }
+  }
+}
+
+async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
+  const state = store.getState();
+  const room = getCurrentRoom(state);
+  if (!room?.edgeProperties?.[edgeIndex]) return;
+  const ep = room.edgeProperties[edgeIndex];
+  const dw = ep.doorways?.find(d => d.id === doorwayId);
+  if (!dw) return;
+
+  // Compute edge length
+  const verts = room.polygonVertices;
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % verts.length];
+  const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+
+  const result = await showDoorwayEditor({
+    title: t("edge.doorway"),
+    doorway: dw,
+    edgeLength,
+    confirmText: t("dialog.confirm") || "Confirm",
+    cancelText: t("dialog.cancel") || "Cancel"
+  });
+
+  if (!result) return;
+
+  const next = structuredClone(store.getState());
+  const nextRoom = getCurrentRoom(next);
+  const nextEp = nextRoom?.edgeProperties?.[edgeIndex];
+  const nextDw = nextEp?.doorways?.find(d => d.id === doorwayId);
+  if (!nextDw) return;
+
+  nextDw.widthCm = result.widthCm;
+  nextDw.heightCm = result.heightCm;
+  nextDw.elevationCm = result.elevationCm;
+  nextDw.offsetCm = result.offsetCm;
+
+  const nextFloor = getCurrentFloor(next);
+  if (nextFloor) ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
+  store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
 // Track target pattern group for "Add to Group" action
@@ -246,22 +357,39 @@ function prepareRoom3DData(state, room, floor) {
       const wallOriginY = 0;
       const wallRotDeg = floorRotDeg - edgeAngleDeg;
 
+      // Per-edge heights from edgeProperties (sloped walls)
+      const ep = room.edgeProperties?.[i];
+      const hStart = ep?.heightStartCm ?? wallH;
+      const hEnd = ep?.heightEndCm ?? wallH;
+      const edgeWallH = Math.max(hStart, hEnd);
+
       const storedWall = surfaceByEdge.get(i);
       const wallExclusions = storedWall?.exclusions?.length
-        ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, wallH)
+        ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, edgeWallH)
         : [];
 
       const wallExcludedTiles = storedWall?.excludedTiles || [];
+
+      // Trapezoid polygon for sloped walls, rectangle for uniform
+      const wallPolyVerts = (hStart !== hEnd)
+        ? [
+            { x: 0, y: 0 },
+            { x: edgeLength, y: 0 },
+            { x: edgeLength, y: hEnd },
+            { x: 0, y: hStart },
+          ]
+        : [
+            { x: 0, y: 0 },
+            { x: edgeLength, y: 0 },
+            { x: edgeLength, y: edgeWallH },
+            { x: 0, y: edgeWallH },
+          ];
+
       const wallRect = {
         id: room.id + "_wall_" + i,
         widthCm: edgeLength,
-        heightCm: wallH,
-        polygonVertices: [
-          { x: 0, y: 0 },
-          { x: edgeLength, y: 0 },
-          { x: edgeLength, y: wallH },
-          { x: 0, y: wallH },
-        ],
+        heightCm: edgeWallH,
+        polygonVertices: wallPolyVerts,
         exclusions: wallExclusions,
         excludedTiles: wallExcludedTiles,
         tile: effectiveSettings?.tile || room.tile,
@@ -298,16 +426,26 @@ function prepareRoom3DData(state, room, floor) {
     }
   }
 
+  // Compute free edge segments for shared-wall suppression in 3D
+  const otherRooms = (floor?.rooms || []).filter(
+    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
+  );
+  const freeEdgeSegments = room.polygonVertices?.length >= 3
+    ? getEdgeFreeSegmentsByIndex(room, otherRooms)
+    : [];
+
   return {
     id: room.id,
     polygonVertices: room.polygonVertices,
     floorPosition: room.floorPosition || { x: 0, y: 0 },
     wallHeightCm: room.wallHeightCm ?? 200,
+    edgeProperties: room.edgeProperties || null,
     floorTiles: tileResult?.tiles || [],
     floorExclusions: room.exclusions || [],
     groutColor,
     wallData,
     showWalls: state.view?.showWalls3D !== false,
+    freeEdgeSegments,
   };
 }
 
@@ -676,9 +814,21 @@ function renderPlanningSection(state, opts) {
       setLastUnionError: (v) => (lastUnionError = v),
       setLastTileError: (v) => (lastTileError = v),
       metrics,
-      skipTiles: isDrag
+      skipTiles: isDrag,
+      selectedWallEdge,
+      selectedDoorwayId,
+      onWallClick: (edgeIndex) => {
+        selectedExclId = null;
+        setSelectedWallEdge(edgeIndex);
+      },
+      onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
+      onDoorwayDblClick: (doorwayId, edgeIndex) => {
+        doorwayDragController.cancelPendingRender();
+        showDoorwayEditorDialog(doorwayId, edgeIndex);
+      }
     });
   }
+  updateDoorButtonState();
 }
 
 function getExportOptionsFromUi() {
@@ -818,6 +968,8 @@ function switchToFloorView() {
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
+  selectedWallEdge = null;
+  selectedDoorwayId = null;
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "floor";
@@ -830,6 +982,8 @@ function switchToPatternGroupsView() {
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
+  selectedWallEdge = null;
+  selectedDoorwayId = null;
   const next = deepClone(state);
   next.view = next.view || {};
   next.view.planningMode = "patternGroups";
@@ -965,8 +1119,8 @@ function updateRoomDeleteButtonState() {
   const btn = document.getElementById("roomDeleteObject");
   if (!btn) return;
 
-  // Enable only for exclusions
-  btn.disabled = !selectedExclId;
+  // Enable for exclusions or doorways
+  btn.disabled = !selectedExclId && !selectedDoorwayId;
 }
 
 function initViewToggle() {
@@ -1354,6 +1508,19 @@ const dragController = createExclusionDragController({
   onDragEnd: () => {
     lastExclDragAt = Date.now();
   }
+});
+
+const doorwayDragController = createDoorwayDragController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: () => renderAll(),
+  getSelectedDoorwayId: () => selectedDoorwayId,
+  setSelectedDoorway: (id) => {
+    selectedDoorwayId = id;
+    updateRoomDeleteButtonState();
+  },
+  getMoveLabel: () => t("edge.doorwayChanged")
 });
 
 const roomDragController = createRoomDragController({
@@ -2013,9 +2180,16 @@ function updateAllTranslations() {
     if (Date.now() - lastExclDragAt < 250) return;
     const inPlan = e.target.closest("#planSvg, #planSvgFullscreen");
     if (!inPlan) return;
-    const inInteractive = e.target.closest("[data-exid], [data-secid], [data-resize-handle], [data-inline-edit], [data-add-btn]");
+    const inInteractive = e.target.closest("[data-exid], [data-secid], [data-resize-handle], [data-inline-edit], [data-add-btn], [data-wall-edge], [data-doorway-id]");
     if (inInteractive) return;
     setSelectedExcl(null);
+    if (selectedWallEdge !== null || selectedDoorwayId !== null) {
+      selectedWallEdge = null;
+      selectedDoorwayId = null;
+      updateDoorButtonState();
+      updateRoomDeleteButtonState();
+      renderAll();
+    }
   });
 
   document.addEventListener("keydown", (e) => {
@@ -2057,7 +2231,7 @@ function updateAllTranslations() {
     setRoomSkirtingEnabled(room.skirting?.enabled === false);
   });
 
-  // Delete key - delete selected exclusion
+  // Delete key - delete selected exclusion or doorway
   document.addEventListener("keydown", (e) => {
     if (isInlineEditing()) return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
@@ -2066,7 +2240,10 @@ function updateAllTranslations() {
     const tag = target?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-    if (selectedExclId) {
+    if (selectedDoorwayId) {
+      e.preventDefault();
+      deleteDoorway(selectedDoorwayId);
+    } else if (selectedExclId) {
       e.preventDefault();
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
     }
@@ -2264,10 +2441,19 @@ function updateAllTranslations() {
     });
   }
 
-  // Room delete button - deletes selected exclusion
+  // Room delete button - deletes selected exclusion or doorway
   document.getElementById("roomDeleteObject")?.addEventListener("click", () => {
-    if (selectedExclId) {
+    if (selectedDoorwayId) {
+      deleteDoorway(selectedDoorwayId);
+    } else if (selectedExclId) {
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
+    }
+  });
+
+  // Quick add doorway button
+  document.getElementById("quickAddDoorway")?.addEventListener("click", () => {
+    if (selectedWallEdge !== null) {
+      addDoorwayToWall(selectedWallEdge);
     }
   });
 

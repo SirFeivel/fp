@@ -12,6 +12,7 @@ import {
   DEFAULT_WASTE,
   DEFAULT_SKIRTING_CONFIG,
   DEFAULT_SKIRTING_PRESET,
+  DEFAULT_EDGE_PROPERTIES,
   showUserWarning
 } from './core.js';
 import { clearMetricsCache } from './calc.js';
@@ -54,6 +55,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
     if (s.meta?.version === 10) {
       s = migrateV10ToV11(s);
+    }
+    if (s.meta?.version === 11) {
+      s = migrateV11ToV12(s);
     }
 
     if (s.tile || s.grout || s.pattern) {
@@ -199,6 +203,28 @@ export function createStateStore(defaultStateFn, validateStateFn) {
                 { x: 300, y: 300 },
                 { x: 0, y: 300 }
               ];
+            }
+
+            // Ensure edgeProperties on floor rooms (not wall surfaces)
+            if (!room.sourceRoomId) {
+              const edgeCount = room.polygonVertices.length;
+              if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
+                const wallH = room.wallHeightCm ?? 200;
+                room.edgeProperties = Array.from({ length: edgeCount }, () => ({
+                  ...DEFAULT_EDGE_PROPERTIES,
+                  heightStartCm: wallH,
+                  heightEndCm: wallH,
+                  doorways: []
+                }));
+              }
+              // Backfill elevationCm on existing doorways
+              for (const ep of room.edgeProperties) {
+                if (Array.isArray(ep.doorways)) {
+                  for (const dw of ep.doorways) {
+                    if (dw.elevationCm == null) dw.elevationCm = 0;
+                  }
+                }
+              }
             }
           }
         }
@@ -528,6 +554,36 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
     if (s.view) {
       if (s.view.use3D === undefined) s.view.use3D = false;
+    }
+
+    return s;
+  }
+
+  function migrateV11ToV12(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 12;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    for (const floor of s.floors) {
+      for (const room of floor.rooms || []) {
+        // Skip wall surfaces (rooms with sourceRoomId)
+        if (room.sourceRoomId) continue;
+        // Skip rooms without polygon vertices
+        if (!room.polygonVertices || room.polygonVertices.length < 3) continue;
+
+        const edgeCount = room.polygonVertices.length;
+        const wallH = room.wallHeightCm ?? 200;
+
+        if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
+          room.edgeProperties = Array.from({ length: edgeCount }, () => ({
+            ...DEFAULT_EDGE_PROPERTIES,
+            heightStartCm: wallH,
+            heightEndCm: wallH,
+            doorways: []
+          }));
+        }
+      }
     }
 
     return s;
