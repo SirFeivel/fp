@@ -60,15 +60,34 @@ export function unfoldRoomWalls(room, heightCm) {
     const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
 
     // Inject doorway exclusions into wall surface
+    // Doorway offsetCm is distance along the edge; transform to local coords
+    // localVerts: [0]=A@ground, [1]=B@ground, [2]=B@height, [3]=A@height
     const doorwayExclusions = [];
     if (ep?.doorways?.length > 0) {
+      const lA = localVerts[0];
+      const lB = localVerts[1];
+      const lTop = localVerts[3];
+      // Edge direction in local space (along wall)
+      const edx = (lB.x - lA.x) / L;
+      const edy = (lB.y - lA.y) / L;
+      // Height direction in local space (up the wall)
+      const hLen = Math.hypot(lTop.x - lA.x, lTop.y - lA.y) || 1;
+      const hdx = (lTop.x - lA.x) / hLen;
+      const hdy = (lTop.y - lA.y) / hLen;
+
       for (const dw of ep.doorways) {
+        const elev = dw.elevationCm || 0;
+        // Bottom-left corner of doorway in local coords
+        const blx = lA.x + edx * dw.offsetCm + hdx * elev;
+        const bly = lA.y + edy * dw.offsetCm + hdy * elev;
         doorwayExclusions.push({
-          type: "rect",
-          x: dw.offsetCm,
-          y: dw.elevationCm || 0,
-          w: dw.widthCm,
-          h: dw.heightCm
+          type: "freeform",
+          vertices: [
+            { x: blx, y: bly },
+            { x: blx + edx * dw.widthCm, y: bly + edy * dw.widthCm },
+            { x: blx + edx * dw.widthCm + hdx * dw.heightCm, y: bly + edy * dw.widthCm + hdy * dw.heightCm },
+            { x: blx + hdx * dw.heightCm, y: bly + hdy * dw.heightCm }
+          ]
         });
       }
     }

@@ -1674,7 +1674,12 @@ export function renderPlanSvg({
           const wx = normalX * tick / 2;
           const wy = normalY * tick / 2;
 
-          const drawIndicator = (p1, p2, labelText) => {
+          // Edge angle for rotating labels parallel to the line
+          let edgeAngle = Math.atan2(edgeDirY, edgeDirX) * 180 / Math.PI;
+          // Keep text readable (not upside down)
+          if (edgeAngle > 90 || edgeAngle < -90) edgeAngle += 180;
+
+          const drawIndicator = (p1, p2, valueCm) => {
             const mx = (p1.x + p2.x) / 2;
             const my = (p1.y + p2.y) / 2;
             // Main line
@@ -1691,8 +1696,10 @@ export function renderPlanSvg({
               x1: p2.x - wx, y1: p2.y - wy, x2: p2.x + wx, y2: p2.y + wy,
               stroke: accent, "stroke-width": 1, "pointer-events": "none"
             }));
-            // Label
-            addPillLabel(`${fmtCm(labelText)}`, mx, my - 4, { parent: svg });
+            // Label offset perpendicular to line, rotated parallel
+            const labelOffX = normalX * 6;
+            const labelOffY = normalY * 6;
+            addPillLabel(`${Number(valueCm.toFixed(1))} cm`, mx + labelOffX, my + labelOffY, { parent: svg, angle: edgeAngle });
           };
 
           const edgeStart = { x: A.x + ox, y: A.y + oy };
