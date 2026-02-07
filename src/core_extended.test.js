@@ -2,14 +2,18 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { 
-  nowISO, 
-  deepClone, 
-  downloadText, 
-  uuid, 
-  degToRad, 
-  getCurrentRoom, 
-  getCurrentFloor 
+import {
+  nowISO,
+  deepClone,
+  downloadText,
+  uuid,
+  degToRad,
+  getCurrentRoom,
+  getCurrentFloor,
+  getDefaultPricing,
+  getDefaultTilePresetTemplate,
+  DEFAULT_PRICING,
+  DEFAULT_TILE_PRESET
 } from './core.js';
 
 describe('core.js extended tests', () => {
@@ -137,6 +141,60 @@ describe('core.js extended tests', () => {
         };
         expect(getCurrentFloor(state)).toBeNull();
         expect(getCurrentFloor({})).toBeNull();
+    });
+  });
+
+  describe('getDefaultPricing', () => {
+    it('returns state values when valid', () => {
+      const state = { pricing: { packM2: 2.5, pricePerM2: 50, reserveTiles: 3 } };
+      const result = getDefaultPricing(state);
+      expect(result.packM2).toBe(2.5);
+      expect(result.pricePerM2).toBe(50);
+      expect(result.reserveTiles).toBe(3);
+    });
+
+    it('returns defaults for missing/NaN pricing', () => {
+      const state = { pricing: { packM2: "abc", pricePerM2: undefined, reserveTiles: NaN } };
+      const result = getDefaultPricing(state);
+      expect(result.packM2).toBe(DEFAULT_PRICING.packM2);
+      expect(result.pricePerM2).toBe(DEFAULT_PRICING.pricePerM2);
+      expect(result.reserveTiles).toBe(DEFAULT_PRICING.reserveTiles);
+    });
+
+    it('returns defaults for null state', () => {
+      const result = getDefaultPricing(null);
+      expect(result.packM2).toBe(DEFAULT_PRICING.packM2);
+      expect(result.pricePerM2).toBe(DEFAULT_PRICING.pricePerM2);
+    });
+  });
+
+  describe('getDefaultTilePresetTemplate', () => {
+    it('returns first named preset properties', () => {
+      const state = {
+        tilePresets: [
+          { name: "Custom", shape: "hex", widthCm: 30, heightCm: 30, groutWidthCm: 0.3, groutColorHex: "#000000", useForSkirting: false }
+        ]
+      };
+      const result = getDefaultTilePresetTemplate(state);
+      expect(result.shape).toBe("hex");
+      expect(result.widthCm).toBe(30);
+      expect(result.useForSkirting).toBe(false);
+    });
+
+    it('returns defaults when no presets', () => {
+      const result = getDefaultTilePresetTemplate({ tilePresets: [] });
+      expect(result.shape).toBe(DEFAULT_TILE_PRESET.shape);
+      expect(result.widthCm).toBe(DEFAULT_TILE_PRESET.widthCm);
+    });
+
+    it('handles preset with missing fields', () => {
+      const state = {
+        tilePresets: [{ name: "Bare" }]
+      };
+      const result = getDefaultTilePresetTemplate(state);
+      expect(result.shape).toBe(DEFAULT_TILE_PRESET.shape);
+      expect(result.widthCm).toBe(DEFAULT_TILE_PRESET.widthCm);
+      expect(result.heightCm).toBe(DEFAULT_TILE_PRESET.heightCm);
     });
   });
 });

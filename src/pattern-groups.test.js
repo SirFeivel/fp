@@ -12,7 +12,8 @@ import {
   changePatternGroupOrigin,
   validatePatternGroupConnectivity,
   getEffectiveTileSettings,
-  getDisconnectedRoomsOnRemoval
+  getDisconnectedRoomsOnRemoval,
+  isPatternGroupChild
 } from "./pattern-groups.js";
 import { tilesForPreview, computeAvailableArea } from "./geometry.js";
 
@@ -789,6 +790,38 @@ describe("pattern-groups", () => {
       // 3. Independent room should return null (not in a group)
       const independentOrigin = computePatternGroupOrigin(independentRoom, floor);
       expect(independentOrigin).toBeNull();
+    });
+  });
+
+  describe("isPatternGroupChild", () => {
+    it("returns false for room not in any group", () => {
+      const floor = createTestFloor([{ id: "room-a" }]);
+      const room = floor.rooms[0];
+      expect(isPatternGroupChild(room, floor)).toBe(false);
+    });
+
+    it("returns false for origin room of a group", () => {
+      const floor = createTestFloor([{ id: "room-a" }, { id: "room-b" }]);
+      floor.patternGroups = [
+        { id: "pg-1", originRoomId: "room-a", memberRoomIds: ["room-a", "room-b"] }
+      ];
+      const originRoom = floor.rooms[0];
+      expect(isPatternGroupChild(originRoom, floor)).toBe(false);
+    });
+
+    it("returns true for non-origin member of a group", () => {
+      const floor = createTestFloor([{ id: "room-a" }, { id: "room-b" }]);
+      floor.patternGroups = [
+        { id: "pg-1", originRoomId: "room-a", memberRoomIds: ["room-a", "room-b"] }
+      ];
+      const childRoom = floor.rooms[1];
+      expect(isPatternGroupChild(childRoom, floor)).toBe(true);
+    });
+
+    it("returns false for null room or floor", () => {
+      const floor = createTestFloor([{ id: "room-a" }]);
+      expect(isPatternGroupChild(null, floor)).toBe(false);
+      expect(isPatternGroupChild(floor.rooms[0], null)).toBe(false);
     });
   });
 });
