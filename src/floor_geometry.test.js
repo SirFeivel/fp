@@ -1302,3 +1302,147 @@ describe('findPatternLinkedGroups', () => {
     expect(groups).toHaveLength(2);
   });
 });
+
+describe('Wall rooms behavior', () => {
+  it('walls are excluded from overlap detection', () => {
+    const roomA = {
+      id: 'room1',
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+    };
+
+    const wall = {
+      id: 'wall1',
+      sourceRoomId: 'room1', // This marks it as a wall
+      wallEdgeIndex: 0,
+      floorPosition: { x: 50, y: 50 },
+      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }]
+    };
+
+    // Wall should not be considered overlapping with room
+    expect(doRoomsOverlap(roomA, wall)).toBe(false);
+    expect(doRoomsOverlap(wall, roomA)).toBe(false);
+  });
+
+  it('walls are excluded from adjacency detection', () => {
+    const roomA = {
+      id: 'room1',
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+    };
+
+    const wall = {
+      id: 'wall1',
+      sourceRoomId: 'room1',
+      wallEdgeIndex: 0,
+      floorPosition: { x: 100, y: 0 }, // Adjacent position
+      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 100 }, { x: 0, y: 100 }]
+    };
+
+    // Wall should not be considered adjacent
+    expect(areRoomsAdjacent(roomA, wall)).toBe(false);
+    expect(areRoomsAdjacent(wall, roomA)).toBe(false);
+  });
+
+  it('findAdjacentRooms filters out walls', () => {
+    const floor = {
+      id: 'f1',
+      rooms: [
+        {
+          id: 'room1',
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'room2',
+          floorPosition: { x: 100, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'wall1',
+          sourceRoomId: 'room1',
+          wallEdgeIndex: 1,
+          floorPosition: { x: 100, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 100 }, { x: 0, y: 100 }]
+        }
+      ]
+    };
+
+    const adjacent = findAdjacentRooms(floor, 'room1');
+    
+    // Should find room2 but not wall1
+    expect(adjacent).toHaveLength(1);
+    expect(adjacent[0].id).toBe('room2');
+  });
+
+  it('wouldRoomOverlap ignores walls', () => {
+    const room = {
+      id: 'room1',
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+    };
+
+    const wall = {
+      id: 'wall1',
+      sourceRoomId: 'room2',
+      wallEdgeIndex: 0,
+      floorPosition: { x: 50, y: 50 },
+      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }]
+    };
+
+    // Room moving to overlap wall's position should not be blocked
+    expect(wouldRoomOverlap(room, [wall], 50, 50)).toBe(false);
+  });
+});
+
+describe('findPatternLinkedGroups - uncovered branches', () => {
+  it('single linkable + one non-linkable → linkable gets its own group, non-linkable gets individual', () => {
+    const rooms = [
+      {
+        id: 'linkable',
+        floorPosition: { x: 0, y: 0 },
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+        patternLinking: { enabled: true }
+      },
+      {
+        id: 'nonlink',
+        floorPosition: { x: 200, y: 0 },
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+        patternLinking: { enabled: false }
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(2);
+    // linkable room in one group
+    const linkGroup = groups.find(g => g.includes('linkable'));
+    expect(linkGroup).toBeDefined();
+    expect(linkGroup).toContain('linkable');
+    // non-linkable room in its own group
+    const nonLinkGroup = groups.find(g => g.includes('nonlink'));
+    expect(nonLinkGroup).toBeDefined();
+    expect(nonLinkGroup).toHaveLength(1);
+  });
+
+  it('all rooms linking disabled → each room in its own individual group', () => {
+    const rooms = [
+      {
+        id: 'r1',
+        floorPosition: { x: 0, y: 0 },
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+        patternLinking: { enabled: false }
+      },
+      {
+        id: 'r2',
+        floorPosition: { x: 100, y: 0 },
+        polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+        patternLinking: { enabled: false }
+      }
+    ];
+
+    const groups = findPatternLinkedGroups(rooms);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveLength(1);
+    expect(groups[1]).toHaveLength(1);
+  });
+});

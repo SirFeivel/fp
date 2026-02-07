@@ -190,4 +190,42 @@ describe('Geometry Patterns Extended Tests', () => {
       expect(result.error).toContain("Zu viele Fliesen");
     });
   });
+
+  describe('Center origin presets for special patterns', () => {
+    it('basketweave with center preset produces valid tiles', () => {
+      const state = createPatternState({
+        patternType: 'basketweave',
+        tileW: 30,
+        tileH: 10,
+        originPreset: 'center'
+      });
+      const result = tilesForPreview(state, availableMP);
+      expect(result.error).toBeNull();
+      expect(result.tiles.length).toBeGreaterThan(0);
+    });
+
+    it('herringbone with center preset produces valid tiles', () => {
+      const state = createPatternState({
+        patternType: 'herringbone',
+        tileW: 30,
+        tileH: 10,
+        originPreset: 'center'
+      });
+      const result = tilesForPreview(state, availableMP);
+      expect(result.error).toBeNull();
+      expect(result.tiles.length).toBeGreaterThan(0);
+    });
+
+    it('double herringbone with center preset produces valid tiles', () => {
+      const state = createPatternState({
+        patternType: 'doubleHerringbone',
+        tileW: 30,
+        tileH: 10,
+        originPreset: 'center'
+      });
+      const result = tilesForPreview(state, availableMP);
+      expect(result.error).toBeNull();
+      expect(result.tiles.length).toBeGreaterThan(0);
+    });
+  });
 });
