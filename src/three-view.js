@@ -73,6 +73,187 @@ function createWallMapper(surfaceVerts, ax, az, bx, bz, hStart, hEnd) {
   };
 }
 
+/**
+ * Build wall geometry with doorway holes cut through it.
+ * For walls without doorways, produces a simple 8-vertex box.
+ * For walls with doorways, uses ShapeGeometry for inner/outer faces
+ * with holes, plus reveal quads connecting the two faces at each opening.
+ */
+function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, doorways) {
+  // 2D parametric mappers — (u along edge, v height) → 3D position
+  function innerXYZ(u, v) {
+    const t = edgeLen > 0 ? u / edgeLen : 0;
+    return [iax + t * (ibx - iax), v, iaz + t * (ibz - iaz)];
+  }
+  function outerXYZ(u, v) {
+    const t = edgeLen > 0 ? u / edgeLen : 0;
+    return [oax + t * (obx - oax), v, oaz + t * (obz - oaz)];
+  }
+
+  if (!doorways || doorways.length === 0) {
+    // Simple box — 8 vertices, 6 faces × 2 triangles
+    const positions = new Float32Array([
+      iax, 0,  iaz,   // 0: inner-bottom-A
+      ibx, 0,  ibz,   // 1: inner-bottom-B
+      obx, 0,  obz,   // 2: outer-bottom-B
+      oax, 0,  oaz,   // 3: outer-bottom-A
+      iax, hA, iaz,   // 4: inner-top-A
+      ibx, hB, ibz,   // 5: inner-top-B
+      obx, hB, obz,   // 6: outer-top-B
+      oax, hA, oaz,   // 7: outer-top-A
+    ]);
+    const indices = [
+      0, 5, 1,  0, 4, 5,   // Inner face
+      2, 7, 3,  2, 6, 7,   // Outer face
+      4, 6, 5,  4, 7, 6,   // Top
+      0, 1, 2,  0, 2, 3,   // Bottom
+      0, 3, 7,  0, 7, 4,   // Left cap
+      1, 5, 6,  1, 6, 2,   // Right cap
+    ];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // --- Complex geometry with doorway holes ---
+  const verts = [];
+  const idx = [];
+
+  function addV(x, y, z) {
+    const vi = verts.length / 3;
+    verts.push(x, y, z);
+    return vi;
+  }
+  function addTri(a, b, c) { idx.push(a, b, c); }
+  function addQuad(a, b, c, d) { idx.push(a, b, c, a, c, d); }
+
+  // Wall face shape (trapezoid) in 2D (u, v) space
+  const faceShape = new THREE.Shape();
+  faceShape.moveTo(0, 0);
+  faceShape.lineTo(edgeLen, 0);
+  faceShape.lineTo(edgeLen, hB);
+  faceShape.lineTo(0, hA);
+  faceShape.closePath();
+
+  for (const dw of doorways) {
+    const off = dw.offsetCm;
+    const w = dw.widthCm;
+    const elev = dw.elevationCm || 0;
+    const h = dw.heightCm;
+    const hole = new THREE.Path();
+    hole.moveTo(off, elev);
+    hole.lineTo(off + w, elev);
+    hole.lineTo(off + w, elev + h);
+    hole.lineTo(off, elev + h);
+    hole.closePath();
+    faceShape.holes.push(hole);
+  }
+
+  const shapeGeo = new THREE.ShapeGeometry(faceShape);
+  const sp = shapeGeo.attributes.position.array;
+  const si = shapeGeo.index.array;
+
+  // Inner face — map 2D shape vertices to 3D inner positions
+  const innerBase = verts.length / 3;
+  for (let k = 0; k < sp.length; k += 3) {
+    const [x, y, z] = innerXYZ(sp[k], sp[k + 1]);
+    verts.push(x, y, z);
+  }
+  for (let k = 0; k < si.length; k += 3) {
+    addTri(si[k] + innerBase, si[k + 1] + innerBase, si[k + 2] + innerBase);
+  }
+
+  // Outer face — map to outer positions, reverse winding
+  const outerBase = verts.length / 3;
+  for (let k = 0; k < sp.length; k += 3) {
+    const [x, y, z] = outerXYZ(sp[k], sp[k + 1]);
+    verts.push(x, y, z);
+  }
+  for (let k = 0; k < si.length; k += 3) {
+    addTri(si[k] + outerBase, si[k + 2] + outerBase, si[k + 1] + outerBase);
+  }
+
+  shapeGeo.dispose();
+
+  // Top face
+  addQuad(
+    addV(iax, hA, iaz), addV(ibx, hB, ibz),
+    addV(obx, hB, obz), addV(oax, hA, oaz)
+  );
+
+  // Bottom face — split around ground-level doorways
+  const groundDw = doorways
+    .filter(dw => (dw.elevationCm || 0) < 0.1)
+    .sort((a, b) => a.offsetCm - b.offsetCm);
+
+  let cursor = 0;
+  for (const dw of groundDw) {
+    if (dw.offsetCm > cursor + 0.1) {
+      addQuad(
+        addV(...innerXYZ(cursor, 0)), addV(...innerXYZ(dw.offsetCm, 0)),
+        addV(...outerXYZ(dw.offsetCm, 0)), addV(...outerXYZ(cursor, 0))
+      );
+    }
+    cursor = Math.max(cursor, dw.offsetCm + dw.widthCm);
+  }
+  if (cursor < edgeLen - 0.1) {
+    addQuad(
+      addV(...innerXYZ(cursor, 0)), addV(...innerXYZ(edgeLen, 0)),
+      addV(...outerXYZ(edgeLen, 0)), addV(...outerXYZ(cursor, 0))
+    );
+  }
+
+  // Left cap (at vertex A)
+  addQuad(
+    addV(iax, 0, iaz), addV(oax, 0, oaz),
+    addV(oax, hA, oaz), addV(iax, hA, iaz)
+  );
+  // Right cap (at vertex B)
+  addQuad(
+    addV(ibx, 0, ibz), addV(ibx, hB, ibz),
+    addV(obx, hB, obz), addV(obx, 0, obz)
+  );
+
+  // Doorway reveals — connect inner to outer at each opening
+  for (const dw of doorways) {
+    const off = dw.offsetCm;
+    const w = dw.widthCm;
+    const elev = dw.elevationCm || 0;
+    const h = dw.heightCm;
+
+    // Left reveal
+    addQuad(
+      addV(...innerXYZ(off, elev)), addV(...outerXYZ(off, elev)),
+      addV(...outerXYZ(off, elev + h)), addV(...innerXYZ(off, elev + h))
+    );
+    // Right reveal
+    addQuad(
+      addV(...innerXYZ(off + w, elev)), addV(...innerXYZ(off + w, elev + h)),
+      addV(...outerXYZ(off + w, elev + h)), addV(...outerXYZ(off + w, elev))
+    );
+    // Lintel (top of doorway)
+    addQuad(
+      addV(...innerXYZ(off, elev + h)), addV(...outerXYZ(off, elev + h)),
+      addV(...outerXYZ(off + w, elev + h)), addV(...innerXYZ(off + w, elev + h))
+    );
+    // Sill (bottom of doorway, if elevated)
+    if (elev > 0.1) {
+      addQuad(
+        addV(...innerXYZ(off, elev)), addV(...innerXYZ(off + w, elev)),
+        addV(...outerXYZ(off + w, elev)), addV(...outerXYZ(off, elev))
+      );
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /** Convert an exclusion to a THREE.Shape in 2D surface-local coords. */
 function exclusionToShape(ex) {
   const shape = new THREE.Shape();
@@ -491,39 +672,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         const oax = pos.x + OA.x, oaz = pos.y + OA.y;
         const obx = pos.x + OB.x, obz = pos.y + OB.y;
 
-        // 8 vertices: inner-bottom-A, inner-bottom-B, outer-bottom-B, outer-bottom-A,
-        //             inner-top-A,    inner-top-B,    outer-top-B,    outer-top-A
-        const positions = new Float32Array([
-          iax, 0,  iaz,   // 0: inner-bottom-A
-          ibx, 0,  ibz,   // 1: inner-bottom-B
-          obx, 0,  obz,   // 2: outer-bottom-B
-          oax, 0,  oaz,   // 3: outer-bottom-A
-          iax, hA, iaz,   // 4: inner-top-A
-          ibx, hB, ibz,   // 5: inner-top-B
-          obx, hB, obz,   // 6: outer-top-B
-          oax, hA, oaz,   // 7: outer-top-A
-        ]);
-
-        // 6 faces × 2 triangles = 12 triangles
-        const indices = [
-          // Inner face (facing room interior)
-          0, 5, 1,  0, 4, 5,
-          // Outer face (facing outside)
-          2, 7, 3,  2, 6, 7,
-          // Top face
-          4, 6, 5,  4, 7, 6,
-          // Bottom face
-          0, 1, 2,  0, 2, 3,
-          // Left cap (at vertex A)
-          0, 3, 7,  0, 7, 4,
-          // Right cap (at vertex B)
-          1, 5, 6,  1, 6, 2,
-        ];
-
-        const wallGeo = new THREE.BufferGeometry();
-        wallGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        wallGeo.setIndex(indices);
-        wallGeo.computeVertexNormals();
+        const doorways = ep?.doorways || [];
+        const wallGeo = buildWallGeo(
+          iax, iaz, ibx, ibz, oax, oaz, obx, obz,
+          hA, hB, edgeLen, doorways
+        );
 
         const wallHasTiles = (roomDesc.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
         const wallBaseColor = wallHasTiles ? parseHexColor(roomDesc.groutColor || "#ffffff") : new THREE.Color(wallColor);
