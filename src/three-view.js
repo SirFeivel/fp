@@ -1,6 +1,7 @@
 // src/three-view.js — Self-contained Three.js 3D room viewer
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { computeOuterPolygon } from "./floor_geometry.js";
 
 // Palette pulled from CSS variables / 2D room rendering colors
 const FLOOR_COLOR = 0x3b82f6;    // --accent / selected room fill (#3b82f6)
@@ -49,8 +50,9 @@ function parseHexColor(hex) {
 /**
  * Creates a mapper from wall surface local 2D coords to 3D wall face coords.
  * surfaceVerts[0..3] map to: A@ground, B@ground, B@height, A@height.
+ * hStart/hEnd allow per-edge height interpolation for sloped walls.
  */
-function createWallMapper(surfaceVerts, ax, az, bx, bz, wallH) {
+function createWallMapper(surfaceVerts, ax, az, bx, bz, hStart, hEnd) {
   if (!surfaceVerts || surfaceVerts.length < 4) return null;
   const P0 = surfaceVerts[0];
   const U = { x: surfaceVerts[1].x - P0.x, y: surfaceVerts[1].y - P0.y };
@@ -62,9 +64,10 @@ function createWallMapper(surfaceVerts, ax, az, bx, bz, wallH) {
     const dx = sx - P0.x, dy = sy - P0.y;
     const t = (V.y * dx - V.x * dy) * invDet;
     const s = (-U.y * dx + U.x * dy) * invDet;
+    const h = hStart + (hEnd - hStart) * t;
     return {
       x: ax + t * (bx - ax),
-      y: s * wallH,
+      y: s * h,
       z: az + t * (bz - az),
     };
   };
@@ -439,20 +442,83 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     const edgeColor = isSelected ? EDGE_COLOR : UNSELECTED_EDGE_COLOR;
 
     if (showWalls) {
+      // Compute outward normal direction (signed area for winding)
+      let area2 = 0;
       for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
+      }
+      const sign = area2 > 0 ? 1 : -1;
+
+      // Build effective thicknesses using free edge segments (0 for fully-shared edges)
+      const freeSegsByEdge = roomDesc.freeEdgeSegments || [];
+      const effectiveThicknesses = [];
+      for (let i = 0; i < n; i++) {
+        const ep = roomDesc.edgeProperties?.[i];
+        const thick = ep?.thicknessCm ?? 12;
+        const freeSegs = freeSegsByEdge[i] || [];
+        effectiveThicknesses.push(freeSegs.length > 0 ? thick : 0);
+      }
+
+      // Compute mitered outer polygon for clean corners
+      const outerVerts = computeOuterPolygon(verts, effectiveThicknesses, sign);
+
+      for (let i = 0; i < n; i++) {
+        const freeSegs = freeSegsByEdge[i] || [];
+        if (freeSegs.length === 0) continue; // Fully shared edge — no wall
+
         const A = verts[i];
         const B = verts[(i + 1) % n];
 
-        const ax = pos.x + A.x, az = pos.y + A.y;
-        const bx = pos.x + B.x, bz = pos.y + B.y;
+        const dx = B.x - A.x;
+        const dy = B.y - A.y;
+        const edgeLen = Math.sqrt(dx * dx + dy * dy);
+        if (edgeLen < 1) continue;
 
+        // Per-edge properties
+        const ep = roomDesc.edgeProperties?.[i];
+        const hA = ep?.heightStartCm ?? wallH;
+        const hB = ep?.heightEndCm ?? wallH;
+
+        // Use mitered outer vertices instead of independently computed offsets
+        const OA = outerVerts[i];
+        const OB = outerVerts[(i + 1) % n];
+
+        // Inner edge (room boundary) in floor coordinates
+        const iax = pos.x + A.x, iaz = pos.y + A.y;
+        const ibx = pos.x + B.x, ibz = pos.y + B.y;
+        // Outer edge (mitered)
+        const oax = pos.x + OA.x, oaz = pos.y + OA.y;
+        const obx = pos.x + OB.x, obz = pos.y + OB.y;
+
+        // 8 vertices: inner-bottom-A, inner-bottom-B, outer-bottom-B, outer-bottom-A,
+        //             inner-top-A,    inner-top-B,    outer-top-B,    outer-top-A
         const positions = new Float32Array([
-          ax, 0, az,
-          bx, 0, bz,
-          bx, wallH, bz,
-          ax, wallH, az,
+          iax, 0,  iaz,   // 0: inner-bottom-A
+          ibx, 0,  ibz,   // 1: inner-bottom-B
+          obx, 0,  obz,   // 2: outer-bottom-B
+          oax, 0,  oaz,   // 3: outer-bottom-A
+          iax, hA, iaz,   // 4: inner-top-A
+          ibx, hB, ibz,   // 5: inner-top-B
+          obx, hB, obz,   // 6: outer-top-B
+          oax, hA, oaz,   // 7: outer-top-A
         ]);
-        const indices = [0, 1, 2, 0, 2, 3];
+
+        // 6 faces × 2 triangles = 12 triangles
+        const indices = [
+          // Inner face (facing room interior)
+          0, 5, 1,  0, 4, 5,
+          // Outer face (facing outside)
+          2, 7, 3,  2, 6, 7,
+          // Top face
+          4, 6, 5,  4, 7, 6,
+          // Bottom face
+          0, 1, 2,  0, 2, 3,
+          // Left cap (at vertex A)
+          0, 3, 7,  0, 7, 4,
+          // Right cap (at vertex B)
+          1, 5, 6,  1, 6, 2,
+        ];
 
         const wallGeo = new THREE.BufferGeometry();
         wallGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -513,7 +579,9 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         const ax = pos.x + A.x, az = pos.y + A.y;
         const bx = pos.x + B.x, bz = pos.y + B.y;
 
-        const mapper = createWallMapper(wd.surfaceVerts, ax, az, bx, bz, wallH);
+        const wdHStart = wd.hStart ?? wallH;
+        const wdHEnd = wd.hEnd ?? wallH;
+        const mapper = createWallMapper(wd.surfaceVerts, ax, az, bx, bz, wdHStart, wdHEnd);
         if (!mapper) continue;
 
         const { meshes, lines } = renderSurface3D({

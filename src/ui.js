@@ -833,36 +833,56 @@ export function bindUI({
     if (idx < 0 || idx >= room.edgeProperties.length) return;
     const ep = room.edgeProperties[idx];
     if (!ep.doorways) ep.doorways = [];
-    const dwWidth = 101;
-    const dwHeight = 211;
     const dwElevation = 0;
+    const preferredWidth = 101;
+    const preferredHeight = 211;
 
-    // Find non-overlapping position along the edge
+    // Find the largest gap among vertically-overlapping siblings
     const verts = room.polygonVertices;
     if (!verts || verts.length < 3) return;
     const A = verts[idx];
     const B = verts[(idx + 1) % verts.length];
     const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+    const wallH = room.wallHeightCm ?? 200;
+    const ep_hStart = ep.heightStartCm ?? wallH;
+    const ep_hEnd = ep.heightEndCm ?? wallH;
+    const minWallH = Math.min(ep_hStart, ep_hEnd);
+    const dwHeight = Math.min(preferredHeight, Math.max(0, minWallH - 10));
 
     const vOverlapping = ep.doorways.filter(sib => {
       return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
         dwElevation + dwHeight > (sib.elevationCm ?? 0);
     });
     const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
-    let offsetCm = null;
+
+    const MIN_DW = 20;
+    const gaps = [];
     let cursor = 0;
     for (const sib of sorted) {
-      if (sib.offsetCm - cursor >= dwWidth) { offsetCm = cursor; break; }
-      cursor = sib.offsetCm + sib.widthCm;
+      const gap = sib.offsetCm - cursor;
+      if (gap >= MIN_DW) gaps.push({ start: cursor, size: gap });
+      cursor = Math.max(cursor, sib.offsetCm + sib.widthCm);
     }
-    if (offsetCm === null && edgeLength - cursor >= dwWidth) offsetCm = cursor;
-    if (offsetCm === null) return;
+    const tailGap = edgeLength - cursor;
+    if (tailGap >= MIN_DW) gaps.push({ start: cursor, size: tailGap });
+    if (gaps.length === 0 || dwHeight < MIN_DW) return;
+
+    const edgeCenter = edgeLength / 2;
+    let bestGap = gaps[0];
+    let bestDist = Math.abs(bestGap.start + bestGap.size / 2 - edgeCenter);
+    for (let i = 1; i < gaps.length; i++) {
+      const dist = Math.abs(gaps[i].start + gaps[i].size / 2 - edgeCenter);
+      if (dist < bestDist) { bestDist = dist; bestGap = gaps[i]; }
+    }
+
+    const dwWidth = Math.max(MIN_DW, Math.min(preferredWidth, bestGap.size - 10));
+    const offsetCm = bestGap.start + (bestGap.size - dwWidth) / 2;
 
     ep.doorways.push({
       id: crypto?.randomUUID?.() || String(Date.now()),
       offsetCm,
       widthCm: dwWidth,
-      heightCm: dwHeight,
+      heightCm: Math.max(MIN_DW, dwHeight),
       elevationCm: dwElevation
     });
     const nextFloor = getCurrentFloor(next);

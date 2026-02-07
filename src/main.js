@@ -161,42 +161,51 @@ function addDoorwayToWall(edgeIndex) {
   const B = verts[(edgeIndex + 1) % verts.length];
   const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
 
-  const dwWidth = 101;
-  const dwHeight = Math.min(211, Math.max(0, minWallH - 40));
   const dwElevation = 0;
+  const preferredWidth = 101;
+  const preferredHeight = Math.min(211, Math.max(0, minWallH - 10));
 
-  // Find non-overlapping position along the edge
-  // Collect siblings that vertically overlap with the new doorway
+  // Collect all gaps among vertically-overlapping siblings
   const vOverlapping = ep.doorways.filter(sib => {
     return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
-      dwElevation + dwHeight > (sib.elevationCm ?? 0);
+      dwElevation + preferredHeight > (sib.elevationCm ?? 0);
   });
-
-  // Sort by offset and find first gap that fits
   const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
-  let offsetCm = null;
+
+  const MIN_DW = 20;
+  const gaps = []; // { start, size }
   let cursor = 0;
   for (const sib of sorted) {
-    if (sib.offsetCm - cursor >= dwWidth) {
-      offsetCm = cursor;
-      break;
-    }
-    cursor = sib.offsetCm + sib.widthCm;
+    const gap = sib.offsetCm - cursor;
+    if (gap >= MIN_DW) gaps.push({ start: cursor, size: gap });
+    cursor = Math.max(cursor, sib.offsetCm + sib.widthCm);
   }
-  if (offsetCm === null && edgeLength - cursor >= dwWidth) {
-    offsetCm = cursor;
-  }
+  const tailGap = edgeLength - cursor;
+  if (tailGap >= MIN_DW) gaps.push({ start: cursor, size: tailGap });
 
-  if (offsetCm === null) {
+  if (gaps.length === 0 || preferredHeight < MIN_DW) {
     showAlert(t("edge.doorwayNoSpace"));
     return;
   }
+
+  // Pick the gap whose center is closest to edge center, then center doorway within it
+  const edgeCenter = edgeLength / 2;
+  let bestGap = gaps[0];
+  let bestDist = Math.abs(bestGap.start + bestGap.size / 2 - edgeCenter);
+  for (let i = 1; i < gaps.length; i++) {
+    const dist = Math.abs(gaps[i].start + gaps[i].size / 2 - edgeCenter);
+    if (dist < bestDist) { bestDist = dist; bestGap = gaps[i]; }
+  }
+
+  const dwWidth = Math.max(MIN_DW, Math.min(preferredWidth, bestGap.size - 10));
+  const dwHeight = preferredHeight;
+  const offsetCm = bestGap.start + (bestGap.size - dwWidth) / 2;
 
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
     offsetCm,
     widthCm: dwWidth,
-    heightCm: dwHeight,
+    heightCm: Math.max(MIN_DW, dwHeight),
     elevationCm: dwElevation
   };
   ep.doorways.push(newDw);
@@ -470,6 +479,8 @@ function prepareRoom3DData(state, room, floor) {
         tiles: wallResult?.tiles || [],
         exclusions: wallExclusions,
         surfaceVerts: wallRect.polygonVertices,
+        hStart,
+        hEnd,
       });
     }
   }
