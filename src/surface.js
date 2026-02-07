@@ -1,5 +1,6 @@
 // src/surface.js — Universal tileable surface factory
 import { uuid, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_CONFIG } from "./core.js";
+import { collectEdgeDoorways, findAdjacentRooms } from "./floor_geometry.js";
 
 const DEFAULT_PATTERN = {
   type: "grid",
@@ -13,7 +14,7 @@ const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
 
 const FLOOR_TYPES = ["floor"];
 
-export function unfoldRoomWalls(room, heightCm) {
+export function unfoldRoomWalls(room, heightCm, floor = null) {
   const verts = room.polygonVertices;
   if (!verts || verts.length < 3) return [];
 
@@ -27,6 +28,11 @@ export function unfoldRoomWalls(room, heightCm) {
     area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
   }
   const sign = area2 > 0 ? 1 : -1;
+
+  // Build list of other polygon rooms for cross-room doorway lookup
+  const otherRooms = floor
+    ? floor.rooms.filter(r => r.id !== room.id && !r.sourceRoomId && !(r.circle?.rx > 0))
+    : [];
 
   const walls = [];
   for (let i = 0; i < n; i++) {
@@ -60,10 +66,15 @@ export function unfoldRoomWalls(room, heightCm) {
     const localVerts = corners.map(c => ({ x: c.x - minX, y: c.y - minY }));
 
     // Inject doorway exclusions into wall surface
+    // Use cross-room-aware doorways when floor context is available
+    const doorways = floor
+      ? collectEdgeDoorways(floor, room, i, otherRooms)
+      : [];
+
     // Doorway offsetCm is distance along the edge; transform to local coords
     // localVerts: [0]=A@ground, [1]=B@ground, [2]=B@height, [3]=A@height
     const doorwayExclusions = [];
-    if (ep?.doorways?.length > 0) {
+    if (doorways.length > 0) {
       const lA = localVerts[0];
       const lB = localVerts[1];
       const lTop = localVerts[3];
@@ -75,7 +86,7 @@ export function unfoldRoomWalls(room, heightCm) {
       const hdx = (lTop.x - lA.x) / hLen;
       const hdy = (lTop.y - lA.y) / hLen;
 
-      for (const dw of ep.doorways) {
+      for (const dw of doorways) {
         const elev = dw.elevationCm || 0;
         // Bottom-left corner of doorway in local coords
         const blx = lA.x + edx * dw.offsetCm + hdx * elev;
@@ -144,7 +155,7 @@ export function ensureRoomWalls(room, floor, options = {}) {
 
   // Generate and add new walls
   const wallHeight = room.wallHeightCm ?? 200;
-  const newWalls = unfoldRoomWalls(room, wallHeight);
+  const newWalls = unfoldRoomWalls(room, wallHeight, floor);
 
   for (const wall of newWalls) {
     floor.rooms.push(wall);
@@ -155,6 +166,21 @@ export function ensureRoomWalls(room, floor, options = {}) {
     removedWalls,
     needsPatternGroup: newWalls.length > 0
   };
+}
+
+/**
+ * Regenerate wall surfaces for all rooms adjacent to the given room.
+ * Call this after adding/deleting/moving/resizing a doorway so that
+ * neighbor rooms pick up cross-room doorway changes in their wall surfaces.
+ * @param {Object} room - The room whose doorway changed
+ * @param {Object} floor - The floor object containing rooms array
+ */
+export function regenerateAdjacentWalls(room, floor) {
+  if (!room || !floor) return;
+  const adj = findAdjacentRooms(floor, room.id);
+  for (const neighbor of adj) {
+    ensureRoomWalls(neighbor, floor, { forceRegenerate: true });
+  }
 }
 
 /**

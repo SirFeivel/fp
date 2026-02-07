@@ -167,7 +167,7 @@ export function computeSkirtingArea(room, exclusions) {
  * Calculates the lengths of all segments where skirting should be applied.
  * Returns an array of segment objects: { p1, p2, length, id, excluded }
  */
-export function computeSkirtingSegments(room, includeExcluded = false) {
+export function computeSkirtingSegments(room, includeExcluded = false, floor = null) {
   if (!room) return [];
   const area = computeSkirtingArea(room, room.exclusions);
   if (!area.mp) return [];
@@ -184,6 +184,9 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
     ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
     : longSide;
 
+  // Build doorway intervals per polygon edge for fast lookup
+  const doorwayIntervals = buildDoorwayIntervals(room, floor);
+
   const segments = [];
   for (const poly of area.mp) {
     for (const ring of poly) {
@@ -197,8 +200,14 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
         const wallLength = Math.sqrt(dx * dx + dy * dy);
         if (wallLength <= 0) continue;
 
-        const overlaps = boundaryOverlapIntervals(p1, p2, avail.mp);
+        let overlaps = boundaryOverlapIntervals(p1, p2, avail.mp);
         if (overlaps.length === 0) continue;
+
+        // Subtract doorway intervals from skirting overlaps
+        if (doorwayIntervals.length > 0) {
+          overlaps = subtractDoorwayIntervals(overlaps, p1, p2, wallLength, room, floor);
+          if (overlaps.length === 0) continue;
+        }
 
         // Normalize points for stable Wall ID regardless of direction
         const pts = [p1, p2].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -235,6 +244,127 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
     }
   }
   return segments;
+}
+
+/**
+ * Build sorted doorway intervals from floor.doorways (or empty if no floor).
+ * Each interval is { edgeIndex, startCm, endCm, edgeStartPt, edgeDirX, edgeDirY, edgeLen }.
+ */
+function buildDoorwayIntervals(room, floor) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const floorDoorways = floor?.doorways?.filter(dw => dw.roomId === room.id) || [];
+  if (floorDoorways.length === 0) return [];
+
+  const intervals = [];
+  for (let i = 0; i < verts.length; i++) {
+    const edgeDoorways = floorDoorways.filter(dw => dw.edgeIndex === i);
+    if (edgeDoorways.length === 0) continue;
+    const A = verts[i];
+    const B = verts[(i + 1) % verts.length];
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const L = Math.sqrt(dx * dx + dy * dy);
+    if (L < 1) continue;
+    for (const dw of edgeDoorways) {
+      intervals.push({
+        edgeIndex: i,
+        startCm: dw.offsetCm,
+        endCm: dw.offsetCm + dw.widthCm,
+        edgeStartX: A.x,
+        edgeStartY: A.y,
+        edgeDirX: dx / L,
+        edgeDirY: dy / L,
+        edgeLen: L
+      });
+    }
+  }
+  return intervals;
+}
+
+/**
+ * Subtract doorway intervals from skirting overlap intervals.
+ * Matches by checking if the skirting segment lies on a polygon edge with doorways.
+ */
+function subtractDoorwayIntervals(overlaps, p1, p2, wallLength, room, floor) {
+  const verts = room.polygonVertices;
+  if (!verts) return overlaps;
+
+  const floorDoorways = floor?.doorways?.filter(dw => dw.roomId === room.id) || [];
+  if (floorDoorways.length === 0) return overlaps;
+
+  // Find which polygon edge this skirting segment corresponds to
+  const eps = EPSILON;
+  for (let i = 0; i < verts.length; i++) {
+    const edgeDoorways = floorDoorways.filter(dw => dw.edgeIndex === i);
+    if (edgeDoorways.length === 0) continue;
+
+    const A = verts[i];
+    const B = verts[(i + 1) % verts.length];
+    const edgeDx = B.x - A.x;
+    const edgeDy = B.y - A.y;
+    const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    if (edgeLen < 1) continue;
+
+    // Check if p1→p2 is collinear with A→B
+    const segDx = p2[0] - p1[0];
+    const segDy = p2[1] - p1[1];
+    const cross = edgeDx * segDy - edgeDy * segDx;
+    if (Math.abs(cross) > eps * edgeLen) continue;
+
+    // Check if p1 is on the edge line
+    const toP1x = p1[0] - A.x;
+    const toP1y = p1[1] - A.y;
+    const cross2 = edgeDx * toP1y - edgeDy * toP1x;
+    if (Math.abs(cross2) > eps * edgeLen) continue;
+
+    // Project p1 onto edge to find the offset
+    const t1 = (toP1x * edgeDx + toP1y * edgeDy) / (edgeLen * edgeLen);
+    // Direction: same or reversed?
+    const dot = segDx * edgeDx + segDy * edgeDy;
+    const sameDir = dot >= 0;
+    const baseOffset = t1 * edgeLen;
+
+    // Build doorway exclusion intervals in skirting-local coordinates
+    const doorwayExclude = [];
+    for (const dw of edgeDoorways) {
+      let dwStart, dwEnd;
+      if (sameDir) {
+        dwStart = dw.offsetCm - baseOffset;
+        dwEnd = dw.offsetCm + dw.widthCm - baseOffset;
+      } else {
+        dwStart = baseOffset - (dw.offsetCm + dw.widthCm);
+        dwEnd = baseOffset - dw.offsetCm;
+      }
+      if (dwEnd > eps && dwStart < wallLength - eps) {
+        doorwayExclude.push([Math.max(0, dwStart), Math.min(wallLength, dwEnd)]);
+      }
+    }
+
+    if (doorwayExclude.length === 0) return overlaps;
+
+    // Sort exclusions
+    doorwayExclude.sort((a, b) => a[0] - b[0]);
+
+    // Subtract exclusions from each overlap
+    const result = [];
+    for (const [oStart, oEnd] of overlaps) {
+      let cursor = oStart;
+      for (const [exStart, exEnd] of doorwayExclude) {
+        if (exStart > cursor && exStart < oEnd) {
+          result.push([cursor, Math.min(exStart, oEnd)]);
+        }
+        cursor = Math.max(cursor, exEnd);
+      }
+      if (cursor < oEnd - eps) {
+        result.push([cursor, oEnd]);
+      }
+    }
+    return result;
+  }
+
+  return overlaps;
 }
 
 /**
@@ -346,8 +476,8 @@ function isPointOnLine(p, q1, q2, eps) {
 /**
  * Calculates the total length where skirting should be applied.
  */
-export function computeSkirtingPerimeter(room) {
-  const segments = computeSkirtingSegments(room);
+export function computeSkirtingPerimeter(room, floor = null) {
+  const segments = computeSkirtingSegments(room, false, floor);
   return segments.reduce((sum, s) => sum + s.length, 0);
 }
 

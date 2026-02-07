@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { computePlanMetrics } from './calc.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { computePlanMetrics, clearMetricsCache } from './calc.js';
+import { assertMetricsInvariants } from './test-utils/helpers.js';
+
+beforeEach(() => clearMetricsCache());
 
 function createTestState(opts = {}) {
   const floorId = 'test-floor';
@@ -65,13 +68,13 @@ describe('computePlanMetrics', () => {
     const state = createTestState();
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data.tiles).toBeDefined();
-    expect(result.data.material).toBeDefined();
-    expect(result.data.labor).toBeDefined();
-    expect(result.data.area).toBeDefined();
-    expect(result.data.pricing).toBeDefined();
+    assertMetricsInvariants(result);
+
+    const d = result.data;
+    // Default room is 400x500 = 200000cm² = 20m²
+    expect(d.material.installedAreaM2).toBeCloseTo(20.0, 0);
+    expect(d.pricing.pricePerM2).toBe(50);
+    expect(d.labor.totalPlacedTiles).toBe(d.tiles.fullTiles + d.tiles.cutTiles);
   });
 
   it('counts full and cut tiles correctly', () => {
@@ -86,11 +89,15 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
-    expect(result.data.tiles.fullTiles).toBeGreaterThan(0);
-    expect(result.data.labor.totalPlacedTiles).toBe(
-      result.data.tiles.fullTiles + result.data.tiles.cutTiles
-    );
+    assertMetricsInvariants(result);
+
+    // 100x100 room with 30+1=31cm grid step: ceil(100/31)=4 columns, ceil(100/31)=4 rows
+    // Full tiles that fit entirely: 3x3 = 9, plus edge cuts
+    // The important thing: exact tile count is deterministic
+    const d = result.data;
+    expect(d.tiles.fullTiles).toBe(9);
+    expect(d.tiles.cutTiles).toBe(7);
+    expect(d.labor.totalPlacedTiles).toBe(d.tiles.fullTiles + d.tiles.cutTiles);
   });
 
   it('calculates installed area correctly', () => {
@@ -105,7 +112,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
 
     const expectedAreaM2 = (200 * 200) / 10000;
     expect(result.data.material.installedAreaM2).toBeCloseTo(expectedAreaM2, 2);
@@ -123,7 +130,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
 
     const expectedAreaM2 = ((200 * 200) - (50 * 50)) / 10000;
     expect(result.data.material.installedAreaM2).toBeCloseTo(expectedAreaM2, 2);
@@ -141,7 +148,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
     expect(result.data.tiles.reserveTiles).toBe(10);
     expect(result.data.tiles.purchasedTilesWithReserve).toBe(
       result.data.tiles.purchasedTiles + 10
@@ -160,9 +167,17 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
-    expect(result.data.material.wastePct).toBeGreaterThanOrEqual(0);
-    expect(result.data.material.wastePct).toBeLessThan(100);
+    assertMetricsInvariants(result);
+
+    // 100x100 room with 50x50 tiles and 0 grout = exact 4-tile fit
+    // Reserve of 2 adds 2 purchased tiles → 6 tiles purchased
+    // purchasedArea = 6 * 0.25m² = 1.5m², installed = 1.0m²
+    // wastePct = (1.5 - 1.0) / 1.5 * 100 = 33.33%
+    const d = result.data;
+    expect(d.tiles.fullTiles).toBe(4);
+    expect(d.tiles.cutTiles).toBe(0);
+    expect(d.tiles.reserveTiles).toBe(2);
+    expect(d.material.wastePct).toBeCloseTo(33.33, 0);
   });
 
   it('calculates pricing correctly', () => {
@@ -177,7 +192,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
 
     const areaM2 = (200 * 200) / 10000;
     const expectedPrice = areaM2 * 100;
@@ -199,7 +214,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
     expect(result.data.waste.optimizeCuts).toBe(true);
     expect(result.data.waste.kerfCm).toBe(0.3);
   });
@@ -216,7 +231,7 @@ describe('computePlanMetrics', () => {
     });
 
     const resultWithRotate = computePlanMetrics(stateWithRotate);
-    expect(resultWithRotate.ok).toBe(true);
+    assertMetricsInvariants(resultWithRotate);
     expect(resultWithRotate.data.waste.allowRotate).toBe(true);
 
     const stateNoRotate = createTestState({
@@ -230,7 +245,7 @@ describe('computePlanMetrics', () => {
     });
 
     const resultNoRotate = computePlanMetrics(stateNoRotate);
-    expect(resultNoRotate.ok).toBe(true);
+    assertMetricsInvariants(resultNoRotate);
     expect(resultNoRotate.data.waste.allowRotate).toBe(false);
   });
 
@@ -247,8 +262,17 @@ describe('computePlanMetrics', () => {
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
-    expect(result.data.labor.cutTilesPct).toBeGreaterThanOrEqual(0);
-    expect(result.data.labor.cutTilesPct).toBeLessThanOrEqual(100);
+    assertMetricsInvariants(result);
+    // 100x100 room, 40x40 tiles, 0 grout: 2 full columns (80cm), edge cuts on right+bottom
+    const d = result.data;
+    expect(d.labor.cutTilesPct).toBeGreaterThanOrEqual(0);
+    expect(d.labor.cutTilesPct).toBeLessThanOrEqual(100);
+    // cutTilesPct = cutTiles / totalPlacedTiles * 100
+    if (d.labor.totalPlacedTiles > 0) {
+      expect(d.labor.cutTilesPct).toBeCloseTo(
+        (d.labor.cutTiles / d.labor.totalPlacedTiles) * 100, 1
+      );
+    }
   });
 
   it('tracks reused cuts when optimizing', () => {
@@ -263,8 +287,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
-    expect(result.data.tiles.reusedCuts).toBeGreaterThanOrEqual(0);
+    assertMetricsInvariants(result);
     expect(result.data.tiles.reusedCuts).toBeLessThanOrEqual(result.data.tiles.cutTiles);
   });
 
@@ -280,11 +303,13 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
-    expect(result.data.debug).toBeDefined();
-    expect(result.data.debug.tileUsage).toBeDefined();
-    expect(result.data.debug.cutNeeds).toBeDefined();
-    expect(result.data.debug.offcutPoolFinal).toBeDefined();
+    assertMetricsInvariants(result);
+    const d = result.data;
+    expect(Array.isArray(d.debug.tileUsage)).toBe(true);
+    expect(Array.isArray(d.debug.cutNeeds)).toBe(true);
+    expect(Array.isArray(d.debug.offcutPoolFinal)).toBe(true);
+    // tileUsage length should equal total placed tiles
+    expect(d.debug.tileUsage.length).toBe(d.tiles.fullTiles + d.tiles.cutTiles);
   });
 
   it('handles running bond pattern', () => {
@@ -299,7 +324,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
   });
 
   it('calculates gross room area', () => {
@@ -314,7 +339,7 @@ describe('computePlanMetrics', () => {
     });
 
     const result = computePlanMetrics(state);
-    expect(result.ok).toBe(true);
+    assertMetricsInvariants(result);
 
     const expectedGrossM2 = (300 * 400) / 10000;
     expect(result.data.area.grossRoomAreaM2).toBeCloseTo(expectedGrossM2, 2);

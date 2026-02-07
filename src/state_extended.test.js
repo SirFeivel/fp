@@ -426,7 +426,7 @@ describe("state.js extended tests", () => {
 
       const store = createStateStore(() => v1State, validateStateFn);
       const s = store.getState();
-      expect(s.meta.version).toBe(11); // migrated all the way
+      expect(s.meta.version).toBe(12); // migrated all the way
       expect(s.floors).toHaveLength(1);
       expect(s.floors[0].rooms).toHaveLength(1);
       expect(s.selectedFloorId).toBeDefined();

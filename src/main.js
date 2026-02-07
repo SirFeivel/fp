@@ -12,7 +12,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeOriginPoint } from "./geometry.js";
-import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, getEdgeFreeSegmentsByIndex } from "./floor_geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, getEdgeFreeSegmentsByIndex, collectEdgeDoorways } from "./floor_geometry.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -20,7 +20,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface, unfoldRoomWalls, transformWallExclusions, ensureRoomWalls } from "./surface.js";
+import { createSurface, unfoldRoomWalls, ensureRoomWalls, regenerateAdjacentWalls } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
 
 import {
@@ -150,7 +150,10 @@ function addDoorwayToWall(edgeIndex) {
   if (!room || !Array.isArray(room.edgeProperties)) return;
   if (edgeIndex < 0 || edgeIndex >= room.edgeProperties.length) return;
   const ep = room.edgeProperties[edgeIndex];
-  if (!ep.doorways) ep.doorways = [];
+  const nextFloor = getCurrentFloor(next);
+  if (!nextFloor) return;
+  if (!nextFloor.doorways) nextFloor.doorways = [];
+
   const wallH = room.wallHeightCm ?? 200;
   const hStart = ep.heightStartCm ?? wallH;
   const hEnd = ep.heightEndCm ?? wallH;
@@ -165,8 +168,13 @@ function addDoorwayToWall(edgeIndex) {
   const preferredWidth = 101;
   const preferredHeight = Math.min(211, Math.max(0, minWallH - 10));
 
-  // Collect all gaps among vertically-overlapping siblings
-  const vOverlapping = ep.doorways.filter(sib => {
+  // Collect all doorways on this edge (including cross-room) for gap-finding
+  const otherFloorRooms = (nextFloor.rooms || []).filter(
+    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
+  );
+  const allEdgeDoorways = collectEdgeDoorways(nextFloor, room, edgeIndex, otherFloorRooms);
+
+  const vOverlapping = allEdgeDoorways.filter(sib => {
     return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
       dwElevation + preferredHeight > (sib.elevationCm ?? 0);
   });
@@ -203,14 +211,16 @@ function addDoorwayToWall(edgeIndex) {
 
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
+    roomId: room.id,
+    edgeIndex,
     offsetCm,
     widthCm: dwWidth,
     heightCm: Math.max(MIN_DW, dwHeight),
     elevationCm: dwElevation
   };
-  ep.doorways.push(newDw);
-  const nextFloor = getCurrentFloor(next);
-  if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+  nextFloor.doorways.push(newDw);
+  ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+  regenerateAdjacentWalls(room, nextFloor);
   selectedDoorwayId = newDw.id;
   store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
@@ -218,40 +228,45 @@ function addDoorwayToWall(edgeIndex) {
 function deleteDoorway(doorwayId) {
   const state = store.getState();
   const next = structuredClone(state);
+  const nextFloor = getCurrentFloor(next);
+  if (!nextFloor?.doorways) return;
+  const before = nextFloor.doorways.length;
+  nextFloor.doorways = nextFloor.doorways.filter(d => d.id !== doorwayId);
+  if (nextFloor.doorways.length === before) return;
+  // Regenerate walls for any room that might reference this doorway
   const room = getCurrentRoom(next);
-  if (!room?.edgeProperties) return;
-  for (const ep of room.edgeProperties) {
-    if (!ep.doorways) continue;
-    const idx = ep.doorways.findIndex(d => d.id === doorwayId);
-    if (idx >= 0) {
-      ep.doorways.splice(idx, 1);
-      const nextFloor = getCurrentFloor(next);
-      if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
-      selectedDoorwayId = null;
-      store.commit(t("edge.removeDoorway"), next, { onRender: renderAll, updateMetaCb: updateMeta });
-      return;
-    }
+  if (room && nextFloor) {
+    ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    regenerateAdjacentWalls(room, nextFloor);
   }
+  selectedDoorwayId = null;
+  store.commit(t("edge.removeDoorway"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
 async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   const state = store.getState();
+  const floor = getCurrentFloor(state);
   const room = getCurrentRoom(state);
-  if (!room?.edgeProperties?.[edgeIndex]) return;
-  const ep = room.edgeProperties[edgeIndex];
-  const dw = ep.doorways?.find(d => d.id === doorwayId);
+  if (!floor || !room?.edgeProperties?.[edgeIndex]) return;
+  const dw = floor.doorways?.find(d => d.id === doorwayId);
   if (!dw) return;
 
   // Compute edge length and wall heights at each end
-  const verts = room.polygonVertices;
-  const A = verts[edgeIndex];
-  const B = verts[(edgeIndex + 1) % verts.length];
+  // Use the doorway's owner room for edge geometry
+  const ownerRoom = floor.rooms?.find(r => r.id === dw.roomId) || room;
+  const verts = ownerRoom.polygonVertices;
+  const ownerEdge = dw.edgeIndex;
+  const A = verts[ownerEdge];
+  const B = verts[(ownerEdge + 1) % verts.length];
   const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
-  const wallH = room.wallHeightCm ?? 200;
-  const heightStartCm = ep.heightStartCm ?? wallH;
-  const heightEndCm = ep.heightEndCm ?? wallH;
+  const ep = ownerRoom.edgeProperties?.[ownerEdge];
+  const wallH = ownerRoom.wallHeightCm ?? 200;
+  const heightStartCm = ep?.heightStartCm ?? wallH;
+  const heightEndCm = ep?.heightEndCm ?? wallH;
 
-  const siblings = (ep.doorways || []).filter(d => d.id !== doorwayId);
+  const siblings = (floor.doorways || []).filter(d =>
+    d.id !== doorwayId && d.roomId === dw.roomId && d.edgeIndex === dw.edgeIndex
+  );
 
   const result = await showDoorwayEditor({
     title: t("edge.doorway"),
@@ -267,9 +282,9 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   if (!result) return;
 
   const next = structuredClone(store.getState());
-  const nextRoom = getCurrentRoom(next);
-  const nextEp = nextRoom?.edgeProperties?.[edgeIndex];
-  const nextDw = nextEp?.doorways?.find(d => d.id === doorwayId);
+  const nextFloor = getCurrentFloor(next);
+  if (!nextFloor) return;
+  const nextDw = nextFloor.doorways?.find(d => d.id === doorwayId);
   if (!nextDw) return;
 
   nextDw.widthCm = result.widthCm;
@@ -277,8 +292,11 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   nextDw.elevationCm = result.elevationCm;
   nextDw.offsetCm = result.offsetCm;
 
-  const nextFloor = getCurrentFloor(next);
-  if (nextFloor) ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
+  const nextRoom = getCurrentRoom(next);
+  if (nextRoom && nextFloor) {
+    ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
+    regenerateAdjacentWalls(nextRoom, nextFloor);
+  }
   store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
@@ -379,6 +397,10 @@ function prepareRoom3DData(state, room, floor) {
   const wallData = [];
   const verts = room.polygonVertices;
   const nVerts = verts?.length || 0;
+  // Other rooms on this floor (for shared-wall doorway collection and free-edge segments)
+  const otherFloorRooms = (floor?.rooms || []).filter(
+    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
+  );
   if (nVerts >= 3 && avail.mp) {
     const wallH = room.wallHeightCm ?? 200;
     const patternSettings = effectiveSettings?.pattern || room.pattern;
@@ -421,9 +443,19 @@ function prepareRoom3DData(state, room, floor) {
       const edgeWallH = Math.max(hStart, hEnd);
 
       const storedWall = surfaceByEdge.get(i);
-      const wallExclusions = storedWall?.exclusions?.length
-        ? transformWallExclusions(storedWall.exclusions, storedWall.polygonVertices, edgeLength, edgeWallH)
-        : [];
+
+      // Collect doorway exclusions from this edge AND from adjacent rooms'
+      // shared edges (so tiles are clipped at doorways from both sides)
+      const allDoorways = collectEdgeDoorways(floor, room, i, otherFloorRooms);
+      const wallExclusions = allDoorways.map(dw => ({
+        type: "freeform",
+        vertices: [
+          { x: dw.offsetCm, y: dw.elevationCm },
+          { x: dw.offsetCm + dw.widthCm, y: dw.elevationCm },
+          { x: dw.offsetCm + dw.widthCm, y: dw.elevationCm + dw.heightCm },
+          { x: dw.offsetCm, y: dw.elevationCm + dw.heightCm },
+        ],
+      }));
 
       const wallExcludedTiles = storedWall?.excludedTiles || [];
 
@@ -459,38 +491,40 @@ function prepareRoom3DData(state, room, floor) {
         },
       };
 
-      const wallAvail = computeAvailableArea(wallRect, wallExclusions);
-      if (!wallAvail.mp) continue;
-
-      const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
-      const wallPatternOverride = wallRect.pattern;
-      const wallEffSettings = {
-        tile: effectiveSettings?.tile || room.tile,
-        grout: effectiveSettings?.grout || room.grout,
-        pattern: wallPatternOverride,
-      };
-      const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
-        originOverride: wallOriginOverride,
-        effectiveSettings: wallEffSettings,
-      });
-
-      wallData.push({
+      const wallDataEntry = {
         edgeIndex: i,
-        tiles: wallResult?.tiles || [],
+        tiles: [],
         exclusions: wallExclusions,
-        surfaceVerts: wallRect.polygonVertices,
+        surfaceVerts: wallPolyVerts,
         hStart,
         hEnd,
-      });
+        doorways: allDoorways,
+      };
+
+      const wallAvail = computeAvailableArea(wallRect, wallExclusions);
+      if (wallAvail.mp) {
+        const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
+        const wallPatternOverride = wallRect.pattern;
+        const wallEffSettings = {
+          tile: effectiveSettings?.tile || room.tile,
+          grout: effectiveSettings?.grout || room.grout,
+          pattern: wallPatternOverride,
+        };
+        const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
+          originOverride: wallOriginOverride,
+          effectiveSettings: wallEffSettings,
+        });
+        wallDataEntry.tiles = wallResult?.tiles || [];
+        wallDataEntry.surfaceVerts = wallRect.polygonVertices;
+      }
+
+      wallData.push(wallDataEntry);
     }
   }
 
   // Compute free edge segments for shared-wall suppression in 3D
-  const otherRooms = (floor?.rooms || []).filter(
-    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
-  );
   const freeEdgeSegments = room.polygonVertices?.length >= 3
-    ? getEdgeFreeSegmentsByIndex(room, otherRooms)
+    ? getEdgeFreeSegmentsByIndex(room, otherFloorRooms)
     : [];
 
   return {

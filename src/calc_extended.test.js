@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   OffcutPool,
   calculateTileArea,
@@ -12,6 +12,9 @@ import {
   computeFloorMetrics,
   clearMetricsCache,
 } from './calc.js';
+import { assertMetricsInvariants } from './test-utils/helpers.js';
+
+beforeEach(() => clearMetricsCache());
 
 // --- Helper ---
 

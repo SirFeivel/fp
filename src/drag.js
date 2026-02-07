@@ -1,8 +1,8 @@
 // src/drag.js
 import { deepClone, getCurrentRoom, getCurrentFloor, getWallSvgRotation, svgToLocalPoint, svgToLocalDelta } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
-import { findNearestConnectedPosition } from "./floor_geometry.js";
-import { ensureRoomWalls } from "./surface.js";
+import { findNearestConnectedPosition, collectEdgeDoorways, mapOffsetToOwnerEdge } from "./floor_geometry.js";
+import { ensureRoomWalls, regenerateAdjacentWalls } from "./surface.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -1413,13 +1413,18 @@ export function createDoorwayDragController({
       const finalState = deepClone(dragStartState);
       const room = getCurrentRoom(finalState);
       const floor = getCurrentFloor(finalState);
-      const ep = room?.edgeProperties?.[drag.edgeIndex];
-      const dw = ep?.doorways?.find(d => d.id === drag.doorwayId);
+      const dw = floor?.doorways?.find(d => d.id === drag.doorwayId);
       if (dw) {
-        dw.offsetCm = snapToMm(drag.currentOffset);
+        // Map both ends to owner edge space (handles anti-parallel edges correctly)
+        const newOffset = snapToMm(drag.currentOffset);
+        const mappedStart = mapOffsetToOwnerEdge(floor, dw, room, drag.edgeIndex, newOffset);
+        const mappedEnd = mapOffsetToOwnerEdge(floor, dw, room, drag.edgeIndex, newOffset + drag.effectiveWidth);
+        dw.offsetCm = Math.min(mappedStart, mappedEnd);
+        dw.widthCm = Math.abs(mappedEnd - mappedStart);
       }
       if (room && floor) {
         ensureRoomWalls(room, floor, { forceRegenerate: true });
+        regenerateAdjacentWalls(room, floor);
       }
       commit(getMoveLabel?.() || "Doorway moved", finalState);
     }
@@ -1453,7 +1458,8 @@ export function createDoorwayDragController({
 
     const state = getState();
     const room = getCurrentRoom(state);
-    if (!room?.polygonVertices?.length) return;
+    const floor = getCurrentFloor(state);
+    if (!room?.polygonVertices?.length || !floor) return;
 
     const verts = room.polygonVertices;
     const A = verts[edgeIndex];
@@ -1466,8 +1472,7 @@ export function createDoorwayDragController({
     const edgeDirX = edgeDx / L;
     const edgeDirY = edgeDy / L;
 
-    const ep = room.edgeProperties?.[edgeIndex];
-    const dw = ep?.doorways?.find(d => d.id === doorwayId);
+    const dw = floor.doorways?.find(d => d.id === doorwayId);
     if (!dw) return;
 
     const svg = getSvg();
@@ -1477,20 +1482,30 @@ export function createDoorwayDragController({
     dragStartState = deepClone(state);
 
     // Compute drag bounds considering sibling doorways (prevent overlap)
+    // Use collectEdgeDoorways to include cross-room doorways as constraints
+    const otherRooms = (floor.rooms || []).filter(
+      r => r.id !== room.id && !r.sourceRoomId && !(r.circle?.rx > 0)
+    );
+    const allEdgeDoorways = collectEdgeDoorways(floor, room, edgeIndex, otherRooms);
+    // The doorway's offset in the current edge space (may differ from dw.offsetCm for cross-room)
+    const currentEdgeDw = allEdgeDoorways.find(d => d.id === doorwayId);
+    const effectiveOffset = currentEdgeDw?.offsetCm ?? dw.offsetCm;
+    const effectiveWidth = currentEdgeDw?.widthCm ?? dw.widthCm;
+
     let minOffset = 0;
-    let maxOffset = Math.max(0, L - dw.widthCm);
-    const siblings = (ep?.doorways || []).filter(d => d.id !== doorwayId);
+    let maxOffset = Math.max(0, L - effectiveWidth);
+    const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
     for (const sib of siblings) {
       // Only constrain against siblings that vertically overlap
       const vOverlap = (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
         (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
       if (!vOverlap) continue;
-      if (sib.offsetCm + sib.widthCm <= dw.offsetCm + 0.01) {
+      if (sib.offsetCm + sib.widthCm <= effectiveOffset + 0.01) {
         // Sibling is to the left — its right edge is our minimum
         minOffset = Math.max(minOffset, sib.offsetCm + sib.widthCm);
-      } else if (sib.offsetCm >= dw.offsetCm + dw.widthCm - 0.01) {
+      } else if (sib.offsetCm >= effectiveOffset + effectiveWidth - 0.01) {
         // Sibling is to the right — can't go past it
-        maxOffset = Math.min(maxOffset, sib.offsetCm - dw.widthCm);
+        maxOffset = Math.min(maxOffset, sib.offsetCm - effectiveWidth);
       }
     }
 
@@ -1498,13 +1513,14 @@ export function createDoorwayDragController({
       doorwayId,
       edgeIndex,
       startMouse,
-      startOffset: dw.offsetCm,
-      currentOffset: dw.offsetCm,
+      startOffset: effectiveOffset,
+      currentOffset: effectiveOffset,
+      effectiveWidth,
       edgeDirX,
       edgeDirY,
       minOffset,
       maxOffset,
-      startInner: { x: A.x + edgeDirX * dw.offsetCm, y: A.y + edgeDirY * dw.offsetCm },
+      startInner: { x: A.x + edgeDirX * effectiveOffset, y: A.y + edgeDirY * effectiveOffset },
       activated: false
     };
 
@@ -1523,7 +1539,8 @@ export function createDoorwayDragController({
 
     const state = getState();
     const room = getCurrentRoom(state);
-    if (!room?.polygonVertices?.length) return;
+    const floor = getCurrentFloor(state);
+    if (!room?.polygonVertices?.length || !floor) return;
 
     const verts = room.polygonVertices;
     const A = verts[edgeIndex];
@@ -1536,8 +1553,7 @@ export function createDoorwayDragController({
     const edgeDirX = edgeDx / L;
     const edgeDirY = edgeDy / L;
 
-    const ep = room.edgeProperties?.[edgeIndex];
-    const dw = ep?.doorways?.find(d => d.id === doorwayId);
+    const dw = floor.doorways?.find(d => d.id === doorwayId);
     if (!dw) return;
 
     if (setSelectedDoorway) setSelectedDoorway(doorwayId);
@@ -1547,8 +1563,16 @@ export function createDoorwayDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     resizeStartState = deepClone(state);
 
-    // Compute min/max for the dragged edge based on siblings
-    const siblings = (ep?.doorways || []).filter(d => d.id !== doorwayId);
+    // Get all doorways on this edge (including cross-room) for constraint computation
+    const otherRooms = (floor.rooms || []).filter(
+      r => r.id !== room.id && !r.sourceRoomId && !(r.circle?.rx > 0)
+    );
+    const allEdgeDoorways = collectEdgeDoorways(floor, room, edgeIndex, otherRooms);
+    const currentEdgeDw = allEdgeDoorways.find(d => d.id === doorwayId);
+    const effectiveOffset = currentEdgeDw?.offsetCm ?? dw.offsetCm;
+    const effectiveWidth = currentEdgeDw?.widthCm ?? dw.widthCm;
+
+    const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
     const vOverlapping = siblings.filter(sib => {
       return (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
         (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
@@ -1560,17 +1584,17 @@ export function createDoorwayDragController({
       minEdgePos = 0;
       for (const sib of vOverlapping) {
         const sibRight = sib.offsetCm + sib.widthCm;
-        if (sibRight <= dw.offsetCm + 0.01) {
+        if (sibRight <= effectiveOffset + 0.01) {
           minEdgePos = Math.max(minEdgePos, sibRight);
         }
       }
-      maxEdgePos = dw.offsetCm + dw.widthCm - 20; // minimum doorway width 20cm
+      maxEdgePos = effectiveOffset + effectiveWidth - 20; // minimum doorway width 20cm
     } else {
       // Dragging right edge: from offset + MIN to edge end (or left edge of right sibling)
-      minEdgePos = dw.offsetCm + 20;
+      minEdgePos = effectiveOffset + 20;
       maxEdgePos = L;
       for (const sib of vOverlapping) {
-        if (sib.offsetCm >= dw.offsetCm + dw.widthCm - 0.01) {
+        if (sib.offsetCm >= effectiveOffset + effectiveWidth - 0.01) {
           maxEdgePos = Math.min(maxEdgePos, sib.offsetCm);
         }
       }
@@ -1584,12 +1608,12 @@ export function createDoorwayDragController({
       edgeDirX,
       edgeDirY,
       edgeLen: L,
-      startOffset: dw.offsetCm,
-      startWidth: dw.widthCm,
+      startOffset: effectiveOffset,
+      startWidth: effectiveWidth,
       minEdgePos,
       maxEdgePos,
-      currentOffset: dw.offsetCm,
-      currentWidth: dw.widthCm,
+      currentOffset: effectiveOffset,
+      currentWidth: effectiveWidth,
     };
 
     svg.addEventListener("pointermove", onResizeMove);
@@ -1641,14 +1665,18 @@ export function createDoorwayDragController({
       const finalState = deepClone(resizeStartState);
       const room = getCurrentRoom(finalState);
       const floor = getCurrentFloor(finalState);
-      const ep = room?.edgeProperties?.[resizeDrag.edgeIndex];
-      const dw = ep?.doorways?.find(d => d.id === resizeDrag.doorwayId);
+      const dw = floor?.doorways?.find(d => d.id === resizeDrag.doorwayId);
       if (dw) {
-        dw.offsetCm = resizeDrag.currentOffset;
-        dw.widthCm = resizeDrag.currentWidth;
+        // Map offset/width back to owner edge space for cross-room doorways
+        const mappedOffset = mapOffsetToOwnerEdge(floor, dw, room, resizeDrag.edgeIndex, resizeDrag.currentOffset);
+        // For width: map the end position too and compute width in owner space
+        const mappedEnd = mapOffsetToOwnerEdge(floor, dw, room, resizeDrag.edgeIndex, resizeDrag.currentOffset + resizeDrag.currentWidth);
+        dw.offsetCm = Math.min(mappedOffset, mappedEnd);
+        dw.widthCm = Math.abs(mappedEnd - mappedOffset);
       }
       if (room && floor) {
         ensureRoomWalls(room, floor, { forceRegenerate: true });
+        regenerateAdjacentWalls(room, floor);
       }
       commit(getMoveLabel?.() || "Doorway resized", finalState);
     } else {

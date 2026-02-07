@@ -672,7 +672,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         const oax = pos.x + OA.x, oaz = pos.y + OA.y;
         const obx = pos.x + OB.x, obz = pos.y + OB.y;
 
-        const doorways = ep?.doorways || [];
+        const wd = (roomDesc.wallData || []).find(w => w.edgeIndex === i);
+        const doorways = wd?.doorways || [];
         const wallGeo = buildWallGeo(
           iax, iaz, ibx, ibz, oax, oaz, obx, obz,
           hA, hB, edgeLen, doorways
@@ -727,6 +728,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       for (const wd of wallDataArr) {
         if (!wd.surfaceVerts) continue;
         const wi = wd.edgeIndex;
+        const freeSegs = (roomDesc.freeEdgeSegments || [])[wi] || [];
+        if (freeSegs.length === 0) continue; // No wall mesh → no tiles
         const A = verts[wi];
         const B = verts[(wi + 1) % n];
         const ax = pos.x + A.x, az = pos.y + A.y;

@@ -140,6 +140,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
         if (!floor.patternGroups) floor.patternGroups = [];
+        if (!floor.doorways) floor.doorways = [];
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
@@ -213,20 +214,29 @@ export function createStateStore(defaultStateFn, validateStateFn) {
                 room.edgeProperties = Array.from({ length: edgeCount }, () => ({
                   ...DEFAULT_EDGE_PROPERTIES,
                   heightStartCm: wallH,
-                  heightEndCm: wallH,
-                  doorways: []
+                  heightEndCm: wallH
                 }));
               }
-              // Backfill elevationCm on existing doorways
+              // Remove legacy doorways from edgeProperties (moved to floor.doorways)
               for (const ep of room.edgeProperties) {
-                if (Array.isArray(ep.doorways)) {
-                  for (const dw of ep.doorways) {
-                    if (dw.elevationCm == null) dw.elevationCm = 0;
-                  }
-                }
+                delete ep.doorways;
               }
             }
           }
+        }
+
+        // Clean up floor.doorways: remove entries referencing deleted rooms or invalid edges
+        if (Array.isArray(floor.doorways)) {
+          const roomIds = new Set((floor.rooms || []).filter(r => !r.sourceRoomId).map(r => r.id));
+          const roomsById = new Map((floor.rooms || []).filter(r => !r.sourceRoomId).map(r => [r.id, r]));
+          floor.doorways = floor.doorways.filter(dw => {
+            if (!dw || !dw.id || !roomIds.has(dw.roomId)) return false;
+            const ownerRoom = roomsById.get(dw.roomId);
+            const edgeCount = ownerRoom?.polygonVertices?.length || 0;
+            if (dw.edgeIndex < 0 || dw.edgeIndex >= edgeCount) return false;
+            if (dw.elevationCm == null) dw.elevationCm = 0;
+            return true;
+          });
         }
 
         // Validate pattern groups
@@ -579,11 +589,12 @@ export function createStateStore(defaultStateFn, validateStateFn) {
           room.edgeProperties = Array.from({ length: edgeCount }, () => ({
             ...DEFAULT_EDGE_PROPERTIES,
             heightStartCm: wallH,
-            heightEndCm: wallH,
-            doorways: []
+            heightEndCm: wallH
           }));
         }
       }
+      // Initialize floor.doorways if not present
+      if (!floor.doorways) floor.doorways = [];
     }
 
     return s;

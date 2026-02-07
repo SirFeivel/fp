@@ -1,4 +1,4 @@
-import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate } from './core.js';
+import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_EDGE_PROPERTIES } from './core.js';
 import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 import { showAlert } from './dialog.js';
@@ -245,6 +245,12 @@ export function createStructureController({
       },
     });
 
+    // Initialize edgeProperties for the new room
+    const edgeCount = newRoom.polygonVertices?.length || 4;
+    newRoom.edgeProperties = Array.from({ length: edgeCount }, () => ({
+      ...DEFAULT_EDGE_PROPERTIES
+    }));
+
     // Find a connected position for the new room
     const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms, currentFloor);
     newRoom.floorPosition = connectedPos;
@@ -288,6 +294,9 @@ export function createStructureController({
     );
 
     if (nextFloor.rooms.length === beforeLen) return;
+
+    // Clean up floor-level doorways referencing the deleted room
+    nextFloor.doorways = (nextFloor.doorways || []).filter(d => d.roomId !== deletedRoomId);
 
     // Select next non-wall room
     const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);

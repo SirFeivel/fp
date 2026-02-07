@@ -585,7 +585,7 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
  * @param {number} tolerance - Distance tolerance for considering edges as touching
  * @returns {Array} Array of free segments { p1, p2, length }
  */
-function getEdgeFreeSegments(edge, otherRooms, tolerance = 1) {
+export function getEdgeFreeSegments(edge, otherRooms, tolerance = 1) {
   const dx = edge.p2.x - edge.p1.x;
   const dy = edge.p2.y - edge.p1.y;
   const edgeLen = Math.sqrt(dx * dx + dy * dy);
@@ -1152,4 +1152,381 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
     groupDetails,
     message: `Found ${groups.length} disconnected room groups. All rooms must be connected.`
   };
+}
+
+/**
+ * Compute a mitered outer polygon from inner vertices and per-edge thicknesses.
+ * Adjacent offset lines are intersected at each vertex to produce clean corners.
+ *
+ * @param {Array<{x:number, y:number}>} verts - Inner polygon vertices (room-local)
+ * @param {Array<number>} thicknesses - Per-edge outward thickness (one per edge, same index as edge i→i+1)
+ * @param {number} sign - Winding sign (+1 or -1) for outward normal direction
+ * @returns {Array<{x:number, y:number}>} Outer polygon vertices (one per input vertex)
+ */
+export function computeOuterPolygon(verts, thicknesses, sign) {
+  const n = verts.length;
+  if (n < 3) return verts.map(v => ({ x: v.x, y: v.y }));
+
+  const outerVerts = [];
+
+  for (let i = 0; i < n; i++) {
+    const prevIdx = (i - 1 + n) % n;
+    const nextIdx = (i + 1) % n;
+
+    // Previous edge: prevIdx → i
+    const dPrevX = verts[i].x - verts[prevIdx].x;
+    const dPrevY = verts[i].y - verts[prevIdx].y;
+    const lenPrev = Math.hypot(dPrevX, dPrevY);
+
+    // Next edge: i → nextIdx
+    const dNextX = verts[nextIdx].x - verts[i].x;
+    const dNextY = verts[nextIdx].y - verts[i].y;
+    const lenNext = Math.hypot(dNextX, dNextY);
+
+    if (lenPrev < 0.001 || lenNext < 0.001) {
+      outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      continue;
+    }
+
+    // Normalized directions
+    const dpx = dPrevX / lenPrev, dpy = dPrevY / lenPrev;
+    const dnx = dNextX / lenNext, dny = dNextY / lenNext;
+
+    // Outward normals
+    const nPrevX = sign * dpy, nPrevY = sign * -dpx;
+    const nNextX = sign * dny, nNextY = sign * -dnx;
+
+    const tPrev = thicknesses[prevIdx] || 0;
+    const tNext = thicknesses[i] || 0;
+
+    // If both thicknesses are 0, outer vertex = inner vertex
+    if (tPrev === 0 && tNext === 0) {
+      outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      continue;
+    }
+
+    // Points on the two offset lines, both passing through the neighborhood of verts[i]
+    const pPrevX = verts[i].x + nPrevX * tPrev;
+    const pPrevY = verts[i].y + nPrevY * tPrev;
+    const pNextX = verts[i].x + nNextX * tNext;
+    const pNextY = verts[i].y + nNextY * tNext;
+
+    // Intersect: pPrev + s*dPrev = pNext + t*dNext
+    // Cross product of directions
+    const cross = dpx * dny - dpy * dnx;
+
+    if (Math.abs(cross) < 1e-8) {
+      // Parallel edges — just use average offset
+      const avgT = (tPrev + tNext) / 2;
+      const avgNX = (nPrevX + nNextX) / 2;
+      const avgNY = (nPrevY + nNextY) / 2;
+      const avgLen = Math.hypot(avgNX, avgNY);
+      if (avgLen > 0.001) {
+        outerVerts.push({
+          x: verts[i].x + (avgNX / avgLen) * avgT,
+          y: verts[i].y + (avgNY / avgLen) * avgT
+        });
+      } else {
+        outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      }
+      continue;
+    }
+
+    // Solve for s: intersection = pPrev + s * dPrev
+    const diffX = pNextX - pPrevX;
+    const diffY = pNextY - pPrevY;
+    const s = (diffX * dny - diffY * dnx) / cross;
+
+    const ix = pPrevX + s * dpx;
+    const iy = pPrevY + s * dpy;
+
+    // Miter limit: clamp if distance > 3× max adjacent thickness
+    const maxT = Math.max(tPrev, tNext, 1);
+    const dist = Math.hypot(ix - verts[i].x, iy - verts[i].y);
+    if (dist > 3 * maxT) {
+      // Clamp along bisector direction
+      const bisX = ix - verts[i].x;
+      const bisY = iy - verts[i].y;
+      const scale = (3 * maxT) / dist;
+      outerVerts.push({
+        x: verts[i].x + bisX * scale,
+        y: verts[i].y + bisY * scale
+      });
+    } else {
+      outerVerts.push({ x: ix, y: iy });
+    }
+  }
+
+  return outerVerts;
+}
+
+/**
+ * Get per-edge-index free segments for a room against other rooms.
+ * Returns parametric free segments (t ∈ [0,1]) for each edge of the room polygon.
+ *
+ * @param {Object} room - Room with polygonVertices and floorPosition
+ * @param {Array} otherRooms - Other rooms on the same floor (non-wall, non-circle)
+ * @returns {Array<Array<{tStart:number, tEnd:number}>>} Per-edge array of free segment ranges
+ */
+export function getEdgeFreeSegmentsByIndex(room, otherRooms) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+  const result = [];
+
+  for (let i = 0; i < n; i++) {
+    const A = verts[i];
+    const B = verts[(i + 1) % n];
+
+    // Convert to floor coordinates
+    const edge = {
+      p1: { x: pos.x + A.x, y: pos.y + A.y },
+      p2: { x: pos.x + B.x, y: pos.y + B.y }
+    };
+
+    const freeSegs = getEdgeFreeSegments(edge, otherRooms);
+
+    // Convert returned absolute segments back to parametric [0,1] range
+    const dx = edge.p2.x - edge.p1.x;
+    const dy = edge.p2.y - edge.p1.y;
+    const edgeLen = Math.hypot(dx, dy);
+
+    if (edgeLen < 0.01) {
+      result.push([]);
+      continue;
+    }
+
+    const nx = dx / edgeLen;
+    const ny = dy / edgeLen;
+
+    const parametric = [];
+    for (const seg of freeSegs) {
+      // Project seg.p1 and seg.p2 onto the edge to get t values
+      const t1 = ((seg.p1.x - edge.p1.x) * nx + (seg.p1.y - edge.p1.y) * ny) / edgeLen;
+      const t2 = ((seg.p2.x - edge.p1.x) * nx + (seg.p2.y - edge.p1.y) * ny) / edgeLen;
+      const tStart = Math.max(0, Math.min(t1, t2));
+      const tEnd = Math.min(1, Math.max(t1, t2));
+      if (tEnd > tStart + 0.001) {
+        parametric.push({ tStart, tEnd });
+      }
+    }
+    result.push(parametric);
+  }
+
+  return result;
+}
+
+// ── Shared-wall abstraction ──────────────────────────────────────────────────
+// Reusable helpers for querying relationships between edges of adjacent rooms.
+// Useful for doorway propagation, wall thickness negotiation, acoustic/thermal
+// calculations, or any future feature that needs cross-room edge awareness.
+
+/**
+ * For a given room edge, find all collinear overlapping edges on other rooms.
+ * Returns match descriptors with coordinate-mapping metadata so callers can
+ * transform positions between the two edge coordinate spaces.
+ *
+ * @param {Object} room - Room with polygonVertices and floorPosition
+ * @param {number} edgeIndex - Edge index (edge from vertex[i] to vertex[(i+1)%n])
+ * @param {Array} otherRooms - Other rooms on the floor (non-wall, non-circle)
+ * @param {number} [tolerance=1] - Max perpendicular distance for collinearity (cm)
+ * @returns {Array<{room: Object, edgeIndex: number, overlapStartCm: number,
+ *   overlapEndCm: number, targetEdgeDir: {x:number,y:number},
+ *   targetEdgeOrigin: {x:number,y:number}, sourceEdgeDir: {x:number,y:number},
+ *   sourceEdgeOrigin: {x:number,y:number}, antiParallel: boolean}>}
+ */
+export function findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance = 1) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % n];
+
+  const sax = pos.x + A.x, say = pos.y + A.y;
+  const sbx = pos.x + B.x, sby = pos.y + B.y;
+  const sdx = sbx - sax, sdy = sby - say;
+  const sLen = Math.hypot(sdx, sdy);
+  if (sLen < 0.01) return [];
+
+  const snx = sdx / sLen, sny = sdy / sLen;
+  const matches = [];
+
+  for (const other of otherRooms) {
+    if (other.id === room.id || other.sourceRoomId) continue;
+    const oVerts = other.polygonVertices;
+    if (!oVerts || oVerts.length < 3) continue;
+
+    const oPos = other.floorPosition || { x: 0, y: 0 };
+    const oN = oVerts.length;
+
+    for (let j = 0; j < oN; j++) {
+      const C = oVerts[j];
+      const D = oVerts[(j + 1) % oN];
+      const tcx = oPos.x + C.x, tcy = oPos.y + C.y;
+      const tdx = oPos.x + D.x - tcx, tdy = oPos.y + D.y - tcy;
+      const tLen = Math.hypot(tdx, tdy);
+      if (tLen < 0.01) continue;
+
+      const tnx = tdx / tLen, tny = tdy / tLen;
+
+      // Must be parallel
+      const cross = snx * tny - sny * tnx;
+      if (Math.abs(cross) > 0.01) continue;
+
+      // Must be collinear (same line)
+      const vx = tcx - sax, vy = tcy - say;
+      const perpDist = Math.abs(vx * sny - vy * snx);
+      if (perpDist > tolerance) continue;
+
+      // Compute overlap on source edge (in cm along source edge)
+      const t1 = vx * snx + vy * sny;
+      const vx2 = oPos.x + D.x - sax, vy2 = oPos.y + D.y - say;
+      const t2 = vx2 * snx + vy2 * sny;
+
+      const overlapStart = Math.max(0, Math.min(t1, t2));
+      const overlapEnd = Math.min(sLen, Math.max(t1, t2));
+      if (overlapEnd - overlapStart < 1) continue;
+
+      matches.push({
+        room: other,
+        edgeIndex: j,
+        overlapStartCm: overlapStart,
+        overlapEndCm: overlapEnd,
+        targetEdgeOrigin: { x: tcx, y: tcy },
+        targetEdgeDir: { x: tnx, y: tny },
+        targetEdgeLen: tLen,
+        sourceEdgeOrigin: { x: sax, y: say },
+        sourceEdgeDir: { x: snx, y: sny },
+        sourceEdgeLen: sLen,
+        antiParallel: (snx * tnx + sny * tny) < 0,
+      });
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Collect all doorways that affect a room edge, including doorways from
+ * adjacent rooms on shared (collinear) edges.  Doorway positions are mapped
+ * to the *source* edge's local coordinate space (offsetCm along the edge).
+ *
+ * Doorways are read from floor.doorways[] (floor-level storage).
+ *
+ * @param {Object} floor - Floor object with doorways[] array
+ * @param {Object} room - Room with polygonVertices, floorPosition
+ * @param {number} edgeIndex - Edge index
+ * @param {Array} otherRooms - Other rooms on the floor
+ * @param {number} [tolerance=1] - Distance tolerance for shared edge detection
+ * @returns {Array<{id: string, offsetCm: number, widthCm: number, heightCm: number,
+ *   elevationCm: number, sourceRoomId: string, sourceEdgeIndex: number}>}
+ */
+export function collectEdgeDoorways(floor, room, edgeIndex, otherRooms, tolerance = 1) {
+  const result = [];
+  const floorDoorways = floor?.doorways || [];
+
+  // 1. Own doorways on this edge
+  const ownDoorways = floorDoorways.filter(dw => dw.roomId === room.id && dw.edgeIndex === edgeIndex);
+  for (const dw of ownDoorways) {
+    result.push({
+      id: dw.id,
+      offsetCm: dw.offsetCm,
+      widthCm: dw.widthCm,
+      heightCm: dw.heightCm,
+      elevationCm: dw.elevationCm || 0,
+      sourceRoomId: room.id,
+      sourceEdgeIndex: edgeIndex,
+    });
+  }
+
+  // 2. Doorways from adjacent rooms on shared edges
+  const matches = findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance);
+
+  for (const match of matches) {
+    const targetDoorways = floorDoorways.filter(
+      dw => dw.roomId === match.room.id && dw.edgeIndex === match.edgeIndex
+    );
+    if (targetDoorways.length === 0) continue;
+
+    const { sourceEdgeOrigin: sO, sourceEdgeDir: sD } = match;
+    const { targetEdgeOrigin: tO, targetEdgeDir: tD } = match;
+
+    for (const dw of targetDoorways) {
+      // Doorway start/end in floor coordinates (along target edge)
+      const dwStartX = tO.x + tD.x * dw.offsetCm;
+      const dwStartY = tO.y + tD.y * dw.offsetCm;
+      const dwEndX = tO.x + tD.x * (dw.offsetCm + dw.widthCm);
+      const dwEndY = tO.y + tD.y * (dw.offsetCm + dw.widthCm);
+
+      // Project onto source edge to get offset in source space
+      const proj1 = (dwStartX - sO.x) * sD.x + (dwStartY - sO.y) * sD.y;
+      const proj2 = (dwEndX - sO.x) * sD.x + (dwEndY - sO.y) * sD.y;
+
+      const mappedOffset = Math.max(0, Math.min(proj1, proj2));
+      const mappedEnd = Math.min(match.sourceEdgeLen, Math.max(proj1, proj2));
+      const mappedWidth = mappedEnd - mappedOffset;
+
+      if (mappedWidth < 1) continue;
+
+      result.push({
+        id: dw.id,
+        offsetCm: mappedOffset,
+        widthCm: mappedWidth,
+        heightCm: dw.heightCm,
+        elevationCm: dw.elevationCm || 0,
+        sourceRoomId: match.room.id,
+        sourceEdgeIndex: match.edgeIndex,
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Map an offset from the current edge space to the doorway's owning edge space.
+ * If the doorway is on the current room's edge, returns newOffset directly.
+ * For cross-room doorways, projects the offset using findSharedEdgeMatches.
+ *
+ * @param {Object} floor - Floor object with doorways[]
+ * @param {Object} doorway - The doorway object from floor.doorways
+ * @param {Object} currentRoom - The room whose edge the user is interacting with
+ * @param {number} currentEdgeIndex - The edge index in currentRoom
+ * @param {number} newOffset - The new offset in currentRoom's edge space
+ * @returns {number} The offset in the doorway's owning edge space
+ */
+export function mapOffsetToOwnerEdge(floor, doorway, currentRoom, currentEdgeIndex, newOffset) {
+  // If doorway belongs to this room's edge, no mapping needed
+  if (doorway.roomId === currentRoom.id && doorway.edgeIndex === currentEdgeIndex) {
+    return newOffset;
+  }
+
+  // Find the owner room
+  const ownerRoom = floor.rooms?.find(r => r.id === doorway.roomId);
+  if (!ownerRoom) return newOffset;
+
+  // Find shared edge match between current room's edge and owner room's edge
+  const otherRooms = floor.rooms.filter(r => r.id !== currentRoom.id && !r.sourceRoomId && !(r.circle?.rx > 0));
+  const matches = findSharedEdgeMatches(currentRoom, currentEdgeIndex, otherRooms);
+
+  for (const match of matches) {
+    if (match.room.id !== ownerRoom.id || match.edgeIndex !== doorway.edgeIndex) continue;
+
+    const { sourceEdgeOrigin: sO, sourceEdgeDir: sD } = match;
+    const { targetEdgeOrigin: tO, targetEdgeDir: tD } = match;
+
+    // Convert newOffset from source edge to floor coordinates
+    const floorX = sO.x + sD.x * newOffset;
+    const floorY = sO.y + sD.y * newOffset;
+
+    // Project onto target edge
+    const projectedOffset = (floorX - tO.x) * tD.x + (floorY - tO.y) * tD.y;
+    return Math.max(0, projectedOffset);
+  }
+
+  return newOffset;
 }

@@ -18,7 +18,7 @@ import {
 } from "./geometry.js";
 import { EPSILON } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
-import { getFloorBounds, computeOuterPolygon, getEdgeFreeSegmentsByIndex } from "./floor_geometry.js";
+import { getFloorBounds, computeOuterPolygon, getEdgeFreeSegmentsByIndex, collectEdgeDoorways } from "./floor_geometry.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
 function isCircleRoom(room) {
@@ -573,8 +573,15 @@ export function renderRoomForm(state) {
     if (hStartEl) hStartEl.value = ep?.heightStartCm ?? 200;
     if (hEndEl) hEndEl.value = ep?.heightEndCm ?? 200;
 
-    // Render doorways list
-    renderDoorwaysList(ep?.doorways || [], idx);
+    // Render doorways list — read from floor.doorways for this room+edge
+    const floor = getCurrentFloor(state);
+    const otherFloorRooms = floor
+      ? floor.rooms.filter(r => r.id !== currentRoom.id && !r.sourceRoomId && !(r.circle?.rx > 0))
+      : [];
+    const edgeDoorways = floor
+      ? collectEdgeDoorways(floor, currentRoom, idx, otherFloorRooms)
+      : [];
+    renderDoorwaysList(edgeDoorways, idx);
   } else if (edgeSection) {
     edgeSection.style.display = "none";
   }
@@ -1538,6 +1545,12 @@ export function renderPlanSvg({
     // Compute mitered outer polygon
     const outerVerts = computeOuterPolygon(verts, thicknesses, sign);
 
+    // Build list of other polygon rooms for cross-room doorway lookup
+    const floor = getCurrentFloor(state);
+    const otherFloorRooms = floor
+      ? floor.rooms.filter(r => r.id !== currentRoom.id && !r.sourceRoomId && !(r.circle?.rx > 0))
+      : [];
+
     for (let i = 0; i < n; i++) {
       const ep = currentRoom.edgeProperties?.[i];
       const thick = ep?.thicknessCm ?? 12;
@@ -1577,9 +1590,11 @@ export function renderPlanSvg({
         return straightOuterAt(t);
       };
 
-      // Draw wall with doorway gaps
-      const doorways = ep?.doorways || [];
-      const sortedDw = [...doorways].sort((a, b) => a.offsetCm - b.offsetCm);
+      // Draw wall with doorway gaps (including doorways from adjacent rooms)
+      const allDoorways = floor
+        ? collectEdgeDoorways(floor, currentRoom, i, otherFloorRooms)
+        : [];
+      const sortedDw = [...allDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
 
       let cursor = 0;
       for (const dw of sortedDw) {
@@ -1653,7 +1668,8 @@ export function renderPlanSvg({
         const dwD = `M ${iS.x} ${iS.y} L ${iE.x} ${iE.y} L ${oE.x} ${oE.y} L ${oS.x} ${oS.y} Z`;
         const dwEl = svgEl("path", {
           d: dwD, fill: dwFill, stroke: dwStroke, "stroke-width": dwStrokeW,
-          cursor: "move", "data-doorway-id": dw.id, "data-wall-edge": i,
+          cursor: "move",
+          "data-doorway-id": dw.id, "data-wall-edge": i,
           "pointer-events": "auto"
         });
 
@@ -1998,7 +2014,8 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
   // Skirting Visualization
   if (state.view?.showSkirting) {
     const isRemovalMode = Boolean(state.view?.removalMode);
-    const segments = computeSkirtingSegments(currentRoom, isRemovalMode);
+    const skirtingFloor = getCurrentFloor(state);
+    const segments = computeSkirtingSegments(currentRoom, isRemovalMode, skirtingFloor);
 
     if (segments.length > 0) {
       const gSkirting = svgEl("g", { 
@@ -3253,8 +3270,8 @@ export function renderFloorCanvas({
           const segStartAbs = seg.tStart * L;
           const segEndAbs = seg.tEnd * L;
 
-          // Check for doorways within this free segment
-          const doorways = ep?.doorways || [];
+          // Check for doorways within this free segment (including adjacent rooms)
+          const doorways = collectEdgeDoorways(floor, room, i, otherRooms);
           const sortedDw = [...doorways]
             .sort((a, b) => a.offsetCm - b.offsetCm)
             .filter(dw => {

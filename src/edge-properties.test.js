@@ -73,7 +73,6 @@ describe("edgeProperties migration v11→v12", () => {
       expect(ep.heightStartCm).toBe(250);
       expect(ep.heightEndCm).toBe(250);
       expect(ep.thicknessCm).toBe(12);
-      expect(ep.doorways).toEqual([]);
     }
   });
 
@@ -109,8 +108,8 @@ describe("edgeProperties migration v11→v12", () => {
     // Add a room with 4 vertices
     const room = createSurface({ name: "Test", widthCm: 300, heightCm: 200 });
     room.edgeProperties = [
-      { thicknessCm: 15, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
+      { thicknessCm: 15, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
     ]; // Intentionally wrong length
     state.floors[0].rooms.push(room);
     state.selectedRoomId = room.id;
@@ -127,7 +126,6 @@ describe("DEFAULT_EDGE_PROPERTIES", () => {
     expect(DEFAULT_EDGE_PROPERTIES.thicknessCm).toBe(12);
     expect(DEFAULT_EDGE_PROPERTIES.heightStartCm).toBe(200);
     expect(DEFAULT_EDGE_PROPERTIES.heightEndCm).toBe(200);
-    expect(DEFAULT_EDGE_PROPERTIES.doorways).toEqual([]);
   });
 });
 
@@ -135,10 +133,10 @@ describe("unfoldRoomWalls with uniform heights", () => {
   it("generates rectangular walls for uniform height edges", () => {
     const room = createSurface({ name: "R", widthCm: 400, heightCm: 300 });
     room.edgeProperties = [
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
     ];
 
     const walls = unfoldRoomWalls(room, 200);
@@ -161,10 +159,10 @@ describe("unfoldRoomWalls with sloped heights (trapezoid)", () => {
   it("generates trapezoid walls when heightStart !== heightEnd", () => {
     const room = createSurface({ name: "R", widthCm: 400, heightCm: 300 });
     room.edgeProperties = [
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 150, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 150, heightEndCm: 150, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 150, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 150 },
+      { thicknessCm: 12, heightStartCm: 150, heightEndCm: 150 },
+      { thicknessCm: 12, heightStartCm: 150, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
     ];
 
     const walls = unfoldRoomWalls(room, 200);
@@ -186,20 +184,19 @@ describe("unfoldRoomWalls with doorways", () => {
   it("injects doorway exclusions into wall surfaces", () => {
     const room = createSurface({ name: "R", widthCm: 400, heightCm: 300 });
     room.edgeProperties = [
-      {
-        thicknessCm: 12,
-        heightStartCm: 200,
-        heightEndCm: 200,
-        doorways: [
-          { id: "dw1", offsetCm: 50, widthCm: 80, heightCm: 200 }
-        ]
-      },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
     ];
+    const floor = {
+      rooms: [room],
+      doorways: [
+        { id: "dw1", roomId: room.id, edgeIndex: 0, offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 }
+      ]
+    };
 
-    const walls = unfoldRoomWalls(room, 200);
+    const walls = unfoldRoomWalls(room, 200, floor);
     const wall0 = walls[0];
 
     // Wall 0 should have the doorway exclusion as freeform polygon
@@ -222,21 +219,20 @@ describe("unfoldRoomWalls with doorways", () => {
   it("injects multiple doorways on the same edge", () => {
     const room = createSurface({ name: "R", widthCm: 600, heightCm: 300 });
     room.edgeProperties = [
-      {
-        thicknessCm: 12,
-        heightStartCm: 200,
-        heightEndCm: 200,
-        doorways: [
-          { id: "dw1", offsetCm: 50, widthCm: 80, heightCm: 200 },
-          { id: "dw2", offsetCm: 300, widthCm: 100, heightCm: 200 }
-        ]
-      },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 },
     ];
+    const floor = {
+      rooms: [room],
+      doorways: [
+        { id: "dw1", roomId: room.id, edgeIndex: 0, offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 },
+        { id: "dw2", roomId: room.id, edgeIndex: 0, offsetCm: 300, widthCm: 100, heightCm: 200, elevationCm: 0 }
+      ]
+    };
 
-    const walls = unfoldRoomWalls(room, 200);
+    const walls = unfoldRoomWalls(room, 200, floor);
     expect(walls[0].exclusions).toHaveLength(2);
     expect(walls[0].exclusions[0].type).toBe("freeform");
     expect(walls[0].exclusions[1].type).toBe("freeform");
@@ -265,7 +261,7 @@ describe("edgeProperties sync on vertex operations", () => {
     });
     // Give it wrong number of edgeProperties
     room.edgeProperties = [
-      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200, doorways: [] }
+      { thicknessCm: 12, heightStartCm: 200, heightEndCm: 200 }
     ];
     state.floors[0].rooms.push(room);
     state.selectedRoomId = room.id;

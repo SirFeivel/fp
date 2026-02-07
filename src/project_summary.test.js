@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { computeProjectTotals, computeGrandTotals } from './calc.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { computeProjectTotals, computeGrandTotals, clearMetricsCache } from './calc.js';
+
+beforeEach(() => clearMetricsCache());
 
 describe('computeProjectTotals', () => {
   it('sums up multiple rooms correctly', () => {
@@ -37,9 +39,12 @@ describe('computeProjectTotals', () => {
     const result = computeProjectTotals(state);
     expect(result.roomCount).toBe(2);
     expect(result.totalNetAreaM2).toBeCloseTo(2, 2);
-    expect(result.totalTiles).toBeGreaterThanOrEqual(8);
-    expect(result.totalCost).toBeGreaterThanOrEqual(20);
-    expect(result.totalPacks).toBeGreaterThanOrEqual(1);
+    // Each 1m² room with 50x50 tiles = exactly 4 tiles, 2 rooms = 8 tiles
+    expect(result.totalTiles).toBe(8);
+    // 2m² * 10€/m² = 20€
+    expect(result.totalCost).toBeCloseTo(20, 2);
+    // 2m² / 2m²-per-pack = 1 pack
+    expect(result.totalPacks).toBe(1);
   });
 
   it('handles multiple floors', () => {
@@ -79,7 +84,8 @@ describe('computeProjectTotals', () => {
     const result = computeProjectTotals(state);
     expect(result.roomCount).toBe(2);
     expect(result.totalNetAreaM2).toBeCloseTo(2, 2);
-    expect(result.totalTiles).toBeGreaterThanOrEqual(2);
+    // 2 rooms * 1 tile (100x100 room with 100x100 tile) = 2 tiles
+    expect(result.totalTiles).toBe(2);
   });
 
   it('returns zero totals for empty project', () => {
@@ -160,7 +166,8 @@ describe('computeProjectTotals', () => {
     // wallRooms should have the wall
     expect(result.wallRooms.length).toBe(1);
     expect(result.wallRooms[0].sourceRoomId).toBe('r1');
-    expect(result.wallTotalTiles).toBeGreaterThan(0);
+    // Wall is 100x50 with 50x50 tiles = 2 tiles
+    expect(result.wallTotalTiles).toBe(2);
   });
 
   it('computeGrandTotals with invalid tiles returns ok:false', () => {
@@ -208,8 +215,10 @@ describe('computeProjectTotals', () => {
     const room = state.floors[0].rooms[0];
     const result = computeGrandTotals(state, room);
     expect(result.ok).toBe(true);
-    expect(result.floorTiles).toBeGreaterThan(0);
-    expect(result.skirtingTiles).toBeGreaterThan(0);
+    // 100x100 room with 50x50 tiles = 4 floor tiles
+    expect(result.floorTiles).toBe(4);
+    // Skirting: perimeter 400cm / 50cm tile width = 8 strips, 10cm/50cm = 2 strips per tile → 4 tiles
+    expect(result.skirtingTiles).toBe(4);
     expect(result.totalTiles).toBe(result.floorTiles + result.skirtingTiles);
     expect(result.totalCost).toBeGreaterThan(0);
   });
@@ -254,9 +263,14 @@ describe('computeProjectTotals', () => {
 
     const marble = result.materials.find(m => m.reference === 'Marble');
     const slate = result.materials.find(m => m.reference === 'Slate');
-    expect(marble).toBeDefined();
-    expect(slate).toBeDefined();
+    expect(marble).not.toBeUndefined();
+    expect(slate).not.toBeUndefined();
     expect(marble.pricePerM2).toBe(100);
     expect(slate.pricePerM2).toBe(60);
+    // Each room is 1m², 50x50 tiles = 4 tiles each
+    expect(marble.totalTiles).toBe(4);
+    expect(slate.totalTiles).toBe(4);
+    expect(marble.netAreaM2).toBeCloseTo(1, 2);
+    expect(slate.netAreaM2).toBeCloseTo(1, 2);
   });
 });

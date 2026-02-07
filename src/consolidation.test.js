@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { computeProjectTotals } from './calc.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { computeProjectTotals, clearMetricsCache } from './calc.js';
 import { uuid } from './core.js';
+
+beforeEach(() => clearMetricsCache());
 
 describe('Commercial Consolidation', () => {
   it('groups multiple rooms with the same tile reference', () => {

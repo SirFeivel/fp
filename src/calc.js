@@ -35,7 +35,8 @@ export function computeSkirtingNeeds(state, roomOverride = null) {
   }
 
   const skirting = room.skirting || {};
-  const segments = computeSkirtingSegments(room);
+  const floor = state?.floors?.find(f => f.rooms?.some(r => r.id === room.id));
+  const segments = computeSkirtingSegments(room, false, floor);
   const totalLengthCm = segments.reduce((sum, s) => sum + s.length, 0);
 
   if (segments.length === 0 || totalLengthCm <= 0) {

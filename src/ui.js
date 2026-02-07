@@ -1,6 +1,7 @@
 // src/ui.js
 import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
-import { ensureRoomWalls } from "./surface.js";
+import { ensureRoomWalls, regenerateAdjacentWalls } from "./surface.js";
+import { collectEdgeDoorways } from "./floor_geometry.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
 import { EPSILON } from "./constants.js";
@@ -478,31 +479,33 @@ export function bindUI({
           ep.heightStartCm = Number(document.getElementById("edgeHeightStart")?.value) || 200;
           ep.heightEndCm = Number(document.getElementById("edgeHeightEnd")?.value) || 200;
 
-          // Read doorway inputs
+          // Read doorway inputs — update floor.doorways entries
           const dwContainer = document.getElementById("doorwaysList");
           if (dwContainer) {
-            const offsets = dwContainer.querySelectorAll(".dw-offset");
-            const widths = dwContainer.querySelectorAll(".dw-width");
-            const heights = dwContainer.querySelectorAll(".dw-height");
-            if (offsets.length > 0) {
-              ep.doorways = [];
-              for (let d = 0; d < offsets.length; d++) {
-                ep.doorways.push({
-                  id: nextRoom.edgeProperties[idx]?.doorways?.[d]?.id || crypto?.randomUUID?.() || String(Date.now()),
-                  offsetCm: Number(offsets[d].value) || 0,
-                  widthCm: Number(widths[d]?.value) || 80,
-                  heightCm: Number(heights[d]?.value) || 200
-                });
+            const nextFloorDw = getCurrentFloor(next);
+            if (nextFloorDw?.doorways) {
+              const offsets = dwContainer.querySelectorAll(".dw-offset");
+              const widths = dwContainer.querySelectorAll(".dw-width");
+              const heights = dwContainer.querySelectorAll(".dw-height");
+              // Get the doorway IDs from data attributes to match them
+              const edgeDoorways = nextFloorDw.doorways.filter(
+                d => d.roomId === nextRoom.id && d.edgeIndex === idx
+              );
+              for (let d = 0; d < Math.min(offsets.length, edgeDoorways.length); d++) {
+                edgeDoorways[d].offsetCm = Number(offsets[d].value) || 0;
+                edgeDoorways[d].widthCm = Number(widths[d]?.value) || 80;
+                edgeDoorways[d].heightCm = Number(heights[d]?.value) || 200;
               }
             }
           }
         }
       }
 
-      // Regenerate walls when height changes
+      // Regenerate walls when height or doorway properties change
       const nextFloor = getCurrentFloor(next);
       if (nextFloor) {
         ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
+        regenerateAdjacentWalls(nextRoom, nextFloor);
       }
     }
 
@@ -832,7 +835,10 @@ export function bindUI({
     const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
     if (idx < 0 || idx >= room.edgeProperties.length) return;
     const ep = room.edgeProperties[idx];
-    if (!ep.doorways) ep.doorways = [];
+    const nextFloor = getCurrentFloor(next);
+    if (!nextFloor) return;
+    if (!nextFloor.doorways) nextFloor.doorways = [];
+
     const dwElevation = 0;
     const preferredWidth = 101;
     const preferredHeight = 211;
@@ -849,7 +855,13 @@ export function bindUI({
     const minWallH = Math.min(ep_hStart, ep_hEnd);
     const dwHeight = Math.min(preferredHeight, Math.max(0, minWallH - 10));
 
-    const vOverlapping = ep.doorways.filter(sib => {
+    // Collect all doorways on this edge (including cross-room) for gap-finding
+    const otherFloorRooms = (nextFloor.rooms || []).filter(
+      r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
+    );
+    const allEdgeDoorways = collectEdgeDoorways(nextFloor, room, idx, otherFloorRooms);
+
+    const vOverlapping = allEdgeDoorways.filter(sib => {
       return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
         dwElevation + dwHeight > (sib.elevationCm ?? 0);
     });
@@ -878,15 +890,17 @@ export function bindUI({
     const dwWidth = Math.max(MIN_DW, Math.min(preferredWidth, bestGap.size - 10));
     const offsetCm = bestGap.start + (bestGap.size - dwWidth) / 2;
 
-    ep.doorways.push({
+    nextFloor.doorways.push({
       id: crypto?.randomUUID?.() || String(Date.now()),
+      roomId: room.id,
+      edgeIndex: idx,
       offsetCm,
       widthCm: dwWidth,
       heightCm: Math.max(MIN_DW, dwHeight),
       elevationCm: dwElevation
     });
-    const nextFloor = getCurrentFloor(next);
-    if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    regenerateAdjacentWalls(room, nextFloor);
     store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -897,12 +911,18 @@ export function bindUI({
     const state = store.getState();
     const next = structuredClone(state);
     const room = getCurrentRoom(next);
-    if (!room || !Array.isArray(room.edgeProperties)) return;
-    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
-    if (idx < 0 || idx >= room.edgeProperties.length) return;
-    room.edgeProperties[idx].doorways.splice(dwIdx, 1);
     const nextFloor = getCurrentFloor(next);
-    if (nextFloor) ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    if (!room || !nextFloor?.doorways) return;
+    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
+    // Find the doorway to remove: get all doorways for this room+edge, then pick by index
+    const edgeDoorways = nextFloor.doorways.filter(
+      d => d.roomId === room.id && d.edgeIndex === idx
+    );
+    if (dwIdx < 0 || dwIdx >= edgeDoorways.length) return;
+    const doorwayId = edgeDoorways[dwIdx].id;
+    nextFloor.doorways = nextFloor.doorways.filter(d => d.id !== doorwayId);
+    ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
+    regenerateAdjacentWalls(room, nextFloor);
     store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
   document.getElementById("doorwaysList")?.addEventListener("change", (e) => {

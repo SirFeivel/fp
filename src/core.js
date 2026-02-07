@@ -111,6 +111,12 @@ export const DEFAULT_SKIRTING_PRESET = {
   pricePerPiece: 5
 };
 
+export const DEFAULT_EDGE_PROPERTIES = {
+  thicknessCm: 12,
+  heightStartCm: 200,
+  heightEndCm: 200
+};
+
 export const DEFAULT_WASTE = {
   allowRotate: true,
   shareOffcuts: false,
@@ -142,7 +148,7 @@ export function defaultState() {
   const floorId = uuid();
 
   return {
-    meta: { version: 11, updatedAt: nowISO() },
+    meta: { version: 12, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
