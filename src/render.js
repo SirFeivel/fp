@@ -1559,11 +1559,23 @@ export function renderPlanSvg({
       const wallFill = isSel ? "rgba(59,130,246,0.25)" : "rgba(148,163,184,0.2)";
       const wallStroke = isSel ? "rgba(59,130,246,0.5)" : "rgba(148,163,184,0.35)";
 
+      // Outward normal (perpendicular to edge direction)
+      const normalX = edgeDirY * sign;
+      const normalY = -edgeDirX * sign;
+
       // Helper: interpolate inner position at parametric t
       const innerAt = (t) => ({ x: A.x + t * edgeDx, y: A.y + t * edgeDy });
-      // Helper: interpolate outer position at parametric t
-      const odx = OB.x - OA.x, ody = OB.y - OA.y;
-      const outerAt = (t) => ({ x: OA.x + t * odx, y: OA.y + t * ody });
+      // Helper: straight outer position (perpendicular offset from inner edge)
+      const straightOuterAt = (t) => {
+        const p = innerAt(t);
+        return { x: p.x + normalX * thick, y: p.y + normalY * thick };
+      };
+      // Helper: outer position — mitered at room corners, perpendicular mid-edge
+      const wallOuterAt = (t) => {
+        if (t < 0.001) return { x: OA.x, y: OA.y };
+        if (t > 0.999) return { x: OB.x, y: OB.y };
+        return straightOuterAt(t);
+      };
 
       // Draw wall with doorway gaps
       const doorways = ep?.doorways || [];
@@ -1578,7 +1590,7 @@ export function renderPlanSvg({
         if (dwStart > cursor + 0.5) {
           const tC = cursor / L, tD = dwStart / L;
           const iC = innerAt(tC), iD = innerAt(tD);
-          const oC = outerAt(tC), oD = outerAt(tD);
+          const oC = wallOuterAt(tC), oD = wallOuterAt(tD);
           const segD = `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`;
           const wallSeg = svgEl("path", {
             d: segD, fill: wallFill, stroke: wallStroke, "stroke-width": 0.5,
@@ -1603,7 +1615,7 @@ export function renderPlanSvg({
       if (cursor < L - 0.5) {
         const tC = cursor / L, tD = 1;
         const iC = innerAt(tC), iD = innerAt(tD);
-        const oC = outerAt(tC), oD = outerAt(tD);
+        const oC = wallOuterAt(tC), oD = wallOuterAt(tD);
         const segD = `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`;
         const wallSeg = svgEl("path", {
           d: segD, fill: wallFill, stroke: wallStroke, "stroke-width": 0.5,
@@ -1629,10 +1641,9 @@ export function renderPlanSvg({
         const dwWidth = dwEnd - dwStart;
         if (dwWidth < 0.5) continue;
 
-        // Compute the four corners of the doorway rectangle
         const tS = dwStart / L, tE = dwEnd / L;
         const iS = innerAt(tS), iE = innerAt(tE);
-        const oS = outerAt(tS), oE = outerAt(tE);
+        const oS = straightOuterAt(tS), oE = straightOuterAt(tE);
 
         const isDwSel = (dw.id === selectedDoorwayId);
         const dwFill = isDwSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)";
