@@ -880,7 +880,8 @@ function renderPlanningSection(state, opts) {
         selectedExclId = null;
         setSelectedWallEdge(edgeIndex);
       },
-      onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown
+      onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
+      onDoorwayResizePointerDown: doorwayDragController.onDoorwayResizePointerDown
     });
   }
   updateDoorButtonState();

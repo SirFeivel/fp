@@ -1319,7 +1319,8 @@ export function renderPlanSvg({
   selectedWallEdge = null,
   selectedDoorwayId = null,
   onWallClick = null,
-  onDoorwayPointerDown = null
+  onDoorwayPointerDown = null,
+  onDoorwayResizePointerDown = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = getCurrentRoom(state);
@@ -1717,6 +1718,40 @@ export function renderPlanSvg({
           const rightDist = L - dwEnd;
           if (rightDist > 1) {
             drawIndicator(dwOuterEnd, edgeEnd, rightDist);
+          }
+
+          // Resize handles at left and right edges of doorway
+          if (onDoorwayResizePointerDown) {
+            const handleR = thick * 0.4;
+            const handleStyle = {
+              fill: "var(--accent, #3b82f6)", stroke: "#fff", "stroke-width": 1.5,
+              "pointer-events": "auto"
+            };
+            // Midpoints of left and right edges
+            const lMid = { x: (iS.x + oS.x) / 2, y: (iS.y + oS.y) / 2 };
+            const rMid = { x: (iE.x + oE.x) / 2, y: (iE.y + oE.y) / 2 };
+
+            const lHandle = svgEl("circle", {
+              ...handleStyle, cx: lMid.x, cy: lMid.y, r: handleR,
+              cursor: "ew-resize", "data-doorway-id": dw.id,
+              "data-wall-edge": i, "data-doorway-resize": "start"
+            });
+            lHandle.addEventListener("pointerdown", (e) => {
+              e.stopPropagation();
+              onDoorwayResizePointerDown(e, dw.id, i, "start");
+            });
+            svg.appendChild(lHandle);
+
+            const rHandle = svgEl("circle", {
+              ...handleStyle, cx: rMid.x, cy: rMid.y, r: handleR,
+              cursor: "ew-resize", "data-doorway-id": dw.id,
+              "data-wall-edge": i, "data-doorway-resize": "end"
+            });
+            rHandle.addEventListener("pointerdown", (e) => {
+              e.stopPropagation();
+              onDoorwayResizePointerDown(e, dw.id, i, "end");
+            });
+            svg.appendChild(rHandle);
           }
         }
       }

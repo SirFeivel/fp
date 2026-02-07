@@ -1513,5 +1513,151 @@ export function createDoorwayDragController({
     svg.addEventListener("pointercancel", onSvgPointerUp, { once: true });
   }
 
-  return { onDoorwayPointerDown, cancelPendingRender };
+  // --- Doorway resize ---
+  let resizeDrag = null;
+  let resizeStartState = null;
+
+  function onDoorwayResizePointerDown(e, doorwayId, edgeIndex, handleSide) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    if (!room?.polygonVertices?.length) return;
+
+    const verts = room.polygonVertices;
+    const A = verts[edgeIndex];
+    const B = verts[(edgeIndex + 1) % verts.length];
+    const edgeDx = B.x - A.x;
+    const edgeDy = B.y - A.y;
+    const L = Math.hypot(edgeDx, edgeDy);
+    if (L < 1) return;
+
+    const edgeDirX = edgeDx / L;
+    const edgeDirY = edgeDy / L;
+
+    const ep = room.edgeProperties?.[edgeIndex];
+    const dw = ep?.doorways?.find(d => d.id === doorwayId);
+    if (!dw) return;
+
+    if (setSelectedDoorway) setSelectedDoorway(doorwayId);
+
+    const svg = getSvg();
+    svg.setPointerCapture(e.pointerId);
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    resizeStartState = deepClone(state);
+
+    // Compute min/max for the dragged edge based on siblings
+    const siblings = (ep?.doorways || []).filter(d => d.id !== doorwayId);
+    const vOverlapping = siblings.filter(sib => {
+      return (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
+        (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
+    });
+
+    let minEdgePos, maxEdgePos; // absolute position of the dragged edge along the wall
+    if (handleSide === "start") {
+      // Dragging left edge: can go from 0 (or right edge of left sibling) to offset + width - MIN
+      minEdgePos = 0;
+      for (const sib of vOverlapping) {
+        const sibRight = sib.offsetCm + sib.widthCm;
+        if (sibRight <= dw.offsetCm + 0.01) {
+          minEdgePos = Math.max(minEdgePos, sibRight);
+        }
+      }
+      maxEdgePos = dw.offsetCm + dw.widthCm - 20; // minimum doorway width 20cm
+    } else {
+      // Dragging right edge: from offset + MIN to edge end (or left edge of right sibling)
+      minEdgePos = dw.offsetCm + 20;
+      maxEdgePos = L;
+      for (const sib of vOverlapping) {
+        if (sib.offsetCm >= dw.offsetCm + dw.widthCm - 0.01) {
+          maxEdgePos = Math.min(maxEdgePos, sib.offsetCm);
+        }
+      }
+    }
+
+    resizeDrag = {
+      doorwayId,
+      edgeIndex,
+      handleSide,
+      startMouse,
+      edgeDirX,
+      edgeDirY,
+      edgeLen: L,
+      startOffset: dw.offsetCm,
+      startWidth: dw.widthCm,
+      minEdgePos,
+      maxEdgePos,
+      currentOffset: dw.offsetCm,
+      currentWidth: dw.widthCm,
+    };
+
+    svg.addEventListener("pointermove", onResizeMove);
+    svg.addEventListener("pointerup", onResizeUp, { once: true });
+    svg.addEventListener("pointercancel", onResizeUp, { once: true });
+  }
+
+  function onResizeMove(e) {
+    if (!resizeDrag) return;
+    const svg = getSvg();
+    const cur = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const dx = cur.x - resizeDrag.startMouse.x;
+    const dy = cur.y - resizeDrag.startMouse.y;
+    const delta = dx * resizeDrag.edgeDirX + dy * resizeDrag.edgeDirY;
+
+    if (resizeDrag.handleSide === "start") {
+      // Moving left edge: offset changes, width adjusts inversely
+      const newEdgePos = Math.max(resizeDrag.minEdgePos, Math.min(resizeDrag.maxEdgePos,
+        resizeDrag.startOffset + delta));
+      resizeDrag.currentOffset = snapToMm(newEdgePos);
+      resizeDrag.currentWidth = snapToMm(resizeDrag.startOffset + resizeDrag.startWidth - newEdgePos);
+    } else {
+      // Moving right edge: width changes
+      const newEdgePos = Math.max(resizeDrag.minEdgePos, Math.min(resizeDrag.maxEdgePos,
+        resizeDrag.startOffset + resizeDrag.startWidth + delta));
+      resizeDrag.currentOffset = resizeDrag.startOffset;
+      resizeDrag.currentWidth = snapToMm(newEdgePos - resizeDrag.startOffset);
+    }
+
+    const text = `${formatCm(resizeDrag.currentWidth)} cm`;
+    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, cur);
+  }
+
+  function onResizeUp() {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onResizeMove);
+    hideResizeOverlay();
+
+    if (!resizeDrag || !resizeStartState) {
+      resizeDrag = null;
+      resizeStartState = null;
+      return;
+    }
+
+    const changed = Math.abs(resizeDrag.currentWidth - resizeDrag.startWidth) > 0.05 ||
+      Math.abs(resizeDrag.currentOffset - resizeDrag.startOffset) > 0.05;
+
+    if (changed) {
+      const finalState = deepClone(resizeStartState);
+      const room = getCurrentRoom(finalState);
+      const floor = getCurrentFloor(finalState);
+      const ep = room?.edgeProperties?.[resizeDrag.edgeIndex];
+      const dw = ep?.doorways?.find(d => d.id === resizeDrag.doorwayId);
+      if (dw) {
+        dw.offsetCm = resizeDrag.currentOffset;
+        dw.widthCm = resizeDrag.currentWidth;
+      }
+      if (room && floor) {
+        ensureRoomWalls(room, floor, { forceRegenerate: true });
+      }
+      commit(getMoveLabel?.() || "Doorway resized", finalState);
+    } else {
+      if (render) render();
+    }
+
+    resizeDrag = null;
+    resizeStartState = null;
+  }
+
+  return { onDoorwayPointerDown, onDoorwayResizePointerDown, cancelPendingRender };
 }
