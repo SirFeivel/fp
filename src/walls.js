@@ -164,7 +164,8 @@ export function syncFloorWalls(floor) {
       const wall = wallByEdgeKey.get(key);
       if (!wall) continue;
 
-      const matches = findSharedEdgeMatches(room, i, otherRooms);
+      const wallTolerance = (wall.thicknessCm ?? 12) + 1;
+      const matches = findSharedEdgeMatches(room, i, otherRooms, wallTolerance);
       for (const match of matches) {
         // Check if the other room already has a surface on this wall
         const existing = wall.surfaces.find(
@@ -293,6 +294,41 @@ export function syncFloorWalls(floor) {
     if (wall.roomEdge && roomIds.has(wall.roomEdge.roomId)) return true;
     return false;
   });
+
+  // 6. Enforce adjacent room positions for shared walls.
+  // The adjacent room's touching edge must sit at the wall's outer edge
+  // (i.e. perpendicular distance from inner edge = wall thickness).
+  for (const wall of floor.walls) {
+    if (wall.surfaces.length < 2) continue;
+    const ownerRoomId = wall.roomEdge?.roomId;
+    if (!ownerRoomId) continue;
+
+    const normal = getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? 12;
+
+    const adjSurf = wall.surfaces.find(s => s.roomId !== ownerRoomId);
+    if (!adjSurf) continue;
+
+    const adjRoom = floor.rooms.find(r => r.id === adjSurf.roomId);
+    if (!adjRoom?.polygonVertices?.length) continue;
+
+    // Measure current perpendicular distance from adjacent edge vertex to wall inner edge
+    const adjPos = adjRoom.floorPosition || { x: 0, y: 0 };
+    const adjVertex = adjRoom.polygonVertices[adjSurf.edgeIndex];
+    if (!adjVertex) continue;
+
+    const currentDist =
+      (adjPos.x + adjVertex.x - wall.start.x) * normal.x +
+      (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
+
+    const delta = thick - currentDist;
+    if (Math.abs(delta) < 0.5) continue;
+
+    adjRoom.floorPosition = {
+      x: adjPos.x + normal.x * delta,
+      y: adjPos.y + normal.y * delta,
+    };
+  }
 }
 
 /**

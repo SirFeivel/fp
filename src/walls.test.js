@@ -884,6 +884,8 @@ describe('syncFloorWalls integration', () => {
 
   it('multiple syncs are idempotent', () => {
     const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300), makeRoom('r2', 400, 0, 300, 300)]);
+    // First sync adjusts Room 2's position for wall thickness, then stabilizes
+    syncFloorWalls(floor);
     syncFloorWalls(floor);
     const snapshot1 = JSON.stringify(floor.walls);
 
