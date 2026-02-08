@@ -491,6 +491,11 @@ function prepareFloorWallData(state, floor) {
       const surfHStart = hStart + (hEnd - hStart) * tStart;
       const surfHEnd = hStart + (hEnd - hStart) * tEnd;
 
+      // Fraction along the extended wall where this surface sits
+      const totalLen = edgeLength + extS + extE;
+      const fromFrac = totalLen > 0 ? (surfFromCm + extS) / totalLen : 0;
+      const toFrac = totalLen > 0 ? (surfToCm + extS) / totalLen : 1;
+
       return {
         roomId: surface.roomId,
         edgeIndex: surface.edgeIndex,
@@ -500,6 +505,8 @@ function prepareFloorWallData(state, floor) {
         hStart: surfHStart,
         hEnd: surfHEnd,
         groutColor: region.grout?.colorHex || "#ffffff",
+        fromFrac,
+        toFrac,
       };
     }).filter(Boolean);
 

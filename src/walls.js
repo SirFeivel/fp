@@ -142,9 +142,12 @@ export function syncFloorWalls(floor) {
       if (!hasOwnSurface) {
         wall.surfaces.push(createDefaultSurface("left", room.id, i, 0, edgeLen));
       } else {
-        // Update surface range to match current edge length
+        // Update surface range to match current edge length.
+        // Reset fromCm=0 because wall.start was just set to this room's edge start;
+        // step 3 will shift it if the wall gets extended for shared edges.
         for (const s of wall.surfaces) {
           if (s.roomId === room.id && s.edgeIndex === i) {
+            s.fromCm = 0;
             s.toCm = edgeLen;
           }
         }

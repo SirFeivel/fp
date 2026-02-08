@@ -709,10 +709,22 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       const faceStart = isOwner ? wallDesc.start : wallDesc.outerStart;
       const faceEnd = isOwner ? wallDesc.end : wallDesc.outerEnd;
 
+      // Position tiles at the surface's from/to subsection of the wall face
+      const ff = surf.fromFrac ?? 0;
+      const tf = surf.toFrac ?? 1;
+      const surfStart = {
+        x: faceStart.x + ff * (faceEnd.x - faceStart.x),
+        y: faceStart.y + ff * (faceEnd.y - faceStart.y),
+      };
+      const surfEnd = {
+        x: faceStart.x + tf * (faceEnd.x - faceStart.x),
+        y: faceStart.y + tf * (faceEnd.y - faceStart.y),
+      };
+
       const mapper = createWallMapper(
         surf.surfaceVerts,
-        faceStart.x, faceStart.y,
-        faceEnd.x, faceEnd.y,
+        surfStart.x, surfStart.y,
+        surfEnd.x, surfEnd.y,
         surf.hStart, surf.hEnd
       );
       if (!mapper) continue;
