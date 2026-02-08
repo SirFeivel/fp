@@ -12,12 +12,12 @@ import {
   DEFAULT_WASTE,
   DEFAULT_SKIRTING_CONFIG,
   DEFAULT_SKIRTING_PRESET,
-  DEFAULT_EDGE_PROPERTIES,
   showUserWarning
 } from './core.js';
 import { clearMetricsCache } from './calc.js';
 import { areRoomsAdjacent } from './floor_geometry.js';
 import { computeCompositePolygon } from './composite.js';
+import { syncFloorWalls } from './walls.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
@@ -58,6 +58,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
     if (s.meta?.version === 11) {
       s = migrateV11ToV12(s);
+    }
+    if (s.meta?.version === 12) {
+      s = migrateV12ToV13(s);
     }
 
     if (s.tile || s.grout || s.pattern) {
@@ -129,6 +132,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (typeof s.waste.optimizeCuts !== "boolean") s.waste.optimizeCuts = DEFAULT_WASTE.optimizeCuts;
     if (!Number.isFinite(s.waste.kerfCm)) s.waste.kerfCm = DEFAULT_WASTE.kerfCm;
 
+    if (s.selectedWallId === undefined) s.selectedWallId = null;
+    if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
+
     if (!s.materials) s.materials = {};
     if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
     if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
@@ -140,7 +146,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
         if (!floor.patternGroups) floor.patternGroups = [];
-        if (!floor.doorways) floor.doorways = [];
+        if (!floor.walls) floor.walls = [];
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
@@ -206,37 +212,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               ];
             }
 
-            // Ensure edgeProperties on floor rooms (not wall surfaces)
-            if (!room.sourceRoomId) {
-              const edgeCount = room.polygonVertices.length;
-              if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
-                const wallH = room.wallHeightCm ?? 200;
-                room.edgeProperties = Array.from({ length: edgeCount }, () => ({
-                  ...DEFAULT_EDGE_PROPERTIES,
-                  heightStartCm: wallH,
-                  heightEndCm: wallH
-                }));
-              }
-              // Remove legacy doorways from edgeProperties (moved to floor.doorways)
-              for (const ep of room.edgeProperties) {
-                delete ep.doorways;
-              }
-            }
           }
-        }
-
-        // Clean up floor.doorways: remove entries referencing deleted rooms or invalid edges
-        if (Array.isArray(floor.doorways)) {
-          const roomIds = new Set((floor.rooms || []).filter(r => !r.sourceRoomId).map(r => r.id));
-          const roomsById = new Map((floor.rooms || []).filter(r => !r.sourceRoomId).map(r => [r.id, r]));
-          floor.doorways = floor.doorways.filter(dw => {
-            if (!dw || !dw.id || !roomIds.has(dw.roomId)) return false;
-            const ownerRoom = roomsById.get(dw.roomId);
-            const edgeCount = ownerRoom?.polygonVertices?.length || 0;
-            if (dw.edgeIndex < 0 || dw.edgeIndex >= edgeCount) return false;
-            if (dw.elevationCm == null) dw.elevationCm = 0;
-            return true;
-          });
         }
 
         // Validate pattern groups
@@ -577,9 +553,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
     for (const floor of s.floors) {
       for (const room of floor.rooms || []) {
-        // Skip wall surfaces (rooms with sourceRoomId)
         if (room.sourceRoomId) continue;
-        // Skip rooms without polygon vertices
         if (!room.polygonVertices || room.polygonVertices.length < 3) continue;
 
         const edgeCount = room.polygonVertices.length;
@@ -587,15 +561,67 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
         if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
           room.edgeProperties = Array.from({ length: edgeCount }, () => ({
-            ...DEFAULT_EDGE_PROPERTIES,
+            thicknessCm: 12,
             heightStartCm: wallH,
             heightEndCm: wallH
           }));
         }
       }
-      // Initialize floor.doorways if not present
       if (!floor.doorways) floor.doorways = [];
     }
+
+    return s;
+  }
+
+  function migrateV12ToV13(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 13;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    for (const floor of s.floors) {
+      // 1. Strip wall "rooms" (rooms with sourceRoomId) from floor.rooms[]
+      floor.rooms = (floor.rooms || []).filter(r => !r.sourceRoomId);
+
+      // 2. Strip edgeProperties and wallHeightCm from rooms
+      for (const room of floor.rooms) {
+        delete room.edgeProperties;
+        delete room.wallHeightCm;
+      }
+
+      // 3. Initialize floor.walls from room edges
+      floor.walls = [];
+
+      // 4. Migrate floor.doorways into wall entities
+      const oldDoorways = floor.doorways || [];
+
+      // 5. Sync walls from room geometry
+      syncFloorWalls(floor);
+
+      // 6. Migrate old doorways into the new wall entities
+      for (const dw of oldDoorways) {
+        // Find the wall for this doorway's room edge
+        const wall = floor.walls.find(
+          w => w.roomEdge && w.roomEdge.roomId === dw.roomId && w.roomEdge.edgeIndex === dw.edgeIndex
+        );
+        if (wall) {
+          wall.doorways.push({
+            id: dw.id,
+            offsetCm: dw.offsetCm,
+            widthCm: dw.widthCm,
+            heightCm: dw.heightCm,
+            elevationCm: dw.elevationCm || 0,
+          });
+        }
+      }
+
+      // 7. Remove floor.doorways
+      delete floor.doorways;
+    }
+
+    // 8. Add new state fields
+    if (s.selectedWallId === undefined) s.selectedWallId = null;
+    if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
 
     return s;
   }

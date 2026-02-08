@@ -216,9 +216,6 @@ export function getSharedEdgeLength(roomA, roomB, tolerance = 1) {
  * @returns {boolean}
  */
 export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 10) {
-  // Skip if either room is a wall (walls don't participate in adjacency)
-  if (roomA.sourceRoomId || roomB.sourceRoomId) return false;
-
   // Quick bounding box check first (optimization)
   const boundsA = getRoomAbsoluteBounds(roomA);
   const boundsB = getRoomAbsoluteBounds(roomB);
@@ -245,10 +242,10 @@ export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 
  */
 export function findAdjacentRooms(floor, roomId, tolerance = 1) {
   const targetRoom = floor?.rooms?.find(r => r.id === roomId);
-  if (!targetRoom || targetRoom.sourceRoomId) return []; // Walls have no adjacent rooms
+  if (!targetRoom) return [];
 
   return floor.rooms.filter(room =>
-    room.id !== roomId && !room.sourceRoomId && areRoomsAdjacent(targetRoom, room, tolerance)
+    room.id !== roomId && areRoomsAdjacent(targetRoom, room, tolerance)
   );
 }
 
@@ -291,9 +288,6 @@ export function getRoomAbsoluteBounds(room) {
  * @returns {boolean}
  */
 export function doRoomsOverlap(roomA, roomB, tolerance = 0.1) {
-  // Walls don't participate in overlap detection (they're vertical surfaces, not floor area)
-  if (roomA.sourceRoomId || roomB.sourceRoomId) return false;
-
   const a = getRoomAbsoluteBounds(roomA);
   const b = getRoomAbsoluteBounds(roomB);
 
@@ -313,15 +307,11 @@ export function doRoomsOverlap(roomA, roomB, tolerance = 0.1) {
  * @returns {boolean}
  */
 export function wouldRoomOverlap(room, otherRooms, newX, newY) {
-  // Walls don't participate in overlap detection
-  if (room.sourceRoomId) return false;
-
   const testRoom = {
     ...room,
     floorPosition: { x: newX, y: newY }
   };
-  // Filter out walls from collision check
-  return otherRooms.filter(r => !r.sourceRoomId).some(other => doRoomsOverlap(testRoom, other));
+  return otherRooms.some(other => doRoomsOverlap(testRoom, other));
 }
 
 /**
@@ -863,11 +853,6 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
     return { modifiedRoomIds, errors };
   }
 
-  // Walls don't participate in area subtraction
-  if (newRoom.sourceRoomId) {
-    return { modifiedRoomIds, errors };
-  }
-
   // Get the new room's polygon in floor coordinates
   const newRoomPolygon = getRoomPolygonOnFloor(newRoom);
   if (!newRoomPolygon || newRoomPolygon.length === 0) {
@@ -875,8 +860,6 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
   }
 
   for (const existingRoom of existingRooms) {
-    // Skip walls - they don't occupy floor space
-    if (existingRoom.sourceRoomId) continue;
     // Skip rooms that clearly don't overlap (bounding box check)
     const newBounds = getRoomAbsoluteBounds(newRoom);
     const existingBounds = getRoomAbsoluteBounds(existingRoom);
@@ -1118,8 +1101,7 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
     return { valid: true, groups: [], message: 'No rooms to validate' };
   }
 
-  // Filter out wall surfaces (child objects) - only check connectivity for actual floor rooms
-  const floorRooms = floor.rooms.filter(r => !r.sourceRoomId);
+  const floorRooms = floor.rooms || [];
 
   if (floorRooms.length === 0) {
     return { valid: true, groups: [], message: 'No rooms to validate' };
@@ -1356,7 +1338,7 @@ export function findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance = 1
   const matches = [];
 
   for (const other of otherRooms) {
-    if (other.id === room.id || other.sourceRoomId) continue;
+    if (other.id === room.id) continue;
     const oVerts = other.polygonVertices;
     if (!oVerts || oVerts.length < 3) continue;
 
@@ -1411,122 +1393,46 @@ export function findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance = 1
 }
 
 /**
- * Collect all doorways that affect a room edge, including doorways from
- * adjacent rooms on shared (collinear) edges.  Doorway positions are mapped
- * to the *source* edge's local coordinate space (offsetCm along the edge).
+ * Collect all doorways that affect a room edge.
+ * Doorways are stored on wall entities in floor.walls[].
+ * A shared wall's doorways are automatically visible from both sides.
  *
- * Doorways are read from floor.doorways[] (floor-level storage).
- *
- * @param {Object} floor - Floor object with doorways[] array
+ * @param {Object} floor - Floor object with walls[] array
  * @param {Object} room - Room with polygonVertices, floorPosition
  * @param {number} edgeIndex - Edge index
- * @param {Array} otherRooms - Other rooms on the floor
- * @param {number} [tolerance=1] - Distance tolerance for shared edge detection
- * @returns {Array<{id: string, offsetCm: number, widthCm: number, heightCm: number,
- *   elevationCm: number, sourceRoomId: string, sourceEdgeIndex: number}>}
+ * @param {Array} [_otherRooms] - Unused (kept for backward compatibility)
+ * @param {number} [_tolerance] - Unused (kept for backward compatibility)
+ * @returns {Array<{id: string, offsetCm: number, widthCm: number, heightCm: number, elevationCm: number}>}
  */
-export function collectEdgeDoorways(floor, room, edgeIndex, otherRooms, tolerance = 1) {
-  const result = [];
-  const floorDoorways = floor?.doorways || [];
-
-  // 1. Own doorways on this edge
-  const ownDoorways = floorDoorways.filter(dw => dw.roomId === room.id && dw.edgeIndex === edgeIndex);
-  for (const dw of ownDoorways) {
-    result.push({
-      id: dw.id,
-      offsetCm: dw.offsetCm,
-      widthCm: dw.widthCm,
-      heightCm: dw.heightCm,
-      elevationCm: dw.elevationCm || 0,
-      sourceRoomId: room.id,
-      sourceEdgeIndex: edgeIndex,
-    });
-  }
-
-  // 2. Doorways from adjacent rooms on shared edges
-  const matches = findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance);
-
-  for (const match of matches) {
-    const targetDoorways = floorDoorways.filter(
-      dw => dw.roomId === match.room.id && dw.edgeIndex === match.edgeIndex
-    );
-    if (targetDoorways.length === 0) continue;
-
-    const { sourceEdgeOrigin: sO, sourceEdgeDir: sD } = match;
-    const { targetEdgeOrigin: tO, targetEdgeDir: tD } = match;
-
-    for (const dw of targetDoorways) {
-      // Doorway start/end in floor coordinates (along target edge)
-      const dwStartX = tO.x + tD.x * dw.offsetCm;
-      const dwStartY = tO.y + tD.y * dw.offsetCm;
-      const dwEndX = tO.x + tD.x * (dw.offsetCm + dw.widthCm);
-      const dwEndY = tO.y + tD.y * (dw.offsetCm + dw.widthCm);
-
-      // Project onto source edge to get offset in source space
-      const proj1 = (dwStartX - sO.x) * sD.x + (dwStartY - sO.y) * sD.y;
-      const proj2 = (dwEndX - sO.x) * sD.x + (dwEndY - sO.y) * sD.y;
-
-      const mappedOffset = Math.max(0, Math.min(proj1, proj2));
-      const mappedEnd = Math.min(match.sourceEdgeLen, Math.max(proj1, proj2));
-      const mappedWidth = mappedEnd - mappedOffset;
-
-      if (mappedWidth < 1) continue;
-
-      result.push({
-        id: dw.id,
-        offsetCm: mappedOffset,
-        widthCm: mappedWidth,
-        heightCm: dw.heightCm,
-        elevationCm: dw.elevationCm || 0,
-        sourceRoomId: match.room.id,
-        sourceEdgeIndex: match.edgeIndex,
-      });
-    }
-  }
-
-  return result;
+export function collectEdgeDoorways(floor, room, edgeIndex, _otherRooms, _tolerance) {
+  if (!floor?.walls) return [];
+  // Find wall for this room edge (inline lookup to avoid circular import with walls.js)
+  const wall = floor.walls.find(
+    w => (w.roomEdge && w.roomEdge.roomId === room.id && w.roomEdge.edgeIndex === edgeIndex)
+  ) || floor.walls.find(
+    w => w.surfaces.some(s => s.roomId === room.id && s.edgeIndex === edgeIndex)
+  );
+  if (!wall) return [];
+  return (wall.doorways || []).map(dw => ({
+    id: dw.id,
+    offsetCm: dw.offsetCm,
+    widthCm: dw.widthCm,
+    heightCm: dw.heightCm,
+    elevationCm: dw.elevationCm || 0,
+  }));
 }
 
 /**
  * Map an offset from the current edge space to the doorway's owning edge space.
- * If the doorway is on the current room's edge, returns newOffset directly.
- * For cross-room doorways, projects the offset using findSharedEdgeMatches.
+ * In the new wall system, doorways are stored in wall-space so no mapping is needed.
  *
- * @param {Object} floor - Floor object with doorways[]
- * @param {Object} doorway - The doorway object from floor.doorways
- * @param {Object} currentRoom - The room whose edge the user is interacting with
- * @param {number} currentEdgeIndex - The edge index in currentRoom
- * @param {number} newOffset - The new offset in currentRoom's edge space
- * @returns {number} The offset in the doorway's owning edge space
+ * @param {Object} _floor - Unused
+ * @param {Object} _doorway - Unused
+ * @param {Object} _currentRoom - Unused
+ * @param {number} _currentEdgeIndex - Unused
+ * @param {number} newOffset - The offset value
+ * @returns {number} The offset unchanged
  */
-export function mapOffsetToOwnerEdge(floor, doorway, currentRoom, currentEdgeIndex, newOffset) {
-  // If doorway belongs to this room's edge, no mapping needed
-  if (doorway.roomId === currentRoom.id && doorway.edgeIndex === currentEdgeIndex) {
-    return newOffset;
-  }
-
-  // Find the owner room
-  const ownerRoom = floor.rooms?.find(r => r.id === doorway.roomId);
-  if (!ownerRoom) return newOffset;
-
-  // Find shared edge match between current room's edge and owner room's edge
-  const otherRooms = floor.rooms.filter(r => r.id !== currentRoom.id && !r.sourceRoomId && !(r.circle?.rx > 0));
-  const matches = findSharedEdgeMatches(currentRoom, currentEdgeIndex, otherRooms);
-
-  for (const match of matches) {
-    if (match.room.id !== ownerRoom.id || match.edgeIndex !== doorway.edgeIndex) continue;
-
-    const { sourceEdgeOrigin: sO, sourceEdgeDir: sD } = match;
-    const { targetEdgeOrigin: tO, targetEdgeDir: tD } = match;
-
-    // Convert newOffset from source edge to floor coordinates
-    const floorX = sO.x + sD.x * newOffset;
-    const floorY = sO.y + sD.y * newOffset;
-
-    // Project onto target edge
-    const projectedOffset = (floorX - tO.x) * tD.x + (floorY - tO.y) * tD.y;
-    return Math.max(0, projectedOffset);
-  }
-
+export function mapOffsetToOwnerEdge(_floor, _doorway, _currentRoom, _currentEdgeIndex, newOffset) {
   return newOffset;
 }

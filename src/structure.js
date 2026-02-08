@@ -1,9 +1,10 @@
-import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate, DEFAULT_EDGE_PROPERTIES } from './core.js';
+import { uuid, deepClone, getCurrentRoom, getCurrentFloor, getDefaultTilePresetTemplate } from './core.js';
 import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 import { showAlert } from './dialog.js';
-import { createSurface, ensureRoomWalls } from './surface.js';
+import { createSurface } from './surface.js';
 import { getRoomPatternGroup, createPatternGroup, addRoomToPatternGroup } from './pattern-groups.js';
+import { syncFloorWalls, getWallsForRoom } from './walls.js';
 
 export function createStructureController({
   store,
@@ -54,8 +55,7 @@ export function createStructureController({
       return;
     }
 
-    // Filter out walls - only show floor rooms
-    const floorRooms = currentFloor.rooms.filter(r => !r.sourceRoomId);
+    const floorRooms = currentFloor.rooms;
 
     if (floorRooms.length === 0) {
       const opt = document.createElement("option");
@@ -95,28 +95,25 @@ export function createStructureController({
       return;
     }
 
-    // Resolve to parent room if a wall is currently selected
-    const parentRoom = currentRoom.sourceRoomId
-      ? currentFloor.rooms.find(r => r.id === currentRoom.sourceRoomId) || currentRoom
-      : currentRoom;
-
-    // Get walls for this room
-    const walls = currentFloor.rooms.filter(r => r.sourceRoomId === parentRoom.id);
+    // Get walls for this room from floor.walls[]
+    const walls = getWallsForRoom(currentFloor, currentRoom.id);
 
     sel.disabled = false;
 
     // Floor surface (the room itself) is always the first entry
     const floorOpt = document.createElement("option");
-    floorOpt.value = parentRoom.id;
+    floorOpt.value = "";
     floorOpt.textContent = t("tabs.floorSurface") || "Floor";
-    if (parentRoom.id === state.selectedRoomId) floorOpt.selected = true;
+    if (!state.selectedWallId) floorOpt.selected = true;
     sel.appendChild(floorOpt);
 
-    for (const wall of walls) {
+    for (let i = 0; i < walls.length; i++) {
+      const wall = walls[i];
+      const edgeIdx = wall.roomEdge?.edgeIndex ?? i;
       const opt = document.createElement("option");
       opt.value = wall.id;
-      opt.textContent = wall.name;
-      if (wall.id === state.selectedRoomId) opt.selected = true;
+      opt.textContent = `${currentRoom.name} · Wall ${edgeIdx + 1}`;
+      if (wall.id === state.selectedWallId) opt.selected = true;
       sel.appendChild(opt);
     }
   }
@@ -140,12 +137,14 @@ export function createStructureController({
         enabled: false
       },
       patternGroups: [],
-      rooms: []
+      rooms: [],
+      walls: []
     };
 
     next.floors.push(newFloor);
     next.selectedFloorId = newFloor.id;
     next.selectedRoomId = null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.floorAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -171,6 +170,7 @@ export function createStructureController({
     const firstFloor = next.floors[0];
     next.selectedFloorId = firstFloor.id;
     next.selectedRoomId = firstFloor.rooms?.[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.floorDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -180,7 +180,6 @@ export function createStructureController({
    * Find a position for a new room on a free edge of existing rooms
    */
   function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
-    // If no existing rooms, center on background image or use origin
     if (!existingRooms || existingRooms.length === 0) {
       const bg = floor?.layout?.background;
       if (bg?.nativeWidth && bg?.nativeHeight) {
@@ -196,13 +195,11 @@ export function createStructureController({
       return { x: 0, y: 0 };
     }
 
-    // Use free edge detection to find optimal position
     const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
     if (position) {
       return { x: position.x, y: position.y };
     }
 
-    // Fallback: find the rightmost edge of all existing rooms
     let maxRight = -Infinity;
     let topAtMaxRight = 0;
 
@@ -214,7 +211,6 @@ export function createStructureController({
       }
     }
 
-    // Place new room to the right of the rightmost room
     return { x: maxRight, y: topAtMaxRight };
   }
 
@@ -228,7 +224,7 @@ export function createStructureController({
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
     const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
-    const floorRoomCount = currentFloor.rooms.filter(r => !r.sourceRoomId).length;
+    const floorRoomCount = currentFloor.rooms.length;
     const newRoom = createSurface({
       name: `${t("room.newRoom")} ${floorRoomCount + 1}`,
       widthCm: 600,
@@ -245,32 +241,16 @@ export function createStructureController({
       },
     });
 
-    // Initialize edgeProperties for the new room
-    const edgeCount = newRoom.polygonVertices?.length || 4;
-    newRoom.edgeProperties = Array.from({ length: edgeCount }, () => ({
-      ...DEFAULT_EDGE_PROPERTIES
-    }));
-
     // Find a connected position for the new room
     const connectedPos = findConnectedPositionForNewRoom(newRoom, currentFloor.rooms, currentFloor);
     newRoom.floorPosition = connectedPos;
 
     currentFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
+    next.selectedWallId = null;
 
-    // Auto-generate walls for new room
-    const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, currentFloor);
-
-    // Setup pattern group linking floor room to walls
-    if (needsPatternGroup && addedWalls.length > 0) {
-      const existingGroup = getRoomPatternGroup(currentFloor, newRoom.id);
-      let group = existingGroup || createPatternGroup(currentFloor, newRoom.id);
-      if (group) {
-        for (const wall of addedWalls) {
-          addRoomToPatternGroup(currentFloor, group.id, wall.id);
-        }
-      }
-    }
+    // Sync walls for the floor
+    syncFloorWalls(currentFloor);
 
     resetSelectedExcl();
     store.commit(t("structure.roomAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -288,19 +268,17 @@ export function createStructureController({
     const deletedRoomId = state.selectedRoomId;
     const beforeLen = nextFloor.rooms.length;
 
-    // Delete the room and all its child walls
-    nextFloor.rooms = nextFloor.rooms.filter(r =>
-      r.id !== deletedRoomId && r.sourceRoomId !== deletedRoomId
-    );
+    // Delete the room
+    nextFloor.rooms = nextFloor.rooms.filter(r => r.id !== deletedRoomId);
 
     if (nextFloor.rooms.length === beforeLen) return;
 
-    // Clean up floor-level doorways referencing the deleted room
-    nextFloor.doorways = (nextFloor.doorways || []).filter(d => d.roomId !== deletedRoomId);
+    // Sync walls (will clean up orphaned walls/surfaces)
+    syncFloorWalls(nextFloor);
 
-    // Select next non-wall room
-    const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
-    next.selectedRoomId = nonWallRooms[0]?.id || null;
+    // Select next room
+    next.selectedRoomId = nextFloor.rooms[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.roomDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -314,6 +292,7 @@ export function createStructureController({
 
     const floor = next.floors.find(f => f.id === floorId);
     next.selectedRoomId = floor?.rooms?.[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("room.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -324,6 +303,7 @@ export function createStructureController({
     const next = deepClone(state);
 
     next.selectedRoomId = roomId;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("room.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });

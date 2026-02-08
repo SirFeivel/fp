@@ -3,7 +3,7 @@ import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET, getWallSvgRotation, svgToLocalPoint, localToSvgPoint } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -11,8 +11,9 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeOriginPoint } from "./geometry.js";
-import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas, getEdgeFreeSegmentsByIndex, collectEdgeDoorways } from "./floor_geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
+import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, getWallNormal, wallSurfaceToTileableRegion } from "./walls.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -20,7 +21,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON } from "./constants.js";
-import { createSurface, unfoldRoomWalls, ensureRoomWalls, regenerateAdjacentWalls } from "./surface.js";
+import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
 
 import {
@@ -147,19 +148,19 @@ function addDoorwayToWall(edgeIndex) {
   const state = store.getState();
   const next = structuredClone(state);
   const room = getCurrentRoom(next);
-  if (!room || !Array.isArray(room.edgeProperties)) return;
-  if (edgeIndex < 0 || edgeIndex >= room.edgeProperties.length) return;
-  const ep = room.edgeProperties[edgeIndex];
+  if (!room) return;
   const nextFloor = getCurrentFloor(next);
   if (!nextFloor) return;
-  if (!nextFloor.doorways) nextFloor.doorways = [];
 
-  const wallH = room.wallHeightCm ?? 200;
-  const hStart = ep.heightStartCm ?? wallH;
-  const hEnd = ep.heightEndCm ?? wallH;
+  const wall = getWallForEdge(nextFloor, room.id, edgeIndex);
+  if (!wall) return;
+
+  const hStart = wall.heightStartCm ?? 200;
+  const hEnd = wall.heightEndCm ?? 200;
   const minWallH = Math.min(hStart, hEnd);
 
   const verts = room.polygonVertices;
+  if (!verts || edgeIndex < 0 || edgeIndex >= verts.length) return;
   const A = verts[edgeIndex];
   const B = verts[(edgeIndex + 1) % verts.length];
   const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
@@ -168,11 +169,7 @@ function addDoorwayToWall(edgeIndex) {
   const preferredWidth = 101;
   const preferredHeight = Math.min(211, Math.max(0, minWallH - 10));
 
-  // Collect all doorways on this edge (including cross-room) for gap-finding
-  const otherFloorRooms = (nextFloor.rooms || []).filter(
-    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
-  );
-  const allEdgeDoorways = collectEdgeDoorways(nextFloor, room, edgeIndex, otherFloorRooms);
+  const allEdgeDoorways = wall.doorways || [];
 
   const vOverlapping = allEdgeDoorways.filter(sib => {
     return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
@@ -181,7 +178,7 @@ function addDoorwayToWall(edgeIndex) {
   const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
 
   const MIN_DW = 20;
-  const gaps = []; // { start, size }
+  const gaps = [];
   let cursor = 0;
   for (const sib of sorted) {
     const gap = sib.offsetCm - cursor;
@@ -196,7 +193,6 @@ function addDoorwayToWall(edgeIndex) {
     return;
   }
 
-  // Pick the gap whose center is closest to edge center, then center doorway within it
   const edgeCenter = edgeLength / 2;
   let bestGap = gaps[0];
   let bestDist = Math.abs(bestGap.start + bestGap.size / 2 - edgeCenter);
@@ -211,16 +207,12 @@ function addDoorwayToWall(edgeIndex) {
 
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
-    roomId: room.id,
-    edgeIndex,
     offsetCm,
     widthCm: dwWidth,
     heightCm: Math.max(MIN_DW, dwHeight),
     elevationCm: dwElevation
   };
-  nextFloor.doorways.push(newDw);
-  ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
-  regenerateAdjacentWalls(room, nextFloor);
+  wall.doorways.push(newDw);
   selectedDoorwayId = newDw.id;
   store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
@@ -229,16 +221,11 @@ function deleteDoorway(doorwayId) {
   const state = store.getState();
   const next = structuredClone(state);
   const nextFloor = getCurrentFloor(next);
-  if (!nextFloor?.doorways) return;
-  const before = nextFloor.doorways.length;
-  nextFloor.doorways = nextFloor.doorways.filter(d => d.id !== doorwayId);
-  if (nextFloor.doorways.length === before) return;
-  // Regenerate walls for any room that might reference this doorway
-  const room = getCurrentRoom(next);
-  if (room && nextFloor) {
-    ensureRoomWalls(room, nextFloor, { forceRegenerate: true });
-    regenerateAdjacentWalls(room, nextFloor);
-  }
+  if (!nextFloor) return;
+
+  const result = findWallByDoorwayId(nextFloor, doorwayId);
+  if (!result) return;
+  result.wall.doorways = result.wall.doorways.filter(d => d.id !== doorwayId);
   selectedDoorwayId = null;
   store.commit(t("edge.removeDoorway"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
@@ -247,26 +234,18 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   const state = store.getState();
   const floor = getCurrentFloor(state);
   const room = getCurrentRoom(state);
-  if (!floor || !room?.edgeProperties?.[edgeIndex]) return;
-  const dw = floor.doorways?.find(d => d.id === doorwayId);
-  if (!dw) return;
+  if (!floor || !room) return;
 
-  // Compute edge length and wall heights at each end
-  // Use the doorway's owner room for edge geometry
-  const ownerRoom = floor.rooms?.find(r => r.id === dw.roomId) || room;
-  const verts = ownerRoom.polygonVertices;
-  const ownerEdge = dw.edgeIndex;
-  const A = verts[ownerEdge];
-  const B = verts[(ownerEdge + 1) % verts.length];
-  const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
-  const ep = ownerRoom.edgeProperties?.[ownerEdge];
-  const wallH = ownerRoom.wallHeightCm ?? 200;
-  const heightStartCm = ep?.heightStartCm ?? wallH;
-  const heightEndCm = ep?.heightEndCm ?? wallH;
+  const wallResult = findWallByDoorwayId(floor, doorwayId);
+  if (!wallResult) return;
+  const { wall, doorway: dw } = wallResult;
 
-  const siblings = (floor.doorways || []).filter(d =>
-    d.id !== doorwayId && d.roomId === dw.roomId && d.edgeIndex === dw.edgeIndex
-  );
+  // Compute edge length from wall endpoints
+  const edgeLength = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+  const heightStartCm = wall.heightStartCm ?? 200;
+  const heightEndCm = wall.heightEndCm ?? 200;
+
+  const siblings = (wall.doorways || []).filter(d => d.id !== doorwayId);
 
   const result = await showDoorwayEditor({
     title: t("edge.doorway"),
@@ -284,19 +263,15 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
   const next = structuredClone(store.getState());
   const nextFloor = getCurrentFloor(next);
   if (!nextFloor) return;
-  const nextDw = nextFloor.doorways?.find(d => d.id === doorwayId);
-  if (!nextDw) return;
+  const nextWallResult = findWallByDoorwayId(nextFloor, doorwayId);
+  if (!nextWallResult) return;
+  const nextDw = nextWallResult.doorway;
 
   nextDw.widthCm = result.widthCm;
   nextDw.heightCm = result.heightCm;
   nextDw.elevationCm = result.elevationCm;
   nextDw.offsetCm = result.offsetCm;
 
-  const nextRoom = getCurrentRoom(next);
-  if (nextRoom && nextFloor) {
-    ensureRoomWalls(nextRoom, nextFloor, { forceRegenerate: true });
-    regenerateAdjacentWalls(nextRoom, nextFloor);
-  }
   store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
 }
 
@@ -393,153 +368,88 @@ function prepareRoom3DData(state, room, floor) {
     groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
   }
 
-  // --- Generate wall tile data with seamless origin projection ---
-  const wallData = [];
-  const verts = room.polygonVertices;
-  const nVerts = verts?.length || 0;
-  // Other rooms on this floor (for shared-wall doorway collection and free-edge segments)
-  const otherFloorRooms = (floor?.rooms || []).filter(
-    r => r.id !== room.id && !r.sourceRoomId && !(r.circle && r.circle.rx > 0)
-  );
-  if (nVerts >= 3 && avail.mp) {
-    const wallH = room.wallHeightCm ?? 200;
-    const patternSettings = effectiveSettings?.pattern || room.pattern;
-    const floorRotDeg = Number(patternSettings?.rotationDeg) || 0;
-    const floorOffX = Number(patternSettings?.offsetXcm) || 0;
-    const floorOffY = Number(patternSettings?.offsetYcm) || 0;
-
-    const patternGroupOriginPt = computePatternGroupOrigin(room, floor);
-    const baseOrigin = patternGroupOriginPt || computeOriginPoint(room, patternSettings, floor);
-    const effectiveAnchor = { x: baseOrigin.x + floorOffX, y: baseOrigin.y + floorOffY };
-
-    const wallSurfaces = floor?.rooms?.filter(
-      r => r.sourceRoomId === room.id && r.wallEdgeIndex != null
-    ) || [];
-    const surfaceByEdge = new Map();
-    for (const ws of wallSurfaces) surfaceByEdge.set(ws.wallEdgeIndex, ws);
-
-    for (let i = 0; i < nVerts; i++) {
-      const A = verts[i];
-      const B = verts[(i + 1) % nVerts];
-      const dx = B.x - A.x;
-      const dy = B.y - A.y;
-      const edgeLength = Math.sqrt(dx * dx + dy * dy);
-      if (edgeLength < 1) continue;
-
-      const edgeDirX = dx / edgeLength;
-      const edgeDirY = dy / edgeLength;
-      const edgeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-
-      const relX = effectiveAnchor.x - A.x;
-      const relY = effectiveAnchor.y - A.y;
-      const wallOriginX = relX * edgeDirX + relY * edgeDirY;
-      const wallOriginY = 0;
-      const wallRotDeg = floorRotDeg - edgeAngleDeg;
-
-      // Per-edge heights from edgeProperties (sloped walls)
-      const ep = room.edgeProperties?.[i];
-      const hStart = ep?.heightStartCm ?? wallH;
-      const hEnd = ep?.heightEndCm ?? wallH;
-      const edgeWallH = Math.max(hStart, hEnd);
-
-      const storedWall = surfaceByEdge.get(i);
-
-      // Collect doorway exclusions from this edge AND from adjacent rooms'
-      // shared edges (so tiles are clipped at doorways from both sides)
-      const allDoorways = collectEdgeDoorways(floor, room, i, otherFloorRooms);
-      const wallExclusions = allDoorways.map(dw => ({
-        type: "freeform",
-        vertices: [
-          { x: dw.offsetCm, y: dw.elevationCm },
-          { x: dw.offsetCm + dw.widthCm, y: dw.elevationCm },
-          { x: dw.offsetCm + dw.widthCm, y: dw.elevationCm + dw.heightCm },
-          { x: dw.offsetCm, y: dw.elevationCm + dw.heightCm },
-        ],
-      }));
-
-      const wallExcludedTiles = storedWall?.excludedTiles || [];
-
-      // Trapezoid polygon for sloped walls, rectangle for uniform
-      const wallPolyVerts = (hStart !== hEnd)
-        ? [
-            { x: 0, y: 0 },
-            { x: edgeLength, y: 0 },
-            { x: edgeLength, y: hEnd },
-            { x: 0, y: hStart },
-          ]
-        : [
-            { x: 0, y: 0 },
-            { x: edgeLength, y: 0 },
-            { x: edgeLength, y: edgeWallH },
-            { x: 0, y: edgeWallH },
-          ];
-
-      const wallRect = {
-        id: room.id + "_wall_" + i,
-        widthCm: edgeLength,
-        heightCm: edgeWallH,
-        polygonVertices: wallPolyVerts,
-        exclusions: wallExclusions,
-        excludedTiles: wallExcludedTiles,
-        tile: effectiveSettings?.tile || room.tile,
-        grout: effectiveSettings?.grout || room.grout,
-        pattern: {
-          ...(patternSettings || {}),
-          rotationDeg: wallRotDeg,
-          offsetXcm: 0,
-          offsetYcm: 0,
-        },
-      };
-
-      const wallDataEntry = {
-        edgeIndex: i,
-        tiles: [],
-        exclusions: wallExclusions,
-        surfaceVerts: wallPolyVerts,
-        hStart,
-        hEnd,
-        doorways: allDoorways,
-      };
-
-      const wallAvail = computeAvailableArea(wallRect, wallExclusions);
-      if (wallAvail.mp) {
-        const wallOriginOverride = { x: wallOriginX, y: wallOriginY };
-        const wallPatternOverride = wallRect.pattern;
-        const wallEffSettings = {
-          tile: effectiveSettings?.tile || room.tile,
-          grout: effectiveSettings?.grout || room.grout,
-          pattern: wallPatternOverride,
-        };
-        const wallResult = tilesForPreview(state, wallAvail.mp, wallRect, isRemovalMode, floor, {
-          originOverride: wallOriginOverride,
-          effectiveSettings: wallEffSettings,
-        });
-        wallDataEntry.tiles = wallResult?.tiles || [];
-        wallDataEntry.surfaceVerts = wallRect.polygonVertices;
-      }
-
-      wallData.push(wallDataEntry);
-    }
-  }
-
-  // Compute free edge segments for shared-wall suppression in 3D
-  const freeEdgeSegments = room.polygonVertices?.length >= 3
-    ? getEdgeFreeSegmentsByIndex(room, otherFloorRooms)
-    : [];
-
   return {
     id: room.id,
     polygonVertices: room.polygonVertices,
     floorPosition: room.floorPosition || { x: 0, y: 0 },
-    wallHeightCm: room.wallHeightCm ?? 200,
-    edgeProperties: room.edgeProperties || null,
     floorTiles: tileResult?.tiles || [],
     floorExclusions: room.exclusions || [],
     groutColor,
-    wallData,
-    showWalls: state.view?.showWalls3D !== false,
-    freeEdgeSegments,
   };
+}
+
+function prepareFloorWallData(state, floor) {
+  if (!floor?.walls?.length) {
+    return [];
+  }
+  const isRemovalMode = Boolean(state.view?.removalMode);
+
+  return floor.walls.map(wall => {
+    const normal = getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? 12;
+    const hStart = wall.heightStartCm ?? 200;
+    const hEnd = wall.heightEndCm ?? 200;
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const edgeLength = Math.hypot(dx, dy);
+    if (edgeLength < 1) return null;
+
+    // Extend wall endpoints by thickness to close corner gaps
+    const dirX = dx / edgeLength;
+    const dirY = dy / edgeLength;
+    const ext = thick;
+    const extStart = { x: wall.start.x - dirX * ext, y: wall.start.y - dirY * ext };
+    const extEnd = { x: wall.end.x + dirX * ext, y: wall.end.y + dirY * ext };
+    const outerStart = { x: extStart.x + normal.x * thick, y: extStart.y + normal.y * thick };
+    const outerEnd = { x: extEnd.x + normal.x * thick, y: extEnd.y + normal.y * thick };
+
+    const surfaces = wall.surfaces.map((surface, idx) => {
+      const region = wallSurfaceToTileableRegion(wall, idx);
+      if (!region) return null;
+
+      let tiles = [];
+      const avail = computeAvailableArea(region, region.exclusions || []);
+      if (avail.mp) {
+        const result = tilesForPreview(state, avail.mp, region, isRemovalMode, floor, {
+          effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
+        });
+        tiles = result?.tiles || [];
+      }
+
+      const surfFromCm = surface.fromCm || 0;
+      const surfToCm = surface.toCm || edgeLength;
+      const tStart = edgeLength > 0 ? surfFromCm / edgeLength : 0;
+      const tEnd = edgeLength > 0 ? surfToCm / edgeLength : 1;
+      const surfHStart = hStart + (hEnd - hStart) * tStart;
+      const surfHEnd = hStart + (hEnd - hStart) * tEnd;
+
+      return {
+        roomId: surface.roomId,
+        edgeIndex: surface.edgeIndex,
+        tiles,
+        exclusions: region.exclusions || [],
+        surfaceVerts: region.polygonVertices,
+        hStart: surfHStart,
+        hEnd: surfHEnd,
+        groutColor: region.grout?.colorHex || "#ffffff",
+      };
+    }).filter(Boolean);
+
+    return {
+      id: wall.id,
+      start: extStart,
+      end: extEnd,
+      outerStart,
+      outerEnd,
+      edgeLength: edgeLength + 2 * ext,
+      hStart,
+      hEnd,
+      thicknessCm: thick,
+      doorways: (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + ext })),
+      roomEdge: wall.roomEdge,
+      surfaces,
+    };
+  }).filter(Boolean);
 }
 
 function handleWallDoubleClick(roomId, edgeIndex) {
@@ -547,47 +457,11 @@ function handleWallDoubleClick(roomId, edgeIndex) {
   const floor = getCurrentFloor(state);
   if (!floor) return;
 
-  // Check if wall already exists
-  const existingWall = floor.rooms.find(
-    r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
-  );
-
-  if (existingWall) {
-    // Double-click drills into 2D editing
-    const next = deepClone(state);
-    next.selectedRoomId = existingWall.id;
-    next.view = next.view || {};
-    next.view.planningMode = "room";
-    next.view.use3D = false;
-    store.commit("View wall surface", next, { onRender: renderAll, updateMetaCb: updateMeta });
-    return;
-  }
-
-  // Generate walls using helper
-  const room = floor.rooms.find(r => r.id === roomId);
-  if (!room || !room.polygonVertices) return;
-
+  // Select the wall and switch to 2D room view
+  const wall = getWallForEdge(floor, roomId, edgeIndex);
   const next = deepClone(state);
-  const nextFloor = next.floors.find(f => f.id === floor.id);
-
-  const { addedWalls, needsPatternGroup } = ensureRoomWalls(room, nextFloor);
-
-  // Setup pattern group
-  if (needsPatternGroup && addedWalls.length > 0) {
-    const existingGroup = getRoomPatternGroup(nextFloor, room.id);
-    let group = existingGroup || createPatternGroup(nextFloor, room.id);
-    if (group) {
-      for (const wall of addedWalls) {
-        addRoomToPatternGroup(nextFloor, group.id, wall.id);
-      }
-    }
-  }
-
-  // Select the clicked wall
-  const targetWall = addedWalls.find(w => w.wallEdgeIndex === edgeIndex);
-  if (targetWall) {
-    next.selectedRoomId = targetWall.id;
-  }
+  next.selectedRoomId = roomId;
+  next.selectedWallId = wall?.id || null;
   next.view = next.view || {};
   next.view.planningMode = "room";
   next.view.use3D = false;
@@ -658,13 +532,11 @@ function renderPlanningSection(state, opts) {
           const floor = getCurrentFloor(current);
           if (!floor) return;
           if (edgeIndex != null) {
-            // Find the wall room for this edge
-            const wallRoom = floor.rooms.find(
-              r => r.sourceRoomId === roomId && r.wallEdgeIndex === edgeIndex
-            );
-            if (wallRoom && current.selectedRoomId !== wallRoom.id) {
+            const wall = getWallForEdge(floor, roomId, edgeIndex);
+            if (wall && current.selectedWallId !== wall.id) {
               const next = deepClone(current);
-              next.selectedRoomId = wallRoom.id;
+              next.selectedRoomId = roomId;
+              next.selectedWallId = wall.id;
               store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
             }
           } else {
@@ -672,6 +544,7 @@ function renderPlanningSection(state, opts) {
             if (current.selectedRoomId !== roomId) {
               const next = deepClone(current);
               next.selectedRoomId = roomId;
+              next.selectedWallId = null;
               store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
             }
           }
@@ -688,23 +561,30 @@ function renderPlanningSection(state, opts) {
     const floor = getCurrentFloor(state);
     if (floor) {
       threeViewController.start();
+      const wallDescs = prepareFloorWallData(state, floor);
+      const showWalls = state.view?.showWalls3D !== false;
       if (isFloorView) {
         // Floor 3D: all rooms
-        const floorRooms = floor.rooms.filter(r => !r.sourceRoomId && r.polygonVertices?.length >= 3);
+        const floorRooms = floor.rooms.filter(r => r.polygonVertices?.length >= 3);
         const descriptors = floorRooms.map(room => prepareRoom3DData(state, room, floor));
-        threeViewController.buildScene({ rooms: descriptors, selectedRoomId: state.selectedRoomId });
+        threeViewController.buildScene({ rooms: descriptors, walls: wallDescs, showWalls, selectedRoomId: state.selectedRoomId });
       } else {
-        // Room 3D: single selected room (resolve wall to parent)
+        // Room 3D: single selected room
         let room = getCurrentRoom(state);
         let selectedSurfaceEdgeIndex = null;
-        if (room?.sourceRoomId) {
-          selectedSurfaceEdgeIndex = room.wallEdgeIndex ?? null;
-          room = floor.rooms.find(r => r.id === room.sourceRoomId) || room;
+        // If a wall is selected, find the edge index for highlighting
+        if (state.selectedWallId) {
+          const selWall = floor.walls?.find(w => w.id === state.selectedWallId);
+          if (selWall?.roomEdge?.roomId === room?.id) {
+            selectedSurfaceEdgeIndex = selWall.roomEdge.edgeIndex;
+          }
         }
-        if (room && !room.sourceRoomId && room.polygonVertices?.length >= 3) {
+        if (room && room.polygonVertices?.length >= 3) {
           const descriptor = prepareRoom3DData(state, room, floor);
           threeViewController.buildScene({
             rooms: [descriptor],
+            walls: wallDescs,
+            showWalls,
             selectedRoomId: room.id,
             selectedSurfaceEdgeIndex,
           });
@@ -785,17 +665,7 @@ function renderPlanningSection(state, opts) {
 
         room.name = name;
 
-        // Update wall names if this is a floor room (not a wall itself)
-        if (!room.sourceRoomId && floor) {
-          const walls = floor.rooms.filter(r => r.sourceRoomId === room.id);
-          walls.forEach(wall => {
-            // Extract wall number from current name (e.g. "Old Name · Wall 1" -> "1")
-            const match = wall.name.match(/Wall (\d+)$/);
-            if (match) {
-              wall.name = `${name} · Wall ${match[1]}`;
-            }
-          });
-        }
+        // Wall names are derived from room + edge index, no update needed
 
         store.commit(t("room.nameChanged") || "Room name changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
@@ -848,8 +718,8 @@ function renderPlanningSection(state, opts) {
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
 
-        // Regenerate walls after edge length change
-        ensureRoomWalls(room, floor, { forceRegenerate: true });
+        // Sync walls after edge length change
+        syncFloorWalls(floor);
 
         store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
@@ -2708,15 +2578,7 @@ function updateAllTranslations() {
             // Extract outer ring of first polygon (room boundary)
             if (mp && mp[0] && mp[0][0]) {
               roomBoundsPolygon = mp[0][0]; // [[x,y], [x,y], ...]
-              // For wall surfaces, transform bounds from room-local to SVG space
-              // (polygon-draw click positions are in SVG root space)
-              const wallRot = getWallSvgRotation(room);
-              if (wallRot) {
-                roomBoundsPolygon = roomBoundsPolygon.map(pt => {
-                  const svgPt = localToSvgPoint(pt[0], pt[1], wallRot);
-                  return [svgPt.x, svgPt.y];
-                });
-              }
+              // Room bounds are in local space, no rotation needed
             }
           } catch (e) {
             console.warn("Could not get room polygon for bounds check:", e);
@@ -2729,12 +2591,8 @@ function updateAllTranslations() {
           onComplete: (polygonPoints) => {
             freeformBtn.classList.remove("active");
 
-            // Convert SVG-space points to room-local coordinates
-            // (wall surfaces are rotated in SVG, so points need un-rotating)
-            const wallRot = getWallSvgRotation(getCurrentRoom(store.getState()));
             const vertices = polygonPoints.map(p => {
-              const local = svgToLocalPoint(p.x, p.y, wallRot);
-              return { x: Math.round(local.x), y: Math.round(local.y) };
+              return { x: Math.round(p.x), y: Math.round(p.y) };
             });
 
             excl.addFreeform(vertices);
@@ -2781,7 +2639,7 @@ function updateAllTranslations() {
     const nextFloor = next.floors.find(f => f.id === floor.id);
 
     // Create new room with default size using createSurface
-    const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
+    const floorRoomCount = nextFloor.rooms.length;
     const newRoom = createSurface({
       name: `${t("room.newRoom")} ${floorRoomCount + 1}`,
       widthCm: 300,
@@ -2795,7 +2653,6 @@ function updateAllTranslations() {
         newRoom.floorPosition.x = position.x;
         newRoom.floorPosition.y = position.y;
       } else {
-        // Fallback: place to the right of rightmost room
         let maxRight = -Infinity;
         let topAtMaxRight = 0;
         for (const room of nextFloor.rooms) {
@@ -2809,7 +2666,6 @@ function updateAllTranslations() {
         newRoom.floorPosition.y = topAtMaxRight;
       }
     } else {
-      // No rooms yet - place in center of visible area
       const viewportKey = `floor:${floor.id}`;
       const vp = getViewport(viewportKey);
       if (vp?.effectiveViewBox) {
@@ -2817,7 +2673,6 @@ function updateAllTranslations() {
         newRoom.floorPosition.x = Math.round(vb.minX + (vb.width - newRoom.widthCm) / 2);
         newRoom.floorPosition.y = Math.round(vb.minY + (vb.height - newRoom.heightCm) / 2);
       } else {
-        // Fallback: calculate center based on background image if present
         const bg = nextFloor.layout?.background;
         if (bg?.nativeWidth && bg?.nativeHeight) {
           const nativeW = bg.nativeWidth;
@@ -2827,7 +2682,6 @@ function updateAllTranslations() {
           newRoom.floorPosition.x = Math.round((imgWidth - newRoom.widthCm) / 2);
           newRoom.floorPosition.y = Math.round((imgHeight - newRoom.heightCm) / 2);
         } else {
-          // No background - use default canvas center
           newRoom.floorPosition.x = 350;
           newRoom.floorPosition.y = 250;
         }
@@ -2836,20 +2690,7 @@ function updateAllTranslations() {
 
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
-
-    // Auto-generate walls for new room
-    const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
-
-    // Setup pattern group linking floor room to walls
-    if (needsPatternGroup && addedWalls.length > 0) {
-      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
-      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
-      if (group) {
-        for (const wall of addedWalls) {
-          addRoomToPatternGroup(nextFloor, group.id, wall.id);
-        }
-      }
-    }
+    syncFloorWalls(nextFloor);
 
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
@@ -2865,7 +2706,7 @@ function updateAllTranslations() {
     const next = deepClone(state);
     const nextFloor = next.floors.find(f => f.id === floor.id);
 
-    const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
+    const floorRoomCount = nextFloor.rooms.length;
     const newRoom = createSurface({ name: `${t("room.newRoom")} ${floorRoomCount + 1}`, circleRadius: 100, surfaceType: "floor" });
 
     // Position new room
@@ -2903,17 +2744,7 @@ function updateAllTranslations() {
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
 
-    // Auto-generate walls for circle room (will skip if circle doesn't have polygonVertices)
-    const { addedWalls: circleWalls, needsPatternGroup: circleNeedsGroup } = ensureRoomWalls(newRoom, nextFloor);
-    if (circleNeedsGroup && circleWalls.length > 0) {
-      const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
-      let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
-      if (group) {
-        for (const wall of circleWalls) {
-          addRoomToPatternGroup(nextFloor, group.id, wall.id);
-        }
-      }
-    }
+    syncFloorWalls(nextFloor);
 
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
@@ -2940,13 +2771,11 @@ function updateAllTranslations() {
 
       // Delete the room
       nextFloor.rooms.splice(roomIndex, 1);
+      syncFloorWalls(nextFloor);
 
-      // Also delete all child walls (rooms with sourceRoomId matching deleted room)
-      nextFloor.rooms = nextFloor.rooms.filter(r => r.sourceRoomId !== deletedRoomId);
-
-      // Select another room if available (skip walls)
-      const nonWallRooms = nextFloor.rooms.filter(r => !r.sourceRoomId);
-      next.selectedRoomId = nonWallRooms[Math.max(0, Math.min(roomIndex, nonWallRooms.length - 1))]?.id || null;
+      // Select another room if available
+      next.selectedRoomId = nextFloor.rooms[Math.max(0, Math.min(roomIndex, nextFloor.rooms.length - 1))]?.id || null;
+      next.selectedWallId = null;
 
       store.commit(t("room.deleted") || "Room deleted", next, { onRender: renderAll, updateMetaCb: updateMeta });
     }
@@ -2974,12 +2803,11 @@ function updateAllTranslations() {
 
       // Name with counter based on existing non-wall rooms
       if (nextFloor) {
-        const floorRoomCount = nextFloor.rooms.filter(r => !r.sourceRoomId).length;
+        const floorRoomCount = nextFloor.rooms.length;
         newRoom.name = `${t("room.newRoom")} ${floorRoomCount + 1}`;
       }
 
       if (nextFloor) {
-        // Subtract overlapping areas from existing rooms
         const { modifiedRoomIds, errors } = subtractOverlappingAreas(newRoom, nextFloor.rooms);
 
         if (errors.length > 0) {
@@ -2988,20 +2816,7 @@ function updateAllTranslations() {
 
         nextFloor.rooms.push(newRoom);
         next.selectedRoomId = newRoom.id;
-
-        // Auto-generate walls for new room
-        const { addedWalls, needsPatternGroup } = ensureRoomWalls(newRoom, nextFloor);
-
-        // Setup pattern group linking floor room to walls
-        if (needsPatternGroup && addedWalls.length > 0) {
-          const existingGroup = getRoomPatternGroup(nextFloor, newRoom.id);
-          let group = existingGroup || createPatternGroup(nextFloor, newRoom.id);
-          if (group) {
-            for (const wall of addedWalls) {
-              addRoomToPatternGroup(nextFloor, group.id, wall.id);
-            }
-          }
-        }
+        syncFloorWalls(nextFloor);
 
         const commitLabel = modifiedRoomIds.length > 0
           ? t("room.addedWithOverlapRemoved") || "Room added (overlap removed from existing rooms)"
@@ -3216,24 +3031,17 @@ function updateAllTranslations() {
       });
     }
 
-    // Sync planning room selector (filter out walls)
+    // Sync planning room selector
     if (planningRoomSelect) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
       planningRoomSelect.innerHTML = "";
-      const floorRooms = floor?.rooms?.filter(r => !r.sourceRoomId) || [];
-
-      // Determine which room to highlight in the dropdown
-      let roomToSelect = state.selectedRoomId;
-      // If current selection is a wall, select its parent room instead
-      if (room && room.sourceRoomId) {
-        roomToSelect = room.sourceRoomId;
-      }
+      const floorRooms = floor?.rooms || [];
 
       floorRooms.forEach(r => {
         const opt = document.createElement("option");
         opt.value = r.id;
         opt.textContent = r.name || "Untitled";
-        if (r.id === roomToSelect) opt.selected = true;
+        if (r.id === state.selectedRoomId) opt.selected = true;
         planningRoomSelect.appendChild(opt);
       });
     }
@@ -3244,17 +3052,9 @@ function updateAllTranslations() {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
       wallSelect.innerHTML = "";
 
-      // Resolve to parent room if a wall is selected
-      let parentRoom = room;
-      let walls = [];
-      if (room) {
-        if (room.sourceRoomId) {
-          parentRoom = floor?.rooms?.find(r => r.id === room.sourceRoomId) || room;
-        }
-        walls = floor?.rooms?.filter(r => r.sourceRoomId === parentRoom.id) || [];
-      }
+      const walls = room && floor ? getWallsForRoom(floor, room.id) : [];
 
-      if (!parentRoom) {
+      if (!room) {
         const opt = document.createElement("option");
         opt.value = "";
         opt.textContent = "—";
@@ -3265,16 +3065,17 @@ function updateAllTranslations() {
 
         // Floor surface (the room itself) is the first entry
         const floorOpt = document.createElement("option");
-        floorOpt.value = parentRoom.id;
+        floorOpt.value = "";
         floorOpt.textContent = t("tabs.floorSurface") || "Floor";
-        if (parentRoom.id === state.selectedRoomId) floorOpt.selected = true;
+        if (!state.selectedWallId) floorOpt.selected = true;
         wallSelect.appendChild(floorOpt);
 
-        walls.forEach(w => {
+        walls.forEach((w, idx) => {
+          const edgeIdx = w.roomEdge?.edgeIndex ?? idx;
           const opt = document.createElement("option");
           opt.value = w.id;
-          opt.textContent = w.name || "Untitled";
-          if (w.id === state.selectedRoomId) opt.selected = true;
+          opt.textContent = `${room.name} · Wall ${edgeIdx + 1}`;
+          if (w.id === state.selectedWallId) opt.selected = true;
           wallSelect.appendChild(opt);
         });
       }

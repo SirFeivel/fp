@@ -247,27 +247,33 @@ export function computeSkirtingSegments(room, includeExcluded = false, floor = n
 }
 
 /**
- * Build sorted doorway intervals from floor.doorways (or empty if no floor).
+ * Build sorted doorway intervals from wall entities (or empty if no floor).
  * Each interval is { edgeIndex, startCm, endCm, edgeStartPt, edgeDirX, edgeDirY, edgeLen }.
  */
 function buildDoorwayIntervals(room, floor) {
   const verts = room.polygonVertices;
   if (!verts || verts.length < 3) return [];
-
-  const floorDoorways = floor?.doorways?.filter(dw => dw.roomId === room.id) || [];
-  if (floorDoorways.length === 0) return [];
+  if (!floor?.walls) return [];
 
   const intervals = [];
   for (let i = 0; i < verts.length; i++) {
-    const edgeDoorways = floorDoorways.filter(dw => dw.edgeIndex === i);
-    if (edgeDoorways.length === 0) continue;
+    // Find wall for this edge
+    const wall = floor.walls.find(
+      w => w.roomEdge && w.roomEdge.roomId === room.id && w.roomEdge.edgeIndex === i
+    ) || floor.walls.find(
+      w => w.surfaces && w.surfaces.some(s => s.roomId === room.id && s.edgeIndex === i)
+    );
+
+    if (!wall || !wall.doorways || wall.doorways.length === 0) continue;
+
     const A = verts[i];
     const B = verts[(i + 1) % verts.length];
     const dx = B.x - A.x;
     const dy = B.y - A.y;
     const L = Math.sqrt(dx * dx + dy * dy);
     if (L < 1) continue;
-    for (const dw of edgeDoorways) {
+
+    for (const dw of wall.doorways) {
       intervals.push({
         edgeIndex: i,
         startCm: dw.offsetCm,

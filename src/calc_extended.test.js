@@ -5,9 +5,6 @@ import {
   analyzeCutTile,
   findComplementaryPairs,
   getRoomPricing,
-  isWallSurface,
-  getFloorRooms,
-  getWallSurfaces,
   computePlanMetrics,
   computeFloorMetrics,
   clearMetricsCache,
@@ -40,7 +37,6 @@ function createTestState(opts = {}) {
     grout: opts.grout || { widthCm: 1 },
     pattern: opts.pattern || { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
     skirting: opts.skirting || { enabled: false, heightCm: 6, type: 'cutout' },
-    ...(opts.sourceRoomId ? { sourceRoomId: opts.sourceRoomId } : {}),
     ...(opts.floorPosition ? { floorPosition: opts.floorPosition } : {}),
   };
 
@@ -306,55 +302,6 @@ describe('getRoomPricing', () => {
   });
 });
 
-// ========== Wall-Awareness Helpers ==========
-
-describe('isWallSurface', () => {
-  it('returns true for rooms with sourceRoomId', () => {
-    expect(isWallSurface({ id: 'w1', sourceRoomId: 'r1' })).toBe(true);
-  });
-
-  it('returns false for regular rooms', () => {
-    expect(isWallSurface({ id: 'r1' })).toBe(false);
-    expect(isWallSurface({ id: 'r1', sourceRoomId: '' })).toBe(false);
-    expect(isWallSurface({ id: 'r1', sourceRoomId: null })).toBe(false);
-  });
-
-  it('returns false for null/undefined', () => {
-    expect(isWallSurface(null)).toBe(false);
-    expect(isWallSurface(undefined)).toBe(false);
-  });
-});
-
-describe('getFloorRooms / getWallSurfaces', () => {
-  const floor = {
-    rooms: [
-      { id: 'r1', name: 'Room 1' },
-      { id: 'w1', name: 'Wall 1', sourceRoomId: 'r1' },
-      { id: 'r2', name: 'Room 2' },
-      { id: 'w2', name: 'Wall 2', sourceRoomId: 'r2' },
-    ]
-  };
-
-  it('getFloorRooms returns only non-wall rooms', () => {
-    const rooms = getFloorRooms(floor);
-    expect(rooms.length).toBe(2);
-    expect(rooms.map(r => r.id)).toEqual(['r1', 'r2']);
-  });
-
-  it('getWallSurfaces returns only wall rooms', () => {
-    const walls = getWallSurfaces(floor);
-    expect(walls.length).toBe(2);
-    expect(walls.map(r => r.id)).toEqual(['w1', 'w2']);
-  });
-
-  it('handles null/empty floor', () => {
-    expect(getFloorRooms(null)).toEqual([]);
-    expect(getFloorRooms({})).toEqual([]);
-    expect(getWallSurfaces(null)).toEqual([]);
-    expect(getWallSurfaces({})).toEqual([]);
-  });
-});
-
 // ========== Cache Key Invalidation ==========
 
 describe('Cache key invalidation on origin change', () => {
@@ -460,7 +407,7 @@ describe('computeFloorMetrics', () => {
     expect(result.totals.purchasedTiles).toBeGreaterThanOrEqual(8);
   });
 
-  it('floor with rooms + walls separates wall totals', () => {
+  it('floor with only rooms has correct totals', () => {
     const state = createTestState({
       roomW: 100, roomH: 100,
       roomId: 'r1',
@@ -469,37 +416,17 @@ describe('computeFloorMetrics', () => {
       pattern: { type: 'grid', rotationDeg: 0 },
       pricing: { pricePerM2: 10, packM2: 1, reserveTiles: 0 },
       waste: {},
-      extraRooms: [{
-        id: 'w1',
-        name: 'Wall Surface',
-        sourceRoomId: 'r1',
-        polygonVertices: [
-          { x: 0, y: 0 }, { x: 100, y: 0 },
-          { x: 100, y: 50 }, { x: 0, y: 50 }
-        ],
-        exclusions: [],
-        tile: { widthCm: 50, heightCm: 50 },
-        grout: { widthCm: 0 },
-        pattern: { type: 'grid', rotationDeg: 0 },
-        skirting: { enabled: false },
-      }],
     });
 
     const floor = state.floors[0];
     const result = computeFloorMetrics(state, floor);
     expect(result.ok).toBe(true);
 
-    // Wall should NOT be in floor totals
+    // All entries should be floor type
     const floorEntries = result.rooms.filter(r => r.type === 'floor');
-    const wallEntries = result.rooms.filter(r => r.type === 'wall');
     expect(floorEntries.length).toBe(1);
-    expect(wallEntries.length).toBe(1);
 
-    // Wall totals separate
-    expect(result.wallTotals.totalTiles).toBeGreaterThan(0);
-    expect(result.wallTotals.netAreaM2).toBeCloseTo(0.5, 2);
-
-    // Floor totals should only contain the floor room
+    // Floor totals should contain the floor room
     expect(result.totals.netAreaM2).toBeCloseTo(1, 2);
   });
 

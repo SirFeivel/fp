@@ -1305,97 +1305,6 @@ describe('findPatternLinkedGroups', () => {
   });
 });
 
-describe('Wall rooms behavior', () => {
-  it('walls are excluded from overlap detection', () => {
-    const roomA = {
-      id: 'room1',
-      floorPosition: { x: 0, y: 0 },
-      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
-    };
-
-    const wall = {
-      id: 'wall1',
-      sourceRoomId: 'room1', // This marks it as a wall
-      wallEdgeIndex: 0,
-      floorPosition: { x: 50, y: 50 },
-      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }]
-    };
-
-    // Wall should not be considered overlapping with room
-    expect(doRoomsOverlap(roomA, wall)).toBe(false);
-    expect(doRoomsOverlap(wall, roomA)).toBe(false);
-  });
-
-  it('walls are excluded from adjacency detection', () => {
-    const roomA = {
-      id: 'room1',
-      floorPosition: { x: 0, y: 0 },
-      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
-    };
-
-    const wall = {
-      id: 'wall1',
-      sourceRoomId: 'room1',
-      wallEdgeIndex: 0,
-      floorPosition: { x: 100, y: 0 }, // Adjacent position
-      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 100 }, { x: 0, y: 100 }]
-    };
-
-    // Wall should not be considered adjacent
-    expect(areRoomsAdjacent(roomA, wall)).toBe(false);
-    expect(areRoomsAdjacent(wall, roomA)).toBe(false);
-  });
-
-  it('findAdjacentRooms filters out walls', () => {
-    const floor = {
-      id: 'f1',
-      rooms: [
-        {
-          id: 'room1',
-          floorPosition: { x: 0, y: 0 },
-          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
-        },
-        {
-          id: 'room2',
-          floorPosition: { x: 100, y: 0 },
-          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
-        },
-        {
-          id: 'wall1',
-          sourceRoomId: 'room1',
-          wallEdgeIndex: 1,
-          floorPosition: { x: 100, y: 0 },
-          polygonVertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 100 }, { x: 0, y: 100 }]
-        }
-      ]
-    };
-
-    const adjacent = findAdjacentRooms(floor, 'room1');
-    
-    // Should find room2 but not wall1
-    expect(adjacent).toHaveLength(1);
-    expect(adjacent[0].id).toBe('room2');
-  });
-
-  it('wouldRoomOverlap ignores walls', () => {
-    const room = {
-      id: 'room1',
-      floorPosition: { x: 0, y: 0 },
-      polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
-    };
-
-    const wall = {
-      id: 'wall1',
-      sourceRoomId: 'room2',
-      wallEdgeIndex: 0,
-      floorPosition: { x: 50, y: 50 },
-      polygonVertices: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }]
-    };
-
-    // Room moving to overlap wall's position should not be blocked
-    expect(wouldRoomOverlap(room, [wall], 50, 50)).toBe(false);
-  });
-});
 
 describe('findPatternLinkedGroups - uncovered branches', () => {
   it('single linkable + one non-linkable → linkable gets its own group, non-linkable gets individual', () => {
@@ -1525,32 +1434,10 @@ describe('findSharedEdgeMatches', () => {
     expect(matches[0].overlapEndCm).toBeCloseTo(100);
   });
 
-  it('skips wall rooms (sourceRoomId set)', () => {
-    const roomA = {
-      id: 'a',
-      floorPosition: { x: 0, y: 0 },
-      polygonVertices: [
-        { x: 0, y: 0 }, { x: 100, y: 0 },
-        { x: 100, y: 100 }, { x: 0, y: 100 }
-      ]
-    };
-    const wall = {
-      id: 'wall',
-      sourceRoomId: 'a',
-      floorPosition: { x: 100, y: 0 },
-      polygonVertices: [
-        { x: 0, y: 0 }, { x: 10, y: 0 },
-        { x: 10, y: 100 }, { x: 0, y: 100 }
-      ]
-    };
-
-    const matches = findSharedEdgeMatches(roomA, 1, [wall]);
-    expect(matches).toHaveLength(0);
-  });
 });
 
 describe('collectEdgeDoorways', () => {
-  it('returns own doorways unchanged', () => {
+  it('returns doorways from wall entity linked to room edge', () => {
     const room = {
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
@@ -1560,8 +1447,16 @@ describe('collectEdgeDoorways', () => {
       ]
     };
     const floor = {
-      doorways: [
-        { id: 'dw1', roomId: 'r1', edgeIndex: 0, offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 }
+      walls: [
+        {
+          id: 'w1',
+          start: { x: 0, y: 0 }, end: { x: 300, y: 0 },
+          roomEdge: { roomId: 'r1', edgeIndex: 0 },
+          doorways: [
+            { id: 'dw1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 }
+          ],
+          surfaces: [{ roomId: 'r1', edgeIndex: 0 }]
+        }
       ],
       rooms: [room]
     };
@@ -1571,48 +1466,9 @@ describe('collectEdgeDoorways', () => {
     expect(result[0].offsetCm).toBe(50);
     expect(result[0].widthCm).toBe(80);
     expect(result[0].heightCm).toBe(200);
-    expect(result[0].sourceRoomId).toBe('r1');
   });
 
-  it('maps cross-room doorway from adjacent room', () => {
-    // roomA right edge at x=200, roomB left edge at x=200
-    const roomA = {
-      id: 'a',
-      floorPosition: { x: 0, y: 0 },
-      polygonVertices: [
-        { x: 0, y: 0 }, { x: 200, y: 0 },
-        { x: 200, y: 200 }, { x: 0, y: 200 }
-      ]
-    };
-    const roomB = {
-      id: 'b',
-      floorPosition: { x: 200, y: 0 },
-      polygonVertices: [
-        { x: 0, y: 0 }, { x: 200, y: 0 },
-        { x: 200, y: 200 }, { x: 0, y: 200 }
-      ]
-    };
-    const floor = {
-      doorways: [
-        // Doorway on roomB's left edge (edge 3): (0,200)→(0,0) — anti-parallel to roomA's right edge
-        { id: 'dw1', roomId: 'b', edgeIndex: 3, offsetCm: 40, widthCm: 90, heightCm: 210, elevationCm: 0 }
-      ],
-      rooms: [roomA, roomB]
-    };
-
-    // Edge 1 of roomA: (200,0)→(200,200)
-    const result = collectEdgeDoorways(floor, roomA, 1, [roomB]);
-    expect(result).toHaveLength(1);
-    expect(result[0].sourceRoomId).toBe('b');
-    expect(result[0].widthCm).toBeCloseTo(90);
-    expect(result[0].heightCm).toBe(210);
-    // Anti-parallel: roomB edge goes from y=200 to y=0, doorway at offset 40
-    // means doorway starts at y=200-40=160, ends at y=200-40-90=70
-    // Projected onto roomA's edge (y=0 to y=200): mapped to ~70..160
-    expect(result[0].offsetCm).toBeCloseTo(70);
-  });
-
-  it('returns empty when no doorways exist anywhere', () => {
+  it('returns empty when no wall exists for the edge', () => {
     const room = {
       id: 'r1',
       floorPosition: { x: 0, y: 0 },
@@ -1621,49 +1477,82 @@ describe('collectEdgeDoorways', () => {
         { x: 100, y: 100 }, { x: 0, y: 100 }
       ]
     };
-    const other = {
-      id: 'r2',
-      floorPosition: { x: 100, y: 0 },
+    const floor = { walls: [], rooms: [room] };
+
+    const result = collectEdgeDoorways(floor, room, 0, []);
+    expect(result).toHaveLength(0);
+  });
+
+  it('returns empty when wall has no doorways', () => {
+    const room = {
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
       polygonVertices: [
         { x: 0, y: 0 }, { x: 100, y: 0 },
         { x: 100, y: 100 }, { x: 0, y: 100 }
       ]
     };
-    const floor = { doorways: [], rooms: [room, other] };
+    const floor = {
+      walls: [
+        {
+          id: 'w1',
+          start: { x: 0, y: 0 }, end: { x: 100, y: 0 },
+          roomEdge: { roomId: 'r1', edgeIndex: 0 },
+          doorways: [],
+          surfaces: [{ roomId: 'r1', edgeIndex: 0 }]
+        }
+      ],
+      rooms: [room]
+    };
 
-    const result = collectEdgeDoorways(floor, room, 1, [other]);
+    const result = collectEdgeDoorways(floor, room, 0, []);
     expect(result).toHaveLength(0);
   });
 
-  it('combines own and cross-room doorways', () => {
-    const roomA = {
-      id: 'a',
+  it('returns empty when floor has no walls array', () => {
+    const room = {
+      id: 'r1',
+      floorPosition: { x: 0, y: 0 },
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: 100, y: 0 },
+        { x: 100, y: 100 }, { x: 0, y: 100 }
+      ]
+    };
+    const floor = { rooms: [room] };
+
+    const result = collectEdgeDoorways(floor, room, 0, []);
+    expect(result).toHaveLength(0);
+  });
+
+  it('finds wall via surface match when roomEdge does not match', () => {
+    const room = {
+      id: 'r1',
       floorPosition: { x: 0, y: 0 },
       polygonVertices: [
         { x: 0, y: 0 }, { x: 200, y: 0 },
         { x: 200, y: 200 }, { x: 0, y: 200 }
       ]
     };
-    const roomB = {
-      id: 'b',
-      floorPosition: { x: 200, y: 0 },
-      polygonVertices: [
-        { x: 0, y: 0 }, { x: 200, y: 0 },
-        { x: 200, y: 200 }, { x: 0, y: 200 }
-      ]
-    };
     const floor = {
-      doorways: [
-        { id: 'dw1', roomId: 'a', edgeIndex: 1, offsetCm: 10, widthCm: 60, heightCm: 200, elevationCm: 0 },
-        { id: 'dw2', roomId: 'b', edgeIndex: 3, offsetCm: 20, widthCm: 70, heightCm: 190, elevationCm: 0 }
+      walls: [
+        {
+          id: 'w1',
+          start: { x: 0, y: 0 }, end: { x: 200, y: 0 },
+          roomEdge: { roomId: 'other', edgeIndex: 2 },
+          doorways: [
+            { id: 'dw1', offsetCm: 30, widthCm: 60, heightCm: 200, elevationCm: 0 }
+          ],
+          surfaces: [
+            { roomId: 'other', edgeIndex: 2 },
+            { roomId: 'r1', edgeIndex: 0 }
+          ]
+        }
       ],
-      rooms: [roomA, roomB]
+      rooms: [room]
     };
 
-    // Edge 1 of roomA: right edge
-    const result = collectEdgeDoorways(floor, roomA, 1, [roomB]);
-    expect(result).toHaveLength(2);
-    expect(result[0].sourceRoomId).toBe('a');
-    expect(result[1].sourceRoomId).toBe('b');
+    const result = collectEdgeDoorways(floor, room, 0, []);
+    expect(result).toHaveLength(1);
+    expect(result[0].offsetCm).toBe(30);
   });
 });

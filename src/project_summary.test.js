@@ -127,7 +127,7 @@ describe('computeProjectTotals', () => {
     expect(mat.skirtingPacks).toBe(1);
   });
 
-  it('walls excluded from project totals', () => {
+  it('single floor room counted in project totals', () => {
     const state = {
       meta: { version: 4 },
       pricing: { packM2: 1, pricePerM2: 10, reserveTiles: 0 },
@@ -142,15 +142,6 @@ describe('computeProjectTotals', () => {
               grout: { widthCm: 0 },
               pattern: { type: 'grid' },
               skirting: { enabled: false }
-            },
-            {
-              id: 'w1',
-              sourceRoomId: 'r1',
-              polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }],
-              tile: { widthCm: 50, heightCm: 50 },
-              grout: { widthCm: 0 },
-              pattern: { type: 'grid' },
-              skirting: { enabled: false }
             }
           ]
         }
@@ -158,16 +149,10 @@ describe('computeProjectTotals', () => {
     };
 
     const result = computeProjectTotals(state);
-    // Only the floor room should be counted
     expect(result.roomCount).toBe(1);
-    expect(result.rooms.length).toBe(1);
     expect(result.totalNetAreaM2).toBeCloseTo(1, 2);
-
-    // wallRooms should have the wall
-    expect(result.wallRooms.length).toBe(1);
-    expect(result.wallRooms[0].sourceRoomId).toBe('r1');
-    // Wall is 100x50 with 50x50 tiles = 2 tiles
-    expect(result.wallTotalTiles).toBe(2);
+    // 100x100 room with 50x50 tiles = 4 tiles
+    expect(result.totalTiles).toBe(4);
   });
 
   it('computeGrandTotals with invalid tiles returns ok:false', () => {

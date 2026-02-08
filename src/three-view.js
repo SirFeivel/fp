@@ -1,7 +1,6 @@
 // src/three-view.js — Self-contained Three.js 3D room viewer
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { computeOuterPolygon } from "./floor_geometry.js";
 
 // Palette pulled from CSS variables / 2D room rendering colors
 const FLOOR_COLOR = 0x3b82f6;    // --accent / selected room fill (#3b82f6)
@@ -541,11 +540,18 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     floorMeshes = [];
     hoveredMesh = null;
 
-    const { rooms, selectedRoomId, selectedSurfaceEdgeIndex } = floorData;
+    const { rooms, walls, showWalls, selectedRoomId, selectedSurfaceEdgeIndex } = floorData;
 
     for (const roomDesc of rooms) {
       const isSel = roomDesc.id === selectedRoomId;
       addRoomToScene(roomDesc, isSel, isSel ? selectedSurfaceEdgeIndex : null);
+    }
+
+    // Render wall entities at floor level (once per wall, no deduplication needed)
+    if (showWalls !== false) {
+      for (const wallDesc of (walls || [])) {
+        addWallToScene(wallDesc, selectedRoomId, selectedSurfaceEdgeIndex);
+      }
     }
 
     // Apply hover state to the selected surface (wall or floor)
@@ -582,7 +588,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     if (!verts || verts.length < 3) return;
 
     const pos = roomDesc.floorPosition || { x: 0, y: 0 };
-    const wallH = roomDesc.wallHeightCm ?? 200;
+    const wallH = 200; // default, per-edge heights from wallData
 
     // --- Floor mesh ---
     const floorShape = new THREE.Shape();
@@ -616,89 +622,6 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     scene.add(floorMesh);
     floorMeshes.push(floorMesh);
 
-    // --- Wall meshes ---
-    const showWalls = roomDesc.showWalls !== false;
-    const n = verts.length;
-    const wallColor = isSelected ? WALL_COLOR : UNSELECTED_WALL_COLOR;
-    const edgeColor = isSelected ? EDGE_COLOR : UNSELECTED_EDGE_COLOR;
-
-    if (showWalls) {
-      // Compute outward normal direction (signed area for winding)
-      let area2 = 0;
-      for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n;
-        area2 += verts[i].x * verts[j].y - verts[j].x * verts[i].y;
-      }
-      const sign = area2 > 0 ? 1 : -1;
-
-      // Build effective thicknesses using free edge segments (0 for fully-shared edges)
-      const freeSegsByEdge = roomDesc.freeEdgeSegments || [];
-      const effectiveThicknesses = [];
-      for (let i = 0; i < n; i++) {
-        const ep = roomDesc.edgeProperties?.[i];
-        const thick = ep?.thicknessCm ?? 12;
-        const freeSegs = freeSegsByEdge[i] || [];
-        effectiveThicknesses.push(freeSegs.length > 0 ? thick : 0);
-      }
-
-      // Compute mitered outer polygon for clean corners
-      const outerVerts = computeOuterPolygon(verts, effectiveThicknesses, sign);
-
-      for (let i = 0; i < n; i++) {
-        const freeSegs = freeSegsByEdge[i] || [];
-        if (freeSegs.length === 0) continue; // Fully shared edge — no wall
-
-        const A = verts[i];
-        const B = verts[(i + 1) % n];
-
-        const dx = B.x - A.x;
-        const dy = B.y - A.y;
-        const edgeLen = Math.sqrt(dx * dx + dy * dy);
-        if (edgeLen < 1) continue;
-
-        // Per-edge properties
-        const ep = roomDesc.edgeProperties?.[i];
-        const hA = ep?.heightStartCm ?? wallH;
-        const hB = ep?.heightEndCm ?? wallH;
-
-        // Use mitered outer vertices instead of independently computed offsets
-        const OA = outerVerts[i];
-        const OB = outerVerts[(i + 1) % n];
-
-        // Inner edge (room boundary) in floor coordinates
-        const iax = pos.x + A.x, iaz = pos.y + A.y;
-        const ibx = pos.x + B.x, ibz = pos.y + B.y;
-        // Outer edge (mitered)
-        const oax = pos.x + OA.x, oaz = pos.y + OA.y;
-        const obx = pos.x + OB.x, obz = pos.y + OB.y;
-
-        const wd = (roomDesc.wallData || []).find(w => w.edgeIndex === i);
-        const doorways = wd?.doorways || [];
-        const wallGeo = buildWallGeo(
-          iax, iaz, ibx, ibz, oax, oaz, obx, obz,
-          hA, hB, edgeLen, doorways
-        );
-
-        const wallHasTiles = (roomDesc.wallData || []).some(wd => wd.edgeIndex === i && wd.tiles?.length > 0);
-        const wallBaseColor = wallHasTiles ? parseHexColor(roomDesc.groutColor || "#ffffff") : new THREE.Color(wallColor);
-
-        const wallMat = new THREE.MeshLambertMaterial({
-          color: wallBaseColor,
-          side: THREE.DoubleSide,
-        });
-
-        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-        wallMesh.userData = { type: "wall", edgeIndex: i, roomId: roomDesc.id, baseColor: wallBaseColor.getHex() };
-        scene.add(wallMesh);
-        wallMeshes.push(wallMesh);
-
-        const edgesGeo = new THREE.EdgesGeometry(wallGeo);
-        const linesMat = new THREE.LineBasicMaterial({ color: edgeColor });
-        const lineSegments = new THREE.LineSegments(edgesGeo, linesMat);
-        scene.add(lineSegments);
-      }
-    }
-
     // --- Floor tiles + exclusions via renderSurface3D ---
     if (hasTiles) {
       const floorMapper = createFloorMapper(pos);
@@ -722,35 +645,70 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       for (const l of lines) scene.add(l);
     }
 
-    // --- Wall tiles + exclusions via renderSurface3D ---
-    if (showWalls) {
-      const wallDataArr = roomDesc.wallData || [];
-      for (const wd of wallDataArr) {
-        if (!wd.surfaceVerts) continue;
-        const wi = wd.edgeIndex;
-        const freeSegs = (roomDesc.freeEdgeSegments || [])[wi] || [];
-        if (freeSegs.length === 0) continue; // No wall mesh → no tiles
-        const A = verts[wi];
-        const B = verts[(wi + 1) % n];
-        const ax = pos.x + A.x, az = pos.y + A.y;
-        const bx = pos.x + B.x, bz = pos.y + B.y;
+  }
 
-        const wdHStart = wd.hStart ?? wallH;
-        const wdHEnd = wd.hEnd ?? wallH;
-        const mapper = createWallMapper(wd.surfaceVerts, ax, az, bx, bz, wdHStart, wdHEnd);
-        if (!mapper) continue;
+  // --- Add a single wall entity to the scene ---
+  function addWallToScene(wallDesc, selectedRoomId, selectedSurfaceEdgeIndex) {
+    const isOwnerSelected = wallDesc.roomEdge?.roomId === selectedRoomId;
+    const isEdgeSelected = isOwnerSelected && wallDesc.roomEdge?.edgeIndex === selectedSurfaceEdgeIndex;
+    const wallColor = isOwnerSelected ? WALL_COLOR : UNSELECTED_WALL_COLOR;
+    const edgeColor = isOwnerSelected ? EDGE_COLOR : UNSELECTED_EDGE_COLOR;
 
-        const { meshes, lines } = renderSurface3D({
-          tiles: wd.tiles,
-          exclusions: wd.exclusions,
-          groutColor: roomDesc.groutColor || "#ffffff",
-          mapper,
-          tileZBias: -1,
-          exclZBias: -2,
-        });
-        for (const m of meshes) scene.add(m);
-        for (const l of lines) scene.add(l);
-      }
+    const geo = buildWallGeo(
+      wallDesc.start.x, wallDesc.start.y,
+      wallDesc.end.x, wallDesc.end.y,
+      wallDesc.outerStart.x, wallDesc.outerStart.y,
+      wallDesc.outerEnd.x, wallDesc.outerEnd.y,
+      wallDesc.hStart, wallDesc.hEnd,
+      wallDesc.edgeLength, wallDesc.doorways
+    );
+
+    const hasTiles = wallDesc.surfaces.some(s => s.tiles?.length > 0);
+    const baseColor = hasTiles
+      ? parseHexColor(wallDesc.surfaces[0]?.groutColor || "#ffffff")
+      : new THREE.Color(wallColor);
+
+    const wallMat = new THREE.MeshLambertMaterial({
+      color: baseColor,
+      side: THREE.DoubleSide,
+    });
+    const wallMesh = new THREE.Mesh(geo, wallMat);
+    wallMesh.userData = {
+      type: "wall",
+      wallId: wallDesc.id,
+      roomId: wallDesc.roomEdge?.roomId,
+      edgeIndex: wallDesc.roomEdge?.edgeIndex,
+      baseColor: baseColor.getHex(),
+    };
+    scene.add(wallMesh);
+    wallMeshes.push(wallMesh);
+
+    const edgesGeo = new THREE.EdgesGeometry(geo);
+    const linesMat = new THREE.LineBasicMaterial({ color: edgeColor });
+    scene.add(new THREE.LineSegments(edgesGeo, linesMat));
+
+    // Render tiles for each surface
+    for (const surf of wallDesc.surfaces) {
+      if (!surf.tiles?.length && !surf.exclusions?.length) continue;
+
+      const mapper = createWallMapper(
+        surf.surfaceVerts,
+        wallDesc.start.x, wallDesc.start.y,
+        wallDesc.end.x, wallDesc.end.y,
+        surf.hStart, surf.hEnd
+      );
+      if (!mapper) continue;
+
+      const { meshes, lines } = renderSurface3D({
+        tiles: surf.tiles,
+        exclusions: surf.exclusions,
+        groutColor: surf.groutColor || "#ffffff",
+        mapper,
+        tileZBias: -1,
+        exclZBias: -2,
+      });
+      for (const m of meshes) scene.add(m);
+      for (const l of lines) scene.add(l);
     }
   }
 
@@ -771,7 +729,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         if (wz < minZ) minZ = wz;
         if (wz > maxZ) maxZ = wz;
       }
-      const wh = roomDesc.wallHeightCm ?? 200;
+      // Find max wall height from wallData
+      let wh = 200;
+      for (const wd of (roomDesc.wallData || [])) {
+        wh = Math.max(wh, wd.hStart ?? 200, wd.hEnd ?? 200);
+      }
       if (wh > maxWallH) maxWallH = wh;
     }
 

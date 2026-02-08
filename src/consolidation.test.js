@@ -184,7 +184,7 @@ describe('Commercial Consolidation', () => {
     expect(totals.materials.length).toBe(1);
   });
 
-  it('wall rooms excluded from consolidation', () => {
+  it('single room consolidation counts correctly', () => {
     const floorId = uuid();
     const state = {
       meta: { version: 5 },
@@ -201,16 +201,6 @@ describe('Commercial Consolidation', () => {
             grout: { widthCm: 0 },
             pattern: { type: 'grid' },
             skirting: { enabled: false }
-          },
-          {
-            id: 'w1',
-            name: 'Wall A',
-            sourceRoomId: 'r1',
-            polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }],
-            tile: { widthCm: 50, heightCm: 50, reference: 'Oak' },
-            grout: { widthCm: 0 },
-            pattern: { type: 'grid' },
-            skirting: { enabled: false }
           }
         ]
       }],
@@ -222,11 +212,8 @@ describe('Commercial Consolidation', () => {
     const totals = computeProjectTotals(state);
     const oak = totals.materials.find(m => m.reference === 'Oak');
     expect(oak).toBeDefined();
-    // Only the floor room (1m2) should be counted, not the wall (0.5m2)
     expect(oak.netAreaM2).toBeCloseTo(1, 2);
     expect(totals.roomCount).toBe(1);
-    // Wall should be in wallRooms
-    expect(totals.wallRooms.length).toBe(1);
   });
 
   it('extraPacks added to adjusted cost', () => {

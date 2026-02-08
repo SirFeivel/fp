@@ -4,19 +4,6 @@ import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
 import { TRIANGULAR_CUT_MIN, TRIANGULAR_CUT_MAX, AREA_RATIO_SCALING_THRESHOLD, COMPLEMENTARY_FIT_MIN, COMPLEMENTARY_FIT_MAX } from "./constants.js";
 
-// --- Wall-awareness helpers ---
-
-export function isWallSurface(room) {
-  return Boolean(room?.sourceRoomId);
-}
-
-export function getFloorRooms(floor) {
-  return (floor?.rooms || []).filter(r => !r.sourceRoomId);
-}
-
-export function getWallSurfaces(floor) {
-  return (floor?.rooms || []).filter(r => Boolean(r.sourceRoomId));
-}
 
 /**
  * Calculates material requirements for skirting.
@@ -851,8 +838,7 @@ export function computeFloorMetrics(state, floor) {
   const useSharedPool = Boolean(state?.waste?.shareOffcuts);
   const sharedPool = useSharedPool ? new OffcutPool() : null;
 
-  const floorRooms = getFloorRooms(floor);
-  const wallSurfaces = getWallSurfaces(floor);
+  const floorRooms = floor?.rooms || [];
 
   const roomMetrics = [];
   let totalFullTiles = 0;
@@ -893,30 +879,6 @@ export function computeFloorMetrics(state, floor) {
     }
   }
 
-  // Wall surfaces
-  let wallTotalTiles = 0;
-  let wallTotalCost = 0;
-  let wallNetAreaM2 = 0;
-
-  for (const wall of wallSurfaces) {
-    const metrics = computePlanMetrics(state, wall, { skipCache: true });
-
-    roomMetrics.push({
-      type: "wall",
-      room: wall,
-      roomId: wall.id,
-      roomName: wall.name,
-      metrics
-    });
-
-    if (metrics.ok && metrics.data) {
-      const d = metrics.data;
-      wallTotalTiles += d.tiles.purchasedTiles || 0;
-      wallTotalCost += d.pricing.priceTotal || 0;
-      wallNetAreaM2 += d.area.netAreaM2 || 0;
-    }
-  }
-
   return {
     ok: true,
     rooms: roomMetrics,
@@ -930,9 +892,9 @@ export function computeFloorMetrics(state, floor) {
       totalCost
     },
     wallTotals: {
-      totalTiles: wallTotalTiles,
-      totalCost: wallTotalCost,
-      netAreaM2: wallNetAreaM2
+      totalTiles: 0,
+      totalCost: 0,
+      netAreaM2: 0
     },
     sharedPool: sharedPool?.snapshot() || null
   };
@@ -1014,8 +976,7 @@ export function computeProjectTotals(state) {
 
   if (state.floors) {
     for (const floor of state.floors) {
-      // Floor rooms only (no wall surfaces)
-      for (const room of getFloorRooms(floor)) {
+      for (const room of (floor.rooms || [])) {
         const grand = computeGrandTotals(state, room);
         if (grand.ok) {
           totalTiles += grand.totalTiles;
@@ -1070,25 +1031,6 @@ export function computeProjectTotals(state) {
         }
       }
 
-      // Wall surfaces — separate aggregation
-      for (const wall of getWallSurfaces(floor)) {
-        const metrics = computePlanMetrics(state, wall, { skipCache: true });
-        if (metrics.ok && metrics.data) {
-          const d = metrics.data;
-          wallTotalTiles += d.tiles.purchasedTiles || 0;
-          wallTotalCost += d.pricing.priceTotal || 0;
-          wallTotalAreaM2 += d.area.netAreaM2 || 0;
-          wallRooms.push({
-            id: wall.id,
-            name: wall.name,
-            floorName: floor.name,
-            sourceRoomId: wall.sourceRoomId,
-            totalTiles: d.tiles.purchasedTiles || 0,
-            netAreaM2: d.area.netAreaM2 || 0,
-            totalCost: d.pricing.priceTotal || 0,
-          });
-        }
-      }
     }
   }
 

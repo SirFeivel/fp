@@ -1,8 +1,8 @@
 // src/drag.js
-import { deepClone, getCurrentRoom, getCurrentFloor, getWallSvgRotation, svgToLocalPoint, svgToLocalDelta } from "./core.js";
+import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
-import { findNearestConnectedPosition, collectEdgeDoorways, mapOffsetToOwnerEdge } from "./floor_geometry.js";
-import { ensureRoomWalls, regenerateAdjacentWalls } from "./surface.js";
+import { findNearestConnectedPosition } from "./floor_geometry.js";
+import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
 
 function pointerToSvgXY(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
@@ -291,7 +291,7 @@ export function createExclusionDragController({
     drag.currentDy = svgDy;
 
     // Un-rotate for elements inside the rotated wall <g>
-    const { dx, dy } = svgToLocalDelta(svgDx, svgDy, drag.wallRot);
+    const { dx, dy } = { dx: svgDx, dy: svgDy };
 
     // Apply CSS transform to all matching elements (main SVG + fullscreen SVG)
     const elements = findExclElements(drag.id);
@@ -340,7 +340,7 @@ export function createExclusionDragController({
 
     if (hasMoved) {
       // Un-rotate delta for wall surfaces (SVG is rotated for display)
-      const { dx, dy } = svgToLocalDelta(svgDx, svgDy, drag.wallRot);
+      const { dx, dy } = { dx: svgDx, dy: svgDy };
 
       // Build final state with updated exclusion position
       const finalState = deepClone(dragStartState);
@@ -435,7 +435,7 @@ export function createExclusionDragController({
       currentDx: 0,
       currentDy: 0,
       bounds,
-      wallRot: getWallSvgRotation(room),
+      wallRot: null,
     };
 
     const box = getExclusionBounds(ex, 0, 0);
@@ -465,7 +465,7 @@ export function createExclusionDragController({
     resize.currentDy = svgDy;
 
     // Un-rotate for elements inside the rotated wall <g>
-    const { dx, dy } = svgToLocalDelta(svgDx, svgDy, resize.wallRot);
+    const { dx, dy } = { dx: svgDx, dy: svgDy };
 
     // Calculate new dimensions based on handle type and shape
     const { startShape, handleType } = resize;
@@ -481,7 +481,7 @@ export function createExclusionDragController({
       rectDims = getRectResizeDims(startShape, handleType, dx, dy);
       overlayText = `${formatCm(rectDims.newW)} x ${formatCm(rectDims.newH)} cm`;
     } else if (startShape.type === "circle") {
-      const local = svgToLocalPoint(curMouse.x, curMouse.y, resize.wallRot);
+      const local = { x: curMouse.x, y: curMouse.y };
       circleR = Math.max(1, Math.sqrt(
         Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
       ));
@@ -585,7 +585,7 @@ export function createExclusionDragController({
           handle.setAttribute("cy", positions[ht].cy);
         }
       } else if (startShape.type === "circle") {
-        const local = svgToLocalPoint(curMouse.x, curMouse.y, wallRot);
+        const local = { x: curMouse.x, y: curMouse.y };
         const newR = Math.max(1, Math.sqrt(
           Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
         ));
@@ -641,7 +641,7 @@ export function createExclusionDragController({
 
     if (hasResized) {
       // Un-rotate delta for wall surfaces
-      const { dx, dy } = svgToLocalDelta(svgDx, svgDy, resize.wallRot);
+      const { dx, dy } = { dx: svgDx, dy: svgDy };
 
       const finalState = deepClone(dragStartState);
       const finalRoom = getCurrentRoom(finalState);
@@ -668,7 +668,7 @@ export function createExclusionDragController({
         } else if (excl.type === "circle") {
           const svg = getSvg();
           const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-          const local = svgToLocalPoint(curMouse.x, curMouse.y, resize.wallRot);
+          const local = { x: curMouse.x, y: curMouse.y };
           excl.r = Math.max(1, Math.sqrt(
             Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
           ));
@@ -725,7 +725,7 @@ export function createExclusionDragController({
       startShape: deepClone(ex),
       currentDx: 0,
       currentDy: 0,
-      wallRot: getWallSvgRotation(room),
+      wallRot: null,
     };
 
     if (ex.type === "rect") {
@@ -920,6 +920,7 @@ export function createRoomDragController({
         room.floorPosition.x = snappedPos.x;
         room.floorPosition.y = snappedPos.y;
 
+        syncFloorWalls(floor);
         commit(getMoveLabel?.() || "Room moved", next);
       }
     }
@@ -1106,6 +1107,7 @@ export function createRoomResizeController({
         room.widthCm = newWidth;
         room.heightCm = newHeight;
 
+        syncFloorWalls(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       } else if (room && room.polygonVertices?.length === 4) {
         room.floorPosition = { x: newPosX, y: newPosY };
@@ -1120,6 +1122,7 @@ export function createRoomResizeController({
         room.widthCm = newWidth;
         room.heightCm = newHeight;
 
+        syncFloorWalls(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       }
     } else {
@@ -1300,8 +1303,8 @@ export function createPolygonVertexDragController({
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
 
-        // Regenerate walls after vertex drag
-        ensureRoomWalls(room, floor, { forceRegenerate: true });
+        // Sync walls after vertex drag
+        syncFloorWalls(floor);
 
         commit(getVertexMoveLabel?.() || "Vertex moved", next);
       }
@@ -1413,18 +1416,12 @@ export function createDoorwayDragController({
       const finalState = deepClone(dragStartState);
       const room = getCurrentRoom(finalState);
       const floor = getCurrentFloor(finalState);
-      const dw = floor?.doorways?.find(d => d.id === drag.doorwayId);
-      if (dw) {
-        // Map both ends to owner edge space (handles anti-parallel edges correctly)
+      const wallResult = findWallByDoorwayId(floor, drag.doorwayId);
+      if (wallResult) {
+        const dw = wallResult.doorway;
         const newOffset = snapToMm(drag.currentOffset);
-        const mappedStart = mapOffsetToOwnerEdge(floor, dw, room, drag.edgeIndex, newOffset);
-        const mappedEnd = mapOffsetToOwnerEdge(floor, dw, room, drag.edgeIndex, newOffset + drag.effectiveWidth);
-        dw.offsetCm = Math.min(mappedStart, mappedEnd);
-        dw.widthCm = Math.abs(mappedEnd - mappedStart);
-      }
-      if (room && floor) {
-        ensureRoomWalls(room, floor, { forceRegenerate: true });
-        regenerateAdjacentWalls(room, floor);
+        dw.offsetCm = newOffset;
+        dw.widthCm = drag.effectiveWidth;
       }
       commit(getMoveLabel?.() || "Doorway moved", finalState);
     }
@@ -1472,25 +1469,18 @@ export function createDoorwayDragController({
     const edgeDirX = edgeDx / L;
     const edgeDirY = edgeDy / L;
 
-    const dw = floor.doorways?.find(d => d.id === doorwayId);
-    if (!dw) return;
+    const wallResult = findWallByDoorwayId(floor, doorwayId);
+    if (!wallResult) return;
+    const dw = wallResult.doorway;
 
     const svg = getSvg();
-    // NO setPointerCapture here — deferred until actual movement to preserve click/dblclick
-
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     dragStartState = deepClone(state);
 
-    // Compute drag bounds considering sibling doorways (prevent overlap)
-    // Use collectEdgeDoorways to include cross-room doorways as constraints
-    const otherRooms = (floor.rooms || []).filter(
-      r => r.id !== room.id && !r.sourceRoomId && !(r.circle?.rx > 0)
-    );
-    const allEdgeDoorways = collectEdgeDoorways(floor, room, edgeIndex, otherRooms);
-    // The doorway's offset in the current edge space (may differ from dw.offsetCm for cross-room)
-    const currentEdgeDw = allEdgeDoorways.find(d => d.id === doorwayId);
-    const effectiveOffset = currentEdgeDw?.offsetCm ?? dw.offsetCm;
-    const effectiveWidth = currentEdgeDw?.widthCm ?? dw.widthCm;
+    // Doorway's offset/width are in wall-space (no cross-room mapping needed)
+    const effectiveOffset = dw.offsetCm;
+    const effectiveWidth = dw.widthCm;
+    const allEdgeDoorways = wallResult.wall.doorways || [];
 
     let minOffset = 0;
     let maxOffset = Math.max(0, L - effectiveWidth);
@@ -1553,8 +1543,9 @@ export function createDoorwayDragController({
     const edgeDirX = edgeDx / L;
     const edgeDirY = edgeDy / L;
 
-    const dw = floor.doorways?.find(d => d.id === doorwayId);
-    if (!dw) return;
+    const wallResult = findWallByDoorwayId(floor, doorwayId);
+    if (!wallResult) return;
+    const dw = wallResult.doorway;
 
     if (setSelectedDoorway) setSelectedDoorway(doorwayId);
 
@@ -1563,14 +1554,9 @@ export function createDoorwayDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     resizeStartState = deepClone(state);
 
-    // Get all doorways on this edge (including cross-room) for constraint computation
-    const otherRooms = (floor.rooms || []).filter(
-      r => r.id !== room.id && !r.sourceRoomId && !(r.circle?.rx > 0)
-    );
-    const allEdgeDoorways = collectEdgeDoorways(floor, room, edgeIndex, otherRooms);
-    const currentEdgeDw = allEdgeDoorways.find(d => d.id === doorwayId);
-    const effectiveOffset = currentEdgeDw?.offsetCm ?? dw.offsetCm;
-    const effectiveWidth = currentEdgeDw?.widthCm ?? dw.widthCm;
+    const allEdgeDoorways = wallResult.wall.doorways || [];
+    const effectiveOffset = dw.offsetCm;
+    const effectiveWidth = dw.widthCm;
 
     const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
     const vOverlapping = siblings.filter(sib => {
@@ -1663,20 +1649,12 @@ export function createDoorwayDragController({
 
     if (changed) {
       const finalState = deepClone(resizeStartState);
-      const room = getCurrentRoom(finalState);
       const floor = getCurrentFloor(finalState);
-      const dw = floor?.doorways?.find(d => d.id === resizeDrag.doorwayId);
-      if (dw) {
-        // Map offset/width back to owner edge space for cross-room doorways
-        const mappedOffset = mapOffsetToOwnerEdge(floor, dw, room, resizeDrag.edgeIndex, resizeDrag.currentOffset);
-        // For width: map the end position too and compute width in owner space
-        const mappedEnd = mapOffsetToOwnerEdge(floor, dw, room, resizeDrag.edgeIndex, resizeDrag.currentOffset + resizeDrag.currentWidth);
-        dw.offsetCm = Math.min(mappedOffset, mappedEnd);
-        dw.widthCm = Math.abs(mappedEnd - mappedOffset);
-      }
-      if (room && floor) {
-        ensureRoomWalls(room, floor, { forceRegenerate: true });
-        regenerateAdjacentWalls(room, floor);
+      const wallResult = findWallByDoorwayId(floor, resizeDrag.doorwayId);
+      if (wallResult) {
+        const dw = wallResult.doorway;
+        dw.offsetCm = resizeDrag.currentOffset;
+        dw.widthCm = resizeDrag.currentWidth;
       }
       commit(getMoveLabel?.() || "Doorway resized", finalState);
     } else {
