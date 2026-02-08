@@ -358,6 +358,94 @@ export function getWallNormal(wall, floor) {
 }
 
 /**
+ * Compute corner extensions for all edges of a room so that adjacent wall
+ * outer edges meet properly at corners, regardless of angle.
+ *
+ * For right-angle corners the extension equals the neighbor wall's thickness.
+ * For other angles it computes where the outer edge lines intersect.
+ *
+ * @param {Object} floor - Floor containing walls[]
+ * @param {string} roomId - The room whose edges to compute extensions for
+ * @returns {Map<number, {extStart: number, extEnd: number}>} edgeIndex → extensions
+ */
+export function computeWallExtensions(floor, roomId) {
+  const room = (floor.rooms || []).find(r => r.id === roomId);
+  if (!room?.polygonVertices?.length) return new Map();
+
+  const verts = room.polygonVertices;
+  const n = verts.length;
+  if (n < 3) return new Map();
+
+  // Compute winding sign (screen-coords: positive signed area = CW visually)
+  let area2 = 0;
+  for (let k = 0; k < n; k++) {
+    const kn = (k + 1) % n;
+    area2 += verts[k].x * verts[kn].y - verts[kn].x * verts[k].y;
+  }
+  const windingSign = area2 > 0 ? 1 : -1;
+
+  // Build edge → thickness map from floor walls
+  const edgeThick = new Map();
+  for (const w of (floor.walls || [])) {
+    const re = w.roomEdge;
+    if (re?.roomId === roomId) {
+      edgeThick.set(re.edgeIndex, w.thicknessCm ?? 12);
+    }
+  }
+
+  // Pre-compute normalized edge directions
+  const dirs = [];
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    const dx = verts[next].x - verts[i].x;
+    const dy = verts[next].y - verts[i].y;
+    const len = Math.hypot(dx, dy);
+    dirs.push(len > 0.01 ? { x: dx / len, y: dy / len, len } : { x: 0, y: 0, len: 0 });
+  }
+
+  const result = new Map();
+
+  for (let i = 0; i < n; i++) {
+    const prev = (i - 1 + n) % n;
+    const next = (i + 1) % n;
+    const thick = edgeThick.get(i) ?? 12;
+    const thickPrev = edgeThick.get(prev) ?? 12;
+    const thickNext = edgeThick.get(next) ?? 12;
+
+    const dB = dirs[i];     // current wall direction
+    const dA = dirs[prev];  // previous wall direction
+    const dC = dirs[next];  // next wall direction
+
+    let extStart = thickPrev; // fallback for degenerate cases
+    let extEnd = thickNext;
+
+    // extStart: intersection of wall A's outer edge with wall B's outer edge at vertex[i]
+    if (dA.len > 0.01 && dB.len > 0.01) {
+      const crossAB = dA.x * dB.y - dA.y * dB.x;
+      if (Math.abs(crossAB) > 0.01) {
+        const dotAB = dA.x * dB.x + dA.y * dB.y;
+        const tB = windingSign * (thick * dotAB - thickPrev) / crossAB;
+        extStart = Math.max(0, Math.min(-tB, Math.max(thickPrev, thick) * 3));
+      }
+    }
+
+    // extEnd: intersection of wall B's outer edge with wall C's outer edge at vertex[next]
+    if (dB.len > 0.01 && dC.len > 0.01) {
+      const crossBC = dB.x * dC.y - dB.y * dC.x;
+      if (Math.abs(crossBC) > 0.01) {
+        const dotBC = dB.x * dC.x + dB.y * dC.y;
+        const t = windingSign * (thickNext - thick * dotBC) / crossBC;
+        extEnd = Math.max(0, Math.min(t, Math.max(thickNext, thick) * 3));
+      }
+    }
+
+    result.set(i, { extStart, extEnd });
+  }
+
+  return result;
+}
+
+/**
  * Adapter: convert a wall surface into a tileable region compatible with
  * the existing tiling pipeline (tilesForPreview, computeAvailableArea).
  *

@@ -13,7 +13,7 @@ import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, getWallNormal, wallSurfaceToTileableRegion } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, getWallNormal, wallSurfaceToTileableRegion, computeWallExtensions } from "./walls.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -384,11 +384,11 @@ function prepareFloorWallData(state, floor) {
   }
   const isRemovalMode = Boolean(state.view?.removalMode);
 
-  // Build wall thickness lookup: (roomId, edgeIndex) → thicknessCm
-  const edgeThickMap = new Map();
-  for (const w of floor.walls) {
-    const re = w.roomEdge;
-    if (re) edgeThickMap.set(`${re.roomId}:${re.edgeIndex}`, w.thicknessCm ?? 12);
+  // Compute angle-aware extensions per room (cached)
+  const extCache = new Map();
+  function getExtensions(roomId) {
+    if (!extCache.has(roomId)) extCache.set(roomId, computeWallExtensions(floor, roomId));
+    return extCache.get(roomId);
   }
 
   return floor.walls.map(wall => {
@@ -401,21 +401,13 @@ function prepareFloorWallData(state, floor) {
     const edgeLength = Math.hypot(dx, dy);
     if (edgeLength < 1) return null;
 
-    // Extend wall endpoints by neighbor wall thickness to align corners
+    // Angle-aware corner extensions
     const dirX = dx / edgeLength;
     const dirY = dy / edgeLength;
     const re = wall.roomEdge;
-    let extS = thick, extE = thick;
-    if (re) {
-      const room = floor.rooms?.find(r => r.id === re.roomId);
-      const nv = room?.polygonVertices?.length || 0;
-      if (nv > 0) {
-        const prevEdge = (re.edgeIndex - 1 + nv) % nv;
-        const nextEdge = (re.edgeIndex + 1) % nv;
-        extS = edgeThickMap.get(`${re.roomId}:${prevEdge}`) ?? thick;
-        extE = edgeThickMap.get(`${re.roomId}:${nextEdge}`) ?? thick;
-      }
-    }
+    const wallExt = re ? (getExtensions(re.roomId).get(re.edgeIndex) ?? { extStart: thick, extEnd: thick })
+                       : { extStart: thick, extEnd: thick };
+    const extS = wallExt.extStart, extE = wallExt.extEnd;
     const extStart = { x: wall.start.x - dirX * extS, y: wall.start.y - dirY * extS };
     const extEnd = { x: wall.end.x + dirX * extE, y: wall.end.y + dirY * extE };
     const outerStart = { x: extStart.x + normal.x * thick, y: extStart.y + normal.y * thick };

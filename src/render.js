@@ -19,7 +19,7 @@ import {
 import { EPSILON } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, getWallNormal } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, getWallNormal, computeWallExtensions } from "./walls.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
 function isCircleRoom(room) {
@@ -1529,12 +1529,8 @@ export function renderPlanSvg({
     }
     const windingSign = roomArea2 > 0 ? 1 : -1;
 
-    // Build edge→thickness map so each wall can look up neighbor thicknesses
-    const edgeThickness = new Map();
-    for (const w of roomWalls) {
-      const s = w.surfaces?.find(s => s.roomId === currentRoom.id);
-      if (s != null && s.edgeIndex != null) edgeThickness.set(s.edgeIndex, w.thicknessCm ?? 12);
-    }
+    // Compute angle-aware corner extensions for all edges
+    const wallExtensions = floor ? computeWallExtensions(floor, currentRoom.id) : new Map();
 
     for (const wall of roomWalls) {
       const surface = wall.surfaces?.find(s => s.roomId === currentRoom.id);
@@ -1558,11 +1554,10 @@ export function renderPlanSvg({
       // Outward normal from CURRENT room's polygon (not the wall's owning room)
       const normal = { x: windingSign * edgeDy / origL, y: -windingSign * edgeDx / origL };
 
-      // Extend wall at start by PREVIOUS neighbor wall's thickness, at end by NEXT neighbor's
-      const prevEdge = (edgeIdx - 1 + n) % n;
-      const nextEdge = (edgeIdx + 1) % n;
-      const extStart = edgeThickness.get(prevEdge) ?? thick;
-      const extEnd = edgeThickness.get(nextEdge) ?? thick;
+      // Angle-aware corner extensions
+      const ext = wallExtensions.get(edgeIdx) ?? { extStart: thick, extEnd: thick };
+      const extStart = ext.extStart;
+      const extEnd = ext.extEnd;
       const A = { x: origA.x - edgeDirX * extStart, y: origA.y - edgeDirY * extStart };
       const B = { x: origB.x + edgeDirX * extEnd, y: origB.y + edgeDirY * extEnd };
       const L = origL + extStart + extEnd;
@@ -3275,11 +3270,11 @@ export function renderFloorCanvas({
     }
   }
 
-  // Build wall thickness lookup: (roomId, edgeIndex) → thicknessCm
-  const floorEdgeThick = new Map();
-  for (const w of (floor.walls || [])) {
-    const re = w.roomEdge;
-    if (re) floorEdgeThick.set(`${re.roomId}:${re.edgeIndex}`, w.thicknessCm ?? 12);
+  // Compute angle-aware extensions per room (cached)
+  const extCache = new Map();
+  function getExtensions(roomId) {
+    if (!extCache.has(roomId)) extCache.set(roomId, computeWallExtensions(floor, roomId));
+    return extCache.get(roomId);
   }
 
   // Render wall thickness outlines from wall entities (floor-level, once per wall)
@@ -3288,24 +3283,16 @@ export function renderFloorCanvas({
     const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? 12;
 
-    // Extend wall endpoints by neighbor wall thickness to align corners
+    // Angle-aware corner extensions
     const origS = wall.start, origE = wall.end;
     const origDx = origE.x - origS.x, origDy = origE.y - origS.y;
     const origL = Math.hypot(origDx, origDy);
     if (origL < 1) continue;
     const dirX = origDx / origL, dirY = origDy / origL;
     const re = wall.roomEdge;
-    let extStart = thick, extEnd = thick;
-    if (re) {
-      const room = floor.rooms?.find(r => r.id === re.roomId);
-      const nv = room?.polygonVertices?.length || 0;
-      if (nv > 0) {
-        const prevEdge = (re.edgeIndex - 1 + nv) % nv;
-        const nextEdge = (re.edgeIndex + 1) % nv;
-        extStart = floorEdgeThick.get(`${re.roomId}:${prevEdge}`) ?? thick;
-        extEnd = floorEdgeThick.get(`${re.roomId}:${nextEdge}`) ?? thick;
-      }
-    }
+    const ext = re ? (getExtensions(re.roomId).get(re.edgeIndex) ?? { extStart: thick, extEnd: thick })
+                   : { extStart: thick, extEnd: thick };
+    const extStart = ext.extStart, extEnd = ext.extEnd;
     const s = { x: origS.x - dirX * extStart, y: origS.y - dirY * extStart };
     const e = { x: origE.x + dirX * extEnd, y: origE.y + dirY * extEnd };
     const oS = { x: s.x + normal.x * thick, y: s.y + normal.y * thick };
