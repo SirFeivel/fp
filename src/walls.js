@@ -285,8 +285,10 @@ export function syncFloorWalls(floor) {
     });
   }
 
-  // 5. Remove walls with no surfaces and no roomEdge link to an existing room
+  // 5. Remove stale walls (degenerate edges not touched in step 2) and orphaned walls
   floor.walls = floor.walls.filter(wall => {
+    // Walls linked to a room edge that weren't processed belong to degenerate (zero-length) edges
+    if (wall.roomEdge && !touchedWallIds.has(wall.id)) return false;
     if (wall.surfaces.length > 0) return true;
     if (wall.roomEdge && roomIds.has(wall.roomEdge.roomId)) return true;
     return false;
@@ -393,6 +395,18 @@ export function computeWallExtensions(floor, roomId) {
     }
   }
 
+  // Detect "guest" shared edges: edges of this room that live on walls owned by other rooms.
+  // Extensions at corners meeting guest shared edges should be zero to avoid
+  // reaching into the adjacent room.
+  const guestSharedEdges = new Set();
+  for (const w of (floor.walls || [])) {
+    if (w.roomEdge?.roomId !== roomId) {
+      for (const s of w.surfaces) {
+        if (s.roomId === roomId) guestSharedEdges.add(s.edgeIndex);
+      }
+    }
+  }
+
   // Pre-compute normalized edge directions
   const dirs = [];
   for (let i = 0; i < n; i++) {
@@ -419,8 +433,11 @@ export function computeWallExtensions(floor, roomId) {
     let extStart = thickPrev; // fallback for degenerate cases
     let extEnd = thickNext;
 
-    // extStart: intersection of wall A's outer edge with wall B's outer edge at vertex[i]
-    if (dA.len > 0.01 && dB.len > 0.01) {
+    // Don't extend past guest shared edges (would reach into adjacent room)
+    if (guestSharedEdges.has(prev)) {
+      extStart = 0;
+    } else if (dA.len > 0.01 && dB.len > 0.01) {
+      // extStart: intersection of wall A's outer edge with wall B's outer edge at vertex[i]
       const crossAB = dA.x * dB.y - dA.y * dB.x;
       if (Math.abs(crossAB) > 0.01) {
         const dotAB = dA.x * dB.x + dA.y * dB.y;
@@ -429,8 +446,10 @@ export function computeWallExtensions(floor, roomId) {
       }
     }
 
-    // extEnd: intersection of wall B's outer edge with wall C's outer edge at vertex[next]
-    if (dB.len > 0.01 && dC.len > 0.01) {
+    if (guestSharedEdges.has(next)) {
+      extEnd = 0;
+    } else if (dB.len > 0.01 && dC.len > 0.01) {
+      // extEnd: intersection of wall B's outer edge with wall C's outer edge at vertex[next]
       const crossBC = dB.x * dC.y - dB.y * dC.x;
       if (Math.abs(crossBC) > 0.01) {
         const dotBC = dB.x * dC.x + dB.y * dC.y;

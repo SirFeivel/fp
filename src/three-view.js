@@ -691,10 +691,15 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     for (const surf of wallDesc.surfaces) {
       if (!surf.tiles?.length && !surf.exclusions?.length) continue;
 
+      // Owner surface maps to inner face, guest surface maps to outer face
+      const isOwner = surf.roomId === wallDesc.roomEdge?.roomId;
+      const faceStart = isOwner ? wallDesc.start : wallDesc.outerStart;
+      const faceEnd = isOwner ? wallDesc.end : wallDesc.outerEnd;
+
       const mapper = createWallMapper(
         surf.surfaceVerts,
-        wallDesc.start.x, wallDesc.start.y,
-        wallDesc.end.x, wallDesc.end.y,
+        faceStart.x, faceStart.y,
+        faceEnd.x, faceEnd.y,
         surf.hStart, surf.hEnd
       );
       if (!mapper) continue;
