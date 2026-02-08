@@ -622,6 +622,19 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     scene.add(floorMesh);
     floorMeshes.push(floorMesh);
 
+    // Doorway floor extensions — additional floor mesh patches through doorway openings
+    for (const patch of (roomDesc.doorwayFloorPatches || [])) {
+      const dwShape = new THREE.Shape();
+      dwShape.moveTo(pos.x + patch[0].x, -(pos.y + patch[0].y));
+      for (let i = 1; i < patch.length; i++) {
+        dwShape.lineTo(pos.x + patch[i].x, -(pos.y + patch[i].y));
+      }
+      dwShape.closePath();
+      const dwGeo = new THREE.ShapeGeometry(dwShape);
+      dwGeo.rotateX(-Math.PI / 2);
+      scene.add(new THREE.Mesh(dwGeo, floorMat));
+    }
+
     // --- Floor tiles + exclusions via renderSurface3D ---
     if (hasTiles) {
       const floorMapper = createFloorMapper(pos);

@@ -1,4 +1,5 @@
 // src/render.js
+import polygonClipping from "polygon-clipping";
 import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
 import { escapeHTML, getCurrentRoom, getCurrentFloor, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, DEFAULT_WASTE } from "./core.js";
@@ -24,6 +25,47 @@ import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGrou
 
 function isCircleRoom(room) {
   return room?.circle && room.circle.rx > 0;
+}
+
+/**
+ * Compute rectangular floor patches for ground-level doorways on walls owned by this room.
+ * Returns array of polygon-clipping format rings (closed coordinate arrays).
+ */
+function computeDoorwayFloorPatchesMP(room, floor) {
+  if (!floor?.walls?.length || !room?.polygonVertices?.length) return [];
+  const patches = [];
+  const verts = room.polygonVertices;
+  const n = verts.length;
+
+  for (const wall of floor.walls) {
+    if (wall.roomEdge?.roomId !== room.id) continue;
+    if (!wall.doorways?.length) continue;
+
+    const edgeIndex = wall.roomEdge.edgeIndex;
+    const start = verts[edgeIndex];
+    const end = verts[(edgeIndex + 1) % n];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+
+    const dirX = dx / len;
+    const dirY = dy / len;
+    const normal = getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? 12;
+
+    for (const dw of wall.doorways) {
+      if ((dw.elevationCm || 0) > 0.1) continue;
+      const off = dw.offsetCm;
+      const w = dw.widthCm;
+      const p1 = [start.x + off * dirX, start.y + off * dirY];
+      const p2 = [start.x + (off + w) * dirX, start.y + (off + w) * dirY];
+      const p3 = [p2[0] + thick * normal.x, p2[1] + thick * normal.y];
+      const p4 = [p1[0] + thick * normal.x, p1[1] + thick * normal.y];
+      patches.push([[p1, p2, p3, p4, p1]]);
+    }
+  }
+  return patches;
 }
 
 let activeSvgEdit = null;
@@ -1849,7 +1891,16 @@ export function renderPlanSvg({
       // Get effective settings (from origin room if in pattern group)
       const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
 
-      const t = tilesForPreview(state, avail.mp, isRemovalMode, false, currentFloor, { originOverride: patternGroupOrigin, effectiveSettings });
+      // Extend available area through doorway openings for continuous floor tiles
+      let extendedMP = avail.mp;
+      const doorwayPatches = computeDoorwayFloorPatchesMP(currentRoom, currentFloor);
+      for (const patch of doorwayPatches) {
+        try {
+          extendedMP = polygonClipping.union(extendedMP, patch);
+        } catch (_) { /* ignore degenerate patches */ }
+      }
+
+      const t = tilesForPreview(state, extendedMP, isRemovalMode, false, currentFloor, { originOverride: patternGroupOrigin, effectiveSettings });
       if (t.error) setLastTileError(t.error);
       else setLastTileError(null);
 
@@ -2828,10 +2879,19 @@ export function renderFloorCanvas({
           // Compute available area (room polygon minus exclusions)
           const avail = computeAvailableArea(room, room.exclusions || []);
           if (avail.mp) {
+            // Extend available area through doorway openings for continuous floor tiles
+            let extendedMP = avail.mp;
+            const doorwayPatches = computeDoorwayFloorPatchesMP(room, floor);
+            for (const patch of doorwayPatches) {
+              try {
+                extendedMP = polygonClipping.union(extendedMP, patch);
+              } catch (_) { /* ignore degenerate patches */ }
+            }
+
             const roomState = { ...state, selectedRoomId: room.id };
             // Use shared origin for pattern group
             const patternGroupOrigin = computePatternGroupOrigin(room, floor);
-            const result = tilesForPreview(roomState, avail.mp, room, false, floor, { originOverride: patternGroupOrigin, effectiveSettings });
+            const result = tilesForPreview(roomState, extendedMP, room, false, floor, { originOverride: patternGroupOrigin, effectiveSettings });
             const groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
 
             if (result.error) {

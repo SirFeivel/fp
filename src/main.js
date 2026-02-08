@@ -11,6 +11,7 @@ import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
+import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, getWallNormal, wallSurfaceToTileableRegion, computeWallExtensions } from "./walls.js";
@@ -352,6 +353,49 @@ function renderSetupSection(state) {
   structure.renderWallSelect();
 }
 
+/**
+ * Compute rectangular floor patches for ground-level doorways on walls owned by this room.
+ * Returns array of vertex arrays in room-local coordinates, each representing a rectangle
+ * extending outward through the doorway opening by the wall thickness.
+ */
+function computeDoorwayFloorPatches(room, floor) {
+  if (!floor?.walls?.length || !room?.polygonVertices?.length) return [];
+  const patches = [];
+  const verts = room.polygonVertices;
+  const n = verts.length;
+
+  for (const wall of floor.walls) {
+    if (wall.roomEdge?.roomId !== room.id) continue;
+    if (!wall.doorways?.length) continue;
+
+    const edgeIndex = wall.roomEdge.edgeIndex;
+    const start = verts[edgeIndex];
+    const end = verts[(edgeIndex + 1) % n];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+
+    const dirX = dx / len;
+    const dirY = dy / len;
+    const normal = getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? 12;
+
+    for (const dw of wall.doorways) {
+      if ((dw.elevationCm || 0) > 0.1) continue;
+      const off = dw.offsetCm;
+      const w = dw.widthCm;
+      patches.push([
+        { x: start.x + off * dirX,       y: start.y + off * dirY },
+        { x: start.x + (off + w) * dirX, y: start.y + (off + w) * dirY },
+        { x: start.x + (off + w) * dirX + thick * normal.x, y: start.y + (off + w) * dirY + thick * normal.y },
+        { x: start.x + off * dirX + thick * normal.x,       y: start.y + off * dirY + thick * normal.y },
+      ]);
+    }
+  }
+  return patches;
+}
+
 function prepareRoom3DData(state, room, floor) {
   const avail = computeAvailableArea(room, room.exclusions || []);
   const effectiveSettings = getEffectiveTileSettings(room, floor);
@@ -359,9 +403,22 @@ function prepareRoom3DData(state, room, floor) {
   let tileResult = null;
   let groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
 
+  // Compute doorway floor patches (room-local coords)
+  const doorwayFloorPatches = computeDoorwayFloorPatches(room, floor);
+
   if (avail.mp) {
+    // Extend available area through doorway openings for continuous floor tiles
+    let mp = avail.mp;
+    for (const patch of doorwayFloorPatches) {
+      const ring = patch.map(p => [p.x, p.y]);
+      ring.push([patch[0].x, patch[0].y]); // close ring
+      try {
+        mp = polygonClipping.union(mp, [[ring]]);
+      } catch (_) { /* ignore degenerate patches */ }
+    }
+
     const origin = computePatternGroupOrigin(room, floor);
-    tileResult = tilesForPreview(state, avail.mp, room, isRemovalMode, floor, {
+    tileResult = tilesForPreview(state, mp, room, isRemovalMode, floor, {
       originOverride: origin,
       effectiveSettings
     });
@@ -375,6 +432,7 @@ function prepareRoom3DData(state, room, floor) {
     floorTiles: tileResult?.tiles || [],
     floorExclusions: room.exclusions || [],
     groutColor,
+    doorwayFloorPatches,
   };
 }
 
