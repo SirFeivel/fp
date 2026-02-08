@@ -3,7 +3,7 @@ import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, uuid, get
 import { getWallForEdge, findWallByDoorwayId } from "./walls.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
-import { EPSILON } from "./constants.js";
+import { EPSILON, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { getUiState, setUiState } from "./ui_state.js";
 import { showConfirm, showAlert } from "./dialog.js";
 
@@ -827,8 +827,8 @@ export function bindUI({
     const A = verts[idx];
     const B = verts[(idx + 1) % verts.length];
     const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
-    const hStart = wall.heightStartCm ?? 200;
-    const hEnd = wall.heightEndCm ?? 200;
+    const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+    const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
     const minWallH = Math.min(hStart, hEnd);
     const dwHeight = Math.min(preferredHeight, Math.max(0, minWallH - 10));
 

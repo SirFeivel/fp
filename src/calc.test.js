@@ -429,22 +429,6 @@ describe('computePlanMetrics', () => {
     const resultWith = computePlanMetrics(stateWithOptimize);
     expect(resultWith.ok).toBe(true);
 
-    console.log('User bug report test - WITHOUT optimization:', {
-      fullTiles: resultWithout.data.tiles.fullTiles,
-      cutTiles: resultWithout.data.tiles.cutTiles,
-      reusedCuts: resultWithout.data.tiles.reusedCuts,
-      purchasedTiles: resultWithout.data.tiles.purchasedTiles,
-      wastePct: resultWithout.data.material.wastePct.toFixed(1) + '%'
-    });
-
-    console.log('User bug report test - WITH optimization:', {
-      fullTiles: resultWith.data.tiles.fullTiles,
-      cutTiles: resultWith.data.tiles.cutTiles,
-      reusedCuts: resultWith.data.tiles.reusedCuts,
-      purchasedTiles: resultWith.data.tiles.purchasedTiles,
-      wastePct: resultWith.data.material.wastePct.toFixed(1) + '%'
-    });
-
     // Both modes should now handle diagonal cuts efficiently
     // The key fix: using actual polygon area instead of bounding box
     expect(resultWithout.data.tiles.reusedCuts).toBeGreaterThan(0);
@@ -472,14 +456,6 @@ describe('computePlanMetrics', () => {
 
     const result = computePlanMetrics(state);
     expect(result.ok).toBe(true);
-
-    console.log('Larger diagonal room (4x original):', {
-      fullTiles: result.data.tiles.fullTiles,
-      cutTiles: result.data.tiles.cutTiles,
-      reusedCuts: result.data.tiles.reusedCuts,
-      purchasedTiles: result.data.tiles.purchasedTiles,
-      wastePct: result.data.material.wastePct.toFixed(1) + '%'
-    });
 
     // With proper diagonal optimization and pairing, all complementary border triangles are paired
     // For a perfect square at 45°, we achieve 0% waste through optimal pairing

@@ -17,6 +17,7 @@ import {
 import { clearMetricsCache } from './calc.js';
 import { areRoomsAdjacent } from './floor_geometry.js';
 import { computeCompositePolygon } from './composite.js';
+import { DEFAULT_WALL_HEIGHT_CM, DEFAULT_WALL_THICKNESS_CM } from './constants.js';
 import { syncFloorWalls } from './walls.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
@@ -564,11 +565,11 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!room.polygonVertices || room.polygonVertices.length < 3) continue;
 
         const edgeCount = room.polygonVertices.length;
-        const wallH = room.wallHeightCm ?? 200;
+        const wallH = room.wallHeightCm ?? DEFAULT_WALL_HEIGHT_CM;
 
         if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
           room.edgeProperties = Array.from({ length: edgeCount }, () => ({
-            thicknessCm: 12,
+            thicknessCm: DEFAULT_WALL_THICKNESS_CM,
             heightStartCm: wallH,
             heightEndCm: wallH
           }));

@@ -6,6 +6,45 @@ import { createSurface } from './surface.js';
 import { getRoomPatternGroup, createPatternGroup, addRoomToPatternGroup } from './pattern-groups.js';
 import { syncFloorWalls, getWallsForRoom } from './walls.js';
 
+/**
+ * Find a position for a new room on a free edge of existing rooms.
+ * Exported for direct testing.
+ */
+export function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
+  if (!existingRooms || existingRooms.length === 0) {
+    const bg = floor?.layout?.background;
+    if (bg?.nativeWidth && bg?.nativeHeight) {
+      const nativeW = bg.nativeWidth;
+      const pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
+      const imgWidth = nativeW / pixelsPerCm;
+      const imgHeight = bg.nativeHeight / pixelsPerCm;
+      return {
+        x: Math.round((imgWidth - newRoom.widthCm) / 2),
+        y: Math.round((imgHeight - newRoom.heightCm) / 2)
+      };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
+  if (position) {
+    return { x: position.x, y: position.y };
+  }
+
+  let maxRight = -Infinity;
+  let topAtMaxRight = 0;
+
+  for (const room of existingRooms) {
+    const bounds = getRoomAbsoluteBounds(room);
+    if (bounds.right > maxRight) {
+      maxRight = bounds.right;
+      topAtMaxRight = bounds.top;
+    }
+  }
+
+  return { x: maxRight, y: topAtMaxRight };
+}
+
 export function createStructureController({
   store,
   renderAll,
@@ -176,43 +215,7 @@ export function createStructureController({
     store.commit(t("structure.floorDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
-  /**
-   * Find a position for a new room on a free edge of existing rooms
-   */
-  function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
-    if (!existingRooms || existingRooms.length === 0) {
-      const bg = floor?.layout?.background;
-      if (bg?.nativeWidth && bg?.nativeHeight) {
-        const nativeW = bg.nativeWidth;
-        const pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
-        const imgWidth = nativeW / pixelsPerCm;
-        const imgHeight = bg.nativeHeight / pixelsPerCm;
-        return {
-          x: Math.round((imgWidth - newRoom.widthCm) / 2),
-          y: Math.round((imgHeight - newRoom.heightCm) / 2)
-        };
-      }
-      return { x: 0, y: 0 };
-    }
-
-    const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
-    if (position) {
-      return { x: position.x, y: position.y };
-    }
-
-    let maxRight = -Infinity;
-    let topAtMaxRight = 0;
-
-    for (const room of existingRooms) {
-      const bounds = getRoomAbsoluteBounds(room);
-      if (bounds.right > maxRight) {
-        maxRight = bounds.right;
-        topAtMaxRight = bounds.top;
-      }
-    }
-
-    return { x: maxRight, y: topAtMaxRight };
-  }
+    // findConnectedPositionForNewRoom is defined at module level for testability
 
   function addRoom() {
     const state = store.getState();

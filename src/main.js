@@ -21,7 +21,7 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
-import { EPSILON } from "./constants.js";
+import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
 
@@ -156,8 +156,8 @@ function addDoorwayToWall(edgeIndex) {
   const wall = getWallForEdge(nextFloor, room.id, edgeIndex);
   if (!wall) return;
 
-  const hStart = wall.heightStartCm ?? 200;
-  const hEnd = wall.heightEndCm ?? 200;
+  const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+  const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
   const minWallH = Math.min(hStart, hEnd);
 
   const verts = room.polygonVertices;
@@ -243,8 +243,8 @@ async function showDoorwayEditorDialog(doorwayId, edgeIndex) {
 
   // Compute edge length from wall endpoints
   const edgeLength = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-  const heightStartCm = wall.heightStartCm ?? 200;
-  const heightEndCm = wall.heightEndCm ?? 200;
+  const heightStartCm = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+  const heightEndCm = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
 
   const siblings = (wall.doorways || []).filter(d => d.id !== doorwayId);
 
@@ -379,7 +379,7 @@ function computeDoorwayFloorPatches(room, floor) {
     const dirX = dx / len;
     const dirY = dy / len;
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
     for (const dw of wall.doorways) {
       if ((dw.elevationCm || 0) > 0.1) continue;
@@ -451,9 +451,9 @@ function prepareFloorWallData(state, floor) {
 
   return floor.walls.map(wall => {
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
-    const hStart = wall.heightStartCm ?? 200;
-    const hEnd = wall.heightEndCm ?? 200;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+    const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
     const edgeLength = Math.hypot(dx, dy);

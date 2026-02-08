@@ -26,6 +26,10 @@ export const COMPLEMENTARY_FIT_MIN = 0.90;
 export const COMPLEMENTARY_FIT_MAX = 1.10;
 export const HEX_STEP_RATIO = 0.75;
 
+export const DEFAULT_WALL_THICKNESS_CM = 12;
+export const DEFAULT_WALL_HEIGHT_CM = 200;
+export const WALL_ADJACENCY_TOLERANCE_CM = DEFAULT_WALL_THICKNESS_CM + 1;
+
 export const COLORS = {
   background: "#081022",
   roomFill: "rgba(122,162,255,0.06)",

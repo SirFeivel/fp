@@ -17,7 +17,7 @@ import {
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
 } from "./geometry.js";
-import { EPSILON } from "./constants.js";
+import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, getWallNormal, computeWallExtensions } from "./walls.js";
@@ -52,7 +52,7 @@ function computeDoorwayFloorPatchesMP(room, floor) {
     const dirX = dx / len;
     const dirY = dy / len;
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
     for (const dw of wall.doorways) {
       if ((dw.elevationCm || 0) > 0.1) continue;
@@ -609,9 +609,9 @@ export function renderRoomForm(state) {
     const thicknessEl = document.getElementById("edgeThickness");
     const hStartEl = document.getElementById("edgeHeightStart");
     const hEndEl = document.getElementById("edgeHeightEnd");
-    if (thicknessEl) thicknessEl.value = wall?.thicknessCm ?? 12;
-    if (hStartEl) hStartEl.value = wall?.heightStartCm ?? 200;
-    if (hEndEl) hEndEl.value = wall?.heightEndCm ?? 200;
+    if (thicknessEl) thicknessEl.value = wall?.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    if (hStartEl) hStartEl.value = wall?.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+    if (hEndEl) hEndEl.value = wall?.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
 
     // Render doorways list from wall entity
     const edgeDoorways = wall?.doorways || [];
@@ -648,7 +648,7 @@ function renderDoorwaysList(doorways, edgeIndex) {
       <span style="font-size:12px;color:#94a3b8;white-space:nowrap">${t("edge.doorway")} ${i + 1}</span>
       <input class="dw-offset" data-dw-idx="${i}" type="number" min="0" step="1" value="${dw.offsetCm ?? 0}" style="width:55px" title="${t("edge.doorwayOffset")}" />
       <input class="dw-width" data-dw-idx="${i}" type="number" min="1" step="1" value="${dw.widthCm ?? 80}" style="width:55px" title="${t("edge.doorwayWidth")}" />
-      <input class="dw-height" data-dw-idx="${i}" type="number" min="1" step="1" value="${dw.heightCm ?? 200}" style="width:55px" title="${t("edge.doorwayHeight")}" />
+      <input class="dw-height" data-dw-idx="${i}" type="number" min="1" step="1" value="${dw.heightCm ?? DEFAULT_WALL_HEIGHT_CM}" style="width:55px" title="${t("edge.doorwayHeight")}" />
       <button class="btn btn-small dw-remove" data-dw-idx="${i}" title="${t("edge.removeDoorway")}">✕</button>
     `;
     container.appendChild(row);
@@ -1582,7 +1582,7 @@ export function renderPlanSvg({
 
       const origA = verts[edgeIdx];
       const origB = verts[(edgeIdx + 1) % n];
-      const thick = wall.thicknessCm ?? 12;
+      const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
       if (thick <= 0) continue;
 
       const edgeDx = origB.x - origA.x;
@@ -3339,9 +3339,9 @@ export function renderFloorCanvas({
 
   // Render wall thickness outlines from wall entities (floor-level, once per wall)
   for (const wall of (floor.walls || [])) {
-    if ((wall.thicknessCm ?? 12) <= 0) continue;
+    if ((wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) <= 0) continue;
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
     // Angle-aware corner extensions
     const origS = wall.start, origE = wall.end;

@@ -1,8 +1,9 @@
 // src/three-view.js — Self-contained Three.js 3D room viewer
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 
-// Palette pulled from CSS variables / 2D room rendering colors
+// --- 3D color palette (pulled from CSS variables / 2D room rendering) ---
 const FLOOR_COLOR = 0x3b82f6;    // --accent / selected room fill (#3b82f6)
 const FLOOR_OPACITY = 0.25;      // matches rgba(59,130,246,0.25)
 const WALL_COLOR = 0x6496c8;     // unselected room fill tone (rgb(100,150,200))
@@ -10,11 +11,17 @@ const WALL_HOVER_COLOR = 0x3b82f6; // selection blue (#3b82f6)
 const EDGE_COLOR = 0xc8dcff;     // room stroke (rgba(200,220,255))
 const SURFACE_HIGHLIGHT_OPACITY = 0.45;   // hover/selected floor opacity
 const BG_COLOR = 0x081022;       // .svgWrap background
+const UNSELECTED_FLOOR_COLOR = 0x334155;
+const UNSELECTED_FLOOR_OPACITY = 0.12;
+const UNSELECTED_WALL_COLOR = 0x4a5568;
+const UNSELECTED_EDGE_COLOR = 0x6b7280;
+const EXCLUSION_COLOR = 0xef4444; // red for exclusion zones
 
 // --- Tile path parsing helpers ---
 
 /** Parse "M x y L x y ... Z M x y ..." into array of rings [{x,y}...] */
 function parseTilePathD(d) {
+  if (!d || typeof d !== "string") return [];
   const rings = [];
   let current = null;
   const tokens = d.trim().split(/\s+/);
@@ -24,16 +31,19 @@ function parseTilePathD(d) {
     if (t === "M") {
       current = [];
       rings.push(current);
-      current.push({ x: parseFloat(tokens[i + 1]), y: parseFloat(tokens[i + 2]) });
+      const px = parseFloat(tokens[i + 1]), py = parseFloat(tokens[i + 2]);
+      if (!isNaN(px) && !isNaN(py)) current.push({ x: px, y: py });
       i += 3;
     } else if (t === "L") {
-      current.push({ x: parseFloat(tokens[i + 1]), y: parseFloat(tokens[i + 2]) });
+      const px = parseFloat(tokens[i + 1]), py = parseFloat(tokens[i + 2]);
+      if (current && !isNaN(px) && !isNaN(py)) current.push({ x: px, y: py });
       i += 3;
     } else if (t === "Z") {
       i++;
     } else {
       // implicit coordinate pair (continuation of L)
-      if (current) current.push({ x: parseFloat(tokens[i]), y: parseFloat(tokens[i + 1]) });
+      const px = parseFloat(tokens[i]), py = parseFloat(tokens[i + 1]);
+      if (current && !isNaN(px) && !isNaN(py)) current.push({ x: px, y: py });
       i += 2;
     }
   }
@@ -255,8 +265,10 @@ function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, d
 
 /** Convert an exclusion to a THREE.Shape in 2D surface-local coords. */
 function exclusionToShape(ex) {
+  if (!ex || !ex.type) return null;
   const shape = new THREE.Shape();
   if (ex.type === "rect") {
+    if (ex.x == null || ex.y == null || ex.w == null || ex.h == null) return null;
     shape.moveTo(ex.x, ex.y);
     shape.lineTo(ex.x + ex.w, ex.y);
     shape.lineTo(ex.x + ex.w, ex.y + ex.h);
@@ -351,7 +363,7 @@ function renderSurface3D(opts) {
     const tileGroups = [
       { shapes: fullShapes, color: tileFillHex, opacity: 0.12 },
       { shapes: cutShapes, color: tileFillHex, opacity: 0.06 },
-      { shapes: excludedShapes, color: 0xef4444, opacity: 0.25 },
+      { shapes: excludedShapes, color: EXCLUSION_COLOR, opacity: 0.25 },
     ];
 
     for (const group of tileGroups) {
@@ -402,7 +414,7 @@ function renderSurface3D(opts) {
   // --- Exclusions ---
   if (exclusions && exclusions.length > 0) {
     const exclMat = new THREE.MeshBasicMaterial({
-      color: 0xef4444,
+      color: EXCLUSION_COLOR,
       transparent: true,
       opacity: 0.15,
       side: THREE.DoubleSide,
@@ -412,7 +424,7 @@ function renderSurface3D(opts) {
       polygonOffsetUnits: exclZBias !== 0 ? exclZBias : 0,
     });
     const exclLineMat = new THREE.LineBasicMaterial({
-      color: 0xef4444,
+      color: EXCLUSION_COLOR,
       transparent: true,
       opacity: 0.8,
     });
@@ -445,16 +457,13 @@ function renderSurface3D(opts) {
   return { meshes, lines };
 }
 
-// Non-selected room colors (dimmer than selected)
-const UNSELECTED_FLOOR_COLOR = 0x334155;
-const UNSELECTED_FLOOR_OPACITY = 0.12;
-const UNSELECTED_WALL_COLOR = 0x4a5568;
-const UNSELECTED_EDGE_COLOR = 0x6b7280;
-
 /**
  * Creates a Three.js 3D view controller for floor visualization.
  * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function, onRoomSelect: Function }} opts
  */
+// Export pure helper functions for unit testing
+export { parseTilePathD, parseHexColor, createWallMapper, createFloorMapper, exclusionToShape };
+
 export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDoubleClick, onHoverChange, onRoomSelect, onSurfaceSelect }) {
   let renderer, camera, controls, scene;
   let animFrameId = null;
@@ -588,7 +597,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     if (!verts || verts.length < 3) return;
 
     const pos = roomDesc.floorPosition || { x: 0, y: 0 };
-    const wallH = 200; // default, per-edge heights from wallData
+    const wallH = DEFAULT_WALL_HEIGHT_CM; // default, per-edge heights from wallData
 
     // --- Floor mesh ---
     const floorShape = new THREE.Shape();
@@ -760,9 +769,9 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         if (wz > maxZ) maxZ = wz;
       }
       // Find max wall height from wallData
-      let wh = 200;
+      let wh = DEFAULT_WALL_HEIGHT_CM;
       for (const wd of (roomDesc.wallData || [])) {
-        wh = Math.max(wh, wd.hStart ?? 200, wd.hEnd ?? 200);
+        wh = Math.max(wh, wd.hStart ?? DEFAULT_WALL_HEIGHT_CM, wd.hEnd ?? DEFAULT_WALL_HEIGHT_CM);
       }
       if (wh > maxWallH) maxWallH = wh;
     }

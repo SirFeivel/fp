@@ -4,7 +4,6 @@ import {
   getFloorBounds,
   roomToFloor,
   floorToRoom,
-  translateMultiPolygon,
   areRoomsAdjacent,
   findAdjacentRooms,
   getRoomAbsoluteBounds,
@@ -158,28 +157,6 @@ describe('floorToRoom', () => {
     const floor = roomToFloor(original, room);
     const back = floorToRoom(floor, room);
     expect(back).toEqual(original);
-  });
-});
-
-describe('translateMultiPolygon', () => {
-  it('translates simple rectangle', () => {
-    const polygon = [[[
-      [0, 0], [100, 0], [100, 50], [0, 50], [0, 0]
-    ]]];
-    const result = translateMultiPolygon(polygon, 10, 20);
-    expect(result[0][0][0]).toEqual([10, 20]);
-    expect(result[0][0][1]).toEqual([110, 20]);
-    expect(result[0][0][2]).toEqual([110, 70]);
-  });
-
-  it('handles empty array', () => {
-    const result = translateMultiPolygon([], 10, 20);
-    expect(result).toEqual([]);
-  });
-
-  it('handles null input', () => {
-    const result = translateMultiPolygon(null, 10, 20);
-    expect(result).toEqual([]);
   });
 });
 

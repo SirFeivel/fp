@@ -1,11 +1,12 @@
 // src/walls.js — Wall entities: single source of truth for wall data
 import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
+import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM } from "./constants.js";
 
 export const DEFAULT_WALL = {
-  thicknessCm: 12,
-  heightStartCm: 200,
-  heightEndCm: 200,
+  thicknessCm: DEFAULT_WALL_THICKNESS_CM,
+  heightStartCm: DEFAULT_WALL_HEIGHT_CM,
+  heightEndCm: DEFAULT_WALL_HEIGHT_CM,
 };
 
 const DEFAULT_SURFACE_TILE = {
@@ -73,32 +74,26 @@ function createDefaultSurface(side, roomId, edgeIndex, fromCm, toCm) {
 }
 
 /**
- * Core sync algorithm. Called after any room change.
- * Ensures floor.walls[] matches the current room geometry.
- *
- * @param {Object} floor - Floor object with rooms[] and walls[]
+ * Index existing walls by their "roomId:edgeIndex" key for fast lookup.
+ * @returns {Map<string, Object>}
  */
-export function syncFloorWalls(floor) {
-  if (!floor) return;
-  if (!floor.walls) floor.walls = [];
-
-  const rooms = (floor.rooms || []).filter(
-    r => r.polygonVertices?.length >= 3 && !(r.circle?.rx > 0)
-  );
-
-  // Build a set of room IDs for cleanup
-  const roomIds = new Set(rooms.map(r => r.id));
-
-  // 1. Index existing walls by roomEdge key
+function indexWallsByEdge(walls) {
   const wallByEdgeKey = new Map();
-  for (const wall of floor.walls) {
+  for (const wall of walls) {
     if (wall.roomEdge) {
       const key = `${wall.roomEdge.roomId}:${wall.roomEdge.edgeIndex}`;
       wallByEdgeKey.set(key, wall);
     }
   }
+  return wallByEdgeKey;
+}
 
-  // 2. For each room edge, match or create a wall
+/**
+ * For each room edge, match an existing wall or create a new one.
+ * Updates wall geometry for existing walls, creates surfaces for new walls.
+ * @returns {Set<string>} IDs of all walls that correspond to valid room edges
+ */
+function ensureWallsForEdges(rooms, floor, wallByEdgeKey) {
   const touchedWallIds = new Set();
 
   for (const room of rooms) {
@@ -112,30 +107,25 @@ export function syncFloorWalls(floor) {
       const startPt = { x: pos.x + A.x, y: pos.y + A.y };
       const endPt = { x: pos.x + B.x, y: pos.y + B.y };
       const edgeLen = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
+      // < 1 cm: skip visually insignificant edges (too short to render a wall)
       if (edgeLen < 1) continue;
 
       const key = `${room.id}:${i}`;
       let wall = wallByEdgeKey.get(key);
 
       if (wall) {
-        // Update geometry
         wall.start = startPt;
         wall.end = endPt;
         touchedWallIds.add(wall.id);
       } else {
-        // Create new wall
         wall = createDefaultWall(startPt, endPt, { roomId: room.id, edgeIndex: i });
-
-        // Create a surface for this room (left side by convention for the owning room)
         const surface = createDefaultSurface("left", room.id, i, 0, edgeLen);
         wall.surfaces.push(surface);
-
         floor.walls.push(wall);
         wallByEdgeKey.set(key, wall);
         touchedWallIds.add(wall.id);
       }
 
-      // Ensure the owning room has a surface on this wall
       const hasOwnSurface = wall.surfaces.some(
         s => s.roomId === room.id && s.edgeIndex === i
       );
@@ -144,7 +134,7 @@ export function syncFloorWalls(floor) {
       } else {
         // Update surface range to match current edge length.
         // Reset fromCm=0 because wall.start was just set to this room's edge start;
-        // step 3 will shift it if the wall gets extended for shared edges.
+        // mergeSharedEdgeWalls will shift it if the wall gets extended for shared edges.
         for (const s of wall.surfaces) {
           if (s.roomId === room.id && s.edgeIndex === i) {
             s.fromCm = 0;
@@ -155,7 +145,14 @@ export function syncFloorWalls(floor) {
     }
   }
 
-  // 3. Detect shared edges — add surfaces for adjacent rooms
+  return touchedWallIds;
+}
+
+/**
+ * Detect shared edges between rooms — merge duplicate walls and add surfaces
+ * for adjacent rooms onto the surviving wall.
+ */
+function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
   for (const room of rooms) {
     const verts = room.polygonVertices;
     if (!verts || verts.length < 3) continue;
@@ -167,10 +164,10 @@ export function syncFloorWalls(floor) {
       const wall = wallByEdgeKey.get(key);
       if (!wall) continue;
 
-      const wallTolerance = (wall.thicknessCm ?? 12) + 1;
+      // + 1 cm: adjacency detection tolerance beyond wall thickness
+      const wallTolerance = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 1;
       const matches = findSharedEdgeMatches(room, i, otherRooms, wallTolerance);
       for (const match of matches) {
-        // Check if the other room already has a surface on this wall
         const existing = wall.surfaces.find(
           s => s.roomId === match.room.id && s.edgeIndex === match.edgeIndex
         );
@@ -184,24 +181,19 @@ export function syncFloorWalls(floor) {
           );
           wall.surfaces.push(surface);
         } else {
-          // Update overlap range
           existing.fromCm = match.overlapStartCm;
           existing.toCm = match.overlapEndCm;
         }
 
-        // Mark the matching room's own wall for this edge as sharing
-        // (the other room's edge might have its own wall — remove it if so,
-        // since shared edges should be ONE wall)
+        // Shared edges should be ONE wall — merge the other room's wall into this one
         const otherKey = `${match.room.id}:${match.edgeIndex}`;
         const otherWall = wallByEdgeKey.get(otherKey);
         if (otherWall && otherWall.id !== wall.id) {
-          // Merge doorways from the other wall into this wall
           for (const dw of otherWall.doorways) {
             if (!wall.doorways.some(d => d.id === dw.id)) {
               wall.doorways.push(dw);
             }
           }
-          // Merge surfaces from the other wall (other room's own surface)
           for (const s of otherWall.surfaces) {
             if (!wall.surfaces.some(ws => ws.roomId === s.roomId && ws.edgeIndex === s.edgeIndex)) {
               wall.surfaces.push(s);
@@ -212,6 +204,7 @@ export function syncFloorWalls(floor) {
           const wdx = wall.end.x - wall.start.x;
           const wdy = wall.end.y - wall.start.y;
           const wLen = Math.hypot(wdx, wdy);
+          // >= 1 cm: wall must have meaningful length for safe direction computation
           if (wLen >= 1) {
             const wDirX = wdx / wLen, wDirY = wdy / wLen;
             const t1 = (otherWall.start.x - wall.start.x) * wDirX + (otherWall.start.y - wall.start.y) * wDirY;
@@ -222,7 +215,6 @@ export function syncFloorWalls(floor) {
             const shift = -newMin;
 
             if (shift > 0.5 || newMax > wLen + 0.5) {
-              // Shift existing surface ranges and doorway offsets for start extension
               if (shift > 0.5) {
                 for (const s of wall.surfaces) {
                   s.fromCm += shift;
@@ -232,13 +224,11 @@ export function syncFloorWalls(floor) {
                   dw.offsetCm += shift;
                 }
               }
-              // Update wall endpoints
               const sx = wall.start.x, sy = wall.start.y;
               wall.start = { x: sx + wDirX * newMin, y: sy + wDirY * newMin };
               wall.end = { x: sx + wDirX * newMax, y: sy + wDirY * newMax };
             }
 
-            // Set the other room's surface to cover its full edge in wall space
             const otherFrom = Math.min(t1, t2) + shift;
             const otherTo = Math.max(t1, t2) + shift;
             const sharedSurf = wall.surfaces.find(
@@ -250,7 +240,6 @@ export function syncFloorWalls(floor) {
             }
           }
 
-          // Remove the other wall
           const idx = floor.walls.indexOf(otherWall);
           if (idx !== -1) floor.walls.splice(idx, 1);
           wallByEdgeKey.delete(otherKey);
@@ -259,18 +248,23 @@ export function syncFloorWalls(floor) {
       }
     }
   }
+}
 
-  // 4. Clean up surfaces whose rooms no longer exist or are geometrically far from the wall
+/**
+ * Remove surfaces whose rooms no longer exist or whose room edges are
+ * geometrically too far from the wall's line.
+ */
+function pruneOrphanSurfaces(floor, rooms, roomIds) {
   for (const wall of floor.walls) {
     const wdx = wall.end.x - wall.start.x;
     const wdy = wall.end.y - wall.start.y;
     const wLen = Math.hypot(wdx, wdy);
+    // < 0.01: numerical degeneracy guard — avoid division by near-zero length
     const wnx = wLen > 0.01 ? wdx / wLen : 0;
     const wny = wLen > 0.01 ? wdy / wLen : 0;
 
     wall.surfaces = wall.surfaces.filter(s => {
       if (!roomIds.has(s.roomId)) return false;
-      // Validate that the surface's room edge is geometrically close to this wall's line
       const sRoom = rooms.find(r => r.id === s.roomId);
       if (!sRoom) return false;
       const sVerts = sRoom.polygonVertices;
@@ -281,33 +275,41 @@ export function syncFloorWalls(floor) {
         x: sPos.x + eA.x + (sVerts[(s.edgeIndex + 1) % sVerts.length].x - eA.x) * 0.5,
         y: sPos.y + eA.y + (sVerts[(s.edgeIndex + 1) % sVerts.length].y - eA.y) * 0.5,
       };
-      // Perpendicular distance from edge midpoint to wall line
       const vx = eMid.x - wall.start.x, vy = eMid.y - wall.start.y;
       const perpDist = Math.abs(vx * wny - vy * wnx);
-      const maxDist = (wall.thicknessCm ?? 12) + 2;
+      // + 2 cm: slightly wider tolerance than wall thickness for adjacency detection
+      const maxDist = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 2;
       return perpDist <= maxDist;
     });
   }
+}
 
-  // 5. Remove stale walls (degenerate edges not touched in step 2) and orphaned walls
+/**
+ * Remove stale walls: those linked to degenerate (zero-length) edges not
+ * processed in ensureWallsForEdges, and orphaned walls with no surfaces.
+ */
+function removeStaleWalls(floor, touchedWallIds, roomIds) {
   floor.walls = floor.walls.filter(wall => {
-    // Walls linked to a room edge that weren't processed belong to degenerate (zero-length) edges
     if (wall.roomEdge && !touchedWallIds.has(wall.id)) return false;
     if (wall.surfaces.length > 0) return true;
     if (wall.roomEdge && roomIds.has(wall.roomEdge.roomId)) return true;
     return false;
   });
+}
 
-  // 6. Enforce adjacent room positions for shared walls.
-  // The adjacent room's touching edge must sit at the wall's outer edge
-  // (i.e. perpendicular distance from inner edge = wall thickness).
+/**
+ * Enforce adjacent room positions for shared walls.
+ * The adjacent room's touching edge must sit at the wall's outer edge
+ * (perpendicular distance from inner edge = wall thickness).
+ */
+function enforceAdjacentPositions(floor) {
   for (const wall of floor.walls) {
     if (wall.surfaces.length < 2) continue;
     const ownerRoomId = wall.roomEdge?.roomId;
     if (!ownerRoomId) continue;
 
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
     const adjSurf = wall.surfaces.find(s => s.roomId !== ownerRoomId);
     if (!adjSurf) continue;
@@ -315,7 +317,6 @@ export function syncFloorWalls(floor) {
     const adjRoom = floor.rooms.find(r => r.id === adjSurf.roomId);
     if (!adjRoom?.polygonVertices?.length) continue;
 
-    // Measure current perpendicular distance from adjacent edge vertex to wall inner edge
     const adjPos = adjRoom.floorPosition || { x: 0, y: 0 };
     const adjVertex = adjRoom.polygonVertices[adjSurf.edgeIndex];
     if (!adjVertex) continue;
@@ -332,6 +333,29 @@ export function syncFloorWalls(floor) {
       y: adjPos.y + normal.y * delta,
     };
   }
+}
+
+/**
+ * Core sync algorithm. Called after any room change.
+ * Ensures floor.walls[] matches the current room geometry.
+ *
+ * @param {Object} floor - Floor object with rooms[] and walls[]
+ */
+export function syncFloorWalls(floor) {
+  if (!floor) return;
+  if (!floor.walls) floor.walls = [];
+
+  const rooms = (floor.rooms || []).filter(
+    r => r.polygonVertices?.length >= 3 && !(r.circle?.rx > 0)
+  );
+  const roomIds = new Set(rooms.map(r => r.id));
+
+  const wallByEdgeKey = indexWallsByEdge(floor.walls);
+  const touchedWallIds = ensureWallsForEdges(rooms, floor, wallByEdgeKey);
+  mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
+  pruneOrphanSurfaces(floor, rooms, roomIds);
+  removeStaleWalls(floor, touchedWallIds, roomIds);
+  enforceAdjacentPositions(floor);
 }
 
 /**
@@ -430,7 +454,7 @@ export function computeWallExtensions(floor, roomId) {
   for (const w of (floor.walls || [])) {
     const re = w.roomEdge;
     if (re?.roomId === roomId) {
-      edgeThick.set(re.edgeIndex, w.thicknessCm ?? 12);
+      edgeThick.set(re.edgeIndex, w.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM);
     }
   }
 
@@ -461,9 +485,9 @@ export function computeWallExtensions(floor, roomId) {
   for (let i = 0; i < n; i++) {
     const prev = (i - 1 + n) % n;
     const next = (i + 1) % n;
-    const thick = edgeThick.get(i) ?? 12;
-    const thickPrev = edgeThick.get(prev) ?? 12;
-    const thickNext = edgeThick.get(next) ?? 12;
+    const thick = edgeThick.get(i) ?? DEFAULT_WALL_THICKNESS_CM;
+    const thickPrev = edgeThick.get(prev) ?? DEFAULT_WALL_THICKNESS_CM;
+    const thickNext = edgeThick.get(next) ?? DEFAULT_WALL_THICKNESS_CM;
 
     const dB = dirs[i];     // current wall direction
     const dA = dirs[prev];  // previous wall direction
@@ -519,8 +543,8 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
   const fromCm = surface.fromCm || 0;
   const toCm = surface.toCm || wallLen;
   const width = toCm - fromCm;
-  const hStart = wall.heightStartCm ?? 200;
-  const hEnd = wall.heightEndCm ?? 200;
+  const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+  const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
 
   // For partial surfaces, interpolate heights
   const tStart = wallLen > 0 ? fromCm / wallLen : 0;

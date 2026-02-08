@@ -14,6 +14,7 @@ import {
   getEdgeDoorways,
   DEFAULT_WALL,
 } from './walls.js';
+import { DEFAULT_WALL_THICKNESS_CM } from './constants.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -724,7 +725,7 @@ describe('corner extension geometry', () => {
 
   function computeExtendedWall(wall, floor) {
     const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? 12;
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
     const edgeLength = Math.hypot(dx, dy);
