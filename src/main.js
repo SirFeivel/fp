@@ -384,6 +384,13 @@ function prepareFloorWallData(state, floor) {
   }
   const isRemovalMode = Boolean(state.view?.removalMode);
 
+  // Build wall thickness lookup: (roomId, edgeIndex) → thicknessCm
+  const edgeThickMap = new Map();
+  for (const w of floor.walls) {
+    const re = w.roomEdge;
+    if (re) edgeThickMap.set(`${re.roomId}:${re.edgeIndex}`, w.thicknessCm ?? 12);
+  }
+
   return floor.walls.map(wall => {
     const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? 12;
@@ -394,12 +401,23 @@ function prepareFloorWallData(state, floor) {
     const edgeLength = Math.hypot(dx, dy);
     if (edgeLength < 1) return null;
 
-    // Extend wall endpoints by thickness to close corner gaps
+    // Extend wall endpoints by neighbor wall thickness to align corners
     const dirX = dx / edgeLength;
     const dirY = dy / edgeLength;
-    const ext = thick;
-    const extStart = { x: wall.start.x - dirX * ext, y: wall.start.y - dirY * ext };
-    const extEnd = { x: wall.end.x + dirX * ext, y: wall.end.y + dirY * ext };
+    const re = wall.roomEdge;
+    let extS = thick, extE = thick;
+    if (re) {
+      const room = floor.rooms?.find(r => r.id === re.roomId);
+      const nv = room?.polygonVertices?.length || 0;
+      if (nv > 0) {
+        const prevEdge = (re.edgeIndex - 1 + nv) % nv;
+        const nextEdge = (re.edgeIndex + 1) % nv;
+        extS = edgeThickMap.get(`${re.roomId}:${prevEdge}`) ?? thick;
+        extE = edgeThickMap.get(`${re.roomId}:${nextEdge}`) ?? thick;
+      }
+    }
+    const extStart = { x: wall.start.x - dirX * extS, y: wall.start.y - dirY * extS };
+    const extEnd = { x: wall.end.x + dirX * extE, y: wall.end.y + dirY * extE };
     const outerStart = { x: extStart.x + normal.x * thick, y: extStart.y + normal.y * thick };
     const outerEnd = { x: extEnd.x + normal.x * thick, y: extEnd.y + normal.y * thick };
 
@@ -441,11 +459,11 @@ function prepareFloorWallData(state, floor) {
       end: extEnd,
       outerStart,
       outerEnd,
-      edgeLength: edgeLength + 2 * ext,
+      edgeLength: edgeLength + extS + extE,
       hStart,
       hEnd,
       thicknessCm: thick,
-      doorways: (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + ext })),
+      doorways: (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extS })),
       roomEdge: wall.roomEdge,
       surfaces,
     };
@@ -581,9 +599,13 @@ function renderPlanningSection(state, opts) {
         }
         if (room && room.polygonVertices?.length >= 3) {
           const descriptor = prepareRoom3DData(state, room, floor);
+          // Only include walls that have a surface for the selected room
+          const roomWallDescs = wallDescs.filter(wd =>
+            wd.surfaces.some(s => s.roomId === room.id)
+          );
           threeViewController.buildScene({
             rooms: [descriptor],
-            walls: wallDescs,
+            walls: roomWallDescs,
             showWalls,
             selectedRoomId: room.id,
             selectedSurfaceEdgeIndex,

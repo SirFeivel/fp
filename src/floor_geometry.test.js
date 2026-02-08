@@ -581,8 +581,8 @@ describe('findRoomSnapPositions', () => {
     const positions = findRoomSnapPositions(room, otherRooms);
     // Should have positions for all 4 edges × 2 alignment options = 8 positions
     expect(positions.length).toBe(8);
-    // Check that snap to left edge of other room exists (room's right touches other's left)
-    const leftSnap = positions.find(p => p.x === 100); // 200 - 100 (room width)
+    // Check that snap to left edge of other room exists (with wall gap: 200 - 100 - 12 = 88)
+    const leftSnap = positions.find(p => p.x === 88);
     expect(leftSnap).toBeDefined();
   });
 });
@@ -825,7 +825,7 @@ describe('findPositionOnFreeEdge', () => {
     }];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
     expect(result).not.toBeNull();
-    expect(result.x).toBe(200); // Right edge of existing room
+    expect(result.x).toBe(212); // Right edge of existing room + 12cm wall
     expect(result.y).toBe(0); // Aligned to top
   });
 
@@ -840,7 +840,7 @@ describe('findPositionOnFreeEdge', () => {
     }];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'bottom');
     expect(result).not.toBeNull();
-    expect(result.y).toBe(150); // Bottom edge of existing room
+    expect(result.y).toBe(162); // Bottom edge of existing room + 12cm wall
   });
 
   it('finds free edge when some edges are occupied', () => {
@@ -862,8 +862,8 @@ describe('findPositionOnFreeEdge', () => {
     ];
     const result = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
     expect(result).not.toBeNull();
-    // Should place to the right of r2 (the rightmost room)
-    expect(result.x).toBe(200);
+    // Should place to the right of r2 (the rightmost room) + 12cm wall
+    expect(result.x).toBe(212);
   });
 
   it('returns connected and non-overlapping position', () => {

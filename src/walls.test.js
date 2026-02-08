@@ -328,6 +328,74 @@ describe('syncFloorWalls — shared edges', () => {
     expect(xs).toContain(400);
     expect(ys.sort((a, b) => a - b)).toEqual([0, 300]);
   });
+
+  it('extends shared wall to cover partial overlap', () => {
+    // Room 1 at (350,250), 300x300. Room 2 at (171,550), 300x300.
+    // Room 1 edge 2: (650,550)→(350,550). Room 2 edge 0: (171,550)→(471,550).
+    // Overlap is only 121cm, but the shared wall should extend to cover both.
+    const r1 = makeRoom('r1', 350, 250, 300, 300);
+    const r2 = makeRoom('r2', 171, 550, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+
+    // 4 + 4 = 8, minus 1 shared = 7 walls
+    expect(floor.walls.length).toBe(7);
+
+    // The shared wall should span the union: from x=650 to x=171 (479cm)
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    expect(sharedWall).toBeDefined();
+
+    const wallLen = Math.hypot(
+      sharedWall.end.x - sharedWall.start.x,
+      sharedWall.end.y - sharedWall.start.y
+    );
+    expect(wallLen).toBeCloseTo(479, 0);
+
+    // Both rooms' x-extents should be within the wall
+    const minX = Math.min(sharedWall.start.x, sharedWall.end.x);
+    const maxX = Math.max(sharedWall.start.x, sharedWall.end.x);
+    expect(minX).toBeCloseTo(171, 0);
+    expect(maxX).toBeCloseTo(650, 0);
+  });
+
+  it('extended shared wall has correct surface ranges', () => {
+    const r1 = makeRoom('r1', 350, 250, 300, 300);
+    const r2 = makeRoom('r2', 171, 550, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    const r1Surf = sharedWall.surfaces.find(s => s.roomId === 'r1');
+    const r2Surf = sharedWall.surfaces.find(s => s.roomId === 'r2');
+
+    // Each surface should cover its room's full 300cm edge
+    expect(r1Surf.toCm - r1Surf.fromCm).toBeCloseTo(300, 0);
+    expect(r2Surf.toCm - r2Surf.fromCm).toBeCloseTo(300, 0);
+  });
+
+  it('no extension needed for fully overlapping edges', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 400, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    // Wall should still be exactly 300cm (no extension)
+    const wallLen = Math.hypot(
+      sharedWall.end.x - sharedWall.start.x,
+      sharedWall.end.y - sharedWall.start.y
+    );
+    expect(wallLen).toBeCloseTo(300, 0);
+  });
 });
 
 // ── getWallsForRoom / getWallForEdge / getWallById ──────────────────

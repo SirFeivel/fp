@@ -281,6 +281,13 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       });
     }
 
+    // Keep wall entities in sync with room geometry on every state change
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        syncFloorWalls(floor);
+      }
+    }
+
     return s;
   }
 

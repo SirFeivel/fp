@@ -203,6 +203,49 @@ export function syncFloorWalls(floor) {
               wall.surfaces.push(s);
             }
           }
+
+          // Extend the surviving wall to cover the union of both walls
+          const wdx = wall.end.x - wall.start.x;
+          const wdy = wall.end.y - wall.start.y;
+          const wLen = Math.hypot(wdx, wdy);
+          if (wLen >= 1) {
+            const wDirX = wdx / wLen, wDirY = wdy / wLen;
+            const t1 = (otherWall.start.x - wall.start.x) * wDirX + (otherWall.start.y - wall.start.y) * wDirY;
+            const t2 = (otherWall.end.x - wall.start.x) * wDirX + (otherWall.end.y - wall.start.y) * wDirY;
+
+            const newMin = Math.min(0, t1, t2);
+            const newMax = Math.max(wLen, t1, t2);
+            const shift = -newMin;
+
+            if (shift > 0.5 || newMax > wLen + 0.5) {
+              // Shift existing surface ranges and doorway offsets for start extension
+              if (shift > 0.5) {
+                for (const s of wall.surfaces) {
+                  s.fromCm += shift;
+                  s.toCm += shift;
+                }
+                for (const dw of wall.doorways) {
+                  dw.offsetCm += shift;
+                }
+              }
+              // Update wall endpoints
+              const sx = wall.start.x, sy = wall.start.y;
+              wall.start = { x: sx + wDirX * newMin, y: sy + wDirY * newMin };
+              wall.end = { x: sx + wDirX * newMax, y: sy + wDirY * newMax };
+            }
+
+            // Set the other room's surface to cover its full edge in wall space
+            const otherFrom = Math.min(t1, t2) + shift;
+            const otherTo = Math.max(t1, t2) + shift;
+            const sharedSurf = wall.surfaces.find(
+              s => s.roomId === match.room.id && s.edgeIndex === match.edgeIndex
+            );
+            if (sharedSurf) {
+              sharedSurf.fromCm = otherFrom;
+              sharedSurf.toCm = otherTo;
+            }
+          }
+
           // Remove the other wall
           const idx = floor.walls.indexOf(otherWall);
           if (idx !== -1) floor.walls.splice(idx, 1);
@@ -213,9 +256,33 @@ export function syncFloorWalls(floor) {
     }
   }
 
-  // 4. Clean up surfaces whose rooms no longer exist or no longer touch the wall
+  // 4. Clean up surfaces whose rooms no longer exist or are geometrically far from the wall
   for (const wall of floor.walls) {
-    wall.surfaces = wall.surfaces.filter(s => roomIds.has(s.roomId));
+    const wdx = wall.end.x - wall.start.x;
+    const wdy = wall.end.y - wall.start.y;
+    const wLen = Math.hypot(wdx, wdy);
+    const wnx = wLen > 0.01 ? wdx / wLen : 0;
+    const wny = wLen > 0.01 ? wdy / wLen : 0;
+
+    wall.surfaces = wall.surfaces.filter(s => {
+      if (!roomIds.has(s.roomId)) return false;
+      // Validate that the surface's room edge is geometrically close to this wall's line
+      const sRoom = rooms.find(r => r.id === s.roomId);
+      if (!sRoom) return false;
+      const sVerts = sRoom.polygonVertices;
+      if (!sVerts || s.edgeIndex >= sVerts.length) return false;
+      const sPos = sRoom.floorPosition || { x: 0, y: 0 };
+      const eA = sVerts[s.edgeIndex];
+      const eMid = {
+        x: sPos.x + eA.x + (sVerts[(s.edgeIndex + 1) % sVerts.length].x - eA.x) * 0.5,
+        y: sPos.y + eA.y + (sVerts[(s.edgeIndex + 1) % sVerts.length].y - eA.y) * 0.5,
+      };
+      // Perpendicular distance from edge midpoint to wall line
+      const vx = eMid.x - wall.start.x, vy = eMid.y - wall.start.y;
+      const perpDist = Math.abs(vx * wny - vy * wnx);
+      const maxDist = (wall.thicknessCm ?? 12) + 2;
+      return perpDist <= maxDist;
+    });
   }
 
   // 5. Remove walls with no surfaces and no roomEdge link to an existing room

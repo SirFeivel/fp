@@ -1521,6 +1521,20 @@ export function renderPlanSvg({
     const floor = getCurrentFloor(state);
     const roomWalls = floor ? getWallsForRoom(floor, currentRoom.id) : [];
 
+    // Compute winding sign once for current room's polygon
+    let roomArea2 = 0;
+    for (let k = 0; k < n; k++) {
+      const kn = (k + 1) % n;
+      roomArea2 += verts[k].x * verts[kn].y - verts[kn].x * verts[k].y;
+    }
+    const windingSign = roomArea2 > 0 ? 1 : -1;
+
+    // Build edge→thickness map so each wall can look up neighbor thicknesses
+    const edgeThickness = new Map();
+    for (const w of roomWalls) {
+      const s = w.surfaces?.find(s => s.roomId === currentRoom.id);
+      if (s != null && s.edgeIndex != null) edgeThickness.set(s.edgeIndex, w.thicknessCm ?? 12);
+    }
 
     for (const wall of roomWalls) {
       const surface = wall.surfaces?.find(s => s.roomId === currentRoom.id);
@@ -1541,14 +1555,17 @@ export function renderPlanSvg({
       const edgeDirX = edgeDx / origL;
       const edgeDirY = edgeDy / origL;
 
-      // Outward normal from wall entity
-      const normal = floor ? getWallNormal(wall, floor) : { x: 0, y: -1 };
+      // Outward normal from CURRENT room's polygon (not the wall's owning room)
+      const normal = { x: windingSign * edgeDy / origL, y: -windingSign * edgeDx / origL };
 
-      // Extend wall endpoints by thickness to close corner gaps
-      const ext = thick;
-      const A = { x: origA.x - edgeDirX * ext, y: origA.y - edgeDirY * ext };
-      const B = { x: origB.x + edgeDirX * ext, y: origB.y + edgeDirY * ext };
-      const L = origL + 2 * ext;
+      // Extend wall at start by PREVIOUS neighbor wall's thickness, at end by NEXT neighbor's
+      const prevEdge = (edgeIdx - 1 + n) % n;
+      const nextEdge = (edgeIdx + 1) % n;
+      const extStart = edgeThickness.get(prevEdge) ?? thick;
+      const extEnd = edgeThickness.get(nextEdge) ?? thick;
+      const A = { x: origA.x - edgeDirX * extStart, y: origA.y - edgeDirY * extStart };
+      const B = { x: origB.x + edgeDirX * extEnd, y: origB.y + edgeDirY * extEnd };
+      const L = origL + extStart + extEnd;
       const OA = { x: A.x + normal.x * thick, y: A.y + normal.y * thick };
       const OB = { x: B.x + normal.x * thick, y: B.y + normal.y * thick };
 
@@ -1561,8 +1578,8 @@ export function renderPlanSvg({
       const innerAt = (t) => ({ x: A.x + t * eDx, y: A.y + t * eDy });
       const outerAt = (t) => ({ x: OA.x + t * (OB.x - OA.x), y: OA.y + t * (OB.y - OA.y) });
 
-      // Draw wall with doorway gaps — doorway offsets shifted by ext
-      const allDoorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + ext }));
+      // Draw wall with doorway gaps — doorway offsets shifted by extStart
+      const allDoorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extStart }));
       const sortedDw = [...allDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
 
       const drawWallSeg = (tStart, tEnd) => {
@@ -3258,21 +3275,39 @@ export function renderFloorCanvas({
     }
   }
 
+  // Build wall thickness lookup: (roomId, edgeIndex) → thicknessCm
+  const floorEdgeThick = new Map();
+  for (const w of (floor.walls || [])) {
+    const re = w.roomEdge;
+    if (re) floorEdgeThick.set(`${re.roomId}:${re.edgeIndex}`, w.thicknessCm ?? 12);
+  }
+
   // Render wall thickness outlines from wall entities (floor-level, once per wall)
   for (const wall of (floor.walls || [])) {
     if ((wall.thicknessCm ?? 12) <= 0) continue;
     const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? 12;
 
-    // Extend wall endpoints by thickness to close corner gaps
+    // Extend wall endpoints by neighbor wall thickness to align corners
     const origS = wall.start, origE = wall.end;
     const origDx = origE.x - origS.x, origDy = origE.y - origS.y;
     const origL = Math.hypot(origDx, origDy);
     if (origL < 1) continue;
     const dirX = origDx / origL, dirY = origDy / origL;
-    const ext = thick;
-    const s = { x: origS.x - dirX * ext, y: origS.y - dirY * ext };
-    const e = { x: origE.x + dirX * ext, y: origE.y + dirY * ext };
+    const re = wall.roomEdge;
+    let extStart = thick, extEnd = thick;
+    if (re) {
+      const room = floor.rooms?.find(r => r.id === re.roomId);
+      const nv = room?.polygonVertices?.length || 0;
+      if (nv > 0) {
+        const prevEdge = (re.edgeIndex - 1 + nv) % nv;
+        const nextEdge = (re.edgeIndex + 1) % nv;
+        extStart = floorEdgeThick.get(`${re.roomId}:${prevEdge}`) ?? thick;
+        extEnd = floorEdgeThick.get(`${re.roomId}:${nextEdge}`) ?? thick;
+      }
+    }
+    const s = { x: origS.x - dirX * extStart, y: origS.y - dirY * extStart };
+    const e = { x: origE.x + dirX * extEnd, y: origE.y + dirY * extEnd };
     const oS = { x: s.x + normal.x * thick, y: s.y + normal.y * thick };
     const oE = { x: e.x + normal.x * thick, y: e.y + normal.y * thick };
 
@@ -3282,14 +3317,14 @@ export function renderFloorCanvas({
     const wallStroke = isWallSelected ? "rgba(148, 163, 184, 0.7)" : "rgba(148, 163, 184, 0.35)";
 
     const dx = e.x - s.x, dy = e.y - s.y;
-    const L = origL + 2 * ext;
+    const L = origL + extStart + extEnd;
     const edgeDirX = dirX, edgeDirY = dirY;
 
     const innerAt = (t) => ({ x: s.x + t * dx, y: s.y + t * dy });
     const outerAt = (t) => ({ x: oS.x + t * (oE.x - oS.x), y: oS.y + t * (oE.y - oS.y) });
 
-    // Shift doorway offsets by extension amount
-    const doorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + ext }));
+    // Shift doorway offsets by start extension amount
+    const doorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extStart }));
     const sortedDw = [...doorways].sort((a, b) => a.offsetCm - b.offsetCm);
 
     let cursor = 0;
