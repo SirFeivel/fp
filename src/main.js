@@ -76,6 +76,42 @@ let selectedDoorwayId = null;
 const exportSelection = new Set();
 let threeViewController = null;
 
+/**
+ * Get a human-readable wall name based on room shape and edge index.
+ * For rectangular rooms (4 edges): Top/Right/Bottom/Left
+ * For poly-rooms (more edges): Find bottom-most edge, label as Wall 1, count clockwise
+ */
+function getWallName(room, edgeIndex) {
+  if (!room?.polygonVertices?.length) return `Wall ${edgeIndex + 1}`;
+
+  const verts = room.polygonVertices;
+  const n = verts.length;
+
+  // Rectangular room: use directional names
+  if (n === 4) {
+    const names = ["Top wall", "Right wall", "Bottom wall", "Left wall"];
+    return names[edgeIndex] || `Wall ${edgeIndex + 1}`;
+  }
+
+  // Poly-room: find bottom-most edge (highest Y, since Y-down)
+  let bottomEdgeIdx = 0;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < n; i++) {
+    const v1 = verts[i];
+    const v2 = verts[(i + 1) % n];
+    const avgY = (v1.y + v2.y) / 2;
+    if (avgY > maxY) {
+      maxY = avgY;
+      bottomEdgeIdx = i;
+    }
+  }
+
+  // Count clockwise from bottom edge (Wall 1, Wall 2, ...)
+  let wallNum = ((edgeIndex - bottomEdgeIdx + n) % n) + 1;
+  return `Wall ${wallNum}`;
+}
+
 function updateMeta() {
   const last = store.getLastSavedAt();
   document.getElementById("lastSaved").textContent = last ? last : "–";
@@ -3335,7 +3371,8 @@ function updateAllTranslations() {
           const edgeIdx = w.roomEdge?.edgeIndex ?? idx;
           const opt = document.createElement("option");
           opt.value = w.id;
-          opt.textContent = `${room.name} · Wall ${edgeIdx + 1}`;
+          const wallName = getWallName(room, edgeIdx);
+          opt.textContent = wallName;
           if (w.id === state.selectedWallId) opt.selected = true;
           wallSelect.appendChild(opt);
         });
