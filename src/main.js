@@ -3324,12 +3324,12 @@ function updateAllTranslations() {
       } else {
         wallSelect.disabled = false;
 
-        // No wall selected option
-        const noneOpt = document.createElement("option");
-        noneOpt.value = "";
-        noneOpt.textContent = "—";
-        if (!state.selectedWallId) noneOpt.selected = true;
-        wallSelect.appendChild(noneOpt);
+        // Room floor option
+        const floorOpt = document.createElement("option");
+        floorOpt.value = "";
+        floorOpt.textContent = t("tabs.roomFloor") || "Room floor";
+        if (!state.selectedWallId) floorOpt.selected = true;
+        wallSelect.appendChild(floorOpt);
 
         walls.forEach((w, idx) => {
           const edgeIdx = w.roomEdge?.edgeIndex ?? idx;
