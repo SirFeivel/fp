@@ -3,7 +3,7 @@ import "./style.css";
 import { computePlanMetrics, getRoomPricing } from "./calc.js";
 import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
-import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
+import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, getSelectedSurface, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
 import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
@@ -14,7 +14,7 @@ import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, getWallNormal, wallSurfaceToTileableRegion, computeWallExtensions } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN } from "./walls.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -353,58 +353,16 @@ function renderSetupSection(state) {
   structure.renderWallSelect();
 }
 
-/**
- * Compute rectangular floor patches for ground-level doorways on walls owned by this room.
- * Returns array of vertex arrays in room-local coordinates, each representing a rectangle
- * extending outward through the doorway opening by the wall thickness.
- */
-function computeDoorwayFloorPatches(room, floor) {
-  if (!floor?.walls?.length || !room?.polygonVertices?.length) return [];
-  const patches = [];
-  const verts = room.polygonVertices;
-  const n = verts.length;
 
-  for (const wall of floor.walls) {
-    if (wall.roomEdge?.roomId !== room.id) continue;
-    if (!wall.doorways?.length) continue;
-
-    const edgeIndex = wall.roomEdge.edgeIndex;
-    const start = verts[edgeIndex];
-    const end = verts[(edgeIndex + 1) % n];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) continue;
-
-    const dirX = dx / len;
-    const dirY = dy / len;
-    const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
-
-    for (const dw of wall.doorways) {
-      if ((dw.elevationCm || 0) > 0.1) continue;
-      const off = dw.offsetCm;
-      const w = dw.widthCm;
-      patches.push([
-        { x: start.x + off * dirX,       y: start.y + off * dirY },
-        { x: start.x + (off + w) * dirX, y: start.y + (off + w) * dirY },
-        { x: start.x + (off + w) * dirX + thick * normal.x, y: start.y + (off + w) * dirY + thick * normal.y },
-        { x: start.x + off * dirX + thick * normal.x,       y: start.y + off * dirY + thick * normal.y },
-      ]);
-    }
-  }
-  return patches;
-}
-
-function prepareRoom3DData(state, room, floor) {
+function prepareRoom3DData(state, room, floor, wallGeometry) {
   const avail = computeAvailableArea(room, room.exclusions || []);
   const effectiveSettings = getEffectiveTileSettings(room, floor);
   const isRemovalMode = Boolean(state.view?.removalMode);
   let tileResult = null;
   let groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
 
-  // Compute doorway floor patches (room-local coords)
-  const doorwayFloorPatches = computeDoorwayFloorPatches(room, floor);
+  // Compute doorway floor patches (room-local coords) using unified function
+  const doorwayFloorPatches = computeDoorwayFloorPatches(room, floor, wallGeometry, "vertices");
 
   if (avail.mp) {
     // Extend available area through doorway openings for continuous floor tiles
@@ -436,21 +394,14 @@ function prepareRoom3DData(state, room, floor) {
   };
 }
 
-function prepareFloorWallData(state, floor) {
+function prepareFloorWallData(state, floor, wallGeometry) {
   if (!floor?.walls?.length) {
     return [];
   }
   const isRemovalMode = Boolean(state.view?.removalMode);
-
-  // Compute angle-aware extensions per room (cached)
-  const extCache = new Map();
-  function getExtensions(roomId) {
-    if (!extCache.has(roomId)) extCache.set(roomId, computeWallExtensions(floor, roomId));
-    return extCache.get(roomId);
-  }
+  const wg = wallGeometry || computeFloorWallGeometry(floor);
 
   return floor.walls.map(wall => {
-    const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
     const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
     const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
@@ -459,17 +410,8 @@ function prepareFloorWallData(state, floor) {
     const edgeLength = Math.hypot(dx, dy);
     if (edgeLength < 1) return null;
 
-    // Angle-aware corner extensions
-    const dirX = dx / edgeLength;
-    const dirY = dy / edgeLength;
-    const re = wall.roomEdge;
-    const wallExt = re ? (getExtensions(re.roomId).get(re.edgeIndex) ?? { extStart: thick, extEnd: thick })
-                       : { extStart: thick, extEnd: thick };
-    const extS = wallExt.extStart, extE = wallExt.extEnd;
-    const extStart = { x: wall.start.x - dirX * extS, y: wall.start.y - dirY * extS };
-    const extEnd = { x: wall.end.x + dirX * extE, y: wall.end.y + dirY * extE };
-    const outerStart = { x: extStart.x + normal.x * thick, y: extStart.y + normal.y * thick };
-    const outerEnd = { x: extEnd.x + normal.x * thick, y: extEnd.y + normal.y * thick };
+    const wallDesc = wg.get(wall.id);
+    if (!wallDesc) return null;
 
     const surfaces = wall.surfaces.map((surface, idx) => {
       const region = wallSurfaceToTileableRegion(wall, idx);
@@ -495,9 +437,8 @@ function prepareFloorWallData(state, floor) {
       const surfHEnd = hStart + (hEnd - hStart) * tEnd;
 
       // Fraction along the extended wall where this surface sits
-      const totalLen = edgeLength + extS + extE;
-      const fromFrac = totalLen > 0 ? (surfFromCm + extS) / totalLen : 0;
-      const toFrac = totalLen > 0 ? (surfToCm + extS) / totalLen : 1;
+      const fromFrac = wallDesc.totalLength > 0 ? (surfFromCm + wallDesc.extStart) / wallDesc.totalLength : 0;
+      const toFrac = wallDesc.totalLength > 0 ? (surfToCm + wallDesc.extStart) / wallDesc.totalLength : 1;
 
       return {
         roomId: surface.roomId,
@@ -515,15 +456,15 @@ function prepareFloorWallData(state, floor) {
 
     return {
       id: wall.id,
-      start: extStart,
-      end: extEnd,
-      outerStart,
-      outerEnd,
-      edgeLength: edgeLength + extS + extE,
+      start: wallDesc.extStartPt,
+      end: wallDesc.extEndPt,
+      outerStart: wallDesc.outerStartPt,
+      outerEnd: wallDesc.outerEndPt,
+      edgeLength: wallDesc.totalLength,
       hStart,
       hEnd,
       thicknessCm: thick,
-      doorways: (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extS })),
+      doorways: wallDesc.extDoorways,
       roomEdge: wall.roomEdge,
       surfaces,
     };
@@ -555,31 +496,15 @@ async function showSurfaceEditorDialog(wallId) {
   });
 
   if (result === null) {
-    console.log('[SurfaceEditor] Modal cancelled');
     return; // Cancelled
   }
-
-  console.log('[SurfaceEditor] Modal result:', JSON.stringify({
-    wall: result.wall,
-    tile: result.tile,
-    grout: result.grout,
-    pattern: result.pattern,
-    enabled: result.enabled
-  }, null, 2));
 
   const next = deepClone(state);
   const nextFloor = next.floors.find(f => f.id === floor.id);
   const nextWall = nextFloor?.walls?.find(w => w.id === wallId);
   if (!nextWall || !nextWall.surfaces || nextWall.surfaces.length === 0) {
-    console.log('[SurfaceEditor] Wall or surface not found in next state');
     return;
   }
-
-  console.log('[SurfaceEditor] Before update - surface:', JSON.stringify({
-    tile: surface.tile,
-    grout: surface.grout,
-    pattern: surface.pattern
-  }, null, 2));
 
   // Check if wall properties changed
   const wallChanged =
@@ -597,26 +522,15 @@ async function showSurfaceEditorDialog(wallId) {
   nextWall.surfaces[0].grout = result.grout;
   nextWall.surfaces[0].pattern = result.pattern;
 
-  console.log('[SurfaceEditor] After update - nextWall.surfaces[0]:', JSON.stringify({
-    tile: nextWall.surfaces[0].tile,
-    grout: nextWall.surfaces[0].grout,
-    pattern: nextWall.surfaces[0].pattern
-  }, null, 2));
-
   // Use appropriate commit message based on what changed
   const commitMsg = wallChanged
     ? t("wall.configChanged") || "Wall configuration changed"
     : t("surface.tilingChanged") || "Surface tiling changed";
 
-  console.log('[SurfaceEditor] Committing state with message:', commitMsg);
-  console.log('[SurfaceEditor] wallChanged:', wallChanged);
-
   store.commit(commitMsg, next, {
     onRender: renderAll,
     updateMetaCb: updateMeta
   });
-
-  console.log('[SurfaceEditor] State committed, renderAll should be called');
 }
 
 function handleWallDoubleClick(roomId, edgeIndex) {
@@ -638,7 +552,7 @@ function renderPlanningSection(state, opts) {
   const isPatternGroupsView = planningMode === "patternGroups";
 
   // Always render room-related UI (forms, lists) even in floor view
-  renderRoomForm(state);
+  renderRoomForm(state, selectedWallEdge);
   renderTilePatternForm(state);
 
   renderTilePresets(state, selectedTilePresetId, (id) => { selectedTilePresetId = id; });
@@ -724,12 +638,14 @@ function renderPlanningSection(state, opts) {
     const floor = getCurrentFloor(state);
     if (floor) {
       threeViewController.start();
-      const wallDescs = prepareFloorWallData(state, floor);
+      // Compute wall geometry once for the entire floor
+      const wallGeometry = computeFloorWallGeometry(floor);
+      const wallDescs = prepareFloorWallData(state, floor, wallGeometry);
       const showWalls = state.view?.showWalls3D !== false;
       if (isFloorView) {
         // Floor 3D: all rooms
         const floorRooms = floor.rooms.filter(r => r.polygonVertices?.length >= 3);
-        const descriptors = floorRooms.map(room => prepareRoom3DData(state, room, floor));
+        const descriptors = floorRooms.map(room => prepareRoom3DData(state, room, floor, wallGeometry));
         threeViewController.buildScene({ rooms: descriptors, walls: wallDescs, showWalls, selectedRoomId: state.selectedRoomId });
       } else {
         // Room 3D: single selected room
@@ -743,7 +659,7 @@ function renderPlanningSection(state, opts) {
           }
         }
         if (room && room.polygonVertices?.length >= 3) {
-          const descriptor = prepareRoom3DData(state, room, floor);
+          const descriptor = prepareRoom3DData(state, room, floor, wallGeometry);
           // Only include walls that have a surface for the selected room
           const roomWallDescs = wallDescs.filter(wd =>
             wd.surfaces.some(s => s.roomId === room.id)
@@ -930,7 +846,19 @@ function renderPlanningSection(state, opts) {
     });
     updatePatternGroupsControlsState();
   } else {
-    const metrics = isDrag ? null : computePlanMetrics(state);
+    // Build virtual room from wall surface when a wall is selected
+    let roomOverride = null;
+    let surfaceTilingDisabled = false;
+    if (state.selectedWallId) {
+      const floor = getCurrentFloor(state);
+      const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
+      if (wall) {
+        roomOverride = wallSurfaceToTileableRegion(wall, state.selectedSurfaceIdx ?? 0);
+        surfaceTilingDisabled = !roomOverride?.tile;
+      }
+    }
+
+    const metrics = isDrag ? null : computePlanMetrics(state, roomOverride);
 
     renderPlanSvg({
       state,
@@ -944,34 +872,29 @@ function renderPlanningSection(state, opts) {
       setLastUnionError: (v) => (lastUnionError = v),
       setLastTileError: (v) => (lastTileError = v),
       metrics,
-      skipTiles: isDrag,
+      skipTiles: isDrag || surfaceTilingDisabled,
       selectedWallEdge,
       selectedDoorwayId,
       onWallClick: (edgeIndex) => {
+        // Single click only highlights the wall for edge properties/doorways
         selectedExclId = null;
         setSelectedWallEdge(edgeIndex);
-
-        // Update state.selectedWallId to sync surface dropdown
-        const room = getCurrentRoom(state);
-        const floor = getCurrentFloor(state);
-        if (room && floor) {
-          const wall = getWallForEdge(floor, room.id, edgeIndex);
-          if (wall && state.selectedWallId !== wall.id) {
-            const next = deepClone(state);
-            next.selectedWallId = wall.id;
-            store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
-          }
-        }
+        // Do NOT set selectedWallId here - that switches to surface view
+        // Surface view is only opened on double-click
       },
       onWallDoubleClick: (edgeIndex) => {
         const room = getCurrentRoom(state);
         const floor = getCurrentFloor(state);
         if (!room || !floor) return;
         const wall = getWallForEdge(floor, room.id, edgeIndex);
-        if (wall) showSurfaceEditorDialog(wall.id);
+        if (!wall) return;
+        const next = deepClone(state);
+        next.selectedWallId = wall.id;
+        store.commit("Surface view opened", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
-      onDoorwayResizePointerDown: doorwayDragController.onDoorwayResizePointerDown
+      onDoorwayResizePointerDown: doorwayDragController.onDoorwayResizePointerDown,
+      roomOverride
     });
   }
   updateDoorButtonState();
@@ -1077,18 +1000,8 @@ function renderAll(lastLabel, options) {
   }
   const scope = resolveRenderScope(label, opts);
 
-  console.log('[renderAll] Called with label:', label, 'scope:', scope);
-
   try {
     const state = store.getState();
-    console.log('[renderAll] Current state - selectedWallId:', state.selectedWallId);
-    if (state.selectedWallId) {
-      const floor = getCurrentFloor(state);
-      const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
-      if (wall?.surfaces?.[0]) {
-        console.log('[renderAll] Selected wall surface tile:', JSON.stringify(wall.surfaces[0].tile, null, 2));
-      }
-    }
     renderByScope(state, scope, label, opts);
   } catch (error) {
     console.error("Render failed:", error);
@@ -2300,11 +2213,10 @@ function updateAllTranslations() {
   });
 
   document.getElementById("wallSelect")?.addEventListener("change", (e) => {
-    const surfaceId = e.target.value;
-    if (!surfaceId) return;
+    const wallId = e.target.value;
     const s = store.getState();
     const next = deepClone(s);
-    next.selectedRoomId = surfaceId;
+    next.selectedWallId = wallId || null;
     store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -3149,17 +3061,128 @@ function updateAllTranslations() {
     }
   });
 
+  function syncQuickTilingToggle(state, surface) {
+    const quickControls = document.getElementById("roomQuickControls");
+    if (!quickControls) return;
+
+    let toggleGroup = document.getElementById("quickTilingToggleGroup");
+    let divider = document.getElementById("quickTilingToggleDivider");
+    const isSurface = Boolean(surface);
+    const tilingEnabled = surface ? surface.tile !== null : true;
+
+    if (isSurface) {
+      if (!toggleGroup) {
+        // Create toggle
+        toggleGroup = document.createElement("div");
+        toggleGroup.id = "quickTilingToggleGroup";
+        toggleGroup.className = "quick-control-group quick-tiling-toggle";
+        toggleGroup.innerHTML = `
+          <label class="quick-toggle-switch">
+            <input id="quickTilingToggle" type="checkbox" />
+            <span class="quick-toggle-slider"></span>
+            <span class="quick-toggle-label">${t("planning.tiling") || "Tiling"}</span>
+          </label>`;
+
+        // Create divider
+        divider = document.createElement("div");
+        divider.id = "quickTilingToggleDivider";
+        divider.className = "quick-control-divider";
+
+        // Insert at the beginning of the quick controls
+        quickControls.insertBefore(divider, quickControls.firstChild);
+        quickControls.insertBefore(toggleGroup, quickControls.firstChild);
+
+        const toggleInput = toggleGroup.querySelector("#quickTilingToggle");
+        if (toggleInput) {
+          toggleInput.addEventListener("change", () => {
+            const st = store.getState();
+            const nx = deepClone(st);
+            const fl = nx.floors?.find(f => f.id === nx.selectedFloorId);
+            const w = fl?.walls?.find(ww => ww.id === nx.selectedWallId);
+            const sIdx = nx.selectedSurfaceIdx ?? 0;
+            const s = w?.surfaces?.[sIdx];
+            if (!s) return;
+            if (toggleInput.checked) {
+              s.tile = { ...DEFAULT_SURFACE_TILE };
+              s.grout = { ...DEFAULT_SURFACE_GROUT };
+              s.pattern = { ...DEFAULT_SURFACE_PATTERN };
+            } else {
+              s.tile = null;
+              s.grout = null;
+              s.pattern = null;
+            }
+            commitViaStore("Toggle surface tiling", nx);
+          });
+        }
+      }
+      toggleGroup.style.display = "";
+      if (divider) divider.style.display = "";
+
+      const toggleInput = document.getElementById("quickTilingToggle");
+      if (toggleInput) toggleInput.checked = tilingEnabled;
+
+      // Grey out tiling-related controls when disabled
+      const quickTileGroup = document.getElementById("quickTilePresetGroup");
+      const quickPatternGroup = quickPattern?.closest(".quick-control-group");
+      const quickGroutGroup = quickGrout?.closest(".quick-control-group");
+      const quickShowGrid = document.getElementById("quickShowGrid");
+
+      [quickTileGroup, quickPatternGroup, quickGroutGroup].forEach(grp => {
+        if (grp) {
+          grp.classList.toggle("disabled", !tilingEnabled);
+          const inputs = grp.querySelectorAll("input, select, button");
+          inputs.forEach(el => {
+            if (!tilingEnabled) {
+              el.disabled = true;
+            } else {
+              // Re-enable, but respect other disabled states (e.g., isChild, no presets)
+              // These will be set by syncQuickControls
+            }
+          });
+        }
+      });
+
+      if (quickShowGrid) {
+        const gridToggle = quickShowGrid.closest(".quick-toggle");
+        if (gridToggle) gridToggle.classList.toggle("disabled", !tilingEnabled);
+        quickShowGrid.disabled = !tilingEnabled;
+      }
+    } else {
+      if (toggleGroup) toggleGroup.style.display = "none";
+      if (divider) divider.style.display = "none";
+
+      // Re-enable controls when not in surface mode (remove disabled class only)
+      const quickTileGroup = document.getElementById("quickTilePresetGroup");
+      const quickPatternGroup = quickPattern?.closest(".quick-control-group");
+      const quickGroutGroup = quickGrout?.closest(".quick-control-group");
+      const quickShowGrid = document.getElementById("quickShowGrid");
+
+      [quickTileGroup, quickPatternGroup, quickGroutGroup].forEach(grp => {
+        if (grp) grp.classList.remove("disabled");
+      });
+
+      if (quickShowGrid) {
+        const gridToggle = quickShowGrid.closest(".quick-toggle");
+        if (gridToggle) gridToggle.classList.remove("disabled");
+      }
+    }
+  }
+
   function syncQuickControls() {
     const state = store.getState();
     const floor = state.floors?.find(f => f.id === state.selectedFloorId);
     const room = floor?.rooms?.find(r => r.id === state.selectedRoomId);
 
+    // When a wall surface is selected, read from surface instead of room
+    const surface = getSelectedSurface(state);
+    const surfaceTilingOn = surface ? surface.tile !== null : true;
+
     // Check if room is a child in a pattern group (tile settings are inherited)
-    const isChild = room ? isPatternGroupChild(room, floor) : false;
+    const isChild = !surface && room ? isPatternGroupChild(room, floor) : false;
     const effectiveSettings = isChild ? getEffectiveTileSettings(room, floor) : null;
-    const displayTile = isChild && effectiveSettings ? effectiveSettings.tile : room?.tile;
-    const displayPattern = isChild && effectiveSettings ? effectiveSettings.pattern : room?.pattern;
-    const displayGrout = isChild && effectiveSettings ? effectiveSettings.grout : room?.grout;
+    const displayTile = surface ? surface.tile : (isChild && effectiveSettings ? effectiveSettings.tile : room?.tile);
+    const displayPattern = surface ? surface.pattern : (isChild && effectiveSettings ? effectiveSettings.pattern : room?.pattern);
+    const displayGrout = surface ? surface.grout : (isChild && effectiveSettings ? effectiveSettings.grout : room?.grout);
 
     if (room) {
       if (quickTilePreset) {
@@ -3173,7 +3196,7 @@ function updateAllTranslations() {
         });
         const match = presets.find(p => p.name && p.name === displayTile?.reference);
         quickTilePreset.value = match ? match.id : (presets[0]?.id || "");
-        quickTilePreset.disabled = isChild || presets.length === 0;
+        quickTilePreset.disabled = isChild || presets.length === 0 || (surface && !surfaceTilingOn);
         const quickGroup = document.getElementById("quickTilePresetGroup");
         if (quickGroup) quickGroup.classList.toggle("no-presets", presets.length === 0);
         const quickCreate = document.getElementById("quickCreateTilePreset");
@@ -3182,12 +3205,12 @@ function updateAllTranslations() {
       }
       if (quickPattern) {
         quickPattern.value = displayPattern?.type || "grid";
-        quickPattern.disabled = isChild;
+        quickPattern.disabled = isChild || (surface && !surfaceTilingOn);
       }
       // Display grout in mm (state stores cm)
       if (quickGrout) {
         quickGrout.value = Math.round((displayGrout?.widthCm || 0) * 10);
-        quickGrout.disabled = isChild;
+        quickGrout.disabled = isChild || (surface && !surfaceTilingOn);
       }
 
       // Add locked class to quick control groups for overlay styling
@@ -3208,6 +3231,9 @@ function updateAllTranslations() {
           }
         }
       });
+
+      // Quick tiling toggle for surface mode
+      syncQuickTilingToggle(state, surface);
     }
 
     // Sync quick toggles with main toggles
@@ -3285,30 +3311,74 @@ function updateAllTranslations() {
       planningArea.textContent = totalArea.toFixed(2) + " m²";
     }
 
-    // Hide tile/grout/pattern settings when wall surface is selected (use modal instead)
+    // Surface tiling toggle + tile form visibility
     const isSurfaceSelected = Boolean(state.selectedWallId);
     const tileSection = document.getElementById("planningTileSection");
     const groutSection = document.getElementById("groutW")?.closest(".panel-section");
     const patternSection = document.getElementById("patternType")?.closest(".panel-section");
 
-    if (tileSection) tileSection.style.display = isSurfaceSelected ? "none" : "";
-    if (groutSection) groutSection.style.display = isSurfaceSelected ? "none" : "";
-    if (patternSection) patternSection.style.display = isSurfaceSelected ? "none" : "";
+    const tilingEnabled = surface ? surface.tile !== null : true;
 
-    // Show hint message when surface is selected
-    let surfaceHint = document.getElementById("surfaceEditHint");
-    if (isSurfaceSelected && !surfaceHint) {
-      surfaceHint = document.createElement("div");
-      surfaceHint.id = "surfaceEditHint";
-      surfaceHint.className = "panel-section";
-      surfaceHint.innerHTML = `
-        <div class="meta subtle" style="text-align: center; padding: 20px;">
-          <p data-i18n="planning.surfaceEditHint">Double-click the wall surface to edit its tiling configuration.</p>
-        </div>`;
-      const settingsContent = document.querySelector(".settings-panel-content");
-      if (settingsContent) settingsContent.appendChild(surfaceHint);
+    // Always show tile sections (form reads from surface when wall selected)
+    if (tileSection) tileSection.style.display = "";
+    if (groutSection) groutSection.style.display = tilingEnabled ? "" : "none";
+    if (patternSection) patternSection.style.display = tilingEnabled ? "" : "none";
+
+    // Remove old hint if present
+    const oldHint = document.getElementById("surfaceEditHint");
+    if (oldHint) oldHint.style.display = "none";
+
+    // Enable Tiling toggle for surface mode
+    let toggleWrap = document.getElementById("surfaceTilingToggleWrap");
+    if (isSurfaceSelected && surface) {
+      if (!toggleWrap) {
+        toggleWrap = document.createElement("div");
+        toggleWrap.id = "surfaceTilingToggleWrap";
+        toggleWrap.className = "panel-section";
+        toggleWrap.style.padding = "8px 12px";
+        toggleWrap.innerHTML = `
+          <label class="toggle-switch">
+            <span class="toggle-label">${t("planning.enableTiling") || "Enable Tiling"}</span>
+            <input id="surfaceTilingToggle" type="checkbox" />
+            <span class="toggle-slider"></span>
+          </label>`;
+        // Insert before tile section
+        if (tileSection?.parentNode) {
+          tileSection.parentNode.insertBefore(toggleWrap, tileSection);
+        }
+        // Wire change handler
+        const toggleInput = toggleWrap.querySelector("#surfaceTilingToggle");
+        if (toggleInput) {
+          toggleInput.addEventListener("change", () => {
+            const st = store.getState();
+            const nx = deepClone(st);
+            const fl = getCurrentFloor(nx);
+            const w = fl?.walls?.find(ww => ww.id === nx.selectedWallId);
+            const sIdx = nx.selectedSurfaceIdx ?? 0;
+            const s = w?.surfaces?.[sIdx];
+            if (!s) return;
+            if (toggleInput.checked) {
+              s.tile = { ...DEFAULT_SURFACE_TILE };
+              s.grout = { ...DEFAULT_SURFACE_GROUT };
+              s.pattern = { ...DEFAULT_SURFACE_PATTERN };
+            } else {
+              s.tile = null;
+              s.grout = null;
+              s.pattern = null;
+            }
+            store.commit("Toggle surface tiling", nx, { onRender: renderAll, updateMetaCb: updateMeta });
+          });
+        }
+      }
+      toggleWrap.style.display = "";
+      const toggleInput = document.getElementById("surfaceTilingToggle");
+      if (toggleInput) toggleInput.checked = tilingEnabled;
+
+      // When tiling disabled, hide tile section fields too
+      if (tileSection) tileSection.style.display = tilingEnabled ? "" : "none";
+    } else {
+      if (toggleWrap) toggleWrap.style.display = "none";
     }
-    if (surfaceHint) surfaceHint.style.display = isSurfaceSelected ? "" : "none";
   }
 
   function enhanceNumberSpinners() {
@@ -3530,18 +3600,36 @@ function updateAllTranslations() {
     if (floorIdx < 0 || roomIdx < 0) return;
 
     const next = JSON.parse(JSON.stringify(state));
-    const room = next.floors[floorIdx].rooms[roomIdx];
-    room.tile.shape = preset.shape || room.tile.shape;
-    room.tile.widthCm = Number(preset.widthCm) || room.tile.widthCm;
-    room.tile.heightCm = Number(preset.heightCm) || room.tile.heightCm;
-    room.tile.reference = preset.name || room.tile.reference;
-    room.grout.widthCm = Number(preset.groutWidthCm) || 0;
-    room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
-    if (preset.useForSkirting) {
-      room.skirting.enabled = true;
-      room.skirting.type = "cutout";
+
+    // Determine write target: surface or room
+    const wall = next.selectedWallId ? next.floors[floorIdx]?.walls?.find(w => w.id === next.selectedWallId) : null;
+    const surfIdx = next.selectedSurfaceIdx ?? 0;
+    const surface = wall?.surfaces?.[surfIdx];
+
+    if (surface && surface.tile) {
+      surface.tile.shape = preset.shape || surface.tile.shape;
+      surface.tile.widthCm = Number(preset.widthCm) || surface.tile.widthCm;
+      surface.tile.heightCm = Number(preset.heightCm) || surface.tile.heightCm;
+      surface.tile.reference = preset.name || surface.tile.reference;
+      surface.grout.widthCm = Number(preset.groutWidthCm) || 0;
+      surface.grout.colorHex = preset.groutColorHex || surface.grout.colorHex;
+    } else if (!surface) {
+      const room = next.floors[floorIdx].rooms[roomIdx];
+      room.tile.shape = preset.shape || room.tile.shape;
+      room.tile.widthCm = Number(preset.widthCm) || room.tile.widthCm;
+      room.tile.heightCm = Number(preset.heightCm) || room.tile.heightCm;
+      room.tile.reference = preset.name || room.tile.reference;
+      room.grout.widthCm = Number(preset.groutWidthCm) || 0;
+      room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
+      if (preset.useForSkirting) {
+        room.skirting.enabled = true;
+        room.skirting.type = "cutout";
+      }
+    } else {
+      return; // surface with tiling disabled
     }
-    const ref = room.tile.reference;
+
+    const ref = preset.name;
     if (ref) {
       next.materials = next.materials || {};
       next.materials[ref] = next.materials[ref] || {
@@ -3561,7 +3649,19 @@ function updateAllTranslations() {
     if (floorIdx < 0 || roomIdx < 0) return;
 
     const next = JSON.parse(JSON.stringify(state));
-    next.floors[floorIdx].rooms[roomIdx].pattern.type = quickPattern?.value || "grid";
+
+    // Write to surface when wall is selected
+    const wall = next.selectedWallId ? next.floors[floorIdx]?.walls?.find(w => w.id === next.selectedWallId) : null;
+    const surfIdx = next.selectedSurfaceIdx ?? 0;
+    const surface = wall?.surfaces?.[surfIdx];
+
+    if (surface && surface.pattern) {
+      surface.pattern.type = quickPattern?.value || "grid";
+    } else if (!surface) {
+      next.floors[floorIdx].rooms[roomIdx].pattern.type = quickPattern?.value || "grid";
+    } else {
+      return;
+    }
     commitViaStore(t("tile.patternChanged"), next);
   }
 
@@ -3577,7 +3677,19 @@ function updateAllTranslations() {
     const newGcm = newGmm / 10;
 
     const next = JSON.parse(JSON.stringify(state));
-    next.floors[floorIdx].rooms[roomIdx].grout.widthCm = newGcm;
+
+    // Write to surface when wall is selected
+    const wall = next.selectedWallId ? next.floors[floorIdx]?.walls?.find(w => w.id === next.selectedWallId) : null;
+    const surfIdx = next.selectedSurfaceIdx ?? 0;
+    const surface = wall?.surfaces?.[surfIdx];
+
+    if (surface && surface.grout) {
+      surface.grout.widthCm = newGcm;
+    } else if (!surface) {
+      next.floors[floorIdx].rooms[roomIdx].grout.widthCm = newGcm;
+    } else {
+      return;
+    }
     commitViaStore(t("tile.changed"), next);
   }
 

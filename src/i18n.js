@@ -66,7 +66,9 @@ const translations = {
       exit3D: "3D beenden",
       removalMode: "Entfernungsmodus",
       deleteSelected: "Auswahl löschen",
-      surfaceEditHint: "Doppelklick auf die Wandfläche, um die Flieseneinstellungen zu bearbeiten."
+      surfaceEditHint: "Doppelklick auf die Wandfläche, um die Flieseneinstellungen zu bearbeiten.",
+      enableTiling: "Fliesenverlegung aktivieren",
+      tiling: "Fliesen"
     },
     floor: {
       uploadBg: "Bild",
@@ -710,7 +712,9 @@ const translations = {
       exit3D: "Exit 3D",
       removalMode: "Removal mode",
       deleteSelected: "Delete selected",
-      surfaceEditHint: "Double-click the wall surface to edit its tiling configuration."
+      surfaceEditHint: "Double-click the wall surface to edit its tiling configuration.",
+      enableTiling: "Enable Tiling",
+      tiling: "Tiling"
     },
     floor: {
       uploadBg: "Image",

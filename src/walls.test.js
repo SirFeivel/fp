@@ -12,6 +12,10 @@ import {
   removeDoorwayFromWall,
   findWallByDoorwayId,
   getEdgeDoorways,
+  computeFloorWallGeometry,
+  getDoorwaysInEdgeSpace,
+  getWallRenderHelpers,
+  computeDoorwayFloorPatches,
   DEFAULT_WALL,
 } from './walls.js';
 import { DEFAULT_WALL_THICKNESS_CM } from './constants.js';
@@ -900,5 +904,378 @@ describe('syncFloorWalls integration', () => {
 
     expect(snapshot2).toBe(snapshot1);
     expect(snapshot3).toBe(snapshot1);
+  });
+});
+
+// ── computeFloorWallGeometry ─────────────────────────────────────────
+
+describe('computeFloorWallGeometry', () => {
+  it('returns a Map keyed by wall ID', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    expect(wg).toBeInstanceOf(Map);
+    expect(wg.size).toBe(4);
+    for (const wall of floor.walls) {
+      expect(wg.has(wall.id)).toBe(true);
+    }
+  });
+
+  it('computes correct edge length', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    expect(desc.edgeLength).toBeCloseTo(400, 0);
+  });
+
+  it('computes unit direction vector', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    // Edge 0: (0,0)→(400,0), direction (1, 0)
+    expect(desc.dirX).toBeCloseTo(1, 5);
+    expect(desc.dirY).toBeCloseTo(0, 5);
+  });
+
+  it('computes outward normal consistent with getWallNormal', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    for (const wall of floor.walls) {
+      const desc = wg.get(wall.id);
+      const expected = getWallNormal(wall, floor);
+      expect(desc.normal.x).toBeCloseTo(expected.x, 5);
+      expect(desc.normal.y).toBeCloseTo(expected.y, 5);
+    }
+  });
+
+  it('computes extended start/end points', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    // Extended start should be before wall start
+    expect(desc.extStartPt.x).toBeLessThan(w0.start.x + 0.1);
+    // Extended end should be after wall end
+    expect(desc.extEndPt.x).toBeGreaterThan(w0.end.x - 0.1);
+    // totalLength > edgeLength
+    expect(desc.totalLength).toBeGreaterThan(desc.edgeLength - 0.1);
+  });
+
+  it('computes outer points offset by normal * thickness', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    const thick = w0.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    // For top edge, normal is (0, -1), so outer points should be shifted by thick in -y
+    expect(desc.outerStartPt.y).toBeCloseTo(desc.extStartPt.y + desc.normal.y * thick, 1);
+    expect(desc.outerEndPt.y).toBeCloseTo(desc.extEndPt.y + desc.normal.y * thick, 1);
+  });
+
+  it('pre-shifts doorways by owner extStart', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200 });
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(w0.id);
+    expect(desc.extDoorways).toHaveLength(1);
+    expect(desc.extDoorways[0].offsetCm).toBe(50 + desc.extStart);
+  });
+
+  it('includes extensions for shared wall rooms', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 400, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    const desc = wg.get(sharedWall.id);
+    // Both rooms should have extensions
+    expect(desc.extensions.has('r1')).toBe(true);
+    expect(desc.extensions.has('r2')).toBe(true);
+  });
+
+  it('returns empty map for null/empty floor', () => {
+    expect(computeFloorWallGeometry(null).size).toBe(0);
+    expect(computeFloorWallGeometry({ walls: [] }).size).toBe(0);
+  });
+});
+
+// ── getDoorwaysInEdgeSpace ───────────────────────────────────────────
+
+describe('getDoorwaysInEdgeSpace', () => {
+  it('returns doorways unchanged for owner room (same direction)', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200 });
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(w0.id);
+
+    const result = getDoorwaysInEdgeSpace(desc, floor.rooms[0], 0);
+    expect(result).toHaveLength(1);
+    // For owner room (same direction), offset = dw.offset + roomExtStart
+    const ext = desc.extensions.get('r1');
+    expect(result[0].offsetCm).toBeCloseTo(50 + ext.extStart, 1);
+  });
+
+  it('flips doorway offset for reversed edge (non-owner room)', () => {
+    // Create two adjacent rooms sharing a wall
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 400, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    // Run a second sync to stabilize positions
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    if (!sharedWall) return; // skip if no shared wall found
+
+    // Add a doorway near one end
+    sharedWall.doorways.push({ id: 'dw-shared', offsetCm: 10, widthCm: 80, heightCm: 200 });
+
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(sharedWall.id);
+
+    // For the owner room
+    const ownerRoom = floor.rooms.find(r => r.id === sharedWall.roomEdge?.roomId);
+    const otherRoom = floor.rooms.find(r => r.id !== sharedWall.roomEdge?.roomId);
+    const ownerSurface = sharedWall.surfaces.find(s => s.roomId === ownerRoom.id);
+    const otherSurface = sharedWall.surfaces.find(s => s.roomId === otherRoom.id);
+
+    if (!ownerSurface || !otherSurface || !otherRoom) return;
+
+    const ownerResult = getDoorwaysInEdgeSpace(desc, ownerRoom, ownerSurface.edgeIndex);
+    const otherResult = getDoorwaysInEdgeSpace(desc, otherRoom, otherSurface.edgeIndex);
+
+    // Both should have 1 doorway
+    expect(ownerResult).toHaveLength(1);
+    expect(otherResult).toHaveLength(1);
+
+    // The doorway positions should refer to the same absolute location on the wall,
+    // just in their respective edge-direction coordinate systems
+    expect(ownerResult[0].widthCm).toBe(otherResult[0].widthCm);
+  });
+
+  it('returns empty array when no doorways', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(w0.id);
+    const result = getDoorwaysInEdgeSpace(desc, floor.rooms[0], 0);
+    expect(result).toHaveLength(0);
+  });
+
+  it('returns empty for invalid edge index', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200 });
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(w0.id);
+    const result = getDoorwaysInEdgeSpace(desc, floor.rooms[0], 99);
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ── getWallRenderHelpers ─────────────────────────────────────────────
+
+describe('getWallRenderHelpers', () => {
+  it('returns A, B, OA, OB, L, innerAt, outerAt', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    const h = getWallRenderHelpers(desc, 'r1');
+    expect(h).toHaveProperty('A');
+    expect(h).toHaveProperty('B');
+    expect(h).toHaveProperty('OA');
+    expect(h).toHaveProperty('OB');
+    expect(h).toHaveProperty('L');
+    expect(typeof h.innerAt).toBe('function');
+    expect(typeof h.outerAt).toBe('function');
+  });
+
+  it('innerAt(0) returns A, innerAt(1) returns B', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    const h = getWallRenderHelpers(desc, 'r1');
+
+    const p0 = h.innerAt(0);
+    expect(p0.x).toBeCloseTo(h.A.x, 5);
+    expect(p0.y).toBeCloseTo(h.A.y, 5);
+    const p1 = h.innerAt(1);
+    expect(p1.x).toBeCloseTo(h.B.x, 5);
+    expect(p1.y).toBeCloseTo(h.B.y, 5);
+  });
+
+  it('outerAt(0) returns OA, outerAt(1) returns OB', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    const h = getWallRenderHelpers(desc, 'r1');
+
+    const p0 = h.outerAt(0);
+    expect(p0.x).toBeCloseTo(h.OA.x, 5);
+    expect(p0.y).toBeCloseTo(h.OA.y, 5);
+    const p1 = h.outerAt(1);
+    expect(p1.x).toBeCloseTo(h.OB.x, 5);
+    expect(p1.y).toBeCloseTo(h.OB.y, 5);
+  });
+
+  it('L equals totalLength for owner room', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    const desc = wg.get(w0.id);
+    const h = getWallRenderHelpers(desc, 'r1');
+    // For owner room, helpers use the same extensions as the descriptor
+    expect(h.L).toBeCloseTo(desc.totalLength, 1);
+  });
+});
+
+// ── computeDoorwayFloorPatches ───────────────────────────────────────
+
+describe('computeDoorwayFloorPatches', () => {
+  it('returns vertices format by default', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 });
+
+    const patches = computeDoorwayFloorPatches(floor.rooms[0], floor, null, 'vertices');
+    expect(patches).toHaveLength(1);
+    expect(patches[0]).toHaveLength(4);
+    expect(patches[0][0]).toHaveProperty('x');
+    expect(patches[0][0]).toHaveProperty('y');
+  });
+
+  it('returns multipolygon format when requested', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 });
+
+    const patches = computeDoorwayFloorPatches(floor.rooms[0], floor, null, 'multipolygon');
+    expect(patches).toHaveLength(1);
+    // MultiPolygon format: [[[p1, p2, p3, p4, p1]]]
+    expect(patches[0]).toHaveLength(1); // one ring
+    expect(patches[0][0]).toHaveLength(5); // 4 points + closing
+    expect(Array.isArray(patches[0][0][0])).toBe(true); // [x, y]
+  });
+
+  it('skips elevated doorways', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 50 });
+
+    const patches = computeDoorwayFloorPatches(floor.rooms[0], floor, null, 'vertices');
+    expect(patches).toHaveLength(0);
+  });
+
+  it('returns empty for room with no doorways', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const patches = computeDoorwayFloorPatches(floor.rooms[0], floor);
+    expect(patches).toHaveLength(0);
+  });
+
+  it('only includes doorways from walls owned by the room', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 400, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    syncFloorWalls(floor); // stabilize
+
+    // Add doorway to r1's top wall (edge 0)
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 });
+
+    // Patches for r1 should include the doorway
+    const patchesR1 = computeDoorwayFloorPatches(r1, floor);
+    expect(patchesR1).toHaveLength(1);
+
+    // Patches for r2 should NOT include it (not r2's wall)
+    const patchesR2 = computeDoorwayFloorPatches(r2, floor);
+    expect(patchesR2).toHaveLength(0);
+  });
+
+  it('accepts pre-computed wallGeometry', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 50, widthCm: 80, heightCm: 200, elevationCm: 0 });
+
+    const wg = computeFloorWallGeometry(floor);
+    const patches = computeDoorwayFloorPatches(floor.rooms[0], floor, wg, 'vertices');
+    expect(patches).toHaveLength(1);
+  });
+});
+
+// ── Offset stability ────────────────────────────────────────────────
+
+describe('doorway offset stability', () => {
+  it('doorway offsetCm stays constant across multiple syncFloorWalls cycles', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const w0 = getWallForEdge(floor, 'r1', 0);
+    w0.doorways.push({ id: 'd1', offsetCm: 100, widthCm: 80, heightCm: 200 });
+
+    // Run 10 sync cycles
+    for (let i = 0; i < 10; i++) {
+      syncFloorWalls(floor);
+    }
+
+    const wallAfter = getWallForEdge(floor, 'r1', 0);
+    expect(wallAfter.doorways[0].offsetCm).toBeCloseTo(100, 1);
+  });
+
+  it('doorway offsetCm stays constant on shared wall across syncs', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 400, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    syncFloorWalls(floor); // stabilize
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    if (!sharedWall) return;
+
+    sharedWall.doorways.push({ id: 'dw-stable', offsetCm: 50, widthCm: 80, heightCm: 200 });
+    const initialOffset = sharedWall.doorways[0].offsetCm;
+
+    // Run 10 sync cycles
+    for (let i = 0; i < 10; i++) {
+      syncFloorWalls(floor);
+    }
+
+    const finalOffset = sharedWall.doorways[0].offsetCm;
+    expect(finalOffset).toBeCloseTo(initialOffset, 1);
   });
 });

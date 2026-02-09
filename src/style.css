@@ -1429,6 +1429,72 @@ body{
   color: var(--accent);
 }
 
+/* Quick Toggle Switch (compact version for bottom bar) */
+.quick-toggle-switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quick-toggle-label {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1;
+}
+
+.quick-toggle-slider {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background-color: var(--btn);
+  border: 1px solid var(--line2);
+  border-radius: 18px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.quick-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--muted);
+  border-radius: 50%;
+  transition: all 0.2s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.quick-toggle-switch input {
+  display: none;
+}
+
+.quick-toggle-switch input:checked + .quick-toggle-slider {
+  background-color: var(--accentSoft);
+  border-color: var(--accent);
+}
+
+.quick-toggle-switch input:checked + .quick-toggle-slider:before {
+  transform: translateX(14px);
+  background-color: var(--accent);
+}
+
+/* Disabled state for quick control groups */
+.quick-control-group.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.quick-toggle.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .quick-actions {
   display: flex;
   gap: 6px;
