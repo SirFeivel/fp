@@ -895,7 +895,8 @@ export function showSurfaceEditor({
         tile: {
           widthCm: parseFloat(tileWInput.value) || 40,
           heightCm: parseFloat(tileHInput.value) || 20,
-          shape: tileShapeInput.value
+          shape: tileShapeInput.value,
+          reference: "Standard"
         },
         grout: {
           widthCm: (parseFloat(groutWInput.value) || 2) / 10, // mm to cm
