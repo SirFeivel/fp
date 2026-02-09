@@ -918,6 +918,18 @@ function renderPlanningSection(state, opts) {
       onWallClick: (edgeIndex) => {
         selectedExclId = null;
         setSelectedWallEdge(edgeIndex);
+
+        // Update state.selectedWallId to sync surface dropdown
+        const room = getCurrentRoom(state);
+        const floor = getCurrentFloor(state);
+        if (room && floor) {
+          const wall = getWallForEdge(floor, room.id, edgeIndex);
+          if (wall && state.selectedWallId !== wall.id) {
+            const next = deepClone(state);
+            next.selectedWallId = wall.id;
+            store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+          }
+        }
       },
       onWallDoubleClick: (edgeIndex) => {
         const room = getCurrentRoom(state);
