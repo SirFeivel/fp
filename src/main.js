@@ -59,7 +59,7 @@ import {
   getEffectiveTileSettings,
   computePatternGroupOrigin
 } from "./pattern-groups.js";
-import { showConfirm, showAlert, showPrompt, showSelect, showDoorwayEditor } from "./dialog.js";
+import { showConfirm, showAlert, showPrompt, showSelect, showDoorwayEditor, showSurfaceEditor } from "./dialog.js";
 
 // Store
 const store = createStateStore(defaultState, validateState);
@@ -530,20 +530,52 @@ function prepareFloorWallData(state, floor) {
   }).filter(Boolean);
 }
 
+async function showSurfaceEditorDialog(wallId) {
+  const state = store.getState();
+  const floor = getCurrentFloor(state);
+  if (!floor) return;
+
+  const wall = floor.walls?.find(w => w.id === wallId);
+  if (!wall || !wall.surfaces || wall.surfaces.length === 0) return;
+
+  // For now, edit the first surface (owner surface)
+  const surface = wall.surfaces[0];
+
+  const result = await showSurfaceEditor({
+    title: t("surface.editSurface") || "Edit Surface Tiling",
+    tile: surface.tile,
+    grout: surface.grout,
+    pattern: surface.pattern
+  });
+
+  if (result === null) return; // Cancelled
+
+  const next = deepClone(state);
+  const nextFloor = next.floors.find(f => f.id === floor.id);
+  const nextWall = nextFloor?.walls?.find(w => w.id === wallId);
+  if (!nextWall || !nextWall.surfaces || nextWall.surfaces.length === 0) return;
+
+  // Update surface configuration
+  nextWall.surfaces[0].tile = result.tile;
+  nextWall.surfaces[0].grout = result.grout;
+  nextWall.surfaces[0].pattern = result.pattern;
+
+  store.commit(t("surface.tilingChanged") || "Surface tiling changed", next, {
+    onRender: renderAll,
+    updateMetaCb: updateMeta
+  });
+}
+
 function handleWallDoubleClick(roomId, edgeIndex) {
   const state = store.getState();
   const floor = getCurrentFloor(state);
   if (!floor) return;
 
-  // Select the wall and switch to 2D room view
   const wall = getWallForEdge(floor, roomId, edgeIndex);
-  const next = deepClone(state);
-  next.selectedRoomId = roomId;
-  next.selectedWallId = wall?.id || null;
-  next.view = next.view || {};
-  next.view.planningMode = "room";
-  next.view.use3D = false;
-  store.commit("3D wall → room view", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  if (!wall) return;
+
+  // Open surface editor modal
+  showSurfaceEditorDialog(wall.id);
 }
 
 function renderPlanningSection(state, opts) {
@@ -865,6 +897,13 @@ function renderPlanningSection(state, opts) {
       onWallClick: (edgeIndex) => {
         selectedExclId = null;
         setSelectedWallEdge(edgeIndex);
+      },
+      onWallDoubleClick: (edgeIndex) => {
+        const room = getCurrentRoom(state);
+        const floor = getCurrentFloor(state);
+        if (!room || !floor) return;
+        const wall = getWallForEdge(floor, room.id, edgeIndex);
+        if (wall) showSurfaceEditorDialog(wall.id);
       },
       onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
       onDoorwayResizePointerDown: doorwayDragController.onDoorwayResizePointerDown
@@ -3170,6 +3209,31 @@ function updateAllTranslations() {
       const totalArea = (bounds.width * bounds.height) / 10000;
       planningArea.textContent = totalArea.toFixed(2) + " m²";
     }
+
+    // Hide tile/grout/pattern settings when wall surface is selected (use modal instead)
+    const isSurfaceSelected = Boolean(state.selectedWallId);
+    const tileSection = document.getElementById("planningTileSection");
+    const groutSection = document.getElementById("groutW")?.closest(".panel-section");
+    const patternSection = document.getElementById("patternType")?.closest(".panel-section");
+
+    if (tileSection) tileSection.style.display = isSurfaceSelected ? "none" : "";
+    if (groutSection) groutSection.style.display = isSurfaceSelected ? "none" : "";
+    if (patternSection) patternSection.style.display = isSurfaceSelected ? "none" : "";
+
+    // Show hint message when surface is selected
+    let surfaceHint = document.getElementById("surfaceEditHint");
+    if (isSurfaceSelected && !surfaceHint) {
+      surfaceHint = document.createElement("div");
+      surfaceHint.id = "surfaceEditHint";
+      surfaceHint.className = "panel-section";
+      surfaceHint.innerHTML = `
+        <div class="meta subtle" style="text-align: center; padding: 20px;">
+          <p data-i18n="planning.surfaceEditHint">Double-click the wall surface to edit its tiling configuration.</p>
+        </div>`;
+      const settingsContent = document.querySelector(".settings-panel-content");
+      if (settingsContent) settingsContent.appendChild(surfaceHint);
+    }
+    if (surfaceHint) surfaceHint.style.display = isSurfaceSelected ? "" : "none";
   }
 
   function enhanceNumberSpinners() {

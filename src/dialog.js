@@ -623,3 +623,248 @@ export function showDoorwayEditor({
     document.addEventListener("keydown", onKeydown);
   });
 }
+
+/**
+ * Show surface tiling configuration editor
+ * @param {Object} options
+ * @param {string} options.title - Dialog title
+ * @param {Object|null} options.tile - Current tile config {widthCm, heightCm, shape, reference}
+ * @param {Object|null} options.grout - Current grout config {widthCm, colorHex}
+ * @param {Object|null} options.pattern - Current pattern config {type, bondFraction, rotationDeg, origin, offsetXcm, offsetYcm}
+ * @param {string} [options.confirmText] - Confirm button text
+ * @param {string} [options.cancelText] - Cancel button text
+ * @returns {Promise<{tile, grout, pattern, enabled} | null>}
+ */
+export function showSurfaceEditor({
+  title,
+  tile,
+  grout,
+  pattern,
+  confirmText = t("dialog.confirm") || "Confirm",
+  cancelText = t("dialog.cancel") || "Cancel"
+}) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("dialogOverlay");
+    const dialog = document.getElementById("dialogModal");
+    const titleEl = document.getElementById("dialogTitle");
+    const messageEl = document.getElementById("dialogMessage");
+    const inputSection = document.getElementById("dialogInputSection");
+    const confirmBtn = document.getElementById("dialogConfirmBtn");
+    const cancelBtn = document.getElementById("dialogCancelBtn");
+
+    if (!overlay || !dialog) {
+      resolve(null);
+      return;
+    }
+
+    const isEnabled = tile !== null;
+    const tileW = tile?.widthCm ?? 40;
+    const tileH = tile?.heightCm ?? 20;
+    const tileShape = tile?.shape ?? "rect";
+    const tileRef = tile?.reference ?? "";
+    const groutW = grout?.widthCm ?? 0.2;
+    const groutColor = grout?.colorHex ?? "#ffffff";
+    const patternType = pattern?.type ?? "grid";
+    const bondFraction = pattern?.bondFraction ?? 0.5;
+    const rotationDeg = pattern?.rotationDeg ?? 0;
+    const originPreset = pattern?.origin?.preset ?? "tl";
+
+    titleEl.textContent = title;
+    inputSection.classList.add("hidden");
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+    confirmBtn.classList.remove("danger");
+    confirmBtn.classList.add("primary");
+
+    messageEl.innerHTML = `
+      <div class="surface-editor-form">
+        <label class="toggle-switch">
+          <span class="toggle-label" data-i18n="surface.enableTiling">Enable Tiling</span>
+          <input id="surfEnableTiling" type="checkbox" ${isEnabled ? "checked" : ""} />
+          <div class="toggle-slider"></div>
+        </label>
+        <div id="surfTilingFields" class="surface-tiling-fields" style="display: ${isEnabled ? "flex" : "none"}; flex-direction: column; gap: 12px; margin-top: 8px;">
+          <div class="surface-editor-field">
+            <label data-i18n="tile.reference">Reference</label>
+            <input type="text" id="surfTileRef" value="${tileRef}" placeholder="e.g. Marble Carrara" class="dialog-input" />
+          </div>
+          <div class="surface-editor-field">
+            <label data-i18n="tile.shape">Tile Shape</label>
+            <select id="surfTileShape" class="dialog-input">
+              <option value="rect" ${tileShape === "rect" ? "selected" : ""} data-i18n="tile.shapeRect">Rectangular</option>
+              <option value="square" ${tileShape === "square" ? "selected" : ""} data-i18n="tile.shapeSquare">Square</option>
+              <option value="hex" ${tileShape === "hex" ? "selected" : ""} data-i18n="tile.shapeHex">Hexagonal</option>
+              <option value="rhombus" ${tileShape === "rhombus" ? "selected" : ""} data-i18n="tile.shapeRhombus">Rhombus</option>
+            </select>
+          </div>
+          <div class="surface-editor-row">
+            <div class="surface-editor-field">
+              <label data-i18n="tile.width">Width (cm)</label>
+              <input type="number" id="surfTileW" value="${tileW}" min="0.1" step="0.1" class="dialog-input" />
+            </div>
+            <div class="surface-editor-field" id="surfTileHField">
+              <label data-i18n="tile.height">Height (cm)</label>
+              <input type="number" id="surfTileH" value="${tileH}" min="0.1" step="0.1" class="dialog-input" />
+            </div>
+          </div>
+          <div class="surface-editor-row">
+            <div class="surface-editor-field">
+              <label data-i18n="tile.grout">Grout (mm)</label>
+              <input type="number" id="surfGroutW" value="${groutW * 10}" min="0" step="0.1" class="dialog-input" />
+            </div>
+            <div class="surface-editor-field">
+              <label data-i18n="tile.groutColor">Grout Color</label>
+              <input type="color" id="surfGroutColor" value="${groutColor}" class="dialog-input" />
+            </div>
+          </div>
+          <div class="surface-editor-field">
+            <label data-i18n="tile.pattern">Pattern</label>
+            <select id="surfPatternType" class="dialog-input">
+              <option value="grid" ${patternType === "grid" ? "selected" : ""} data-i18n="tile.patternGrid">Grid</option>
+              <option value="runningBond" ${patternType === "runningBond" ? "selected" : ""} data-i18n="tile.patternRunningBond">Running Bond</option>
+              <option value="herringbone" ${patternType === "herringbone" ? "selected" : ""} data-i18n="tile.patternHerringbone">Herringbone</option>
+              <option value="doubleHerringbone" ${patternType === "doubleHerringbone" ? "selected" : ""} data-i18n="tile.patternDoubleHerringbone">Double Herringbone</option>
+              <option value="basketweave" ${patternType === "basketweave" ? "selected" : ""} data-i18n="tile.patternBasketweave">Basketweave</option>
+              <option value="verticalStackAlternating" ${patternType === "verticalStackAlternating" ? "selected" : ""} data-i18n="tile.patternVerticalStackAlternating">Vertical Stack Alt.</option>
+            </select>
+          </div>
+          <div class="surface-editor-row">
+            <div class="surface-editor-field">
+              <label data-i18n="tile.bondFraction">Bond Fraction</label>
+              <select id="surfBondFraction" class="dialog-input">
+                <option value="0.5" ${bondFraction === 0.5 ? "selected" : ""}>1/2</option>
+                <option value="0.3333333333" ${Math.abs(bondFraction - 0.3333333333) < 0.001 ? "selected" : ""}>1/3</option>
+                <option value="0.25" ${bondFraction === 0.25 ? "selected" : ""}>1/4</option>
+              </select>
+            </div>
+            <div class="surface-editor-field">
+              <label data-i18n="tile.rotation">Rotation</label>
+              <select id="surfRotationDeg" class="dialog-input">
+                <option value="0" ${rotationDeg === 0 ? "selected" : ""}>0°</option>
+                <option value="45" ${rotationDeg === 45 ? "selected" : ""}>45°</option>
+                <option value="90" ${rotationDeg === 90 ? "selected" : ""}>90°</option>
+                <option value="135" ${rotationDeg === 135 ? "selected" : ""}>135°</option>
+                <option value="180" ${rotationDeg === 180 ? "selected" : ""}>180°</option>
+                <option value="225" ${rotationDeg === 225 ? "selected" : ""}>225°</option>
+                <option value="270" ${rotationDeg === 270 ? "selected" : ""}>270°</option>
+                <option value="315" ${rotationDeg === 315 ? "selected" : ""}>315°</option>
+              </select>
+            </div>
+          </div>
+          <div class="surface-editor-field">
+            <label data-i18n="origin.preset">Origin Preset</label>
+            <select id="surfOriginPreset" class="dialog-input">
+              <option value="tl" ${originPreset === "tl" ? "selected" : ""} data-i18n="origin.presetTL">Top Left</option>
+              <option value="tr" ${originPreset === "tr" ? "selected" : ""} data-i18n="origin.presetTR">Top Right</option>
+              <option value="bl" ${originPreset === "bl" ? "selected" : ""} data-i18n="origin.presetBL">Bottom Left</option>
+              <option value="br" ${originPreset === "br" ? "selected" : ""} data-i18n="origin.presetBR">Bottom Right</option>
+              <option value="center" ${originPreset === "center" ? "selected" : ""} data-i18n="origin.presetCenter">Center</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const enableToggle = document.getElementById("surfEnableTiling");
+    const tilingFields = document.getElementById("surfTilingFields");
+    const tileShapeSelect = document.getElementById("surfTileShape");
+    const tileHField = document.getElementById("surfTileHField");
+
+    // Toggle tiling fields visibility
+    enableToggle.addEventListener("change", () => {
+      tilingFields.style.display = enableToggle.checked ? "flex" : "none";
+    });
+
+    // Hide height field for square tiles
+    const updateShapeFields = () => {
+      const shape = tileShapeSelect.value;
+      tileHField.style.display = (shape === "square") ? "none" : "";
+    };
+    tileShapeSelect.addEventListener("change", updateShapeFields);
+    updateShapeFields();
+
+    overlay.classList.remove("hidden");
+    dialog.classList.remove("hidden");
+
+    const cleanup = () => {
+      overlay.classList.add("hidden");
+      dialog.classList.add("hidden");
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onOverlayClick);
+      document.removeEventListener("keydown", onKeydown);
+    };
+
+    const onConfirm = () => {
+      const enabled = enableToggle.checked;
+      if (!enabled) {
+        cleanup();
+        resolve({ tile: null, grout: null, pattern: null, enabled: false });
+        return;
+      }
+
+      const tileRefInput = document.getElementById("surfTileRef");
+      const tileWInput = document.getElementById("surfTileW");
+      const tileHInput = document.getElementById("surfTileH");
+      const tileShapeInput = document.getElementById("surfTileShape");
+      const groutWInput = document.getElementById("surfGroutW");
+      const groutColorInput = document.getElementById("surfGroutColor");
+      const patternTypeInput = document.getElementById("surfPatternType");
+      const bondFractionInput = document.getElementById("surfBondFraction");
+      const rotationDegInput = document.getElementById("surfRotationDeg");
+      const originPresetInput = document.getElementById("surfOriginPreset");
+
+      const result = {
+        enabled: true,
+        tile: {
+          widthCm: parseFloat(tileWInput.value) || 40,
+          heightCm: parseFloat(tileHInput.value) || 20,
+          shape: tileShapeInput.value,
+          reference: tileRefInput.value || "Standard"
+        },
+        grout: {
+          widthCm: (parseFloat(groutWInput.value) || 2) / 10, // mm to cm
+          colorHex: groutColorInput.value
+        },
+        pattern: {
+          type: patternTypeInput.value,
+          bondFraction: parseFloat(bondFractionInput.value) || 0.5,
+          rotationDeg: parseInt(rotationDegInput.value, 10) || 0,
+          offsetXcm: 0,
+          offsetYcm: 0,
+          origin: {
+            preset: originPresetInput.value,
+            xCm: 0,
+            yCm: 0
+          }
+        }
+      };
+
+      cleanup();
+      resolve(result);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onOverlayClick = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    const onKeydown = (e) => {
+      if (e.key === "Escape") {
+        onCancel();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        onConfirm();
+      }
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onOverlayClick);
+    document.addEventListener("keydown", onKeydown);
+  });
+}

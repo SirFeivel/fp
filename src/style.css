@@ -3290,3 +3290,11 @@ hr{
 .doorway-editor-field { display: flex; flex-direction: column; gap: 4px; }
 .doorway-editor-field label { font-size: var(--fs-sm); color: var(--muted); font-weight: 500; }
 .doorway-editor-field .dialog-input { width: 100%; }
+
+/* Surface Editor Modal */
+.surface-editor-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; white-space: normal; }
+.surface-editor-field { display: flex; flex-direction: column; gap: 4px; }
+.surface-editor-field label { font-size: var(--fs-sm); color: var(--muted); font-weight: 500; }
+.surface-editor-field .dialog-input { width: 100%; }
+.surface-editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.surface-tiling-fields { transition: all 0.2s ease; }

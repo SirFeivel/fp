@@ -1360,6 +1360,7 @@ export function renderPlanSvg({
   selectedWallEdge = null,
   selectedDoorwayId = null,
   onWallClick = null,
+  onWallDoubleClick = null,
   onDoorwayPointerDown = null,
   onDoorwayResizePointerDown = null
 }) {
@@ -1636,6 +1637,10 @@ export function renderPlanSvg({
         wallSeg.addEventListener("click", (e) => {
           e.stopPropagation();
           if (onWallClick) onWallClick(edgeIdx);
+        });
+        wallSeg.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          if (onWallDoubleClick) onWallDoubleClick(edgeIdx);
         });
         svg.appendChild(wallSeg);
       };

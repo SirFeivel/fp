@@ -65,7 +65,8 @@ const translations = {
       view3D: "3D",
       exit3D: "3D beenden",
       removalMode: "Entfernungsmodus",
-      deleteSelected: "Auswahl löschen"
+      deleteSelected: "Auswahl löschen",
+      surfaceEditHint: "Doppelklick auf die Wandfläche, um die Flieseneinstellungen zu bearbeiten."
     },
     floor: {
       uploadBg: "Bild",
@@ -183,6 +184,11 @@ const translations = {
       roomAdded: "Raum hinzugefügt",
       roomDeleted: "Raum gelöscht",
       commercial: "Kommerziell"
+    },
+    surface: {
+      enableTiling: "Fliesenverlegung aktivieren",
+      editSurface: "Wandfläche bearbeiten",
+      tilingChanged: "Flieseneinstellung geändert"
     },
     room: {
       title: "Ihr Projekt",
@@ -694,7 +700,8 @@ const translations = {
       view3D: "3D",
       exit3D: "Exit 3D",
       removalMode: "Removal mode",
-      deleteSelected: "Delete selected"
+      deleteSelected: "Delete selected",
+      surfaceEditHint: "Double-click the wall surface to edit its tiling configuration."
     },
     floor: {
       uploadBg: "Image",
@@ -812,6 +819,11 @@ const translations = {
       roomAdded: "Room added",
       roomDeleted: "Room deleted",
       commercial: "Commercial"
+    },
+    surface: {
+      enableTiling: "Enable Tiling",
+      editSurface: "Edit Surface Tiling",
+      tilingChanged: "Surface tiling changed"
     },
     room: {
       title: "Your Project",
