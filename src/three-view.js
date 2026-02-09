@@ -789,9 +789,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     controls.target.set(cx, cy, cz);
 
     const dist = maxDim * 1.8;
-    // Position camera to view edge 0 (front) - isometric from front-left-top
-    // Edge 0 is at Z=0, so camera at negative Z looks at the front
-    camera.position.set(cx - dist * 0.6, cy + dist * 0.8, cz - dist * 0.6);
+    // Top-down view matching 2D layout orientation
+    camera.position.set(cx, cy + dist, cz);
     camera.lookAt(cx, cy, cz);
     controls.update();
   }
@@ -811,8 +810,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     const dist = maxDim * 1.8;
 
     controls.target.copy(center);
-    // Position camera to view from front-left-top (matching room orientation)
-    camera.position.set(center.x - dist * 0.6, center.y + dist * 0.8, center.z - dist * 0.6);
+    // Top-down view matching 2D layout orientation
+    camera.position.set(center.x, center.y + dist, center.z);
     camera.lookAt(center);
     controls.update();
   }
