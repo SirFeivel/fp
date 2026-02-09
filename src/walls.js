@@ -111,22 +111,17 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey) {
       let wall = wallByEdgeKey.get(key);
 
       if (wall) {
-        // Compensate doorway offsets for start-point shift to keep them idempotent.
-        // ensureWallsForEdges resets wall.start to the owner room's edge start, and
-        // mergeSharedEdgeWalls may shift it again for shared walls. Without this
-        // compensation, doorway offsets accumulate the merge shift on every cycle.
-        if (wall.doorways.length > 0) {
-          const oldLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-          if (oldLen > 1) {
-            const dirX = (wall.end.x - wall.start.x) / oldLen;
-            const dirY = (wall.end.y - wall.start.y) / oldLen;
-            const startShift = (startPt.x - wall.start.x) * dirX + (startPt.y - wall.start.y) * dirY;
-            if (Math.abs(startShift) > 0.5) {
-              for (const dw of wall.doorways) {
-                dw.offsetCm -= startShift;
-              }
-            }
-          }
+        // Delete doorways when wall geometry changes (room drag/resize)
+        // to avoid complex offset compensation and ghost doorways
+        const oldLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+        const geometryChanged = oldLen > 1 && (
+          Math.abs(wall.start.x - startPt.x) > 0.5 ||
+          Math.abs(wall.start.y - startPt.y) > 0.5 ||
+          Math.abs(wall.end.x - endPt.x) > 0.5 ||
+          Math.abs(wall.end.y - endPt.y) > 0.5
+        );
+        if (geometryChanged && wall.doorways.length > 0) {
+          wall.doorways = [];
         }
         wall.start = startPt;
         wall.end = endPt;
@@ -229,13 +224,14 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
             const shift = -newMin;
 
             if (shift > 0.5 || newMax > wLen + 0.5) {
+              // Wall is being extended/shifted — delete all doorways instead of compensating
+              if (wall.doorways.length > 0) {
+                wall.doorways = [];
+              }
               if (shift > 0.5) {
                 for (const s of wall.surfaces) {
                   s.fromCm += shift;
                   s.toCm += shift;
-                }
-                for (const dw of wall.doorways) {
-                  dw.offsetCm += shift;
                 }
               }
               const sx = wall.start.x, sy = wall.start.y;
@@ -350,23 +346,6 @@ function enforceAdjacentPositions(floor) {
 }
 
 /**
- * Remove doorways that fall entirely outside the wall's extent.
- * After room drags, the wall shrinks and offset compensation can push
- * shared-wall doorways beyond the new bounds. Pruning them prevents
- * ghost doorways that reappear when rooms are moved back.
- */
-function pruneDoorwaysOutOfBounds(floor) {
-  for (const wall of floor.walls) {
-    if (!wall.doorways?.length) continue;
-    const wallLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-    wall.doorways = wall.doorways.filter(dw => {
-      const end = dw.offsetCm + dw.widthCm;
-      return end > 0 && dw.offsetCm < wallLen;
-    });
-  }
-}
-
-/**
  * Core sync algorithm. Called after any room change.
  * Ensures floor.walls[] matches the current room geometry.
  *
@@ -386,7 +365,6 @@ export function syncFloorWalls(floor) {
   mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
-  pruneDoorwaysOutOfBounds(floor);
   enforceAdjacentPositions(floor);
 }
 
