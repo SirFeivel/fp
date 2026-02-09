@@ -286,6 +286,12 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.floors && Array.isArray(s.floors)) {
       for (const floor of s.floors) {
         syncFloorWalls(floor);
+        // Clean up legacy surface.skirting field (removed in v13+)
+        for (const wall of floor.walls || []) {
+          for (const surface of wall.surfaces || []) {
+            delete surface.skirting;
+          }
+        }
       }
     }
 

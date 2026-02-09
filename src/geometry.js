@@ -204,7 +204,7 @@ export function computeSkirtingSegments(room, includeExcluded = false, floor = n
 
         // Subtract doorway intervals from skirting overlaps
         if (doorwayIntervals.length > 0) {
-          overlaps = subtractDoorwayIntervals(overlaps, p1, p2, wallLength, room, floor);
+          overlaps = subtractDoorwayIntervals(overlaps, p1, p2, wallLength, doorwayIntervals);
           if (overlaps.length === 0) continue;
         }
 
@@ -292,84 +292,71 @@ function buildDoorwayIntervals(room, floor) {
  * Subtract doorway intervals from skirting overlap intervals.
  * Matches by checking if the skirting segment lies on a polygon edge with doorways.
  */
-function subtractDoorwayIntervals(overlaps, p1, p2, wallLength, room, floor) {
-  const verts = room.polygonVertices;
-  if (!verts) return overlaps;
+function subtractDoorwayIntervals(overlaps, p1, p2, wallLength, doorwayIntervals) {
+  if (!doorwayIntervals || doorwayIntervals.length === 0) return overlaps;
 
-  const floorDoorways = floor?.doorways?.filter(dw => dw.roomId === room.id) || [];
-  if (floorDoorways.length === 0) return overlaps;
-
-  // Find which polygon edge this skirting segment corresponds to
   const eps = EPSILON;
-  for (let i = 0; i < verts.length; i++) {
-    const edgeDoorways = floorDoorways.filter(dw => dw.edgeIndex === i);
-    if (edgeDoorways.length === 0) continue;
 
-    const A = verts[i];
-    const B = verts[(i + 1) % verts.length];
-    const edgeDx = B.x - A.x;
-    const edgeDy = B.y - A.y;
-    const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-    if (edgeLen < 1) continue;
+  // Find doorway intervals that match this skirting segment
+  const matchingIntervals = [];
 
-    // Check if p1→p2 is collinear with A→B
+  for (const interval of doorwayIntervals) {
+    const { edgeStartX, edgeStartY, edgeDirX, edgeDirY, edgeLen, startCm, endCm } = interval;
+
+    // Check if p1→p2 is collinear with this edge
     const segDx = p2[0] - p1[0];
     const segDy = p2[1] - p1[1];
-    const cross = edgeDx * segDy - edgeDy * segDx;
-    if (Math.abs(cross) > eps * edgeLen) continue;
+    const cross = edgeDirX * segDy - edgeDirY * segDx;
+    if (Math.abs(cross) > eps) continue;
 
     // Check if p1 is on the edge line
-    const toP1x = p1[0] - A.x;
-    const toP1y = p1[1] - A.y;
-    const cross2 = edgeDx * toP1y - edgeDy * toP1x;
-    if (Math.abs(cross2) > eps * edgeLen) continue;
+    const toP1x = p1[0] - edgeStartX;
+    const toP1y = p1[1] - edgeStartY;
+    const cross2 = edgeDirX * toP1y - edgeDirY * toP1x;
+    if (Math.abs(cross2) > eps) continue;
 
     // Project p1 onto edge to find the offset
-    const t1 = (toP1x * edgeDx + toP1y * edgeDy) / (edgeLen * edgeLen);
+    const t1 = toP1x * edgeDirX + toP1y * edgeDirY;
     // Direction: same or reversed?
-    const dot = segDx * edgeDx + segDy * edgeDy;
+    const dot = segDx * edgeDirX + segDy * edgeDirY;
     const sameDir = dot >= 0;
-    const baseOffset = t1 * edgeLen;
+    const baseOffset = t1;
 
-    // Build doorway exclusion intervals in skirting-local coordinates
-    const doorwayExclude = [];
-    for (const dw of edgeDoorways) {
-      let dwStart, dwEnd;
-      if (sameDir) {
-        dwStart = dw.offsetCm - baseOffset;
-        dwEnd = dw.offsetCm + dw.widthCm - baseOffset;
-      } else {
-        dwStart = baseOffset - (dw.offsetCm + dw.widthCm);
-        dwEnd = baseOffset - dw.offsetCm;
-      }
-      if (dwEnd > eps && dwStart < wallLength - eps) {
-        doorwayExclude.push([Math.max(0, dwStart), Math.min(wallLength, dwEnd)]);
-      }
+    // Calculate doorway exclusion in skirting-local coordinates
+    let dwStart, dwEnd;
+    if (sameDir) {
+      dwStart = startCm - baseOffset;
+      dwEnd = endCm - baseOffset;
+    } else {
+      dwStart = baseOffset - endCm;
+      dwEnd = baseOffset - startCm;
     }
 
-    if (doorwayExclude.length === 0) return overlaps;
-
-    // Sort exclusions
-    doorwayExclude.sort((a, b) => a[0] - b[0]);
-
-    // Subtract exclusions from each overlap
-    const result = [];
-    for (const [oStart, oEnd] of overlaps) {
-      let cursor = oStart;
-      for (const [exStart, exEnd] of doorwayExclude) {
-        if (exStart > cursor && exStart < oEnd) {
-          result.push([cursor, Math.min(exStart, oEnd)]);
-        }
-        cursor = Math.max(cursor, exEnd);
-      }
-      if (cursor < oEnd - eps) {
-        result.push([cursor, oEnd]);
-      }
+    if (dwEnd > eps && dwStart < wallLength - eps) {
+      matchingIntervals.push([Math.max(0, dwStart), Math.min(wallLength, dwEnd)]);
     }
-    return result;
   }
 
-  return overlaps;
+  if (matchingIntervals.length === 0) return overlaps;
+
+  // Sort exclusions
+  matchingIntervals.sort((a, b) => a[0] - b[0]);
+
+  // Subtract exclusions from each overlap
+  const result = [];
+  for (const [oStart, oEnd] of overlaps) {
+    let cursor = oStart;
+    for (const [exStart, exEnd] of matchingIntervals) {
+      if (exStart > cursor && exStart < oEnd) {
+        result.push([cursor, Math.min(exStart, oEnd)]);
+      }
+      cursor = Math.max(cursor, exEnd);
+    }
+    if (cursor < oEnd - eps) {
+      result.push([cursor, oEnd]);
+    }
+  }
+  return result;
 }
 
 /**

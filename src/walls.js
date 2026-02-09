@@ -1,7 +1,8 @@
 // src/walls.js — Wall entities: single source of truth for wall data
 import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
-import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM } from "./constants.js";
+import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
+import { computeSkirtingSegments, roomPolygon } from "./geometry.js";
 
 export const DEFAULT_WALL = {
   thicknessCm: DEFAULT_WALL_THICKNESS_CM,
@@ -66,7 +67,6 @@ function createDefaultSurface(side, roomId, edgeIndex, fromCm, toCm) {
     pattern: null,
     exclusions: [],
     excludedTiles: [],
-    skirting: null,
   };
 }
 
@@ -551,6 +551,101 @@ export function computeWallExtensions(floor, roomId) {
 }
 
 /**
+ * Check if a specific room edge has active (non-excluded) skirting pieces.
+ *
+ * @param {Object} room - Room entity with skirting configuration
+ * @param {number} edgeIndex - Index of the edge to check
+ * @param {Object} floor - Floor entity for doorway intervals
+ * @returns {boolean} true if edge has at least one active skirting piece
+ */
+export function edgeHasActiveSkirting(room, edgeIndex, floor) {
+  if (!room || !room.skirting || room.skirting.enabled === false || edgeIndex == null) {
+    return false;
+  }
+
+  // Get room polygon vertices
+  const poly = roomPolygon(room);
+  if (!poly || poly.length === 0 || !poly[0] || poly[0].length === 0) return false;
+
+  const verts = poly[0][0]; // Outer ring (multipolygon format: [[[ring]]])
+  if (!verts || verts.length < 3) return false;
+
+  // Get edge endpoints
+  const v1 = verts[edgeIndex];
+  const v2 = verts[(edgeIndex + 1) % verts.length];
+  if (!v1 || !v2) return false;
+
+  // Get all skirting segments (including excluded ones)
+  const segments = computeSkirtingSegments(room, true, floor);
+
+  // Check if any segment lies on this edge and is NOT excluded
+  for (const seg of segments) {
+    if (seg.excluded) continue; // Skip excluded segments
+
+    // Check if segment is collinear with edge
+    const [p1x, p1y] = seg.p1;
+    const [p2x, p2y] = seg.p2;
+
+    // Vector from v1 to v2
+    const edgeDx = v2[0] - v1[0];
+    const edgeDy = v2[1] - v1[1];
+    const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    if (edgeLen < EPSILON) continue;
+
+    // Check if p1 is on the line from v1 to v2
+    const p1Dx = p1x - v1[0];
+    const p1Dy = p1y - v1[1];
+    const crossProduct1 = Math.abs(edgeDx * p1Dy - edgeDy * p1Dx);
+
+    // Check if p2 is on the line from v1 to v2
+    const p2Dx = p2x - v1[0];
+    const p2Dy = p2y - v1[1];
+    const crossProduct2 = Math.abs(edgeDx * p2Dy - edgeDy * p2Dx);
+
+    // If both cross products are near zero, segment is collinear with edge
+    if (crossProduct1 < EPSILON * edgeLen && crossProduct2 < EPSILON * edgeLen) {
+      // Check if segment is within edge bounds (not beyond v1-v2)
+      const t1 = (p1Dx * edgeDx + p1Dy * edgeDy) / (edgeLen * edgeLen);
+      const t2 = (p2Dx * edgeDx + p2Dy * edgeDy) / (edgeLen * edgeLen);
+
+      // Segment must be within [0, 1] range of edge
+      if ((t1 >= -EPSILON && t1 <= 1 + EPSILON) ||
+          (t2 >= -EPSILON && t2 <= 1 + EPSILON)) {
+        return true; // Found at least one active segment on this edge
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Compute wall tiling offset due to floor skirting.
+ * Single source of truth for skirting offset calculation.
+ *
+ * @param {Object} room - Room entity with skirting configuration
+ * @param {number} edgeIndex - Index of the edge this wall surface belongs to
+ * @param {Object} floor - Floor entity for doorway intervals
+ * @param {number} groutWidth - Grout width in cm
+ * @returns {number} Offset in cm from floor where wall tiles should start
+ */
+export function computeWallSkirtingOffset(room, edgeIndex, floor, groutWidth) {
+  // If skirting disabled globally for room, no offset
+  if (!room || room.skirting?.enabled === false) {
+    return 0;
+  }
+
+  // Check if this specific edge has active skirting
+  if (!edgeHasActiveSkirting(room, edgeIndex, floor)) {
+    return 0;
+  }
+
+  // Calculate offset: skirting height + grout above and below
+  const skirtingHeight = room.skirting.heightCm || 0;
+  return skirtingHeight + 2 * (groutWidth || 0);
+}
+
+/**
  * Converts a wall surface into a 2D "room-like" region for tile computation.
  *
  * Coordinate space:
@@ -566,9 +661,10 @@ export function computeWallExtensions(floor, roomId) {
  *
  * @param {Object} wall - Wall entity
  * @param {number} surfaceIdx - Index into wall.surfaces[]
- * @returns {Object} { polygonVertices, widthCm, heightCm, tile, grout, pattern, exclusions, excludedTiles }
+ * @param {Object} options - Optional { room, floor } for skirting offset calculation
+ * @returns {Object} { polygonVertices, widthCm, heightCm, tile, grout, pattern, exclusions, excludedTiles, skirtingOffset }
  */
-export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
+export function wallSurfaceToTileableRegion(wall, surfaceIdx, options = {}) {
   const surface = wall.surfaces[surfaceIdx];
   if (!surface) return null;
 
@@ -586,20 +682,32 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
   const surfaceHEnd = hStart + (hEnd - hStart) * tEnd;
   const maxH = Math.max(surfaceHStart, surfaceHEnd);
 
+  // Compute skirting offset if room context is provided
+  const room = options?.room;
+  const floor = options?.floor;
+  const edgeIndex = surface?.edgeIndex;
+  const groutWidth = surface?.grout?.widthCm ?? 0;
+
+  let skirtingOffset = 0;
+  if (room && edgeIndex != null) {
+    skirtingOffset = computeWallSkirtingOffset(room, edgeIndex, floor, groutWidth);
+  }
+
   // Trapezoid for sloped walls, rectangle for uniform
   // NOTE: Y-coordinates are flipped so floor (y=0 in world) renders at top of SVG
+  // Apply skirtingOffset to floor vertices (shift up from maxH)
   const polygonVertices = (Math.abs(surfaceHStart - surfaceHEnd) > 0.1)
     ? [
-        { x: 0, y: maxH - 0 },
-        { x: width, y: maxH - 0 },
-        { x: width, y: maxH - surfaceHEnd },
-        { x: 0, y: maxH - surfaceHStart },
+        { x: 0, y: maxH - skirtingOffset },           // floor-left
+        { x: width, y: maxH - skirtingOffset },       // floor-right
+        { x: width, y: maxH - surfaceHEnd },          // ceiling-right
+        { x: 0, y: maxH - surfaceHStart },            // ceiling-left
       ]
     : [
-        { x: 0, y: maxH },
-        { x: width, y: maxH },
-        { x: width, y: 0 },
-        { x: 0, y: 0 },
+        { x: 0, y: maxH - skirtingOffset },           // floor-left
+        { x: width, y: maxH - skirtingOffset },       // floor-right
+        { x: width, y: 0 },                           // ceiling-right
+        { x: 0, y: 0 },                               // ceiling-left
       ];
 
   // Map doorway exclusions that fall within this surface's range
@@ -628,10 +736,75 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
         { x: localEnd, y: yTop },
         { x: localStart, y: yTop },
       ],
+      skirtingEnabled: false, // No skirting in wall surface views
     });
   }
 
-  const allExclusions = [...doorwayExclusions, ...(surface.exclusions || [])];
+  // Disable skirting on all exclusions in wall surface views
+  const surfaceExclusions = (surface.exclusions || []).map(ex => ({
+    ...ex,
+    skirtingEnabled: false
+  }));
+  const allExclusions = [...doorwayExclusions, ...surfaceExclusions];
+
+  // Compute skirting segments for wall surface view rendering
+  let skirtingSegments = [];
+  let skirtingConfig = null;
+
+  if (room && room.skirting?.enabled && skirtingOffset > 0 && edgeIndex != null) {
+    const allSegments = computeSkirtingSegments(room, true, floor); // include excluded
+    const poly = roomPolygon(room);
+
+    if (poly && poly[0] && poly[0][0]) {
+      const verts = poly[0][0];
+      if (edgeIndex < verts.length) {
+        const v1 = verts[edgeIndex];
+        const v2 = verts[(edgeIndex + 1) % verts.length];
+        const edgeDx = v2[0] - v1[0];
+        const edgeDy = v2[1] - v1[1];
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+
+        if (edgeLen > 0.01) {
+          for (const seg of allSegments) {
+            const [p1x, p1y] = seg.p1;
+            const [p2x, p2y] = seg.p2;
+
+            // Check if segment is on this edge
+            const p1Dx = p1x - v1[0];
+            const p1Dy = p1y - v1[1];
+            const p2Dx = p2x - v1[0];
+            const p2Dy = p2y - v1[1];
+
+            const cross1 = Math.abs(edgeDx * p1Dy - edgeDy * p1Dx);
+            const cross2 = Math.abs(edgeDx * p2Dy - edgeDy * p2Dx);
+
+            if (cross1 < EPSILON * edgeLen && cross2 < EPSILON * edgeLen) {
+              const t1 = (p1Dx * edgeDx + p1Dy * edgeDy) / (edgeLen * edgeLen);
+              const t2 = (p2Dx * edgeDx + p2Dy * edgeDy) / (edgeLen * edgeLen);
+
+              const x1 = t1 * edgeLen - fromCm;
+              const x2 = t2 * edgeLen - fromCm;
+
+              if ((x1 >= -0.1 && x1 <= width + 0.1) ||
+                  (x2 >= -0.1 && x2 <= width + 0.1)) {
+                skirtingSegments.push({
+                  x1,
+                  x2,
+                  id: seg.id,
+                  excluded: seg.excluded || false
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    skirtingConfig = {
+      ...room.skirting,
+      tile: room.tile // Need tile info for piece length calculation
+    };
+  }
 
   return {
     id: surface.id,
@@ -643,6 +816,10 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
     pattern: surface.pattern ? { ...surface.pattern } : null,
     exclusions: allExclusions,
     excludedTiles: surface.excludedTiles || [],
+    skirting: { enabled: false }, // Wall surfaces don't have floor skirting
+    skirtingOffset, // Offset in cm from floor where wall tiles start
+    skirtingSegments, // Segments in wall surface coordinates for rendering
+    skirtingConfig, // Skirting configuration for rendering
   };
 }
 

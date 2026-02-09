@@ -1961,6 +1961,81 @@ export function renderPlanSvg({
     }
   }
 
+  // Render actual skirting segments in wall surface view
+  if (state.view?.showSkirting && currentRoom.skirtingSegments && currentRoom.skirtingSegments.length > 0 && currentRoom.skirtingConfig) {
+    const isRemovalMode = Boolean(state.view?.removalMode);
+    const skirting = currentRoom.skirtingConfig;
+
+    const gSkirting = svgEl("g", {
+      fill: "none",
+      stroke: isExportBW ? "#111111" : "var(--accent)",
+      "stroke-width": isExportBW ? 3 : 4,
+      opacity: 0.6,
+      "stroke-linejoin": "round",
+      "pointer-events": isRemovalMode ? "auto" : "none"
+    });
+
+    const tileW = Number(skirting.tile?.widthCm) || DEFAULT_TILE_PRESET.widthCm;
+    const tileH = Number(skirting.tile?.heightCm) || DEFAULT_TILE_PRESET.heightCm;
+    const longSide = Math.max(tileW, tileH);
+    const pieceLength = skirting.type === "bought"
+      ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
+      : longSide;
+    const gap = 2.5;
+
+    // Y position in wall surface coords - at the adjusted floor boundary
+    // The polygon floor is at heightCm - skirtingOffset, skirting renders there
+    const skirtingY = currentRoom.heightCm - currentRoom.skirtingOffset;
+
+    for (const seg of currentRoom.skirtingSegments) {
+      const { x1, x2, id, excluded } = seg;
+      const d = `M ${x1} ${skirtingY} L ${x2} ${skirtingY}`;
+
+      if (isRemovalMode) {
+        const hitArea = svgEl("path", {
+          d,
+          stroke: "transparent",
+          "stroke-width": 20,
+          "data-skirtid": id,
+          cursor: "pointer"
+        });
+        gSkirting.appendChild(hitArea);
+      }
+
+      const attrs = {
+        d,
+        "stroke-dasharray": isExportBW ? "8 4" : (excluded ? "none" : `${pieceLength - gap} ${gap}`),
+        "stroke-linecap": "butt"
+      };
+      if (id) attrs["data-skirtid"] = id;
+
+      if (excluded) {
+        if (isExportBW) {
+          gSkirting.appendChild(svgEl("path", {
+            d,
+            stroke: "#bdbdbd",
+            "stroke-width": 7,
+            "stroke-linecap": "butt"
+          }));
+        }
+        attrs.stroke = isExportBW ? "#111111" : "rgba(239,68,68,0.8)";
+        attrs["stroke-width"] = isExportBW ? 3 : 8;
+        if (!isExportBW) attrs["class"] = "skirt-excluded";
+        if (isExportBW) {
+          const cx = (x1 + x2) / 2;
+          const cy = skirtingY;
+          const size = 6;
+          gSkirting.appendChild(svgEl("line", { x1: cx - size, y1: cy - size, x2: cx + size, y2: cy + size, stroke: "#111111", "stroke-width": 1 }));
+          gSkirting.appendChild(svgEl("line", { x1: cx - size, y1: cy + size, x2: cx + size, y2: cy - size, stroke: "#111111", "stroke-width": 1 }));
+        }
+      }
+
+      gSkirting.appendChild(svgEl("path", attrs));
+    }
+
+    svg.appendChild(gSkirting);
+  }
+
   // Append walls group on top of tiles so wall quads cover tile bleed-through
   if (wallsGroup) svg.appendChild(wallsGroup);
 

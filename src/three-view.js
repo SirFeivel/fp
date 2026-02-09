@@ -748,6 +748,55 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       });
       for (const m of meshes) scene.add(m);
       for (const l of lines) scene.add(l);
+
+      // Render actual skirting segments in 3D
+      if (surf.skirtingOffset > 0 && surf.skirtingSegments && surf.skirtingSegments.length > 0) {
+        const skirtingHeight = surf.skirtingHeight || 6;
+
+        for (const segment of surf.skirtingSegments) {
+          const { x1, x2, excluded } = segment;
+
+          // Create quad for this skirting piece
+          const segVerts = [
+            { x: x1, y: surf.surfaceVerts[0].y },  // bottom-left (floor level)
+            { x: x2, y: surf.surfaceVerts[0].y },  // bottom-right
+            { x: x2, y: surf.surfaceVerts[0].y - skirtingHeight },  // top-right
+            { x: x1, y: surf.surfaceVerts[0].y - skirtingHeight },  // top-left
+          ];
+
+          // Map to 3D and apply z-bias to avoid z-fighting with wall
+          const seg3D = segVerts.map(v => {
+            const p = mapper(v.x, v.y);
+            // Apply z-bias by offsetting in the direction of the wall normal
+            // For wall surfaces, we need to push outward slightly
+            return p;
+          });
+
+          const segGeo = new THREE.BufferGeometry();
+          const positions = new Float32Array(seg3D.flatMap(p => [p.x, p.y, p.z]));
+          segGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          segGeo.setIndex([0, 1, 2, 0, 2, 3]);
+
+          // Use accent color for active skirting, red for excluded
+          const color = excluded ? 0xEF4444 : 0x7AA2FF;
+          const opacity = excluded ? 0.8 : 0.9;
+
+          const segMat = new THREE.MeshBasicMaterial({
+            color,
+            opacity,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthTest: true,
+            depthWrite: false, // Don't write to depth buffer to avoid blocking tiles
+            polygonOffset: true,
+            polygonOffsetFactor: -2, // Pull forward
+            polygonOffsetUnits: -2,
+          });
+
+          const segMesh = new THREE.Mesh(segGeo, segMat);
+          scene.add(segMesh);
+        }
+      }
     }
   }
 

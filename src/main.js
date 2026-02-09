@@ -12,7 +12,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN } from "./walls.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
@@ -484,7 +484,9 @@ function prepareFloorWallData(state, floor, wallGeometry) {
     if (!wallDesc) return null;
 
     const surfaces = wall.surfaces.map((surface, idx) => {
-      const region = wallSurfaceToTileableRegion(wall, idx);
+      // Get room for this surface to pass context for skirting offset
+      const room = floor.rooms.find(r => r.id === surface.roomId);
+      const region = wallSurfaceToTileableRegion(wall, idx, { room, floor });
       if (!region) return null;
 
       let tiles = [];
@@ -510,17 +512,77 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       const fromFrac = wallDesc.totalLength > 0 ? (surfFromCm + wallDesc.extStart) / wallDesc.totalLength : 0;
       const toFrac = wallDesc.totalLength > 0 ? (surfToCm + wallDesc.extStart) / wallDesc.totalLength : 1;
 
+      // Compute skirting segments for this surface
+      let skirtingSegments = [];
+      let skirtingHeight = 0;
+      if (room && room.skirting?.enabled && region.skirtingOffset > 0) {
+        const allSegments = computeSkirtingSegments(room, false, floor);
+        const poly = roomPolygon(room);
+        const edgeIndex = surface.edgeIndex;
+
+        if (poly && poly[0] && poly[0][0] && edgeIndex != null) {
+          const verts = poly[0][0];
+          if (edgeIndex < verts.length) {
+            const v1 = verts[edgeIndex];
+            const v2 = verts[(edgeIndex + 1) % verts.length];
+            const edgeDx = v2[0] - v1[0];
+            const edgeDy = v2[1] - v1[1];
+            const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+
+            if (edgeLen > 0.01) {
+              skirtingHeight = room.skirting.heightCm || 6;
+
+              for (const seg of allSegments) {
+                const [p1x, p1y] = seg.p1;
+                const [p2x, p2y] = seg.p2;
+
+                // Check if segment is on this edge
+                const p1Dx = p1x - v1[0];
+                const p1Dy = p1y - v1[1];
+                const p2Dx = p2x - v1[0];
+                const p2Dy = p2y - v1[1];
+
+                const cross1 = Math.abs(edgeDx * p1Dy - edgeDy * p1Dx);
+                const cross2 = Math.abs(edgeDx * p2Dy - edgeDy * p2Dx);
+                const EPSILON = 1e-6;
+
+                if (cross1 < EPSILON * edgeLen && cross2 < EPSILON * edgeLen) {
+                  const t1 = (p1Dx * edgeDx + p1Dy * edgeDy) / (edgeLen * edgeLen);
+                  const t2 = (p2Dx * edgeDx + p2Dy * edgeDy) / (edgeLen * edgeLen);
+
+                  const x1 = t1 * edgeLen - surfFromCm;
+                  const x2 = t2 * edgeLen - surfFromCm;
+
+                  if ((x1 >= -0.1 && x1 <= region.widthCm + 0.1) ||
+                      (x2 >= -0.1 && x2 <= region.widthCm + 0.1)) {
+                    skirtingSegments.push({
+                      x1,
+                      x2,
+                      excluded: seg.excluded || false
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       return {
         roomId: surface.roomId,
         edgeIndex: surface.edgeIndex,
         tiles,
         exclusions: region.exclusions || [],
         surfaceVerts: region.polygonVertices,
+        region, // Pass full region for access to skirtingOffset
         hStart: surfHStart,
         hEnd: surfHEnd,
         groutColor: region.grout?.colorHex || "#ffffff",
         fromFrac,
         toFrac,
+        skirtingOffset: region.skirtingOffset || 0,
+        skirtingSegments, // Skirting segments in wall surface coordinates
+        skirtingHeight, // Height of skirting for 3D rendering
       };
     }).filter(Boolean);
 
@@ -923,7 +985,9 @@ function renderPlanningSection(state, opts) {
       const floor = getCurrentFloor(state);
       const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
       if (wall) {
-        roomOverride = wallSurfaceToTileableRegion(wall, state.selectedSurfaceIdx ?? 0);
+        const surface = wall.surfaces[state.selectedSurfaceIdx ?? 0];
+        const room = floor.rooms.find(r => r.id === surface?.roomId);
+        roomOverride = wallSurfaceToTileableRegion(wall, state.selectedSurfaceIdx ?? 0, { room, floor });
         surfaceTilingDisabled = !roomOverride?.tile;
       }
     }
