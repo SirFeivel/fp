@@ -118,7 +118,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
     if (s.view.showFloorTiles === undefined) s.view.showFloorTiles = false;
     if (s.view.showWalls === undefined) s.view.showWalls = false;
-    if (s.view.showWalls3D === undefined) s.view.showWalls3D = false;
+    if (s.view.showWalls3D === undefined) s.view.showWalls3D = true;
     if (s.view.use3D === undefined) s.view.use3D = false;
     if (s.view.planningMode === "3d") { s.view.planningMode = "floor"; s.view.use3D = true; }
     if (s.view.planningMode === undefined) s.view.planningMode = "room";

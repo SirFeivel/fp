@@ -476,12 +476,15 @@ function prepareFloorWallData(state, floor) {
       if (!region) return null;
 
       let tiles = [];
-      const avail = computeAvailableArea(region, region.exclusions || []);
-      if (avail.mp) {
-        const result = tilesForPreview(state, avail.mp, region, isRemovalMode, floor, {
-          effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
-        });
-        tiles = result?.tiles || [];
+      // Only compute tiles if surface has tiling configured (not null)
+      if (surface.tile) {
+        const avail = computeAvailableArea(region, region.exclusions || []);
+        if (avail.mp) {
+          const result = tilesForPreview(state, avail.mp, region, isRemovalMode, floor, {
+            effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
+          });
+          tiles = result?.tiles || [];
+        }
       }
 
       const surfFromCm = surface.fromCm || 0;

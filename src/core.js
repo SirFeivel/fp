@@ -198,7 +198,7 @@ export function defaultState() {
       showSkirting: true,
       showFloorTiles: false,
       showWalls: false,      // 2D views (floor, pattern groups)
-      showWalls3D: false,    // 3D view
+      showWalls3D: true,     // 3D view
       use3D: false,          // orthogonal 2D/3D toggle
       planningMode: "floor"  // Start in floor view to add rooms
     }

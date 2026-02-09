@@ -265,8 +265,10 @@ describe('syncFloorWalls', () => {
     syncFloorWalls(floor);
 
     const wall = getWallForEdge(floor, 'r1', 0);
-    wall.surfaces[0].tile.widthCm = 99;
-    wall.surfaces[0].pattern.type = 'herringbone';
+    // Configure tiling (walls start untiled)
+    wall.surfaces[0].tile = { widthCm: 99, heightCm: 20, shape: 'rect' };
+    wall.surfaces[0].grout = { widthCm: 0.2, colorHex: '#ffffff' };
+    wall.surfaces[0].pattern = { type: 'herringbone', bondFraction: 0.5, rotationDeg: 0 };
 
     syncFloorWalls(floor);
     const wallAfter = getWallForEdge(floor, 'r1', 0);
