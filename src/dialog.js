@@ -671,7 +671,6 @@ export function showSurfaceEditor({
     const tileW = tile?.widthCm ?? 40;
     const tileH = tile?.heightCm ?? 20;
     const tileShape = tile?.shape ?? "rect";
-    const tileRef = tile?.reference ?? "";
     const groutW = grout?.widthCm ?? 0.2;
     const groutColor = grout?.colorHex ?? "#ffffff";
     const patternType = pattern?.type ?? "grid";
@@ -727,10 +726,6 @@ export function showSurfaceEditor({
               </select>
             </div>
             ` : ''}
-            <div class="surface-editor-field">
-              <label data-i18n="tile.reference">Reference</label>
-              <input type="text" id="surfTileRef" value="${tileRef}" placeholder="e.g. Marble Carrara" class="dialog-input" />
-            </div>
           <div class="surface-editor-field">
             <label data-i18n="tile.shape">Tile Shape</label>
             <select id="surfTileShape" class="dialog-input">
@@ -837,14 +832,12 @@ export function showSurfaceEditor({
         if (!preset) return;
 
         // Populate fields from preset
-        const refInput = document.getElementById("surfTileRef");
         const shapeInput = document.getElementById("surfTileShape");
         const wInput = document.getElementById("surfTileW");
         const hInput = document.getElementById("surfTileH");
         const groutWInput = document.getElementById("surfGroutW");
         const groutColorInput = document.getElementById("surfGroutColor");
 
-        if (refInput) refInput.value = preset.name || "";
         if (shapeInput) shapeInput.value = preset.shape || "rect";
         if (wInput) wInput.value = preset.widthCm || 40;
         if (hInput) hInput.value = preset.heightCm || 20;
@@ -886,7 +879,6 @@ export function showSurfaceEditor({
         return;
       }
 
-      const tileRefInput = document.getElementById("surfTileRef");
       const tileWInput = document.getElementById("surfTileW");
       const tileHInput = document.getElementById("surfTileH");
       const tileShapeInput = document.getElementById("surfTileShape");
@@ -903,8 +895,7 @@ export function showSurfaceEditor({
         tile: {
           widthCm: parseFloat(tileWInput.value) || 40,
           heightCm: parseFloat(tileHInput.value) || 20,
-          shape: tileShapeInput.value,
-          reference: tileRefInput.value || "Standard"
+          shape: tileShapeInput.value
         },
         grout: {
           widthCm: (parseFloat(groutWInput.value) || 2) / 10, // mm to cm
