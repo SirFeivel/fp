@@ -554,12 +554,32 @@ async function showSurfaceEditorDialog(wallId) {
     tilePresets: state.tilePresets || []
   });
 
-  if (result === null) return; // Cancelled
+  if (result === null) {
+    console.log('[SurfaceEditor] Modal cancelled');
+    return; // Cancelled
+  }
+
+  console.log('[SurfaceEditor] Modal result:', JSON.stringify({
+    wall: result.wall,
+    tile: result.tile,
+    grout: result.grout,
+    pattern: result.pattern,
+    enabled: result.enabled
+  }, null, 2));
 
   const next = deepClone(state);
   const nextFloor = next.floors.find(f => f.id === floor.id);
   const nextWall = nextFloor?.walls?.find(w => w.id === wallId);
-  if (!nextWall || !nextWall.surfaces || nextWall.surfaces.length === 0) return;
+  if (!nextWall || !nextWall.surfaces || nextWall.surfaces.length === 0) {
+    console.log('[SurfaceEditor] Wall or surface not found in next state');
+    return;
+  }
+
+  console.log('[SurfaceEditor] Before update - surface:', JSON.stringify({
+    tile: surface.tile,
+    grout: surface.grout,
+    pattern: surface.pattern
+  }, null, 2));
 
   // Check if wall properties changed
   const wallChanged =
@@ -577,15 +597,26 @@ async function showSurfaceEditorDialog(wallId) {
   nextWall.surfaces[0].grout = result.grout;
   nextWall.surfaces[0].pattern = result.pattern;
 
+  console.log('[SurfaceEditor] After update - nextWall.surfaces[0]:', JSON.stringify({
+    tile: nextWall.surfaces[0].tile,
+    grout: nextWall.surfaces[0].grout,
+    pattern: nextWall.surfaces[0].pattern
+  }, null, 2));
+
   // Use appropriate commit message based on what changed
   const commitMsg = wallChanged
     ? t("wall.configChanged") || "Wall configuration changed"
     : t("surface.tilingChanged") || "Surface tiling changed";
 
+  console.log('[SurfaceEditor] Committing state with message:', commitMsg);
+  console.log('[SurfaceEditor] wallChanged:', wallChanged);
+
   store.commit(commitMsg, next, {
     onRender: renderAll,
     updateMetaCb: updateMeta
   });
+
+  console.log('[SurfaceEditor] State committed, renderAll should be called');
 }
 
 function handleWallDoubleClick(roomId, edgeIndex) {
@@ -1046,8 +1077,18 @@ function renderAll(lastLabel, options) {
   }
   const scope = resolveRenderScope(label, opts);
 
+  console.log('[renderAll] Called with label:', label, 'scope:', scope);
+
   try {
     const state = store.getState();
+    console.log('[renderAll] Current state - selectedWallId:', state.selectedWallId);
+    if (state.selectedWallId) {
+      const floor = getCurrentFloor(state);
+      const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
+      if (wall?.surfaces?.[0]) {
+        console.log('[renderAll] Selected wall surface tile:', JSON.stringify(wall.surfaces[0].tile, null, 2));
+      }
+    }
     renderByScope(state, scope, label, opts);
   } catch (error) {
     console.error("Render failed:", error);
