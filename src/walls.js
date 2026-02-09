@@ -9,17 +9,17 @@ export const DEFAULT_WALL = {
   heightEndCm: DEFAULT_WALL_HEIGHT_CM,
 };
 
-const DEFAULT_SURFACE_TILE = {
+export const DEFAULT_SURFACE_TILE = {
   widthCm: DEFAULT_TILE_PRESET.widthCm,
   heightCm: DEFAULT_TILE_PRESET.heightCm,
   shape: DEFAULT_TILE_PRESET.shape,
   reference: "Standard",
 };
-const DEFAULT_SURFACE_GROUT = {
+export const DEFAULT_SURFACE_GROUT = {
   widthCm: DEFAULT_TILE_PRESET.groutWidthCm,
   colorHex: DEFAULT_TILE_PRESET.groutColorHex,
 };
-const DEFAULT_SURFACE_PATTERN = {
+export const DEFAULT_SURFACE_PATTERN = {
   type: "grid",
   bondFraction: 0.5,
   rotationDeg: 0,
@@ -111,6 +111,23 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey) {
       let wall = wallByEdgeKey.get(key);
 
       if (wall) {
+        // Compensate doorway offsets for start-point shift to keep them idempotent.
+        // ensureWallsForEdges resets wall.start to the owner room's edge start, and
+        // mergeSharedEdgeWalls may shift it again for shared walls. Without this
+        // compensation, doorway offsets accumulate the merge shift on every cycle.
+        if (wall.doorways.length > 0) {
+          const oldLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+          if (oldLen > 1) {
+            const dirX = (wall.end.x - wall.start.x) / oldLen;
+            const dirY = (wall.end.y - wall.start.y) / oldLen;
+            const startShift = (startPt.x - wall.start.x) * dirX + (startPt.y - wall.start.y) * dirY;
+            if (Math.abs(startShift) > 0.5) {
+              for (const dw of wall.doorways) {
+                dw.offsetCm -= startShift;
+              }
+            }
+          }
+        }
         wall.start = startPt;
         wall.end = endPt;
         touchedWallIds.add(wall.id);
@@ -525,8 +542,18 @@ export function computeWallExtensions(floor, roomId) {
 }
 
 /**
- * Adapter: convert a wall surface into a tileable region compatible with
- * the existing tiling pipeline (tilesForPreview, computeAvailableArea).
+ * Converts a wall surface into a 2D "room-like" region for tile computation.
+ *
+ * Coordinate space:
+ *   X: 0 at surface start, increasing along wall to surface width
+ *   Y: 0 at ceiling (top of SVG), increasing downward to maxH at floor
+ *      (Y is flipped from world coords where 0 = floor)
+ *
+ * This convention matches SVG's top-left origin. The three-view.js wall mapper
+ * (createWallMapper) implicitly un-flips via bilinear interpolation from the
+ * polygon vertices.
+ *
+ * Consumers: main.js prepareFloorWallData (3D data), main.js surface editor
  *
  * @param {Object} wall - Wall entity
  * @param {number} surfaceIdx - Index into wall.surfaces[]
@@ -551,18 +578,19 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
   const maxH = Math.max(surfaceHStart, surfaceHEnd);
 
   // Trapezoid for sloped walls, rectangle for uniform
+  // NOTE: Y-coordinates are flipped so floor (y=0 in world) renders at top of SVG
   const polygonVertices = (Math.abs(surfaceHStart - surfaceHEnd) > 0.1)
     ? [
-        { x: 0, y: 0 },
-        { x: width, y: 0 },
-        { x: width, y: surfaceHEnd },
-        { x: 0, y: surfaceHStart },
+        { x: 0, y: maxH - 0 },
+        { x: width, y: maxH - 0 },
+        { x: width, y: maxH - surfaceHEnd },
+        { x: 0, y: maxH - surfaceHStart },
       ]
     : [
-        { x: 0, y: 0 },
-        { x: width, y: 0 },
-        { x: width, y: maxH },
         { x: 0, y: maxH },
+        { x: width, y: maxH },
+        { x: width, y: 0 },
+        { x: 0, y: 0 },
       ];
 
   // Map doorway exclusions that fall within this surface's range
@@ -573,18 +601,23 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
     // Check if doorway overlaps this surface's range
     const overlapStart = Math.max(dwStart, fromCm);
     const overlapEnd = Math.min(dwEnd, toCm);
+
     if (overlapEnd - overlapStart < 1) continue;
 
     const localStart = overlapStart - fromCm;
     const localEnd = overlapEnd - fromCm;
     const elev = dw.elevationCm || 0;
+    // Flip Y-coordinates so floor is at top of SVG
+    const yBottom = maxH - elev;
+    const yTop = maxH - (elev + dw.heightCm);
+
     doorwayExclusions.push({
       type: "freeform",
       vertices: [
-        { x: localStart, y: elev },
-        { x: localEnd, y: elev },
-        { x: localEnd, y: elev + dw.heightCm },
-        { x: localStart, y: elev + dw.heightCm },
+        { x: localStart, y: yBottom },
+        { x: localEnd, y: yBottom },
+        { x: localEnd, y: yTop },
+        { x: localStart, y: yTop },
       ],
     });
   }
@@ -596,9 +629,9 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx) {
     polygonVertices,
     widthCm: width,
     heightCm: maxH,
-    tile: surface.tile || { ...DEFAULT_SURFACE_TILE },
-    grout: surface.grout || { ...DEFAULT_SURFACE_GROUT },
-    pattern: surface.pattern || { ...DEFAULT_SURFACE_PATTERN },
+    tile: surface.tile ? { ...surface.tile } : null,
+    grout: surface.grout ? { ...surface.grout } : null,
+    pattern: surface.pattern ? { ...surface.pattern } : null,
     exclusions: allExclusions,
     excludedTiles: surface.excludedTiles || [],
   };
@@ -656,4 +689,242 @@ export function getEdgeDoorways(floor, roomId, edgeIndex) {
     heightCm: dw.heightCm,
     elevationCm: dw.elevationCm || 0,
   }));
+}
+
+/**
+ * Compute geometry descriptors for ALL walls on a floor, once per render cycle.
+ * Every consumer reads from this instead of re-deriving normals, extensions, etc.
+ *
+ * @param {Object} floor - Floor object with rooms[] and walls[]
+ * @returns {Map<string, Object>} wallId → WallDescriptor
+ */
+export function computeFloorWallGeometry(floor) {
+  const result = new Map();
+  if (!floor?.walls?.length) return result;
+
+  // Cache extensions per room
+  const extCache = new Map();
+  function getExts(roomId) {
+    if (!extCache.has(roomId)) extCache.set(roomId, computeWallExtensions(floor, roomId));
+    return extCache.get(roomId);
+  }
+
+  for (const wall of floor.walls) {
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const edgeLength = Math.hypot(dx, dy);
+    if (edgeLength < 1) continue;
+
+    const dirX = dx / edgeLength;
+    const dirY = dy / edgeLength;
+    const normal = getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+
+    // Per-room extensions
+    const extensions = new Map();
+    const re = wall.roomEdge;
+    if (re) {
+      const roomExts = getExts(re.roomId);
+      const ext = roomExts.get(re.edgeIndex) ?? { extStart: thick, extEnd: thick };
+      extensions.set(re.roomId, ext);
+    }
+    // Also compute extensions for non-owner surface rooms
+    for (const s of wall.surfaces) {
+      if (!extensions.has(s.roomId)) {
+        const roomExts = getExts(s.roomId);
+        const ext = roomExts.get(s.edgeIndex) ?? { extStart: thick, extEnd: thick };
+        extensions.set(s.roomId, ext);
+      }
+    }
+
+    // Use OWNER room's extensions for canonical geometry
+    const ownerExt = re ? (extensions.get(re.roomId) ?? { extStart: thick, extEnd: thick })
+                        : { extStart: thick, extEnd: thick };
+    const extStart = ownerExt.extStart;
+    const extEnd = ownerExt.extEnd;
+
+    const extStartPt = { x: wall.start.x - dirX * extStart, y: wall.start.y - dirY * extStart };
+    const extEndPt = { x: wall.end.x + dirX * extEnd, y: wall.end.y + dirY * extEnd };
+    const outerStartPt = { x: extStartPt.x + normal.x * thick, y: extStartPt.y + normal.y * thick };
+    const outerEndPt = { x: extEndPt.x + normal.x * thick, y: extEndPt.y + normal.y * thick };
+    const totalLength = edgeLength + extStart + extEnd;
+
+    // Pre-shifted doorways (offsetCm += owner extStart)
+    const extDoorways = (wall.doorways || []).map(dw => ({
+      ...dw,
+      offsetCm: dw.offsetCm + extStart,
+    }));
+
+    result.set(wall.id, {
+      wall,
+      edgeLength,
+      dirX,
+      dirY,
+      normal,
+      extensions,
+      extStart,
+      extEnd,
+      extStartPt,
+      extEndPt,
+      outerStartPt,
+      outerEndPt,
+      totalLength,
+      extDoorways,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Map doorway offsets from wall-direction to a specific room's edge direction.
+ * Fixes the direction flip bug for non-owner rooms on shared walls.
+ *
+ * @param {Object} wallDesc - WallDescriptor from computeFloorWallGeometry
+ * @param {Object} room - Room object with polygonVertices
+ * @param {number} edgeIndex - Index of the edge in room.polygonVertices
+ * @returns {Array} Doorways with offsetCm in edge-local space (shifted by room's extStart)
+ */
+export function getDoorwaysInEdgeSpace(wallDesc, room, edgeIndex) {
+  const wall = wallDesc.wall;
+  if (!wall.doorways?.length || !room?.polygonVertices?.length) return [];
+
+  const verts = room.polygonVertices;
+  const n = verts.length;
+  if (edgeIndex < 0 || edgeIndex >= n) return [];
+
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % n];
+  const edgeDx = B.x - A.x;
+  const edgeDy = B.y - A.y;
+  const edgeLen = Math.hypot(edgeDx, edgeDy);
+  if (edgeLen < 1) return [];
+
+  // Determine if edge direction matches wall direction
+  const dot = (edgeDx / edgeLen) * wallDesc.dirX + (edgeDy / edgeLen) * wallDesc.dirY;
+  const sameDir = dot >= 0;
+
+  // Get this room's extStart
+  const roomExt = wallDesc.extensions.get(room.id) ?? { extStart: 0, extEnd: 0 };
+  const roomExtStart = roomExt.extStart;
+
+  return wall.doorways.map(dw => {
+    let edgeOffset;
+    if (sameDir) {
+      edgeOffset = dw.offsetCm;
+    } else {
+      // Reverse: offset measured from the other end
+      edgeOffset = wallDesc.edgeLength - dw.offsetCm - dw.widthCm;
+    }
+    // Apply this room's extStart shift
+    edgeOffset += roomExtStart;
+
+    return {
+      ...dw,
+      offsetCm: edgeOffset,
+    };
+  });
+}
+
+/**
+ * Get parametric render helpers for drawing wall segments.
+ * All renderers use these for consistent wall drawing.
+ *
+ * @param {Object} wallDesc - WallDescriptor from computeFloorWallGeometry
+ * @param {string} roomId - Room ID for room-specific extensions
+ * @returns {{ A, B, OA, OB, L, innerAt, outerAt, normal, dirX, dirY }}
+ */
+export function getWallRenderHelpers(wallDesc, roomId) {
+  const thick = wallDesc.wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+  const normal = wallDesc.normal;
+
+  // Use room-specific extensions if available, fall back to owner
+  const roomExt = wallDesc.extensions.get(roomId) ?? { extStart: wallDesc.extStart, extEnd: wallDesc.extEnd };
+  const extStart = roomExt.extStart;
+  const extEnd = roomExt.extEnd;
+
+  const A = {
+    x: wallDesc.wall.start.x - wallDesc.dirX * extStart,
+    y: wallDesc.wall.start.y - wallDesc.dirY * extStart,
+  };
+  const B = {
+    x: wallDesc.wall.end.x + wallDesc.dirX * extEnd,
+    y: wallDesc.wall.end.y + wallDesc.dirY * extEnd,
+  };
+  const OA = { x: A.x + normal.x * thick, y: A.y + normal.y * thick };
+  const OB = { x: B.x + normal.x * thick, y: B.y + normal.y * thick };
+  const L = wallDesc.edgeLength + extStart + extEnd;
+
+  const eDx = B.x - A.x, eDy = B.y - A.y;
+  const oDx = OB.x - OA.x, oDy = OB.y - OA.y;
+  const innerAt = (t) => ({ x: A.x + t * eDx, y: A.y + t * eDy });
+  const outerAt = (t) => ({ x: OA.x + t * oDx, y: OA.y + t * oDy });
+
+  return { A, B, OA, OB, L, innerAt, outerAt, normal, dirX: wallDesc.dirX, dirY: wallDesc.dirY };
+}
+
+/**
+ * Compute rectangular floor patches for ground-level doorways on walls owned by a room.
+ * Replaces the duplicate functions in main.js and render.js.
+ *
+ * @param {Object} room - Room with polygonVertices
+ * @param {Object} floor - Floor with walls[]
+ * @param {Map} wallGeometry - Result of computeFloorWallGeometry (optional, will compute if null)
+ * @param {"vertices"|"multipolygon"} format - Output format
+ * @returns {Array} Patches in requested format
+ */
+export function computeDoorwayFloorPatches(room, floor, wallGeometry, format = "vertices") {
+  if (!floor?.walls?.length || !room?.polygonVertices?.length) return [];
+  const patches = [];
+  const verts = room.polygonVertices;
+  const n = verts.length;
+
+  const wg = wallGeometry || computeFloorWallGeometry(floor);
+
+  for (const wall of floor.walls) {
+    if (wall.roomEdge?.roomId !== room.id) continue;
+    if (!wall.doorways?.length) continue;
+
+    const edgeIndex = wall.roomEdge.edgeIndex;
+    const start = verts[edgeIndex];
+    const end = verts[(edgeIndex + 1) % n];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+
+    const dirX = dx / len;
+    const dirY = dy / len;
+
+    // Use pre-computed normal from wallGeometry if available
+    const desc = wg.get(wall.id);
+    const normal = desc ? desc.normal : getWallNormal(wall, floor);
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+
+    for (const dw of wall.doorways) {
+      if ((dw.elevationCm || 0) > 0.1) continue;
+      const off = dw.offsetCm;
+      const w = dw.widthCm;
+      const p1x = start.x + off * dirX;
+      const p1y = start.y + off * dirY;
+      const p2x = start.x + (off + w) * dirX;
+      const p2y = start.y + (off + w) * dirY;
+      const p3x = p2x + thick * normal.x;
+      const p3y = p2y + thick * normal.y;
+      const p4x = p1x + thick * normal.x;
+      const p4y = p1y + thick * normal.y;
+
+      if (format === "multipolygon") {
+        patches.push([[[p1x, p1y], [p2x, p2y], [p3x, p3y], [p4x, p4y], [p1x, p1y]]]);
+      } else {
+        patches.push([
+          { x: p1x, y: p1y },
+          { x: p2x, y: p2y },
+          { x: p3x, y: p3y },
+          { x: p4x, y: p4y },
+        ]);
+      }
+    }
+  }
+  return patches;
 }

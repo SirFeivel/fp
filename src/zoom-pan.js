@@ -3,21 +3,11 @@
 
 import { getViewport, setViewport, resetViewport, MIN_ZOOM, MAX_ZOOM } from "./viewport.js";
 import { isInlineEditing } from "./ui_state.js";
+import { pointerToSvgXY } from "./svg-coords.js";
 
 const ZOOM_STEP = 0.1;
 const ZOOM_WHEEL_FACTOR = 0.001;
 const PAN_KEY_STEP = 20;
-
-function pointerToSvgXY(svg, clientX, clientY) {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX;
-  pt.y = clientY;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const inv = ctm.inverse();
-  const p = pt.matrixTransform(inv);
-  return { x: p.x, y: p.y };
-}
 
 export function createZoomPanController({
   getSvg,

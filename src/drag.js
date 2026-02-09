@@ -3,27 +3,7 @@ import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
-
-function pointerToSvgXY(svg, clientX, clientY) {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX;
-  pt.y = clientY;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const inv = ctm.inverse();
-  const p = pt.matrixTransform(inv);
-  return { x: p.x, y: p.y };
-}
-
-function snapToMm(value) {
-  return Math.round(value * 10) / 10;
-}
-
-function formatCm(value) {
-  const rounded = Math.round(value * 10) / 10;
-  if (!Number.isFinite(rounded)) return "0";
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
+import { pointerToSvgXY, svgPointToClient, snapToMm, snapToHalfCm, formatCm, dist } from "./svg-coords.js";
 
 function getResizeOverlay() {
   return document.getElementById("resizeMetrics");
@@ -44,16 +24,6 @@ function hideResizeOverlay() {
   const el = getResizeOverlay();
   if (!el) return;
   el.classList.add("hidden");
-}
-
-function svgPointToClient(svg, x, y) {
-  const pt = svg.createSVGPoint();
-  pt.x = x;
-  pt.y = y;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const p = pt.matrixTransform(ctm);
-  return { x: p.x, y: p.y };
 }
 
 function showDragOverlay(text, svg, cursorClient, fallbackSvgPoint) {
@@ -105,12 +75,6 @@ function getTriResizePoints(startShape, handleType, dx, dy) {
     p2: pointNum === "2" ? { x: startShape.p2.x + dx, y: startShape.p2.y + dy } : startShape.p2,
     p3: pointNum === "3" ? { x: startShape.p3.x + dx, y: startShape.p3.y + dy } : startShape.p3
   };
-}
-
-function dist(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function getExclusionBounds(startShape, dx, dy) {
@@ -290,17 +254,14 @@ export function createExclusionDragController({
     drag.currentDx = svgDx;
     drag.currentDy = svgDy;
 
-    // Un-rotate for elements inside the rotated wall <g>
-    const { dx, dy } = { dx: svgDx, dy: svgDy };
-
     // Apply CSS transform to all matching elements (main SVG + fullscreen SVG)
     const elements = findExclElements(drag.id);
     elements.forEach(el => {
-      el.setAttribute("transform", `translate(${dx}, ${dy})`);
+      el.setAttribute("transform", `translate(${svgDx}, ${svgDy})`);
     });
 
     if (drag.bounds && drag.startShape) {
-      const box = getExclusionBounds(drag.startShape, dx, dy);
+      const box = getExclusionBounds(drag.startShape, svgDx, svgDy);
       const text = getDragOverlayText(drag.bounds, box);
       const center = {
         x: (box.minX + box.maxX) / 2,
@@ -339,9 +300,6 @@ export function createExclusionDragController({
     const hasMoved = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasMoved) {
-      // Un-rotate delta for wall surfaces (SVG is rotated for display)
-      const { dx, dy } = { dx: svgDx, dy: svgDy };
-
       // Build final state with updated exclusion position
       const finalState = deepClone(dragStartState);
       const finalRoom = getCurrentRoom(finalState);
@@ -349,22 +307,22 @@ export function createExclusionDragController({
 
       if (excl) {
         if (excl.type === "rect") {
-          excl.x += dx;
-          excl.y += dy;
+          excl.x += svgDx;
+          excl.y += svgDy;
         } else if (excl.type === "circle") {
-          excl.cx += dx;
-          excl.cy += dy;
+          excl.cx += svgDx;
+          excl.cy += svgDy;
         } else if (excl.type === "tri") {
-          excl.p1.x += dx;
-          excl.p1.y += dy;
-          excl.p2.x += dx;
-          excl.p2.y += dy;
-          excl.p3.x += dx;
-          excl.p3.y += dy;
+          excl.p1.x += svgDx;
+          excl.p1.y += svgDy;
+          excl.p2.x += svgDx;
+          excl.p2.y += svgDy;
+          excl.p3.x += svgDx;
+          excl.p3.y += svgDy;
         } else if (excl.type === "freeform" && excl.vertices) {
           for (const v of excl.vertices) {
-            v.x += dx;
-            v.y += dy;
+            v.x += svgDx;
+            v.y += svgDy;
           }
         }
       }
@@ -435,7 +393,6 @@ export function createExclusionDragController({
       currentDx: 0,
       currentDy: 0,
       bounds,
-      wallRot: null,
     };
 
     const box = getExclusionBounds(ex, 0, 0);
@@ -458,14 +415,11 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const svgDx = curMouse.x - resize.startMouse.x;
-    const svgDy = curMouse.y - resize.startMouse.y;
+    const svgDx = snapToMm(curMouse.x - resize.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - resize.startMouse.y);
 
     resize.currentDx = svgDx;
     resize.currentDy = svgDy;
-
-    // Un-rotate for elements inside the rotated wall <g>
-    const { dx, dy } = { dx: svgDx, dy: svgDy };
 
     // Calculate new dimensions based on handle type and shape
     const { startShape, handleType } = resize;
@@ -478,7 +432,7 @@ export function createExclusionDragController({
     let freeformVertices = null;
 
     if (startShape.type === "rect") {
-      rectDims = getRectResizeDims(startShape, handleType, dx, dy);
+      rectDims = getRectResizeDims(startShape, handleType, svgDx, svgDy);
       overlayText = `${formatCm(rectDims.newW)} x ${formatCm(rectDims.newH)} cm`;
     } else if (startShape.type === "circle") {
       const local = { x: curMouse.x, y: curMouse.y };
@@ -487,7 +441,7 @@ export function createExclusionDragController({
       ));
       overlayText = `Ø ${formatCm(circleR * 2)} cm`;
     } else if (startShape.type === "tri") {
-      triPoints = getTriResizePoints(startShape, handleType, dx, dy);
+      triPoints = getTriResizePoints(startShape, handleType, svgDx, svgDy);
       const a = dist(triPoints.p1, triPoints.p2);
       const b = dist(triPoints.p2, triPoints.p3);
       const c = dist(triPoints.p3, triPoints.p1);
@@ -497,7 +451,7 @@ export function createExclusionDragController({
       const vertexIndex = parseInt(handleType.substring(1), 10);
       freeformVertices = startShape.vertices.map((v, i) =>
         i === vertexIndex
-          ? { x: v.x + dx, y: v.y + dy }
+          ? { x: v.x + svgDx, y: v.y + svgDy }
           : { ...v }
       );
       overlayText = `x ${formatCm(freeformVertices[vertexIndex].x)} · y ${formatCm(freeformVertices[vertexIndex].y)} cm`;
@@ -539,10 +493,10 @@ export function createExclusionDragController({
     }
 
     // Update handle positions
-    updateResizeHandlePositions(resize.id, startShape, dx, dy, handleType, curMouse, freeformVertices, resize.wallRot);
+    updateResizeHandlePositions(resize.id, startShape, svgDx, svgDy, handleType, curMouse, freeformVertices);
   }
 
-  function updateResizeHandlePositions(id, startShape, dx, dy, activeHandle, curMouse, freeformVertices = null, wallRot = null) {
+  function updateResizeHandlePositions(id, startShape, dx, dy, activeHandle, curMouse, freeformVertices = null) {
     const handles = findResizeHandles(id);
     handles.forEach(handle => {
       const ht = handle.getAttribute("data-resize-handle");
@@ -640,9 +594,6 @@ export function createExclusionDragController({
     const hasResized = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasResized) {
-      // Un-rotate delta for wall surfaces
-      const { dx, dy } = { dx: svgDx, dy: svgDy };
-
       const finalState = deepClone(dragStartState);
       const finalRoom = getCurrentRoom(finalState);
       const excl = finalRoom?.exclusions?.find(x => x.id === resize.id);
@@ -652,18 +603,18 @@ export function createExclusionDragController({
 
         if (excl.type === "rect") {
           if (handleType.includes("w")) {
-            excl.x = startShape.x + dx;
-            excl.w = Math.max(1, startShape.w - dx);
+            excl.x = startShape.x + svgDx;
+            excl.w = Math.max(1, startShape.w - svgDx);
           }
           if (handleType.includes("e")) {
-            excl.w = Math.max(1, startShape.w + dx);
+            excl.w = Math.max(1, startShape.w + svgDx);
           }
           if (handleType.includes("n")) {
-            excl.y = startShape.y + dy;
-            excl.h = Math.max(1, startShape.h - dy);
+            excl.y = startShape.y + svgDy;
+            excl.h = Math.max(1, startShape.h - svgDy);
           }
           if (handleType.includes("s")) {
-            excl.h = Math.max(1, startShape.h + dy);
+            excl.h = Math.max(1, startShape.h + svgDy);
           }
         } else if (excl.type === "circle") {
           const svg = getSvg();
@@ -674,13 +625,13 @@ export function createExclusionDragController({
           ));
         } else if (excl.type === "tri") {
           const pointNum = handleType.replace("p", "");
-          excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + dx;
-          excl[`p${pointNum}`].y = startShape[`p${pointNum}`].y + dy;
+          excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + svgDx;
+          excl[`p${pointNum}`].y = startShape[`p${pointNum}`].y + svgDy;
         } else if (excl.type === "freeform" && excl.vertices && handleType.startsWith("v")) {
           const vertexIndex = parseInt(handleType.substring(1), 10);
           if (excl.vertices[vertexIndex]) {
-            excl.vertices[vertexIndex].x = startShape.vertices[vertexIndex].x + dx;
-            excl.vertices[vertexIndex].y = startShape.vertices[vertexIndex].y + dy;
+            excl.vertices[vertexIndex].x = startShape.vertices[vertexIndex].x + svgDx;
+            excl.vertices[vertexIndex].y = startShape.vertices[vertexIndex].y + svgDy;
           }
         }
       }
@@ -725,7 +676,6 @@ export function createExclusionDragController({
       startShape: deepClone(ex),
       currentDx: 0,
       currentDy: 0,
-      wallRot: null,
     };
 
     if (ex.type === "rect") {
@@ -870,8 +820,8 @@ export function createRoomDragController({
     const rawDy = current.y - drag.startMouse.y;
 
     // Snap to 0.5cm grid
-    drag.currentDx = Math.round(rawDx / 0.5) * 0.5;
-    drag.currentDy = Math.round(rawDy / 0.5) * 0.5;
+    drag.currentDx = snapToHalfCm(rawDx);
+    drag.currentDy = snapToHalfCm(rawDy);
 
     const newX = drag.startPos.x + drag.currentDx;
     const newY = drag.startPos.y + drag.currentDy;
@@ -1037,8 +987,8 @@ export function createRoomResizeController({
     const rawDy = current.y - resize.startMouse.y;
 
     // Snap to 0.5cm grid
-    const dx = Math.round(rawDx / 0.5) * 0.5;
-    const dy = Math.round(rawDy / 0.5) * 0.5;
+    const dx = snapToHalfCm(rawDx);
+    const dy = snapToHalfCm(rawDy);
 
     resize.currentDx = dx;
     resize.currentDy = dy;
@@ -1150,10 +1100,6 @@ export function createPolygonVertexDragController({
 }) {
   let drag = null;
   let dragStartState = null;
-
-  function snapToHalfCm(value) {
-    return Math.round(value / 0.5) * 0.5;
-  }
 
   function onVertexPointerDown(e, roomId, vertexIndex) {
     const svg = getSvg();
@@ -1349,7 +1295,7 @@ export function createDoorwayDragController({
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
 
-    // Project mouse delta onto edge direction
+    // Project mouse delta onto wall direction (storage direction)
     const dx = curMouse.x - drag.startMouse.x;
     const dy = curMouse.y - drag.startMouse.y;
     const projectedDelta = dx * drag.edgeDirX + dy * drag.edgeDirY;
@@ -1365,10 +1311,14 @@ export function createDoorwayDragController({
     const newOffset = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + projectedDelta));
     drag.currentOffset = newOffset;
 
-    // Move the doorway element along the edge
-    const deltaAlongEdge = newOffset - drag.startOffset;
-    const translateX = deltaAlongEdge * drag.edgeDirX;
-    const translateY = deltaAlongEdge * drag.edgeDirY;
+    // Move the doorway element along the visual edge direction
+    // dirSign accounts for reversed edge direction on non-owner rooms
+    const deltaAlongWall = newOffset - drag.startOffset;
+    const visualDirX = drag.visualEdgeDirX || drag.edgeDirX;
+    const visualDirY = drag.visualEdgeDirY || drag.edgeDirY;
+    const sign = drag.dirSign || 1;
+    const translateX = deltaAlongWall * sign * visualDirX;
+    const translateY = deltaAlongWall * sign * visualDirY;
 
     const elements = document.querySelectorAll(`[data-doorway-id="${drag.doorwayId}"]`);
     elements.forEach(el => {
@@ -1378,8 +1328,8 @@ export function createDoorwayDragController({
     // Show overlay
     const text = `${formatCm(newOffset)} cm`;
     showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, {
-      x: drag.startInner.x + deltaAlongEdge * drag.edgeDirX,
-      y: drag.startInner.y + deltaAlongEdge * drag.edgeDirY
+      x: drag.startInner.x + translateX,
+      y: drag.startInner.y + translateY
     });
   }
 
@@ -1458,32 +1408,41 @@ export function createDoorwayDragController({
     const floor = getCurrentFloor(state);
     if (!room?.polygonVertices?.length || !floor) return;
 
+    const wallResult = findWallByDoorwayId(floor, doorwayId);
+    if (!wallResult) return;
+    const dw = wallResult.doorway;
+    const wall = wallResult.wall;
+
+    // Use wall direction for drag projection (storage direction),
+    // not edge direction which can be reversed for non-owner rooms
+    const wdx = wall.end.x - wall.start.x;
+    const wdy = wall.end.y - wall.start.y;
+    const wallLen = Math.hypot(wdx, wdy);
+    if (wallLen < 1) return;
+    const wallDirX = wdx / wallLen;
+    const wallDirY = wdy / wallLen;
+
+    // For visual rendering we still need edge direction
     const verts = room.polygonVertices;
     const A = verts[edgeIndex];
     const B = verts[(edgeIndex + 1) % verts.length];
     const edgeDx = B.x - A.x;
     const edgeDy = B.y - A.y;
-    const L = Math.hypot(edgeDx, edgeDy);
-    if (L < 1) return;
-
-    const edgeDirX = edgeDx / L;
-    const edgeDirY = edgeDy / L;
-
-    const wallResult = findWallByDoorwayId(floor, doorwayId);
-    if (!wallResult) return;
-    const dw = wallResult.doorway;
+    const edgeLen = Math.hypot(edgeDx, edgeDy);
+    const edgeDirX = edgeLen > 0 ? edgeDx / edgeLen : wallDirX;
+    const edgeDirY = edgeLen > 0 ? edgeDy / edgeLen : wallDirY;
 
     const svg = getSvg();
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     dragStartState = deepClone(state);
 
-    // Doorway's offset/width are in wall-space (no cross-room mapping needed)
+    // Doorway's offset/width are in wall-space
     const effectiveOffset = dw.offsetCm;
     const effectiveWidth = dw.widthCm;
-    const allEdgeDoorways = wallResult.wall.doorways || [];
+    const allEdgeDoorways = wall.doorways || [];
 
     let minOffset = 0;
-    let maxOffset = Math.max(0, L - effectiveWidth);
+    let maxOffset = Math.max(0, wallLen - effectiveWidth);
     const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
     for (const sib of siblings) {
       // Only constrain against siblings that vertically overlap
@@ -1499,6 +1458,10 @@ export function createDoorwayDragController({
       }
     }
 
+    // Determine direction match for visual rendering
+    const dirDot = edgeDirX * wallDirX + edgeDirY * wallDirY;
+    const dirSign = dirDot >= 0 ? 1 : -1;
+
     drag = {
       doorwayId,
       edgeIndex,
@@ -1506,12 +1469,15 @@ export function createDoorwayDragController({
       startOffset: effectiveOffset,
       currentOffset: effectiveOffset,
       effectiveWidth,
-      edgeDirX,
-      edgeDirY,
+      edgeDirX: wallDirX,   // Use wall direction for delta projection
+      edgeDirY: wallDirY,
       minOffset,
       maxOffset,
       startInner: { x: A.x + edgeDirX * effectiveOffset, y: A.y + edgeDirY * effectiveOffset },
-      activated: false
+      activated: false,
+      visualEdgeDirX: edgeDirX,  // For visual rendering (translate doorway element)
+      visualEdgeDirY: edgeDirY,
+      dirSign,   // +1 if edge and wall are same direction, -1 if reversed
     };
 
     svg.addEventListener("pointermove", onSvgPointerMove);
@@ -1532,20 +1498,18 @@ export function createDoorwayDragController({
     const floor = getCurrentFloor(state);
     if (!room?.polygonVertices?.length || !floor) return;
 
-    const verts = room.polygonVertices;
-    const A = verts[edgeIndex];
-    const B = verts[(edgeIndex + 1) % verts.length];
-    const edgeDx = B.x - A.x;
-    const edgeDy = B.y - A.y;
-    const L = Math.hypot(edgeDx, edgeDy);
-    if (L < 1) return;
-
-    const edgeDirX = edgeDx / L;
-    const edgeDirY = edgeDy / L;
-
     const wallResult = findWallByDoorwayId(floor, doorwayId);
     if (!wallResult) return;
     const dw = wallResult.doorway;
+    const wall = wallResult.wall;
+
+    // Use wall direction for delta projection (storage direction)
+    const wdx = wall.end.x - wall.start.x;
+    const wdy = wall.end.y - wall.start.y;
+    const wallLen = Math.hypot(wdx, wdy);
+    if (wallLen < 1) return;
+    const wallDirX = wdx / wallLen;
+    const wallDirY = wdy / wallLen;
 
     if (setSelectedDoorway) setSelectedDoorway(doorwayId);
 
@@ -1554,7 +1518,7 @@ export function createDoorwayDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     resizeStartState = deepClone(state);
 
-    const allEdgeDoorways = wallResult.wall.doorways || [];
+    const allEdgeDoorways = wall.doorways || [];
     const effectiveOffset = dw.offsetCm;
     const effectiveWidth = dw.widthCm;
 
@@ -1578,7 +1542,7 @@ export function createDoorwayDragController({
     } else {
       // Dragging right edge: from offset + MIN to edge end (or left edge of right sibling)
       minEdgePos = effectiveOffset + 20;
-      maxEdgePos = L;
+      maxEdgePos = wallLen;
       for (const sib of vOverlapping) {
         if (sib.offsetCm >= effectiveOffset + effectiveWidth - 0.01) {
           maxEdgePos = Math.min(maxEdgePos, sib.offsetCm);
@@ -1591,9 +1555,9 @@ export function createDoorwayDragController({
       edgeIndex,
       handleSide,
       startMouse,
-      edgeDirX,
-      edgeDirY,
-      edgeLen: L,
+      edgeDirX: wallDirX,
+      edgeDirY: wallDirY,
+      edgeLen: wallLen,
       startOffset: effectiveOffset,
       startWidth: effectiveWidth,
       minEdgePos,
