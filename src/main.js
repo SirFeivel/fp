@@ -2246,6 +2246,16 @@ function updateAllTranslations() {
     const s = store.getState();
     const next = deepClone(s);
     next.selectedWallId = wallId || null;
+    // Reset surface selection when changing walls
+    next.selectedSurfaceIdx = 0;
+    store.commit("Wall selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  document.getElementById("surfaceSelect")?.addEventListener("change", (e) => {
+    const surfaceIdx = parseInt(e.target.value) || 0;
+    const s = store.getState();
+    const next = deepClone(s);
+    next.selectedSurfaceIdx = surfaceIdx;
     store.commit("Surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -3297,7 +3307,7 @@ function updateAllTranslations() {
       });
     }
 
-    // Sync surface selector (floor + walls for current room)
+    // Sync wall selector (walls for current room)
     const wallSelect = document.getElementById("wallSelect");
     if (wallSelect) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
@@ -3314,12 +3324,12 @@ function updateAllTranslations() {
       } else {
         wallSelect.disabled = false;
 
-        // Floor surface (the room itself) is the first entry
-        const floorOpt = document.createElement("option");
-        floorOpt.value = "";
-        floorOpt.textContent = t("tabs.floorSurface") || "Floor";
-        if (!state.selectedWallId) floorOpt.selected = true;
-        wallSelect.appendChild(floorOpt);
+        // No wall selected option
+        const noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "—";
+        if (!state.selectedWallId) noneOpt.selected = true;
+        wallSelect.appendChild(noneOpt);
 
         walls.forEach((w, idx) => {
           const edgeIdx = w.roomEdge?.edgeIndex ?? idx;
@@ -3328,6 +3338,32 @@ function updateAllTranslations() {
           opt.textContent = `${room.name} · Wall ${edgeIdx + 1}`;
           if (w.id === state.selectedWallId) opt.selected = true;
           wallSelect.appendChild(opt);
+        });
+      }
+    }
+
+    // Sync surface selector (surfaces within selected wall)
+    const surfaceSelect = document.getElementById("surfaceSelect");
+    const surfaceSelectLabel = document.getElementById("surfaceSelectLabel");
+    if (surfaceSelect && surfaceSelectLabel) {
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      const selectedWall = state.selectedWallId && floor ? floor.walls?.find(w => w.id === state.selectedWallId) : null;
+
+      if (!selectedWall) {
+        // Hide surface selector when no wall is selected
+        surfaceSelectLabel.style.display = "none";
+      } else {
+        surfaceSelectLabel.style.display = "";
+        surfaceSelect.innerHTML = "";
+        surfaceSelect.disabled = false;
+
+        const surfaces = selectedWall.surfaces || [];
+        surfaces.forEach((surf, idx) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = `Surface ${idx + 1} (${surf.side})`;
+          if (idx === (state.selectedSurfaceIdx ?? 0)) opt.selected = true;
+          surfaceSelect.appendChild(opt);
         });
       }
     }
