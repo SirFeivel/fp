@@ -550,7 +550,8 @@ async function showSurfaceEditorDialog(wallId) {
     },
     tile: surface.tile,
     grout: surface.grout,
-    pattern: surface.pattern
+    pattern: surface.pattern,
+    tilePresets: state.tilePresets || []
   });
 
   if (result === null) return; // Cancelled

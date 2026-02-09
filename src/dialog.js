@@ -632,6 +632,7 @@ export function showDoorwayEditor({
  * @param {Object|null} options.tile - Current tile config {widthCm, heightCm, shape, reference}
  * @param {Object|null} options.grout - Current grout config {widthCm, colorHex}
  * @param {Object|null} options.pattern - Current pattern config {type, bondFraction, rotationDeg, origin, offsetXcm, offsetYcm}
+ * @param {Array} [options.tilePresets] - Available tile presets
  * @param {string} [options.confirmText] - Confirm button text
  * @param {string} [options.cancelText] - Cancel button text
  * @returns {Promise<{wall, tile, grout, pattern, enabled} | null>}
@@ -642,6 +643,7 @@ export function showSurfaceEditor({
   tile,
   grout,
   pattern,
+  tilePresets = [],
   confirmText = t("dialog.confirm") || "Confirm",
   cancelText = t("dialog.cancel") || "Cancel"
 }) {
@@ -716,6 +718,15 @@ export function showSurfaceEditor({
             <div class="toggle-slider"></div>
           </label>
           <div id="surfTilingFields" class="surface-tiling-fields" style="display: ${isEnabled ? "flex" : "none"}; flex-direction: column; gap: 12px; margin-top: 8px;">
+            ${tilePresets.length > 0 ? `
+            <div class="surface-editor-field">
+              <label data-i18n="tile.presetSelect">Tile Preset</label>
+              <select id="surfTilePreset" class="dialog-input">
+                <option value="" data-i18n="tile.presetCustom">Custom</option>
+                ${tilePresets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+            </div>
+            ` : ''}
             <div class="surface-editor-field">
               <label data-i18n="tile.reference">Reference</label>
               <input type="text" id="surfTileRef" value="${tileRef}" placeholder="e.g. Marble Carrara" class="dialog-input" />
@@ -815,6 +826,34 @@ export function showSurfaceEditor({
     };
     tileShapeSelect.addEventListener("change", updateShapeFields);
     updateShapeFields();
+
+    // Tile preset selector - populate fields when preset selected
+    const presetSelect = document.getElementById("surfTilePreset");
+    if (presetSelect) {
+      presetSelect.addEventListener("change", (e) => {
+        const presetId = e.target.value;
+        if (!presetId) return;
+        const preset = tilePresets.find(p => p.id === presetId);
+        if (!preset) return;
+
+        // Populate fields from preset
+        const refInput = document.getElementById("surfTileRef");
+        const shapeInput = document.getElementById("surfTileShape");
+        const wInput = document.getElementById("surfTileW");
+        const hInput = document.getElementById("surfTileH");
+        const groutWInput = document.getElementById("surfGroutW");
+        const groutColorInput = document.getElementById("surfGroutColor");
+
+        if (refInput) refInput.value = preset.name || "";
+        if (shapeInput) shapeInput.value = preset.shape || "rect";
+        if (wInput) wInput.value = preset.widthCm || 40;
+        if (hInput) hInput.value = preset.heightCm || 20;
+        if (groutWInput) groutWInput.value = (preset.groutWidthCm || 0.2) * 10; // cm to mm
+        if (groutColorInput) groutColorInput.value = preset.groutColorHex || "#ffffff";
+
+        updateShapeFields();
+      });
+    }
 
     overlay.classList.remove("hidden");
     dialog.classList.remove("hidden");
