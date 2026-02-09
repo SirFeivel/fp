@@ -3,7 +3,6 @@ import { degToRad, getCurrentRoom, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET 
 import {
   CIRCLE_APPROXIMATION_STEPS,
   TILE_MARGIN_MULTIPLIER,
-  MAX_PREVIEW_TILES,
   TILE_AREA_TOLERANCE,
   BOND_PERIOD_MIN,
   BOND_PERIOD_MAX,
@@ -883,11 +882,6 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   const estCols = Math.ceil((maxX - startX) / stepX) + 1;
   const estRows = Math.ceil((maxY - startY) / stepY) + 1;
 
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
-
   const tiles = [];
 
   for (let r = 0; r < estRows; r++) {
@@ -958,10 +952,6 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   const estCols = Math.ceil((b.maxX + marginX - startX) / stepX) + 2;
   const estRows = Math.ceil((b.maxY + marginY - startY) / stepY) + 2;
 
-  if (estCols * estRows > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estCols * estRows}).` };
-  }
-
   const tiles = [];
   const hexFullArea = (3 * Math.sqrt(3) / 2) * sideLength * sideLength;
 
@@ -1014,9 +1004,6 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
 
   const estCols = Math.ceil((maxX - startX) / stepX) + 1;
   const estRows = Math.ceil((maxY - startY) / stepY) + 1;
-  if (estCols * estRows > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estCols * estRows}).` };
-  }
 
   const tiles = [];
   const fullArea = tw * tw;
@@ -1069,9 +1056,6 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
 
   const estCols = Math.ceil((maxX - startX) / stepX) + 2;
   const estRows = Math.ceil((maxY - startY) / stepY) + 2;
-  if (estCols * estRows > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estCols * estRows}).` };
-  }
 
   const tiles = [];
   const fullArea = (tw * th) / 2;
@@ -1126,12 +1110,6 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
 
   const estRows = endRow - startRow + 1;
   const estCols = endCol - startCol + 1;
-  const estTiles = estRows * estCols;
-  const areaEst = (bounds.width * bounds.height) / (W * L);
-  const maxTiles = Math.min(MAX_PREVIEW_TILES * 4, Math.max(MAX_PREVIEW_TILES, Math.ceil(areaEst * 20)));
-  if (estTiles > maxTiles) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = W * L;
@@ -1191,11 +1169,6 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
   const maxRowShift = Math.max(startRow, endRow) * shear;
   const startCol = Math.floor((minX - anchorX - maxRowShift) / stepX) - 2;
   const endCol = Math.ceil((maxX - anchorX - minRowShift) / stepX) + 2;
-
-  const estTiles = (endRow - startRow + 1) * (endCol - startCol + 1) * 2;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = W * L;
@@ -1257,11 +1230,6 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
   const startRow = Math.floor((minY - anchorY) / stepY) - 2;
   const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
 
-  const estTiles = (endCol - startCol + 1) * (endRow - startRow + 1);
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
-
   const tiles = [];
   const fullArea = W * L;
   const colShift = stepY / 2;
@@ -1311,11 +1279,6 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeEx
   const endCol = Math.ceil((maxX - anchorX) / unitW) + 2;
   const startRow = Math.floor((minY - anchorY) / unitH) - 2;
   const endRow = Math.ceil((maxY - anchorY) / unitH) + 2;
-
-  const estTiles = (endCol - startCol + 1) * (endRow - startRow + 1) * tilesPerStack * 2;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = tw * th;

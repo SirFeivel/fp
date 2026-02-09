@@ -2,8 +2,6 @@ export const CIRCLE_APPROXIMATION_STEPS = 48;
 
 export const TILE_MARGIN_MULTIPLIER = 3;
 
-export const MAX_PREVIEW_TILES = 12000;
-
 export const TILE_AREA_TOLERANCE = 0.999;
 
 export const ROTATION_STEP_DEG = 45;

@@ -183,12 +183,6 @@ describe('Geometry Patterns Extended Tests', () => {
       expect(result.tiles).toEqual([]);
       expect(result.error).toBeNull();
     });
-
-    it('returns error when too many tiles estimated', () => {
-      const state = createPatternState({ tileW: 1, tileH: 1, roomW: 1000, roomH: 1000 });
-      const result = tilesForPreview(state, availableMP);
-      expect(result.error).toContain("Zu viele Fliesen");
-    });
   });
 
   describe('Center origin presets for special patterns', () => {
