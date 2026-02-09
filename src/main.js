@@ -89,8 +89,13 @@ function getWallName(room, edgeIndex) {
 
   // Rectangular room: use directional names
   if (n === 4) {
-    const names = ["Top wall", "Right wall", "Bottom wall", "Left wall"];
-    return names[edgeIndex] || `Wall ${edgeIndex + 1}`;
+    const names = [
+      t("wall.top") || "Top wall",
+      t("wall.right") || "Right wall",
+      t("wall.bottom") || "Bottom wall",
+      t("wall.left") || "Left wall"
+    ];
+    return names[edgeIndex] || `${t("wall.wall") || "Wall"} ${edgeIndex + 1}`;
   }
 
   // Poly-room: find bottom-most edge (highest Y, since Y-down)
@@ -109,7 +114,7 @@ function getWallName(room, edgeIndex) {
 
   // Count clockwise from bottom edge (Wall 1, Wall 2, ...)
   let wallNum = ((edgeIndex - bottomEdgeIdx + n) % n) + 1;
-  return `Wall ${wallNum}`;
+  return `${t("wall.wall") || "Wall"} ${wallNum}`;
 }
 
 function updateMeta() {

@@ -194,7 +194,12 @@ const translations = {
       thickness: "Wandstärke (cm)",
       heightStart: "Höhe Anfang (cm)",
       heightEnd: "Höhe Ende (cm)",
-      configChanged: "Wandkonfiguration geändert"
+      configChanged: "Wandkonfiguration geändert",
+      wall: "Wand",
+      top: "Obere Wand",
+      right: "Rechte Wand",
+      bottom: "Untere Wand",
+      left: "Linke Wand"
     },
     surface: {
       enableTiling: "Fliesenverlegung aktivieren",
@@ -842,7 +847,12 @@ const translations = {
       thickness: "Wall Thickness (cm)",
       heightStart: "Height Start (cm)",
       heightEnd: "Height End (cm)",
-      configChanged: "Wall configuration changed"
+      configChanged: "Wall configuration changed",
+      wall: "Wall",
+      top: "Top wall",
+      right: "Right wall",
+      bottom: "Bottom wall",
+      left: "Left wall"
     },
     surface: {
       enableTiling: "Enable Tiling",
