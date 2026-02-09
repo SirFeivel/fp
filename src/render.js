@@ -2,7 +2,7 @@
 import polygonClipping from "polygon-clipping";
 import { computePlanMetrics, computeSkirtingNeeds, computeGrandTotals, computeProjectTotals, getRoomPricing } from "./calc.js";
 import { validateState } from "./validation.js";
-import { escapeHTML, getCurrentRoom, getCurrentFloor, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, DEFAULT_WASTE } from "./core.js";
+import { escapeHTML, getCurrentRoom, getCurrentFloor, getSelectedWall, getSelectedSurface, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, DEFAULT_WASTE } from "./core.js";
 import { setInlineEditing, getUiState } from "./ui_state.js";
 import { t } from "./i18n.js";
 import {
@@ -20,53 +20,13 @@ import {
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, getWallNormal, computeWallExtensions } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, getWallsForEdge, computeFloorWallGeometry, getDoorwaysInEdgeSpace, getWallRenderHelpers, computeDoorwayFloorPatches } from "./walls.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
 function isCircleRoom(room) {
   return room?.circle && room.circle.rx > 0;
 }
 
-/**
- * Compute rectangular floor patches for ground-level doorways on walls owned by this room.
- * Returns array of polygon-clipping format rings (closed coordinate arrays).
- */
-function computeDoorwayFloorPatchesMP(room, floor) {
-  if (!floor?.walls?.length || !room?.polygonVertices?.length) return [];
-  const patches = [];
-  const verts = room.polygonVertices;
-  const n = verts.length;
-
-  for (const wall of floor.walls) {
-    if (wall.roomEdge?.roomId !== room.id) continue;
-    if (!wall.doorways?.length) continue;
-
-    const edgeIndex = wall.roomEdge.edgeIndex;
-    const start = verts[edgeIndex];
-    const end = verts[(edgeIndex + 1) % n];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) continue;
-
-    const dirX = dx / len;
-    const dirY = dy / len;
-    const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
-
-    for (const dw of wall.doorways) {
-      if ((dw.elevationCm || 0) > 0.1) continue;
-      const off = dw.offsetCm;
-      const w = dw.widthCm;
-      const p1 = [start.x + off * dirX, start.y + off * dirY];
-      const p2 = [start.x + (off + w) * dirX, start.y + (off + w) * dirY];
-      const p3 = [p2[0] + thick * normal.x, p2[1] + thick * normal.y];
-      const p4 = [p1[0] + thick * normal.x, p1[1] + thick * normal.y];
-      patches.push([[p1, p2, p3, p4, p1]]);
-    }
-  }
-  return patches;
-}
 
 let activeSvgEdit = null;
 
@@ -538,7 +498,7 @@ export function renderCounts(undoStack, redoStack, lastLabel) {
   if (btnRedo) btnRedo.disabled = redoStack.length === 0;
 }
 
-export function renderRoomForm(state) {
+export function renderRoomForm(state, selectedWallEdge) {
   const currentRoom = getCurrentRoom(state);
   const roomNameEl = document.getElementById("roomName");
   if (roomNameEl) roomNameEl.value = currentRoom?.name ?? "";
@@ -605,7 +565,9 @@ export function renderRoomForm(state) {
 
     const idx = Number(edgeSelect.value) || 0;
     const floor = getCurrentFloor(state);
-    const wall = floor ? getWallForEdge(floor, currentRoom.id, idx) : null;
+    // Use first wall for wall-level properties (thickness, height)
+    const edgeWalls = floor ? getWallsForEdge(floor, currentRoom.id, idx) : [];
+    const wall = edgeWalls[0] || null;
     const thicknessEl = document.getElementById("edgeThickness");
     const hStartEl = document.getElementById("edgeHeightStart");
     const hEndEl = document.getElementById("edgeHeightEnd");
@@ -613,9 +575,19 @@ export function renderRoomForm(state) {
     if (hStartEl) hStartEl.value = wall?.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
     if (hEndEl) hEndEl.value = wall?.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
 
-    // Render doorways list from wall entity
-    const edgeDoorways = wall?.doorways || [];
-    renderDoorwaysList(edgeDoorways, idx);
+    // Aggregate doorways from ALL walls covering this edge, in room-edge-local space
+    const wallGeometry = floor ? computeFloorWallGeometry(floor) : null;
+    const allDoorways = [];
+    for (const w of edgeWalls) {
+      const wDesc = wallGeometry?.get(w.id);
+      const dws = wDesc
+        ? getDoorwaysInEdgeSpace(wDesc, currentRoom, idx)
+        : (w.doorways || []);
+      const ext = wDesc?.extensions.get(currentRoom.id) ?? { extStart: 0, extEnd: 0 };
+      // Subtract extStart — form shows room-edge-local, not rendering coords with extension
+      allDoorways.push(...dws.map(dw => ({ ...dw, offsetCm: dw.offsetCm - ext.extStart })));
+    }
+    renderDoorwaysList(allDoorways, idx);
   } else if (edgeSection) {
     edgeSection.style.display = "none";
   }
@@ -646,10 +618,10 @@ function renderDoorwaysList(doorways, edgeIndex) {
     row.style.marginBottom = "4px";
     row.innerHTML = `
       <span style="font-size:12px;color:#94a3b8;white-space:nowrap">${t("edge.doorway")} ${i + 1}</span>
-      <input class="dw-offset" data-dw-idx="${i}" type="number" min="0" step="1" value="${dw.offsetCm ?? 0}" style="width:55px" title="${t("edge.doorwayOffset")}" />
-      <input class="dw-width" data-dw-idx="${i}" type="number" min="1" step="1" value="${dw.widthCm ?? 80}" style="width:55px" title="${t("edge.doorwayWidth")}" />
-      <input class="dw-height" data-dw-idx="${i}" type="number" min="1" step="1" value="${dw.heightCm ?? DEFAULT_WALL_HEIGHT_CM}" style="width:55px" title="${t("edge.doorwayHeight")}" />
-      <button class="btn btn-small dw-remove" data-dw-idx="${i}" title="${t("edge.removeDoorway")}">✕</button>
+      <input class="dw-offset" data-dw-idx="${i}" data-dw-id="${dw.id || ''}" type="number" min="0" step="1" value="${dw.offsetCm ?? 0}" style="width:55px" title="${t("edge.doorwayOffset")}" />
+      <input class="dw-width" data-dw-idx="${i}" data-dw-id="${dw.id || ''}" type="number" min="1" step="1" value="${dw.widthCm ?? 80}" style="width:55px" title="${t("edge.doorwayWidth")}" />
+      <input class="dw-height" data-dw-idx="${i}" data-dw-id="${dw.id || ''}" type="number" min="1" step="1" value="${dw.heightCm ?? DEFAULT_WALL_HEIGHT_CM}" style="width:55px" title="${t("edge.doorwayHeight")}" />
+      <button class="btn btn-small dw-remove" data-dw-idx="${i}" data-dw-id="${dw.id || ''}" title="${t("edge.removeDoorway")}">✕</button>
     `;
     container.appendChild(row);
   }
@@ -955,10 +927,19 @@ export function renderTilePatternForm(state) {
   const tileEditMode = uiState.tileEditMode || "edit";
   const tileEditHasPreset = uiState.tileEditHasPreset === true;
 
+  // When a wall surface is selected, show its tile/grout/pattern in the form
+  const selectedSurface = getSelectedSurface(state);
+  const surfaceHasTiling = selectedSurface?.tile != null;
+
   // Check if room is a child in a pattern group (inherits settings from origin)
-  const isChild = isPatternGroupChild(currentRoom, currentFloor);
+  const isChild = !surfaceHasTiling && isPatternGroupChild(currentRoom, currentFloor);
   const effectiveSettings = isChild ? getEffectiveTileSettings(currentRoom, currentFloor) : null;
-  const displayRoom = isChild && effectiveSettings ? {
+  const displayRoom = surfaceHasTiling ? {
+    ...currentRoom,
+    tile: selectedSurface.tile,
+    grout: selectedSurface.grout,
+    pattern: selectedSurface.pattern
+  } : isChild && effectiveSettings ? {
     ...currentRoom,
     tile: effectiveSettings.tile,
     pattern: effectiveSettings.pattern,
@@ -1362,10 +1343,11 @@ export function renderPlanSvg({
   onWallClick = null,
   onWallDoubleClick = null,
   onDoorwayPointerDown = null,
-  onDoorwayResizePointerDown = null
+  onDoorwayResizePointerDown = null,
+  roomOverride = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
-  const currentRoom = getCurrentRoom(state);
+  const currentRoom = roomOverride || getCurrentRoom(state);
   const isExportBW = exportStyle === "bw";
 
   if (!currentRoom) {
@@ -1557,6 +1539,9 @@ export function renderPlanSvg({
     }
   }
 
+  // Walls group — appended to svg AFTER tiles so walls draw on top (no tile bleed-through)
+  let wallsGroup = null;
+
   // Render wall thickness quads from wall entities (not export, not circle rooms)
   if (!isExportBW && !isCircleRoom(currentRoom) && currentRoom.polygonVertices?.length >= 3) {
     const verts = currentRoom.polygonVertices;
@@ -1572,14 +1557,23 @@ export function renderPlanSvg({
     }
     const windingSign = roomArea2 > 0 ? 1 : -1;
 
-    // Compute angle-aware corner extensions for all edges
-    const wallExtensions = floor ? computeWallExtensions(floor, currentRoom.id) : new Map();
+    // Centralized wall geometry for doorway direction + extensions
+    const wallGeometry = floor ? computeFloorWallGeometry(floor) : new Map();
+
+    wallsGroup = svgEl("g", {});
+
+    // Deduplicate walls by edge — multiple walls can cover the same room edge
+    // (e.g. two adjacent rooms each owning a wall along the current room's shared edge).
+    // Render one wall quad per edge, aggregating doorways from all walls.
+    const renderedEdges = new Set();
 
     for (const wall of roomWalls) {
       const surface = wall.surfaces?.find(s => s.roomId === currentRoom.id);
       if (!surface) continue;
       const edgeIdx = surface.edgeIndex;
       if (edgeIdx == null || edgeIdx < 0 || edgeIdx >= n) continue;
+      if (renderedEdges.has(edgeIdx)) continue;
+      renderedEdges.add(edgeIdx);
 
       const origA = verts[edgeIdx];
       const origB = verts[(edgeIdx + 1) % n];
@@ -1597,10 +1591,11 @@ export function renderPlanSvg({
       // Outward normal from CURRENT room's polygon (not the wall's owning room)
       const normal = { x: windingSign * edgeDy / origL, y: -windingSign * edgeDx / origL };
 
-      // Angle-aware corner extensions
-      const ext = wallExtensions.get(edgeIdx) ?? { extStart: thick, extEnd: thick };
-      const extStart = ext.extStart;
-      const extEnd = ext.extEnd;
+      // Angle-aware corner extensions from centralized wall geometry
+      const wallDesc = wallGeometry.get(wall.id);
+      const roomExt = wallDesc?.extensions.get(currentRoom.id) ?? { extStart: thick, extEnd: thick };
+      const extStart = roomExt.extStart;
+      const extEnd = roomExt.extEnd;
       const A = { x: origA.x - edgeDirX * extStart, y: origA.y - edgeDirY * extStart };
       const B = { x: origB.x + edgeDirX * extEnd, y: origB.y + edgeDirY * extEnd };
       const L = origL + extStart + extEnd;
@@ -1616,8 +1611,17 @@ export function renderPlanSvg({
       const innerAt = (t) => ({ x: A.x + t * eDx, y: A.y + t * eDy });
       const outerAt = (t) => ({ x: OA.x + t * (OB.x - OA.x), y: OA.y + t * (OB.y - OA.y) });
 
-      // Draw wall with doorway gaps — doorway offsets shifted by extStart
-      const allDoorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extStart }));
+      // Aggregate doorways from ALL walls that affect this edge
+      const allDoorways = [];
+      for (const w of roomWalls) {
+        const wSurf = w.surfaces?.find(s => s.roomId === currentRoom.id && s.edgeIndex === edgeIdx);
+        if (!wSurf) continue;
+        const wDesc = wallGeometry.get(w.id);
+        const dws = wDesc
+          ? getDoorwaysInEdgeSpace(wDesc, currentRoom, edgeIdx)
+          : (w.doorways || []);
+        allDoorways.push(...dws);
+      }
       const sortedDw = [...allDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
 
       const drawWallSeg = (tStart, tEnd) => {
@@ -1642,15 +1646,16 @@ export function renderPlanSvg({
           e.stopPropagation();
           if (onWallDoubleClick) onWallDoubleClick(edgeIdx);
         });
-        svg.appendChild(wallSeg);
+        wallsGroup.appendChild(wallSeg);
       };
 
       let cursor = 0;
       for (const dw of sortedDw) {
         const dwStart = Math.max(0, dw.offsetCm);
         const dwEnd = Math.min(L, dw.offsetCm + dw.widthCm);
+        if (dwEnd <= dwStart) continue; // doorway entirely outside [0, L]
         if (dwStart > cursor + 0.5) drawWallSeg(cursor / L, dwStart / L);
-        cursor = dwEnd;
+        cursor = Math.max(cursor, dwEnd);
       }
       if (cursor < L - 0.5) drawWallSeg(cursor / L, 1);
 
@@ -1680,7 +1685,7 @@ export function renderPlanSvg({
           e.stopPropagation();
           if (onDoorwayPointerDown) onDoorwayPointerDown(e, dw.id, edgeIdx);
         });
-        svg.appendChild(dwEl);
+        wallsGroup.appendChild(dwEl);
 
         // Dimension indicators and resize handles for selected doorway
         if (isDwSel) {
@@ -1698,19 +1703,19 @@ export function renderPlanSvg({
           const drawIndicator = (p1, p2, valueCm) => {
             const mx = (p1.x + p2.x) / 2;
             const my = (p1.y + p2.y) / 2;
-            svg.appendChild(svgEl("line", {
+            wallsGroup.appendChild(svgEl("line", {
               x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
               stroke: accent, "stroke-width": 1, "pointer-events": "none"
             }));
-            svg.appendChild(svgEl("line", {
+            wallsGroup.appendChild(svgEl("line", {
               x1: p1.x - wx, y1: p1.y - wy, x2: p1.x + wx, y2: p1.y + wy,
               stroke: accent, "stroke-width": 1, "pointer-events": "none"
             }));
-            svg.appendChild(svgEl("line", {
+            wallsGroup.appendChild(svgEl("line", {
               x1: p2.x - wx, y1: p2.y - wy, x2: p2.x + wx, y2: p2.y + wy,
               stroke: accent, "stroke-width": 1, "pointer-events": "none"
             }));
-            addPillLabel(`${Number(valueCm.toFixed(1))} cm`, mx + normal.x * 6, my + normal.y * 6, { parent: svg, angle: edgeAngle });
+            addPillLabel(`${Number(valueCm.toFixed(1))} cm`, mx + normal.x * 6, my + normal.y * 6, { parent: wallsGroup, angle: edgeAngle });
           };
 
           const edgeStart = { x: A.x + ox, y: A.y + oy };
@@ -1742,7 +1747,7 @@ export function renderPlanSvg({
               e.stopPropagation();
               onDoorwayResizePointerDown(e, dw.id, edgeIdx, "start");
             });
-            svg.appendChild(lHandle);
+            wallsGroup.appendChild(lHandle);
 
             const rHandle = svgEl("circle", {
               ...handleStyle, cx: rMid.x, cy: rMid.y, r: handleR,
@@ -1753,7 +1758,7 @@ export function renderPlanSvg({
               e.stopPropagation();
               onDoorwayResizePointerDown(e, dw.id, edgeIdx, "end");
             });
-            svg.appendChild(rHandle);
+            wallsGroup.appendChild(rHandle);
           }
         }
       }
@@ -1898,7 +1903,7 @@ export function renderPlanSvg({
 
       // Extend available area through doorway openings for continuous floor tiles
       let extendedMP = avail.mp;
-      const doorwayPatches = computeDoorwayFloorPatchesMP(currentRoom, currentFloor);
+      const doorwayPatches = computeDoorwayFloorPatches(currentRoom, currentFloor, null, "multipolygon");
       for (const patch of doorwayPatches) {
         try {
           extendedMP = polygonClipping.union(extendedMP, patch);
@@ -1955,6 +1960,9 @@ export function renderPlanSvg({
       }
     }
   }
+
+  // Append walls group on top of tiles so wall quads cover tile bleed-through
+  if (wallsGroup) svg.appendChild(wallsGroup);
 
 // DEBUG overlay: show real cut polygons (not bbox)
 const showNeeds = Boolean(state?.view?.showNeeds);
@@ -2886,7 +2894,7 @@ export function renderFloorCanvas({
           if (avail.mp) {
             // Extend available area through doorway openings for continuous floor tiles
             let extendedMP = avail.mp;
-            const doorwayPatches = computeDoorwayFloorPatchesMP(room, floor);
+            const doorwayPatches = computeDoorwayFloorPatches(room, floor, null, "multipolygon");
             for (const patch of doorwayPatches) {
               try {
                 extendedMP = polygonClipping.union(extendedMP, patch);
@@ -3335,54 +3343,30 @@ export function renderFloorCanvas({
     }
   }
 
-  // Compute angle-aware extensions per room (cached)
-  const extCache = new Map();
-  function getExtensions(roomId) {
-    if (!extCache.has(roomId)) extCache.set(roomId, computeWallExtensions(floor, roomId));
-    return extCache.get(roomId);
-  }
+  // Centralized wall geometry for floor-level rendering
+  const floorWallGeometry = computeFloorWallGeometry(floor);
 
   // Render wall thickness outlines from wall entities (floor-level, once per wall)
   for (const wall of (floor.walls || [])) {
     if ((wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) <= 0) continue;
-    const normal = getWallNormal(wall, floor);
-    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const wallDesc = floorWallGeometry.get(wall.id);
+    if (!wallDesc) continue;
 
-    // Angle-aware corner extensions
-    const origS = wall.start, origE = wall.end;
-    const origDx = origE.x - origS.x, origDy = origE.y - origS.y;
-    const origL = Math.hypot(origDx, origDy);
-    if (origL < 1) continue;
-    const dirX = origDx / origL, dirY = origDy / origL;
-    const re = wall.roomEdge;
-    const ext = re ? (getExtensions(re.roomId).get(re.edgeIndex) ?? { extStart: thick, extEnd: thick })
-                   : { extStart: thick, extEnd: thick };
-    const extStart = ext.extStart, extEnd = ext.extEnd;
-    const s = { x: origS.x - dirX * extStart, y: origS.y - dirY * extStart };
-    const e = { x: origE.x + dirX * extEnd, y: origE.y + dirY * extEnd };
-    const oS = { x: s.x + normal.x * thick, y: s.y + normal.y * thick };
-    const oE = { x: e.x + normal.x * thick, y: e.y + normal.y * thick };
+    const ownerRoomId = wall.roomEdge?.roomId;
+    const { A: s, B: e, OA: oS, OB: oE, L, innerAt, outerAt, dirX, dirY } = getWallRenderHelpers(wallDesc, ownerRoomId);
 
-    const ownerRoom = wall.roomEdge?.roomId;
-    const isWallSelected = ownerRoom === selectedRoomId;
+    const isWallSelected = ownerRoomId === selectedRoomId;
     const wallFill = isWallSelected ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.15)";
     const wallStroke = isWallSelected ? "rgba(148, 163, 184, 0.7)" : "rgba(148, 163, 184, 0.35)";
 
-    const dx = e.x - s.x, dy = e.y - s.y;
-    const L = origL + extStart + extEnd;
-    const edgeDirX = dirX, edgeDirY = dirY;
-
-    const innerAt = (t) => ({ x: s.x + t * dx, y: s.y + t * dy });
-    const outerAt = (t) => ({ x: oS.x + t * (oE.x - oS.x), y: oS.y + t * (oE.y - oS.y) });
-
-    // Shift doorway offsets by start extension amount
-    const doorways = (wall.doorways || []).map(dw => ({ ...dw, offsetCm: dw.offsetCm + extStart }));
-    const sortedDw = [...doorways].sort((a, b) => a.offsetCm - b.offsetCm);
+    // Use pre-shifted doorways from centralized geometry (owner extStart already applied)
+    const sortedDw = [...wallDesc.extDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
 
     let cursor = 0;
     for (const dw of sortedDw) {
       const dwStart = Math.max(0, dw.offsetCm);
       const dwEnd = Math.min(L, dw.offsetCm + dw.widthCm);
+      if (dwEnd <= dwStart) continue; // doorway entirely outside [0, L]
       if (dwStart > cursor + 0.5) {
         const tC = cursor / L, tD = dwStart / L;
         const iC = innerAt(tC), iD = innerAt(tD);
@@ -3393,15 +3377,15 @@ export function renderFloorCanvas({
         }));
       }
       // Doorway gap marker
-      const gapSx = s.x + edgeDirX * Math.max(0, dw.offsetCm);
-      const gapSy = s.y + edgeDirY * Math.max(0, dw.offsetCm);
-      const gapEx = s.x + edgeDirX * Math.min(L, dw.offsetCm + dw.widthCm);
-      const gapEy = s.y + edgeDirY * Math.min(L, dw.offsetCm + dw.widthCm);
+      const gapSx = s.x + dirX * dwStart;
+      const gapSy = s.y + dirY * dwStart;
+      const gapEx = s.x + dirX * dwEnd;
+      const gapEy = s.y + dirY * dwEnd;
       svg.appendChild(svgEl("line", {
         x1: gapSx, y1: gapSy, x2: gapEx, y2: gapEy,
         stroke: "#f59e0b", "stroke-width": 2, "stroke-dasharray": "4 2", "pointer-events": "none"
       }));
-      cursor = dwEnd;
+      cursor = Math.max(cursor, dwEnd);
     }
     if (cursor < L - 0.5) {
       const tC = cursor / L;

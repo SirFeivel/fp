@@ -166,11 +166,35 @@ function addDoorwayToWall(edgeIndex) {
   const B = verts[(edgeIndex + 1) % verts.length];
   const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
 
+  // Detect if room edge direction matches wall direction (for shared walls)
+  const wdx = wall.end.x - wall.start.x;
+  const wdy = wall.end.y - wall.start.y;
+  const wLen = Math.hypot(wdx, wdy);
+  const edgeDx = B.x - A.x;
+  const edgeDy = B.y - A.y;
+  const dot = wLen > 0 ? (edgeDx * wdx + edgeDy * wdy) / (edgeLength * wLen) : 1;
+  const sameDir = dot >= 0;
+
+  // Project room's edge start (A) onto the wall line — for merged walls,
+  // wall.start may not coincide with this room's edge start.
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const dirX = wLen > 0 ? wdx / wLen : 1;
+  const dirY = wLen > 0 ? wdy / wLen : 0;
+  const roomEdgeStartOnWall =
+    (pos.x + A.x - wall.start.x) * dirX +
+    (pos.y + A.y - wall.start.y) * dirY;
+
   const dwElevation = 0;
   const preferredWidth = 101;
   const preferredHeight = Math.min(211, Math.max(0, minWallH - 10));
 
-  const allEdgeDoorways = wall.doorways || [];
+  // Convert existing doorways to room-local edge space for gap analysis
+  const allEdgeDoorways = (wall.doorways || []).map(dw => {
+    if (sameDir) {
+      return { ...dw, offsetCm: dw.offsetCm - roomEdgeStartOnWall };
+    }
+    return { ...dw, offsetCm: roomEdgeStartOnWall - dw.offsetCm - dw.widthCm };
+  });
 
   const vOverlapping = allEdgeDoorways.filter(sib => {
     return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
@@ -204,11 +228,16 @@ function addDoorwayToWall(edgeIndex) {
 
   const dwWidth = Math.max(MIN_DW, Math.min(preferredWidth, bestGap.size - 10));
   const dwHeight = preferredHeight;
-  const offsetCm = bestGap.start + (bestGap.size - dwWidth) / 2;
+  const edgeLocalOffset = bestGap.start + (bestGap.size - dwWidth) / 2;
+
+  // Convert offset back to wall-space before storing
+  const wallOffsetCm = sameDir
+    ? edgeLocalOffset + roomEdgeStartOnWall
+    : roomEdgeStartOnWall - edgeLocalOffset - dwWidth;
 
   const newDw = {
     id: crypto?.randomUUID?.() || String(Date.now()),
-    offsetCm,
+    offsetCm: wallOffsetCm,
     widthCm: dwWidth,
     heightCm: Math.max(MIN_DW, dwHeight),
     elevationCm: dwElevation

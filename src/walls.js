@@ -350,6 +350,23 @@ function enforceAdjacentPositions(floor) {
 }
 
 /**
+ * Remove doorways that fall entirely outside the wall's extent.
+ * After room drags, the wall shrinks and offset compensation can push
+ * shared-wall doorways beyond the new bounds. Pruning them prevents
+ * ghost doorways that reappear when rooms are moved back.
+ */
+function pruneDoorwaysOutOfBounds(floor) {
+  for (const wall of floor.walls) {
+    if (!wall.doorways?.length) continue;
+    const wallLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+    wall.doorways = wall.doorways.filter(dw => {
+      const end = dw.offsetCm + dw.widthCm;
+      return end > 0 && dw.offsetCm < wallLen;
+    });
+  }
+}
+
+/**
  * Core sync algorithm. Called after any room change.
  * Ensures floor.walls[] matches the current room geometry.
  *
@@ -369,6 +386,7 @@ export function syncFloorWalls(floor) {
   mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
+  pruneDoorwaysOutOfBounds(floor);
   enforceAdjacentPositions(floor);
 }
 
@@ -400,6 +418,19 @@ export function getWallForEdge(floor, roomId, edgeIndex) {
   ) || floor.walls.find(
     w => w.surfaces.some(s => s.roomId === roomId && s.edgeIndex === edgeIndex)
   ) || null;
+}
+
+/**
+ * Get ALL walls that have a surface for a specific room edge.
+ * Unlike getWallForEdge (singular), this returns every wall — needed when
+ * multiple walls cover parts of the same room edge (e.g. adjacent rooms
+ * each owning a wall that shares a surface with a third room's edge).
+ */
+export function getWallsForEdge(floor, roomId, edgeIndex) {
+  if (!floor?.walls) return [];
+  return floor.walls.filter(
+    w => w.surfaces.some(s => s.roomId === roomId && s.edgeIndex === edgeIndex)
+  );
 }
 
 /**
@@ -777,6 +808,35 @@ export function computeFloorWallGeometry(floor) {
 }
 
 /**
+ * Compute the directional relationship between a room's edge and a wall.
+ * Shared by getDoorwaysInEdgeSpace (forward) and edgeOffsetToWallOffset (reverse).
+ *
+ * @returns {{ sameDir: boolean, roomEdgeStartOnWall: number }} or null if invalid
+ */
+function getEdgeWallProjection(wallDesc, room, edgeIndex) {
+  const verts = room.polygonVertices;
+  const n = verts?.length;
+  if (!n || edgeIndex < 0 || edgeIndex >= n) return null;
+
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % n];
+  const edgeDx = B.x - A.x;
+  const edgeDy = B.y - A.y;
+  const edgeLen = Math.hypot(edgeDx, edgeDy);
+  if (edgeLen < 1) return null;
+
+  const dot = (edgeDx / edgeLen) * wallDesc.dirX + (edgeDy / edgeLen) * wallDesc.dirY;
+  const sameDir = dot >= 0;
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const roomEdgeStartOnWall =
+    (pos.x + A.x - wallDesc.wall.start.x) * wallDesc.dirX +
+    (pos.y + A.y - wallDesc.wall.start.y) * wallDesc.dirY;
+
+  return { sameDir, roomEdgeStartOnWall };
+}
+
+/**
  * Map doorway offsets from wall-direction to a specific room's edge direction.
  * Fixes the direction flip bug for non-owner rooms on shared walls.
  *
@@ -786,44 +846,42 @@ export function computeFloorWallGeometry(floor) {
  * @returns {Array} Doorways with offsetCm in edge-local space (shifted by room's extStart)
  */
 export function getDoorwaysInEdgeSpace(wallDesc, room, edgeIndex) {
-  const wall = wallDesc.wall;
-  if (!wall.doorways?.length || !room?.polygonVertices?.length) return [];
+  if (!wallDesc.wall.doorways?.length) return [];
 
-  const verts = room.polygonVertices;
-  const n = verts.length;
-  if (edgeIndex < 0 || edgeIndex >= n) return [];
+  const proj = getEdgeWallProjection(wallDesc, room, edgeIndex);
+  if (!proj) return [];
 
-  const A = verts[edgeIndex];
-  const B = verts[(edgeIndex + 1) % n];
-  const edgeDx = B.x - A.x;
-  const edgeDy = B.y - A.y;
-  const edgeLen = Math.hypot(edgeDx, edgeDy);
-  if (edgeLen < 1) return [];
-
-  // Determine if edge direction matches wall direction
-  const dot = (edgeDx / edgeLen) * wallDesc.dirX + (edgeDy / edgeLen) * wallDesc.dirY;
-  const sameDir = dot >= 0;
-
-  // Get this room's extStart
+  const { sameDir, roomEdgeStartOnWall } = proj;
   const roomExt = wallDesc.extensions.get(room.id) ?? { extStart: 0, extEnd: 0 };
   const roomExtStart = roomExt.extStart;
 
-  return wall.doorways.map(dw => {
-    let edgeOffset;
-    if (sameDir) {
-      edgeOffset = dw.offsetCm;
-    } else {
-      // Reverse: offset measured from the other end
-      edgeOffset = wallDesc.edgeLength - dw.offsetCm - dw.widthCm;
-    }
-    // Apply this room's extStart shift
+  return wallDesc.wall.doorways.map(dw => {
+    let edgeOffset = sameDir
+      ? dw.offsetCm - roomEdgeStartOnWall
+      : roomEdgeStartOnWall - dw.offsetCm - dw.widthCm;
     edgeOffset += roomExtStart;
-
-    return {
-      ...dw,
-      offsetCm: edgeOffset,
-    };
+    return { ...dw, offsetCm: edgeOffset };
   });
+}
+
+/**
+ * Convert an edge-local offset back to wall-space offset (inverse of getDoorwaysInEdgeSpace).
+ * Used by form write-back to store doorway positions in the canonical wall coordinate frame.
+ *
+ * @param {Object} wallDesc - WallDescriptor from computeFloorWallGeometry
+ * @param {Object} room - Room object with polygonVertices
+ * @param {number} edgeIndex - Index of the edge in room.polygonVertices
+ * @param {number} edgeOffset - Offset in room-edge-local space (without extStart)
+ * @param {number} width - Doorway width in cm
+ * @returns {number} Offset in wall-space
+ */
+export function edgeOffsetToWallOffset(wallDesc, room, edgeIndex, edgeOffset, width) {
+  const proj = getEdgeWallProjection(wallDesc, room, edgeIndex);
+  if (!proj) return edgeOffset;
+  const { sameDir, roomEdgeStartOnWall } = proj;
+  return sameDir
+    ? edgeOffset + roomEdgeStartOnWall
+    : roomEdgeStartOnWall - edgeOffset - width;
 }
 
 /**
@@ -896,14 +954,23 @@ export function computeDoorwayFloorPatches(room, floor, wallGeometry, format = "
     const dirX = dx / len;
     const dirY = dy / len;
 
-    // Use pre-computed normal from wallGeometry if available
+    // Use pre-computed wall geometry for normal and doorway conversion
     const desc = wg.get(wall.id);
     const normal = desc ? desc.normal : getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
-    for (const dw of wall.doorways) {
+    // Use centralized getDoorwaysInEdgeSpace for wall→edge-local conversion,
+    // then subtract extStart (floor patches are in room-local, not rendering coords)
+    const edgeDoorways = desc
+      ? getDoorwaysInEdgeSpace(desc, room, edgeIndex)
+      : wall.doorways;
+    const ext = desc?.extensions?.get(room.id) ?? { extStart: 0, extEnd: 0 };
+
+    for (const dw of edgeDoorways) {
       if ((dw.elevationCm || 0) > 0.1) continue;
-      const off = dw.offsetCm;
+      const off = dw.offsetCm - ext.extStart;
+      // Skip doorways that fall outside this room's edge
+      if (off + dw.widthCm <= 0 || off >= len) continue;
       const w = dw.widthCm;
       const p1x = start.x + off * dirX;
       const p1y = start.y + off * dirY;

@@ -1,6 +1,6 @@
 // src/ui.js
 import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, getSelectedWall, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
-import { getWallForEdge, findWallByDoorwayId } from "./walls.js";
+import { getWallForEdge, getWallsForEdge, findWallByDoorwayId, computeFloorWallGeometry, edgeOffsetToWallOffset } from "./walls.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
 import { EPSILON, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
@@ -471,24 +471,43 @@ export function bindUI({
       const nextFloor = getCurrentFloor(next);
       if (edgeSelectEl && nextFloor) {
         const idx = Number(edgeSelectEl.value) || 0;
+        // Apply wall-level properties (thickness, height) to first wall for the edge
         const wall = getWallForEdge(nextFloor, nextRoom.id, idx);
         if (wall) {
           wall.thicknessCm = Number(document.getElementById("edgeThickness")?.value) || 12;
           wall.heightStartCm = Number(document.getElementById("edgeHeightStart")?.value) || 200;
           wall.heightEndCm = Number(document.getElementById("edgeHeightEnd")?.value) || 200;
+        }
 
-          // Read doorway inputs — update wall.doorways entries
-          const dwContainer = document.getElementById("doorwaysList");
-          if (dwContainer) {
-            const offsets = dwContainer.querySelectorAll(".dw-offset");
-            const widths = dwContainer.querySelectorAll(".dw-width");
-            const heights = dwContainer.querySelectorAll(".dw-height");
-            const edgeDoorways = wall.doorways || [];
-            for (let d = 0; d < Math.min(offsets.length, edgeDoorways.length); d++) {
-              edgeDoorways[d].offsetCm = Number(offsets[d].value) || 0;
-              edgeDoorways[d].widthCm = Number(widths[d]?.value) || 80;
-              edgeDoorways[d].heightCm = Number(heights[d]?.value) || 200;
-            }
+        // Read doorway inputs — form shows edge-local offsets, convert back to wall-space.
+        // Doorways may span multiple walls for the same edge, so use data-dw-id to find
+        // the correct wall and edgeOffsetToWallOffset for centralized reverse conversion.
+        const dwContainer = document.getElementById("doorwaysList");
+        if (dwContainer) {
+          const wallGeometry = computeFloorWallGeometry(nextFloor);
+          const edgeWalls = getWallsForEdge(nextFloor, nextRoom.id, idx);
+          const offsets = dwContainer.querySelectorAll(".dw-offset");
+          const widths = dwContainer.querySelectorAll(".dw-width");
+          const heights = dwContainer.querySelectorAll(".dw-height");
+
+          for (let d = 0; d < offsets.length; d++) {
+            const dwId = offsets[d].dataset.dwId;
+            if (!dwId) continue;
+
+            // Find the wall that owns this doorway
+            const ownerWall = edgeWalls.find(w => w.doorways?.some(dw => dw.id === dwId));
+            if (!ownerWall) continue;
+            const dwObj = ownerWall.doorways.find(dw => dw.id === dwId);
+            if (!dwObj) continue;
+
+            const formOffset = Number(offsets[d].value) || 0;
+            const formWidth = Number(widths[d]?.value) || 80;
+            const wDesc = wallGeometry.get(ownerWall.id);
+            dwObj.offsetCm = wDesc
+              ? edgeOffsetToWallOffset(wDesc, nextRoom, idx, formOffset, formWidth)
+              : formOffset;
+            dwObj.widthCm = formWidth;
+            dwObj.heightCm = Number(heights[d]?.value) || 200;
           }
         }
       }

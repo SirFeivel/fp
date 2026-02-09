@@ -1016,7 +1016,7 @@ describe('computeFloorWallGeometry', () => {
 // ── getDoorwaysInEdgeSpace ───────────────────────────────────────────
 
 describe('getDoorwaysInEdgeSpace', () => {
-  it('returns doorways unchanged for owner room (same direction)', () => {
+  it('returns doorways with extStart shift for owner room (same direction)', () => {
     const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
     syncFloorWalls(floor);
     const w0 = getWallForEdge(floor, 'r1', 0);
@@ -1037,14 +1037,13 @@ describe('getDoorwaysInEdgeSpace', () => {
     const r2 = makeRoom('r2', 400, 0, 300, 300);
     const floor = makeFloor([r1, r2]);
     syncFloorWalls(floor);
-    // Run a second sync to stabilize positions
     syncFloorWalls(floor);
 
     const sharedWall = floor.walls.find(w =>
       w.surfaces.some(s => s.roomId === 'r1') &&
       w.surfaces.some(s => s.roomId === 'r2')
     );
-    if (!sharedWall) return; // skip if no shared wall found
+    if (!sharedWall) return;
 
     // Add a doorway near one end
     sharedWall.doorways.push({ id: 'dw-shared', offsetCm: 10, widthCm: 80, heightCm: 200 });
@@ -1052,7 +1051,6 @@ describe('getDoorwaysInEdgeSpace', () => {
     const wg = computeFloorWallGeometry(floor);
     const desc = wg.get(sharedWall.id);
 
-    // For the owner room
     const ownerRoom = floor.rooms.find(r => r.id === sharedWall.roomEdge?.roomId);
     const otherRoom = floor.rooms.find(r => r.id !== sharedWall.roomEdge?.roomId);
     const ownerSurface = sharedWall.surfaces.find(s => s.roomId === ownerRoom.id);
@@ -1063,13 +1061,91 @@ describe('getDoorwaysInEdgeSpace', () => {
     const ownerResult = getDoorwaysInEdgeSpace(desc, ownerRoom, ownerSurface.edgeIndex);
     const otherResult = getDoorwaysInEdgeSpace(desc, otherRoom, otherSurface.edgeIndex);
 
-    // Both should have 1 doorway
     expect(ownerResult).toHaveLength(1);
     expect(otherResult).toHaveLength(1);
-
-    // The doorway positions should refer to the same absolute location on the wall,
-    // just in their respective edge-direction coordinate systems
     expect(ownerResult[0].widthCm).toBe(otherResult[0].widthCm);
+
+    // The edge-local offsets should place the doorway at the same absolute position.
+    // Owner: offset from edge start = 10 + ownerExtStart
+    // Other: reversed, so offset from other's edge start = (edgeLen - 10 - 80) + otherExtStart
+    const ownerExt = desc.extensions.get(ownerRoom.id) ?? { extStart: 0 };
+    const otherExt = desc.extensions.get(otherRoom.id) ?? { extStart: 0 };
+    expect(ownerResult[0].offsetCm).toBeCloseTo(10 + ownerExt.extStart, 1);
+    expect(otherResult[0].offsetCm).toBeCloseTo(300 - 10 - 80 + otherExt.extStart, 1);
+  });
+
+  it('correctly places doorway on merged/extended shared wall', () => {
+    // Two rooms sharing a horizontal edge, offset so the wall gets extended.
+    // r1: 481x300 at (342, -62) — bottom edge (edge 2) shared
+    // r2: 477x300 at (662, 250) — top edge (edge 0) shared
+    // Wall thickness creates adjacency: r1 bottom at y=238, r2 top at y=250, gap=12=thickness
+    const r1 = makeRoom('r1', 342, -62, 481, 300);
+    const r2 = makeRoom('r2', 662, 250, 477, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    if (!sharedWall) return;
+
+    // The merged wall should be longer than either room's edge
+    const wallLen = Math.hypot(
+      sharedWall.end.x - sharedWall.start.x,
+      sharedWall.end.y - sharedWall.start.y
+    );
+    expect(wallLen).toBeGreaterThan(481);
+
+    // Add a doorway centered on r2's portion (at wall-offset that falls within r2's range)
+    // r2's edge 0 in floor-global: (662,250)→(1139,250), length 477
+    // Centered doorway on r2: edge-local offset = (477-101)/2 = 188
+    // r2's edge start (A=(0,0)) projects to wall at some offset; doorway wall-offset depends on direction.
+    const wg0 = computeFloorWallGeometry(floor);
+    const desc0 = wg0.get(sharedWall.id);
+    const r2Surface = sharedWall.surfaces.find(s => s.roomId === 'r2');
+    if (!r2Surface) return;
+
+    // Find where r2's edge start projects onto the wall
+    const pos2 = r2.floorPosition;
+    const r2A = r2.polygonVertices[r2Surface.edgeIndex];
+    const globalAx = pos2.x + r2A.x;
+    const globalAy = pos2.y + r2A.y;
+    const r2StartOnWall =
+      (globalAx - sharedWall.start.x) * desc0.dirX +
+      (globalAy - sharedWall.start.y) * desc0.dirY;
+
+    // Place doorway so it's 188cm from r2's edge start in r2's direction.
+    // r2's edge is reversed relative to wall, so:
+    // wallOffset = r2StartOnWall - 188 - 101
+    const wallOffset = r2StartOnWall - 188 - 101;
+    sharedWall.doorways.push({ id: 'dw-merged', offsetCm: wallOffset, widthCm: 101, heightCm: 200 });
+
+    const wg = computeFloorWallGeometry(floor);
+    const desc = wg.get(sharedWall.id);
+
+    // Get doorway in r2's edge space
+    const r2Result = getDoorwaysInEdgeSpace(desc, r2, r2Surface.edgeIndex);
+    expect(r2Result).toHaveLength(1);
+    const r2Ext = desc.extensions.get('r2') ?? { extStart: 0 };
+    // Should be 188 + r2's extStart (centered on r2's 477cm edge)
+    expect(r2Result[0].offsetCm).toBeCloseTo(188 + r2Ext.extStart, 1);
+
+    // Get doorway in r1's edge space — it should be OUTSIDE r1's edge (negative offset before extStart)
+    const r1Surface = sharedWall.surfaces.find(s => s.roomId === 'r1');
+    if (!r1Surface) return;
+    const r1Result = getDoorwaysInEdgeSpace(desc, r1, r1Surface.edgeIndex);
+    expect(r1Result).toHaveLength(1);
+    const r1Ext = desc.extensions.get('r1') ?? { extStart: 0 };
+    // The doorway is on r2's portion, so from r1's perspective the edge-local offset
+    // should be negative (before r1's edge start) or past r1's edge end.
+    // Specifically: offset should be < r1Ext.extStart (i.e., before the edge starts in rendered space)
+    // OR offset should be > r1's edgeLen + r1Ext.extStart (past the edge end)
+    const r1EdgeLen = 481;
+    const r1Offset = r1Result[0].offsetCm;
+    const withinR1 = r1Offset >= 0 && r1Offset + 101 <= r1EdgeLen + r1Ext.extStart + (desc.extensions.get('r1')?.extEnd ?? 0);
+    expect(withinR1).toBe(false);
   });
 
   it('returns empty array when no doorways', () => {
