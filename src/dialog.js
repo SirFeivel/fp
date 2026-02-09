@@ -625,18 +625,20 @@ export function showDoorwayEditor({
 }
 
 /**
- * Show surface tiling configuration editor
+ * Show surface tiling configuration editor with wall properties
  * @param {Object} options
  * @param {string} options.title - Dialog title
+ * @param {Object} options.wall - Wall properties {thicknessCm, heightStartCm, heightEndCm}
  * @param {Object|null} options.tile - Current tile config {widthCm, heightCm, shape, reference}
  * @param {Object|null} options.grout - Current grout config {widthCm, colorHex}
  * @param {Object|null} options.pattern - Current pattern config {type, bondFraction, rotationDeg, origin, offsetXcm, offsetYcm}
  * @param {string} [options.confirmText] - Confirm button text
  * @param {string} [options.cancelText] - Cancel button text
- * @returns {Promise<{tile, grout, pattern, enabled} | null>}
+ * @returns {Promise<{wall, tile, grout, pattern, enabled} | null>}
  */
 export function showSurfaceEditor({
   title,
+  wall,
   tile,
   grout,
   pattern,
@@ -657,6 +659,12 @@ export function showSurfaceEditor({
       return;
     }
 
+    // Wall defaults
+    const wallThickness = wall?.thicknessCm ?? 15;
+    const wallHeightStart = wall?.heightStartCm ?? 250;
+    const wallHeightEnd = wall?.heightEndCm ?? 250;
+
+    // Surface tiling defaults
     const isEnabled = tile !== null;
     const tileW = tile?.widthCm ?? 40;
     const tileH = tile?.heightCm ?? 20;
@@ -678,16 +686,40 @@ export function showSurfaceEditor({
 
     messageEl.innerHTML = `
       <div class="surface-editor-form">
-        <label class="toggle-switch">
-          <span class="toggle-label" data-i18n="surface.enableTiling">Enable Tiling</span>
-          <input id="surfEnableTiling" type="checkbox" ${isEnabled ? "checked" : ""} />
-          <div class="toggle-slider"></div>
-        </label>
-        <div id="surfTilingFields" class="surface-tiling-fields" style="display: ${isEnabled ? "flex" : "none"}; flex-direction: column; gap: 12px; margin-top: 8px;">
+        <!-- Wall Configuration Section -->
+        <div class="surface-editor-section">
+          <h3 class="surface-editor-section-title" data-i18n="wall.configuration">Wall Configuration</h3>
           <div class="surface-editor-field">
-            <label data-i18n="tile.reference">Reference</label>
-            <input type="text" id="surfTileRef" value="${tileRef}" placeholder="e.g. Marble Carrara" class="dialog-input" />
+            <label data-i18n="wall.thickness">Wall Thickness (cm)</label>
+            <input type="number" id="wallThickness" value="${wallThickness}" min="1" step="1" class="dialog-input" />
           </div>
+          <div class="surface-editor-row">
+            <div class="surface-editor-field">
+              <label data-i18n="wall.heightStart">Height Start (cm)</label>
+              <input type="number" id="wallHeightStart" value="${wallHeightStart}" min="1" step="1" class="dialog-input" />
+            </div>
+            <div class="surface-editor-field">
+              <label data-i18n="wall.heightEnd">Height End (cm)</label>
+              <input type="number" id="wallHeightEnd" value="${wallHeightEnd}" min="1" step="1" class="dialog-input" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="surface-editor-divider"></div>
+
+        <!-- Surface Tiling Section -->
+        <div class="surface-editor-section">
+          <label class="toggle-switch">
+            <span class="toggle-label" data-i18n="surface.enableTiling">Enable Tiling</span>
+            <input id="surfEnableTiling" type="checkbox" ${isEnabled ? "checked" : ""} />
+            <div class="toggle-slider"></div>
+          </label>
+          <div id="surfTilingFields" class="surface-tiling-fields" style="display: ${isEnabled ? "flex" : "none"}; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <div class="surface-editor-field">
+              <label data-i18n="tile.reference">Reference</label>
+              <input type="text" id="surfTileRef" value="${tileRef}" placeholder="e.g. Marble Carrara" class="dialog-input" />
+            </div>
           <div class="surface-editor-field">
             <label data-i18n="tile.shape">Tile Shape</label>
             <select id="surfTileShape" class="dialog-input">
@@ -762,6 +794,7 @@ export function showSurfaceEditor({
             </select>
           </div>
         </div>
+        </div>
       </div>
     `;
 
@@ -796,10 +829,21 @@ export function showSurfaceEditor({
     };
 
     const onConfirm = () => {
+      // Get wall configuration values
+      const wallThicknessInput = document.getElementById("wallThickness");
+      const wallHeightStartInput = document.getElementById("wallHeightStart");
+      const wallHeightEndInput = document.getElementById("wallHeightEnd");
+
+      const wallConfig = {
+        thicknessCm: parseFloat(wallThicknessInput.value) || 15,
+        heightStartCm: parseFloat(wallHeightStartInput.value) || 250,
+        heightEndCm: parseFloat(wallHeightEndInput.value) || 250,
+      };
+
       const enabled = enableToggle.checked;
       if (!enabled) {
         cleanup();
-        resolve({ tile: null, grout: null, pattern: null, enabled: false });
+        resolve({ wall: wallConfig, tile: null, grout: null, pattern: null, enabled: false });
         return;
       }
 
@@ -816,6 +860,7 @@ export function showSurfaceEditor({
 
       const result = {
         enabled: true,
+        wall: wallConfig,
         tile: {
           widthCm: parseFloat(tileWInput.value) || 40,
           heightCm: parseFloat(tileHInput.value) || 20,

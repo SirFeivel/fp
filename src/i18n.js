@@ -185,6 +185,13 @@ const translations = {
       roomDeleted: "Raum gelöscht",
       commercial: "Kommerziell"
     },
+    wall: {
+      configuration: "Wandkonfiguration",
+      thickness: "Wandstärke (cm)",
+      heightStart: "Höhe Anfang (cm)",
+      heightEnd: "Höhe Ende (cm)",
+      configChanged: "Wandkonfiguration geändert"
+    },
     surface: {
       enableTiling: "Fliesenverlegung aktivieren",
       editSurface: "Wandfläche bearbeiten",
@@ -819,6 +826,13 @@ const translations = {
       roomAdded: "Room added",
       roomDeleted: "Room deleted",
       commercial: "Commercial"
+    },
+    wall: {
+      configuration: "Wall Configuration",
+      thickness: "Wall Thickness (cm)",
+      heightStart: "Height Start (cm)",
+      heightEnd: "Height End (cm)",
+      configChanged: "Wall configuration changed"
     },
     surface: {
       enableTiling: "Enable Tiling",

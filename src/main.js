@@ -543,6 +543,11 @@ async function showSurfaceEditorDialog(wallId) {
 
   const result = await showSurfaceEditor({
     title: t("surface.editSurface") || "Edit Surface Tiling",
+    wall: {
+      thicknessCm: wall.thicknessCm,
+      heightStartCm: wall.heightStartCm,
+      heightEndCm: wall.heightEndCm
+    },
     tile: surface.tile,
     grout: surface.grout,
     pattern: surface.pattern
@@ -555,12 +560,28 @@ async function showSurfaceEditorDialog(wallId) {
   const nextWall = nextFloor?.walls?.find(w => w.id === wallId);
   if (!nextWall || !nextWall.surfaces || nextWall.surfaces.length === 0) return;
 
-  // Update surface configuration
+  // Check if wall properties changed
+  const wallChanged =
+    result.wall.thicknessCm !== wall.thicknessCm ||
+    result.wall.heightStartCm !== wall.heightStartCm ||
+    result.wall.heightEndCm !== wall.heightEndCm;
+
+  // Update wall configuration (applies to entire wall)
+  nextWall.thicknessCm = result.wall.thicknessCm;
+  nextWall.heightStartCm = result.wall.heightStartCm;
+  nextWall.heightEndCm = result.wall.heightEndCm;
+
+  // Update surface configuration (applies to this surface only)
   nextWall.surfaces[0].tile = result.tile;
   nextWall.surfaces[0].grout = result.grout;
   nextWall.surfaces[0].pattern = result.pattern;
 
-  store.commit(t("surface.tilingChanged") || "Surface tiling changed", next, {
+  // Use appropriate commit message based on what changed
+  const commitMsg = wallChanged
+    ? t("wall.configChanged") || "Wall configuration changed"
+    : t("surface.tilingChanged") || "Surface tiling changed";
+
+  store.commit(commitMsg, next, {
     onRender: renderAll,
     updateMetaCb: updateMeta
   });
