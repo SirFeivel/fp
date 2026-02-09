@@ -671,6 +671,7 @@ export function showSurfaceEditor({
     const tileW = tile?.widthCm ?? 40;
     const tileH = tile?.heightCm ?? 20;
     const tileShape = tile?.shape ?? "rect";
+    const tileRef = tile?.reference ?? "Standard";
     const groutW = grout?.widthCm ?? 0.2;
     const groutColor = grout?.colorHex ?? "#ffffff";
     const patternType = pattern?.type ?? "grid";
@@ -896,7 +897,7 @@ export function showSurfaceEditor({
           widthCm: parseFloat(tileWInput.value) || 40,
           heightCm: parseFloat(tileHInput.value) || 20,
           shape: tileShapeInput.value,
-          reference: "Standard"
+          reference: tileRef
         },
         grout: {
           widthCm: (parseFloat(groutWInput.value) || 2) / 10, // mm to cm
