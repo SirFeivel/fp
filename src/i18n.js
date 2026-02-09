@@ -194,7 +194,7 @@ const translations = {
     },
     surface: {
       enableTiling: "Fliesenverlegung aktivieren",
-      editSurface: "Wandfläche bearbeiten",
+      editSurface: "Wandflächeneinstellungen",
       tilingChanged: "Flieseneinstellung geändert"
     },
     room: {
@@ -836,7 +836,7 @@ const translations = {
     },
     surface: {
       enableTiling: "Enable Tiling",
-      editSurface: "Edit Surface Tiling",
+      editSurface: "Wall Surface Settings",
       tilingChanged: "Surface tiling changed"
     },
     room: {

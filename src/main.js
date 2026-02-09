@@ -542,7 +542,7 @@ async function showSurfaceEditorDialog(wallId) {
   const surface = wall.surfaces[0];
 
   const result = await showSurfaceEditor({
-    title: t("surface.editSurface") || "Edit Surface Tiling",
+    title: t("surface.editSurface") || "Wall Surface Settings",
     wall: {
       thicknessCm: wall.thicknessCm,
       heightStartCm: wall.heightStartCm,
