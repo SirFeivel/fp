@@ -63,6 +63,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 12) {
       s = migrateV12ToV13(s);
     }
+    if (s.meta?.version === 13) {
+      s = migrateV13ToV14(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -148,6 +151,14 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
         if (!floor.patternGroups) floor.patternGroups = [];
         if (!floor.walls) floor.walls = [];
+        // Normalize floor.wallsFinalized (v14+)
+        if (floor.wallsFinalized === undefined) {
+          floor.wallsFinalized = false; // New floors default to planning mode
+        }
+        // Normalize floor.wallsAlignmentEnforced (v14+)
+        if (floor.wallsAlignmentEnforced === undefined) {
+          floor.wallsAlignmentEnforced = false; // Allows enforcement on first finalization
+        }
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
@@ -636,6 +647,23 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     // 8. Add new state fields
     if (s.selectedWallId === undefined) s.selectedWallId = null;
     if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
+
+    return s;
+  }
+
+  function migrateV13ToV14(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 14;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    for (const floor of s.floors) {
+      if (floor.wallsFinalized === undefined) {
+        // Existing projects with walls → auto-finalize (preserve behavior)
+        // New projects → planning mode
+        floor.wallsFinalized = (floor.walls && floor.walls.length > 0);
+      }
+    }
 
     return s;
   }

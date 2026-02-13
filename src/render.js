@@ -27,6 +27,103 @@ function isCircleRoom(room) {
   return room?.circle && room.circle.rx > 0;
 }
 
+/**
+ * Renders wall quads with doorway gaps.
+ * Consolidated wall rendering logic used by both room view and floor view.
+ *
+ * @param {SVGElement} parent - Parent SVG element or group
+ * @param {Object} options - Rendering options
+ * @param {Object} options.wall - Wall entity
+ * @param {Object} options.wallDesc - Wall descriptor from computeFloorWallGeometry
+ * @param {string} options.roomId - Room ID for room-specific extensions
+ * @param {Array} options.doorways - Sorted doorways array
+ * @param {Object} options.style - Wall fill/stroke colors
+ * @param {boolean} options.interactive - Enable pointer events
+ * @param {Function} options.onSegmentClick - Handler for wall segment clicks
+ * @param {Function} options.onSegmentHover - Handler for wall segment hover
+ * @returns {Array<SVGPathElement>} Created wall segment elements
+ */
+function renderWallSegments({ parent, wall, wallDesc, roomId, doorways, style, interactive = false, onSegmentClick, onSegmentHover }) {
+  const { A, B, L, innerAt, outerAt } = getWallRenderHelpers(wallDesc, roomId);
+
+  const sortedDw = [...doorways].sort((a, b) => a.offsetCm - b.offsetCm);
+  const segments = [];
+
+  let cursor = 0;
+  for (const dw of sortedDw) {
+    const dwStart = Math.max(0, dw.offsetCm);
+    const dwEnd = Math.min(L, dw.offsetCm + dw.widthCm);
+    if (dwEnd <= dwStart) continue;
+
+    // Render wall segment before doorway
+    if (dwStart > cursor + 0.5) {
+      const tStart = cursor / L;
+      const tEnd = dwStart / L;
+      const iC = innerAt(tStart), iD = innerAt(tEnd);
+      const oC = outerAt(tStart), oD = outerAt(tEnd);
+
+      const segPath = svgEl("path", {
+        d: `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`,
+        fill: style.fill,
+        stroke: style.stroke,
+        "stroke-width": style.strokeWidth || 0.5,
+        "pointer-events": interactive ? "auto" : "none",
+        cursor: interactive ? "pointer" : "default"
+      });
+
+      if (interactive && onSegmentClick) {
+        segPath.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSegmentClick(e);
+        });
+      }
+
+      if (interactive && onSegmentHover) {
+        segPath.addEventListener("pointerenter", () => onSegmentHover(true));
+        segPath.addEventListener("pointerleave", () => onSegmentHover(false));
+      }
+
+      parent.appendChild(segPath);
+      segments.push(segPath);
+    }
+
+    cursor = Math.max(cursor, dwEnd);
+  }
+
+  // Render final wall segment after last doorway
+  if (cursor < L - 0.5) {
+    const tStart = cursor / L;
+    const iC = innerAt(tStart), iD = innerAt(1);
+    const oC = outerAt(tStart), oD = outerAt(1);
+
+    const segPath = svgEl("path", {
+      d: `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`,
+      fill: style.fill,
+      stroke: style.stroke,
+      "stroke-width": style.strokeWidth || 0.5,
+      "pointer-events": interactive ? "auto" : "none",
+      cursor: interactive ? "pointer" : "default"
+    });
+
+    if (interactive && onSegmentClick) {
+      segPath.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onSegmentClick(e);
+      });
+    }
+
+    if (interactive && onSegmentHover) {
+      segPath.addEventListener("pointerenter", () => onSegmentHover(true));
+      segPath.addEventListener("pointerleave", () => onSegmentHover(false));
+    }
+
+    parent.appendChild(segPath);
+    segments.push(segPath);
+  }
+
+  return segments;
+}
+
 
 let activeSvgEdit = null;
 
@@ -1543,10 +1640,13 @@ export function renderPlanSvg({
   let wallsGroup = null;
 
   // Render wall thickness quads from wall entities (not export, not circle rooms)
-  if (!isExportBW && !isCircleRoom(currentRoom) && currentRoom.polygonVertices?.length >= 3) {
+  const floor = getCurrentFloor(state);
+  const wallsFinalized = floor?.wallsFinalized !== false; // Default true for safety
+
+  if (!isExportBW && !isCircleRoom(currentRoom) &&
+      currentRoom.polygonVertices?.length >= 3 && wallsFinalized) {
     const verts = currentRoom.polygonVertices;
     const n = verts.length;
-    const floor = getCurrentFloor(state);
     const roomWalls = floor ? getWallsForRoom(floor, currentRoom.id) : [];
 
     // Compute winding sign once for current room's polygon
@@ -3422,54 +3522,48 @@ export function renderFloorCanvas({
   const floorWallGeometry = computeFloorWallGeometry(floor);
 
   // Render wall thickness outlines from wall entities (floor-level, once per wall)
-  for (const wall of (floor.walls || [])) {
-    if ((wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) <= 0) continue;
-    const wallDesc = floorWallGeometry.get(wall.id);
-    if (!wallDesc) continue;
+  // Only render if walls are finalized
+  const wallsFinalized = floor?.wallsFinalized !== false;
+  if (wallsFinalized) {
+    for (const wall of (floor.walls || [])) {
+      if ((wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) <= 0) continue;
+      const wallDesc = floorWallGeometry.get(wall.id);
+      if (!wallDesc) continue;
 
-    const ownerRoomId = wall.roomEdge?.roomId;
-    const { A: s, B: e, OA: oS, OB: oE, L, innerAt, outerAt, dirX, dirY } = getWallRenderHelpers(wallDesc, ownerRoomId);
+      const ownerRoomId = wall.roomEdge?.roomId;
+      const { A: s, B: e, dirX, dirY, L } = getWallRenderHelpers(wallDesc, ownerRoomId);
 
-    const isWallSelected = ownerRoomId === selectedRoomId;
-    const wallFill = isWallSelected ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.15)";
-    const wallStroke = isWallSelected ? "rgba(148, 163, 184, 0.7)" : "rgba(148, 163, 184, 0.35)";
+      const isWallSelected = ownerRoomId === selectedRoomId;
+      const wallFill = isWallSelected ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.15)";
+      const wallStroke = isWallSelected ? "rgba(148, 163, 184, 0.7)" : "rgba(148, 163, 184, 0.35)";
 
-    // Use pre-shifted doorways from centralized geometry (owner extStart already applied)
-    const sortedDw = [...wallDesc.extDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
+      // Use consolidated renderWallSegments for non-interactive walls
+      renderWallSegments({
+        parent: svg,
+        wall,
+        wallDesc,
+        roomId: ownerRoomId,
+        doorways: wallDesc.extDoorways,
+        style: { fill: wallFill, stroke: wallStroke, strokeWidth: 0.5 },
+        interactive: false
+      });
 
-    let cursor = 0;
-    for (const dw of sortedDw) {
-      const dwStart = Math.max(0, dw.offsetCm);
-      const dwEnd = Math.min(L, dw.offsetCm + dw.widthCm);
-      if (dwEnd <= dwStart) continue; // doorway entirely outside [0, L]
-      if (dwStart > cursor + 0.5) {
-        const tC = cursor / L, tD = dwStart / L;
-        const iC = innerAt(tC), iD = innerAt(tD);
-        const oC = outerAt(tC), oD = outerAt(tD);
-        svg.appendChild(svgEl("path", {
-          d: `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`,
-          fill: wallFill, stroke: wallStroke, "stroke-width": 0.5, "pointer-events": "none"
+      // Render doorway gap markers
+      const sortedDw = [...wallDesc.extDoorways].sort((a, b) => a.offsetCm - b.offsetCm);
+      for (const dw of sortedDw) {
+        const dwStart = Math.max(0, dw.offsetCm);
+        const dwEnd = Math.min(L, dw.offsetCm + dw.widthCm);
+        if (dwEnd <= dwStart) continue;
+
+        const gapSx = s.x + dirX * dwStart;
+        const gapSy = s.y + dirY * dwStart;
+        const gapEx = s.x + dirX * dwEnd;
+        const gapEy = s.y + dirY * dwEnd;
+        svg.appendChild(svgEl("line", {
+          x1: gapSx, y1: gapSy, x2: gapEx, y2: gapEy,
+          stroke: "#f59e0b", "stroke-width": 2, "stroke-dasharray": "4 2", "pointer-events": "none"
         }));
       }
-      // Doorway gap marker
-      const gapSx = s.x + dirX * dwStart;
-      const gapSy = s.y + dirY * dwStart;
-      const gapEx = s.x + dirX * dwEnd;
-      const gapEy = s.y + dirY * dwEnd;
-      svg.appendChild(svgEl("line", {
-        x1: gapSx, y1: gapSy, x2: gapEx, y2: gapEy,
-        stroke: "#f59e0b", "stroke-width": 2, "stroke-dasharray": "4 2", "pointer-events": "none"
-      }));
-      cursor = Math.max(cursor, dwEnd);
-    }
-    if (cursor < L - 0.5) {
-      const tC = cursor / L;
-      const iC = innerAt(tC), iD = innerAt(1);
-      const oC = outerAt(tC), oD = outerAt(1);
-      svg.appendChild(svgEl("path", {
-        d: `M ${iC.x} ${iC.y} L ${iD.x} ${iD.y} L ${oD.x} ${oD.y} L ${oC.x} ${oC.y} Z`,
-        fill: wallFill, stroke: wallStroke, "stroke-width": 0.5, "pointer-events": "none"
-      }));
     }
   }
 

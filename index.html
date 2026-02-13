@@ -479,6 +479,18 @@
                 <span id="floorScaleText">100 cm</span>
               </div>
 
+              <!-- Wall Planning Status Banner -->
+              <div id="wallsStatusBanner" class="status-banner warning hidden">
+                <span class="status-icon">📐</span>
+                <span data-i18n="walls.planningPhase">
+                  Planning phase: Define room layout first
+                </span>
+                <button id="finalizeBannerBtn" class="banner-action"
+                        data-i18n="walls.finalizeNow">
+                  Finalize Walls
+                </button>
+              </div>
+
               <!-- Floor View Quick Controls (hidden by default) -->
               <div class="quick-controls floor-controls" id="floorQuickControls" style="display: none;">
                 <!-- Floor Management -->
@@ -499,6 +511,21 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
                       <path d="m19 6-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div class="quick-control-divider"></div>
+                <!-- Wall Finalization -->
+                <div class="quick-actions">
+                  <button id="finalizeWallsBtn" class="quick-btn"
+                          title="Finalize walls layout"
+                          data-i18n-title="walls.finalize">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="7" height="7"></rect>
+                      <rect x="14" y="3" width="7" height="7"></rect>
+                      <rect x="14" y="14" width="7" height="7"></rect>
+                      <rect x="3" y="14" width="7" height="7"></rect>
                     </svg>
                   </button>
                 </div>

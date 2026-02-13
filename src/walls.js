@@ -1,7 +1,7 @@
 // src/walls.js — Wall entities: single source of truth for wall data
 import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
-import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
+import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, WALL_ENFORCEMENT_TOLERANCE_FACTOR, EPSILON } from "./constants.js";
 import { computeSkirtingSegments, roomPolygon } from "./geometry.js";
 
 export const DEFAULT_WALL = {
@@ -308,9 +308,66 @@ function removeStaleWalls(floor, touchedWallIds, roomIds) {
 }
 
 /**
- * Enforce adjacent room positions for shared walls.
- * The adjacent room's touching edge must sit at the wall's outer edge
- * (perpendicular distance from inner edge = wall thickness).
+ * Adapt wall thickness to match actual spacing between rooms.
+ * This preserves user-positioned layouts (e.g., extracted from floor plans)
+ * while creating realistic walls with correct dimensions.
+ *
+ * For shared walls, calculates the perpendicular distance between
+ * the owner room's edge and the adjacent room's edge, then sets
+ * wall thickness to match this actual spacing.
+ *
+ * Example use case: User traces floor plan
+ * - TROCKENRAUM positioned at x=271, width=273 (right edge at 544)
+ * - KELLER positioned at x=556 (left edge at 556)
+ * - Actual spacing: 12cm → Wall created with 12cm thickness ✓
+ * - HEIZRAUM at different spacing (20cm) → Wall created with 20cm thickness ✓
+ *
+ * @param {Object} floor - Floor with walls[] and rooms[]
+ */
+function adaptWallThickness(floor) {
+  for (const wall of floor.walls) {
+    // Only adapt thickness for shared walls (walls with multiple surfaces)
+    if (wall.surfaces.length < 2) continue;
+
+    const ownerRoomId = wall.roomEdge?.roomId;
+    if (!ownerRoomId) continue;
+
+    const normal = getWallNormal(wall, floor);
+
+    // Find the adjacent room surface
+    const adjSurf = wall.surfaces.find(s => s.roomId !== ownerRoomId);
+    if (!adjSurf) continue;
+
+    const adjRoom = floor.rooms.find(r => r.id === adjSurf.roomId);
+    if (!adjRoom?.polygonVertices?.length) continue;
+
+    const adjPos = adjRoom.floorPosition || { x: 0, y: 0 };
+    const adjVertex = adjRoom.polygonVertices[adjSurf.edgeIndex];
+    if (!adjVertex) continue;
+
+    // Calculate actual perpendicular distance from wall start to adjacent room edge
+    const actualDistance =
+      (adjPos.x + adjVertex.x - wall.start.x) * normal.x +
+      (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
+
+    // Set wall thickness to actual spacing (with reasonable bounds)
+    // Min 5cm (thin interior wall), Max 50cm (thick exterior wall)
+    const adaptiveThickness = Math.max(5, Math.min(50, actualDistance));
+
+    // Only update if significantly different from current thickness
+    const currentThickness = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    if (Math.abs(adaptiveThickness - currentThickness) > 0.5) {
+      wall.thicknessCm = Math.round(adaptiveThickness * 10) / 10; // Round to 1 decimal
+    }
+  }
+}
+
+/**
+ * DEPRECATED: Old enforcement function that moved rooms (destroyed layouts)
+ * Kept for reference but should not be used.
+ * Use adaptWallThickness() instead.
+ *
+ * @deprecated
  */
 function enforceAdjacentPositions(floor) {
   for (const wall of floor.walls) {
@@ -320,6 +377,7 @@ function enforceAdjacentPositions(floor) {
 
     const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const tolerance = WALL_ENFORCEMENT_TOLERANCE_FACTOR * thick;
 
     const adjSurf = wall.surfaces.find(s => s.roomId !== ownerRoomId);
     if (!adjSurf) continue;
@@ -336,7 +394,9 @@ function enforceAdjacentPositions(floor) {
       (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
 
     const delta = thick - currentDist;
-    if (Math.abs(delta) < 0.5) continue;
+
+    // Skip if beyond tolerance (separate walls) or already aligned
+    if (Math.abs(delta) >= tolerance || Math.abs(delta) < 0.5) continue;
 
     adjRoom.floorPosition = {
       x: adjPos.x + normal.x * delta,
@@ -353,6 +413,8 @@ function enforceAdjacentPositions(floor) {
  */
 export function syncFloorWalls(floor) {
   if (!floor) return;
+  // Skip wall computation during planning mode (before finalization)
+  if (floor.wallsFinalized === false) return;
   if (!floor.walls) floor.walls = [];
 
   const rooms = (floor.rooms || []).filter(
@@ -365,7 +427,14 @@ export function syncFloorWalls(floor) {
   mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
-  enforceAdjacentPositions(floor);
+
+  // Adaptive wall thickness: Adjust wall thickness to match actual room spacing
+  // This preserves user-positioned layouts (extracted from floor plans)
+  // instead of moving rooms to enforce fixed 12cm spacing.
+  //
+  // Example: If rooms are positioned 20cm apart (from floor plan),
+  // create 20cm wall instead of moving rooms to 12cm spacing.
+  adaptWallThickness(floor);
 }
 
 /**
