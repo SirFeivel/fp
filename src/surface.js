@@ -1,7 +1,7 @@
 // src/surface.js — Universal tileable surface factory
 import { uuid, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_CONFIG } from "./core.js";
 
-const DEFAULT_PATTERN = {
+export const DEFAULT_PATTERN = {
   type: "grid",
   bondFraction: 0.5,
   rotationDeg: 0,
@@ -9,7 +9,7 @@ const DEFAULT_PATTERN = {
   offsetYcm: 0,
 };
 
-const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
+export const DEFAULT_ORIGIN = { preset: "tl", xCm: 0, yCm: 0 };
 
 const FLOOR_TYPES = ["floor"];
 

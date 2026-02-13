@@ -17,6 +17,8 @@ import {
 import { clearMetricsCache } from './calc.js';
 import { areRoomsAdjacent } from './floor_geometry.js';
 import { computeCompositePolygon } from './composite.js';
+import { DEFAULT_WALL_HEIGHT_CM, DEFAULT_WALL_THICKNESS_CM } from './constants.js';
+import { syncFloorWalls } from './walls.js';
 
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
@@ -48,6 +50,18 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     }
     if (s.meta?.version === 8) {
       s = migrateV8ToV9(s);
+    }
+    if (s.meta?.version === 9) {
+      s = migrateV9ToV10(s);
+    }
+    if (s.meta?.version === 10) {
+      s = migrateV10ToV11(s);
+    }
+    if (s.meta?.version === 11) {
+      s = migrateV11ToV12(s);
+    }
+    if (s.meta?.version === 12) {
+      s = migrateV12ToV13(s);
     }
 
     if (s.tile || s.grout || s.pattern) {
@@ -98,11 +112,15 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       delete s.pattern;
     }
 
-    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, planningMode: "room" };
+    if (!s.view) s.view = { showGrid: true, showNeeds: false, showSkirting: true, showFloorTiles: false, showWalls: true, planningMode: "room" };
     if (s.view.showGrid === undefined) s.view.showGrid = true;
     if (s.view.showNeeds === undefined) s.view.showNeeds = false;
     if (s.view.showSkirting === undefined) s.view.showSkirting = true;
     if (s.view.showFloorTiles === undefined) s.view.showFloorTiles = false;
+    if (s.view.showWalls === undefined) s.view.showWalls = false;
+    if (s.view.showWalls3D === undefined) s.view.showWalls3D = true;
+    if (s.view.use3D === undefined) s.view.use3D = false;
+    if (s.view.planningMode === "3d") { s.view.planningMode = "floor"; s.view.use3D = true; }
     if (s.view.planningMode === undefined) s.view.planningMode = "room";
     if (s.view.showBaseBoards !== undefined) {
       s.view.showSkirting = s.view.showBaseBoards;
@@ -115,6 +133,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (typeof s.waste.optimizeCuts !== "boolean") s.waste.optimizeCuts = DEFAULT_WASTE.optimizeCuts;
     if (!Number.isFinite(s.waste.kerfCm)) s.waste.kerfCm = DEFAULT_WASTE.kerfCm;
 
+    if (s.selectedWallId === undefined) s.selectedWallId = null;
+    if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
+
     if (!s.materials) s.materials = {};
     if (!Array.isArray(s.tilePresets)) s.tilePresets = [];
     if (!Array.isArray(s.skirtingPresets)) s.skirtingPresets = [];
@@ -126,6 +147,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.patternLinking) floor.patternLinking = { enabled: false, globalOrigin: { x: 0, y: 0 } };
         if (!floor.offcutSharing) floor.offcutSharing = { enabled: false };
         if (!floor.patternGroups) floor.patternGroups = [];
+        if (!floor.walls) floor.walls = [];
 
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
@@ -190,6 +212,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
                 { x: 0, y: 300 }
               ];
             }
+
           }
         }
 
@@ -257,6 +280,19 @@ export function createStateStore(defaultStateFn, validateStateFn) {
           }
         });
       });
+    }
+
+    // Keep wall entities in sync with room geometry on every state change
+    if (s.floors && Array.isArray(s.floors)) {
+      for (const floor of s.floors) {
+        syncFloorWalls(floor);
+        // Clean up legacy surface.skirting field (removed in v13+)
+        for (const wall of floor.walls || []) {
+          for (const surface of wall.surfaces || []) {
+            delete surface.skirting;
+          }
+        }
+      }
     }
 
     return s;
@@ -492,6 +528,115 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
     s.meta.version = 9;
+    return s;
+  }
+
+  function migrateV9ToV10(s) {
+    // Auto-generate wall surfaces for existing polygon rooms
+    s.meta = s.meta || {};
+    s.meta.version = 10;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    // Skip wall generation in migration — walls are created on first user interaction
+    // to avoid circular import issues during state normalization.
+    return s;
+  }
+
+  function migrateV10ToV11(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 11;
+
+    // Convert planningMode "3d" to orthogonal use3D flag
+    if (s.view?.planningMode === "3d") {
+      s.view.planningMode = "floor";
+      s.view.use3D = true;
+    }
+    if (s.view) {
+      if (s.view.use3D === undefined) s.view.use3D = false;
+    }
+
+    return s;
+  }
+
+  function migrateV11ToV12(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 12;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    for (const floor of s.floors) {
+      for (const room of floor.rooms || []) {
+        if (room.sourceRoomId) continue;
+        if (!room.polygonVertices || room.polygonVertices.length < 3) continue;
+
+        const edgeCount = room.polygonVertices.length;
+        const wallH = room.wallHeightCm ?? DEFAULT_WALL_HEIGHT_CM;
+
+        if (!Array.isArray(room.edgeProperties) || room.edgeProperties.length !== edgeCount) {
+          room.edgeProperties = Array.from({ length: edgeCount }, () => ({
+            thicknessCm: DEFAULT_WALL_THICKNESS_CM,
+            heightStartCm: wallH,
+            heightEndCm: wallH
+          }));
+        }
+      }
+      if (!floor.doorways) floor.doorways = [];
+    }
+
+    return s;
+  }
+
+  function migrateV12ToV13(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 13;
+
+    if (!s.floors || !Array.isArray(s.floors)) return s;
+
+    for (const floor of s.floors) {
+      // 1. Strip wall "rooms" (rooms with sourceRoomId) from floor.rooms[]
+      floor.rooms = (floor.rooms || []).filter(r => !r.sourceRoomId);
+
+      // 2. Strip edgeProperties and wallHeightCm from rooms
+      for (const room of floor.rooms) {
+        delete room.edgeProperties;
+        delete room.wallHeightCm;
+      }
+
+      // 3. Initialize floor.walls from room edges
+      floor.walls = [];
+
+      // 4. Migrate floor.doorways into wall entities
+      const oldDoorways = floor.doorways || [];
+
+      // 5. Sync walls from room geometry
+      syncFloorWalls(floor);
+
+      // 6. Migrate old doorways into the new wall entities
+      for (const dw of oldDoorways) {
+        // Find the wall for this doorway's room edge
+        const wall = floor.walls.find(
+          w => w.roomEdge && w.roomEdge.roomId === dw.roomId && w.roomEdge.edgeIndex === dw.edgeIndex
+        );
+        if (wall) {
+          wall.doorways.push({
+            id: dw.id,
+            offsetCm: dw.offsetCm,
+            widthCm: dw.widthCm,
+            heightCm: dw.heightCm,
+            elevationCm: dw.elevationCm || 0,
+          });
+        }
+      }
+
+      // 7. Remove floor.doorways
+      delete floor.doorways;
+    }
+
+    // 8. Add new state fields
+    if (s.selectedWallId === undefined) s.selectedWallId = null;
+    if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
+
     return s;
   }
 

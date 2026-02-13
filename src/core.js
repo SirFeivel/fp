@@ -111,6 +111,7 @@ export const DEFAULT_SKIRTING_PRESET = {
   pricePerPiece: 5
 };
 
+
 export const DEFAULT_WASTE = {
   allowRotate: true,
   shareOffcuts: false,
@@ -142,7 +143,7 @@ export function defaultState() {
   const floorId = uuid();
 
   return {
-    meta: { version: 7, updatedAt: nowISO() },
+    meta: { version: 13, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 
@@ -184,6 +185,8 @@ export function defaultState() {
 
     selectedFloorId: floorId,
     selectedRoomId: null,
+    selectedWallId: null,
+    selectedSurfaceIdx: 0,
 
     pricing: { ...DEFAULT_PRICING },
 
@@ -194,6 +197,9 @@ export function defaultState() {
       showNeeds: false,
       showSkirting: true,
       showFloorTiles: false,
+      showWalls: false,      // 2D views (floor, pattern groups)
+      showWalls3D: true,     // 3D view
+      use3D: false,          // orthogonal 2D/3D toggle
       planningMode: "floor"  // Start in floor view to add rooms
     }
   };
@@ -228,6 +234,26 @@ export function getDefaultPricing(state) {
     pricePerM2: Number.isFinite(price) ? price : DEFAULT_PRICING.pricePerM2,
     reserveTiles: Number.isFinite(reserve) ? reserve : DEFAULT_PRICING.reserveTiles
   };
+}
+
+/**
+ * Get the currently selected wall from state.
+ */
+export function getSelectedWall(state) {
+  if (!state?.selectedWallId) return null;
+  const floor = getCurrentFloor(state);
+  if (!floor?.walls) return null;
+  return floor.walls.find(w => w.id === state.selectedWallId) || null;
+}
+
+/**
+ * Get the currently selected surface from the selected wall.
+ */
+export function getSelectedSurface(state) {
+  const wall = getSelectedWall(state);
+  if (!wall) return null;
+  const idx = state.selectedSurfaceIdx ?? 0;
+  return wall.surfaces?.[idx] || null;
 }
 
 export function getDefaultTilePresetTemplate(state) {

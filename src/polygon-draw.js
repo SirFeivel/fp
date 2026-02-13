@@ -4,6 +4,7 @@
 import { svgEl, roomPolygon } from "./geometry.js";
 import { t } from "./i18n.js";
 import { createSurface } from "./surface.js";
+import { pointerToSvgXY, svgPointToClient } from "./svg-coords.js";
 
 const MIN_POINTS = 3;
 const CLOSE_THRESHOLD_PX = 15; // Pixels to detect closing click on first point
@@ -23,6 +24,7 @@ export function getRoomVertices(floor) {
 
   for (const room of floor.rooms) {
     if (!room || !room.id) continue;
+    // All rooms are real rooms (no wall child objects)
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     let mp;
@@ -109,6 +111,7 @@ export function getRoomEdges(floor) {
 
   for (const room of floor.rooms) {
     if (!room || !room.id) continue;
+    // All rooms are real rooms (no wall child objects)
     const pos = room.floorPosition || { x: 0, y: 0 };
 
     let mp;
@@ -428,17 +431,6 @@ export function createPolygonDrawController({
   let currentMousePoint = null; // Current mouse position for preview
   let roomBoundsPolygon = null; // For room view: restrict clicks to within room polygon
 
-  function pointerToSvgXY(svg, clientX, clientY) {
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return { x: 0, y: 0 };
-    const inv = ctm.inverse();
-    const p = pt.matrixTransform(inv);
-    return { x: p.x, y: p.y };
-  }
-
   function startDrawing(options) {
     const svg = getSvg();
     if (!svg) return false;
@@ -568,8 +560,9 @@ export function createPolygonDrawController({
     // Check if clicking near first point to close
     if (points.length >= MIN_POINTS) {
       const firstPoint = points[0];
-      const dx = e.clientX - svgToClientX(svg, firstPoint.x);
-      const dy = e.clientY - svgToClientY(svg, firstPoint.y);
+      const firstClient = svgPointToClient(svg, firstPoint.x, firstPoint.y);
+      const dx = e.clientX - firstClient.x;
+      const dy = e.clientY - firstClient.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < CLOSE_THRESHOLD_PX) {
@@ -820,24 +813,6 @@ export function createPolygonDrawController({
         updatePreview();
       }
     }
-  }
-
-  function svgToClientX(svg, svgX) {
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return 0;
-    const pt = svg.createSVGPoint();
-    pt.x = svgX;
-    pt.y = 0;
-    return pt.matrixTransform(ctm).x;
-  }
-
-  function svgToClientY(svg, svgY) {
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return 0;
-    const pt = svg.createSVGPoint();
-    pt.x = 0;
-    pt.y = svgY;
-    return pt.matrixTransform(ctm).y;
   }
 
   function updatePreview(mousePoint = null) {

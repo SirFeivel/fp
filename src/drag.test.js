@@ -70,9 +70,6 @@ describe('createExclusionDragController', () => {
 
     const getSvg = vi.fn(() => mockSvg);
     const getState = vi.fn(() => currentState);
-    const setStateDirect = vi.fn((newState) => {
-      currentState = newState;
-    });
     const commit = vi.fn((label, newState) => {
       currentState = JSON.parse(JSON.stringify(newState));
     });
@@ -90,7 +87,6 @@ describe('createExclusionDragController', () => {
     const controller = createExclusionDragController({
       getSvg,
       getState,
-      setStateDirect,
       commit,
       render,
       getSelectedExcl,
@@ -106,7 +102,6 @@ describe('createExclusionDragController', () => {
       controller,
       getSvg,
       getState,
-      setStateDirect,
       commit,
       render,
       getSelectedExcl,
@@ -278,7 +273,7 @@ describe('createExclusionDragController', () => {
 
     it('does not rebuild DOM during drag (performance optimization)', async () => {
       const exclusions = [{ id: 'ex1', type: 'rect', x: 10, y: 20, w: 50, h: 30 }];
-      const { controller, render, setStateDirect } = createMockController(exclusions);
+      const { controller, render } = createMockController(exclusions);
 
       const mockEl = { setAttribute: vi.fn(), removeAttribute: vi.fn() };
       mockElements = [mockEl];
@@ -311,8 +306,6 @@ describe('createExclusionDragController', () => {
 
       // render should never be called during drag
       expect(render).not.toHaveBeenCalled();
-      // setStateDirect should never be called during drag
-      expect(setStateDirect).not.toHaveBeenCalled();
     });
   });
 

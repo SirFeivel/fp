@@ -637,3 +637,45 @@ describe("edge cases and robustness", () => {
     expect(result.point.y).toBe(0);
   });
 });
+
+describe('Wall rooms exclusion', () => {
+  it('getRoomVertices returns vertices from all rooms', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'room1',
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'room2',
+          floorPosition: { x: 100, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        }
+      ]
+    };
+
+    const vertices = getRoomVertices(floor);
+    expect(vertices.length).toBe(8); // 4 vertices from each room
+  });
+
+  it('getRoomEdges returns edges from all rooms', () => {
+    const floor = {
+      rooms: [
+        {
+          id: 'room1',
+          floorPosition: { x: 0, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        },
+        {
+          id: 'room2',
+          floorPosition: { x: 100, y: 0 },
+          polygonVertices: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+        }
+      ]
+    };
+
+    const edges = getRoomEdges(floor);
+    expect(edges.length).toBe(8); // 4 edges from each room
+  });
+});

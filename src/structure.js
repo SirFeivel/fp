@@ -3,6 +3,47 @@ import { t } from './i18n.js';
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.js';
 import { showAlert } from './dialog.js';
 import { createSurface } from './surface.js';
+import { getRoomPatternGroup, createPatternGroup, addRoomToPatternGroup } from './pattern-groups.js';
+import { syncFloorWalls, getWallsForRoom } from './walls.js';
+
+/**
+ * Find a position for a new room on a free edge of existing rooms.
+ * Exported for direct testing.
+ */
+export function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
+  if (!existingRooms || existingRooms.length === 0) {
+    const bg = floor?.layout?.background;
+    if (bg?.nativeWidth && bg?.nativeHeight) {
+      const nativeW = bg.nativeWidth;
+      const pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
+      const imgWidth = nativeW / pixelsPerCm;
+      const imgHeight = bg.nativeHeight / pixelsPerCm;
+      return {
+        x: Math.round((imgWidth - newRoom.widthCm) / 2),
+        y: Math.round((imgHeight - newRoom.heightCm) / 2)
+      };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
+  if (position) {
+    return { x: position.x, y: position.y };
+  }
+
+  let maxRight = -Infinity;
+  let topAtMaxRight = 0;
+
+  for (const room of existingRooms) {
+    const bounds = getRoomAbsoluteBounds(room);
+    if (bounds.right > maxRight) {
+      maxRight = bounds.right;
+      topAtMaxRight = bounds.top;
+    }
+  }
+
+  return { x: maxRight, y: topAtMaxRight };
+}
 
 export function createStructureController({
   store,
@@ -53,12 +94,65 @@ export function createStructureController({
       return;
     }
 
+    const floorRooms = currentFloor.rooms;
+
+    if (floorRooms.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("project.none");
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
     sel.disabled = false;
-    for (const room of currentFloor.rooms) {
+    for (const room of floorRooms) {
       const opt = document.createElement("option");
       opt.value = room.id;
       opt.textContent = room.name;
       if (room.id === state.selectedRoomId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function renderWallSelect() {
+    const state = store.getState();
+    const sel = document.getElementById("wallSelect");
+    if (!sel) return;
+
+    sel.innerHTML = "";
+
+    const currentFloor = getCurrentFloor(state);
+    const currentRoom = getCurrentRoom(state);
+
+    if (!currentFloor || !currentRoom) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("project.none");
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
+    // Get walls for this room from floor.walls[]
+    const walls = getWallsForRoom(currentFloor, currentRoom.id);
+
+    sel.disabled = false;
+
+    // Floor surface (the room itself) is always the first entry
+    const floorOpt = document.createElement("option");
+    floorOpt.value = "";
+    floorOpt.textContent = t("tabs.floorSurface") || "Floor";
+    if (!state.selectedWallId) floorOpt.selected = true;
+    sel.appendChild(floorOpt);
+
+    for (let i = 0; i < walls.length; i++) {
+      const wall = walls[i];
+      const edgeIdx = wall.roomEdge?.edgeIndex ?? i;
+      const opt = document.createElement("option");
+      opt.value = wall.id;
+      opt.textContent = `${currentRoom.name} · Wall ${edgeIdx + 1}`;
+      if (wall.id === state.selectedWallId) opt.selected = true;
       sel.appendChild(opt);
     }
   }
@@ -82,12 +176,14 @@ export function createStructureController({
         enabled: false
       },
       patternGroups: [],
-      rooms: []
+      rooms: [],
+      walls: []
     };
 
     next.floors.push(newFloor);
     next.selectedFloorId = newFloor.id;
     next.selectedRoomId = null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.floorAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -113,52 +209,13 @@ export function createStructureController({
     const firstFloor = next.floors[0];
     next.selectedFloorId = firstFloor.id;
     next.selectedRoomId = firstFloor.rooms?.[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.floorDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
 
-  /**
-   * Find a position for a new room on a free edge of existing rooms
-   */
-  function findConnectedPositionForNewRoom(newRoom, existingRooms, floor = null) {
-    // If no existing rooms, center on background image or use origin
-    if (!existingRooms || existingRooms.length === 0) {
-      const bg = floor?.layout?.background;
-      if (bg?.nativeWidth && bg?.nativeHeight) {
-        const nativeW = bg.nativeWidth;
-        const pixelsPerCm = bg.scale?.calibrated ? bg.scale.pixelsPerCm : (nativeW / 1000);
-        const imgWidth = nativeW / pixelsPerCm;
-        const imgHeight = bg.nativeHeight / pixelsPerCm;
-        return {
-          x: Math.round((imgWidth - newRoom.widthCm) / 2),
-          y: Math.round((imgHeight - newRoom.heightCm) / 2)
-        };
-      }
-      return { x: 0, y: 0 };
-    }
-
-    // Use free edge detection to find optimal position
-    const position = findPositionOnFreeEdge(newRoom, existingRooms, 'right');
-    if (position) {
-      return { x: position.x, y: position.y };
-    }
-
-    // Fallback: find the rightmost edge of all existing rooms
-    let maxRight = -Infinity;
-    let topAtMaxRight = 0;
-
-    for (const room of existingRooms) {
-      const bounds = getRoomAbsoluteBounds(room);
-      if (bounds.right > maxRight) {
-        maxRight = bounds.right;
-        topAtMaxRight = bounds.top;
-      }
-    }
-
-    // Place new room to the right of the rightmost room
-    return { x: maxRight, y: topAtMaxRight };
-  }
+    // findConnectedPositionForNewRoom is defined at module level for testability
 
   function addRoom() {
     const state = store.getState();
@@ -170,8 +227,9 @@ export function createStructureController({
     const hasPreset = Boolean(next.tilePresets?.[0]?.name);
     const defaultPreset = getDefaultTilePresetTemplate(next);
     const presetName = hasPreset ? next.tilePresets[0].name : "";
+    const floorRoomCount = currentFloor.rooms.length;
     const newRoom = createSurface({
-      name: `Raum ${currentFloor.rooms.length + 1}`,
+      name: `${t("room.newRoom")} ${floorRoomCount + 1}`,
       widthCm: 600,
       heightCm: 400,
       tile: {
@@ -192,6 +250,10 @@ export function createStructureController({
 
     currentFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
+    next.selectedWallId = null;
+
+    // Sync walls for the floor
+    syncFloorWalls(currentFloor);
 
     resetSelectedExcl();
     store.commit(t("structure.roomAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -206,12 +268,20 @@ export function createStructureController({
     const nextFloor = getCurrentFloor(next);
     if (!nextFloor) return;
 
+    const deletedRoomId = state.selectedRoomId;
     const beforeLen = nextFloor.rooms.length;
-    nextFloor.rooms = nextFloor.rooms.filter(r => r.id !== state.selectedRoomId);
+
+    // Delete the room
+    nextFloor.rooms = nextFloor.rooms.filter(r => r.id !== deletedRoomId);
 
     if (nextFloor.rooms.length === beforeLen) return;
 
+    // Sync walls (will clean up orphaned walls/surfaces)
+    syncFloorWalls(nextFloor);
+
+    // Select next room
     next.selectedRoomId = nextFloor.rooms[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("structure.roomDeleted"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -225,6 +295,7 @@ export function createStructureController({
 
     const floor = next.floors.find(f => f.id === floorId);
     next.selectedRoomId = floor?.rooms?.[0]?.id || null;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("room.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -235,6 +306,7 @@ export function createStructureController({
     const next = deepClone(state);
 
     next.selectedRoomId = roomId;
+    next.selectedWallId = null;
 
     resetSelectedExcl();
     store.commit(t("room.changed"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -269,6 +341,7 @@ export function createStructureController({
     renderFloorSelect,
     renderFloorName,
     renderRoomSelect,
+    renderWallSelect,
     addFloor,
     deleteFloor,
     addRoom,

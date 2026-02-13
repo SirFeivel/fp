@@ -1,5 +1,5 @@
 // src/removal.js
-import { getCurrentRoom } from "./core.js";
+import { getCurrentRoom, getSelectedWall } from "./core.js";
 import { t } from "./i18n.js";
 
 export function createRemovalController(store, renderAll) {
@@ -37,13 +37,19 @@ export function createRemovalController(store, renderAll) {
     const room = getCurrentRoom(next);
     if (!room) return;
 
+    // Determine target: wall surface or room floor
+    const wall = getSelectedWall(next);
+    const surfaceIdx = next.selectedSurfaceIdx ?? 0;
+    const surface = wall?.surfaces?.[surfaceIdx];
+
     if (tileId) {
-      room.excludedTiles = room.excludedTiles || [];
-      const idx = room.excludedTiles.indexOf(tileId);
+      const target = surface || room;
+      target.excludedTiles = target.excludedTiles || [];
+      const idx = target.excludedTiles.indexOf(tileId);
       if (idx >= 0) {
-        room.excludedTiles.splice(idx, 1);
+        target.excludedTiles.splice(idx, 1);
       } else {
-        room.excludedTiles.push(tileId);
+        target.excludedTiles.push(tileId);
       }
       store.commit(t("removal.tileToggled"), next, { onRender: renderAll });
     } else if (skirtId) {

@@ -858,17 +858,6 @@ describe('tilesForPreviewHerringbone', () => {
     expect(Math.abs(result.tiles.length - resultSwapped.tiles.length)).toBeLessThan(result.tiles.length * 0.1);
   });
 
-  it('returns error for too many tiles', () => {
-    // Very small tiles in a large room would exceed MAX_PREVIEW_TILES
-    const state = createTestState(10000, 10000, 5, 2, 0);
-    const availableMP = createRoomPolygon(10000, 10000);
-
-    const result = tilesForPreviewHerringbone(state, availableMP, 5, 2, 0);
-
-    expect(result.error).not.toBeNull();
-    expect(result.tiles).toEqual([]);
-  });
-
   it('tiles have valid SVG path data', () => {
     const state = createTestState(200, 200, 30, 10, 0);
     const availableMP = createRoomPolygon(200, 200);

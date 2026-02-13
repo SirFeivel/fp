@@ -1,8 +1,9 @@
 // src/ui.js
-import { downloadText, safeParseJSON, getCurrentRoom, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { downloadText, safeParseJSON, getCurrentRoom, getCurrentFloor, getSelectedWall, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_TILE_PRESET, DEFAULT_PRICING } from "./core.js";
+import { getWallForEdge, getWallsForEdge, findWallByDoorwayId, computeFloorWallGeometry, edgeOffsetToWallOffset } from "./walls.js";
 import { t } from "./i18n.js";
 import { computeProjectTotals } from "./calc.js";
-import { EPSILON } from "./constants.js";
+import { EPSILON, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { getUiState, setUiState } from "./ui_state.js";
 import { showConfirm, showAlert } from "./dialog.js";
 
@@ -418,10 +419,14 @@ export function bindUI({
     next.view = next.view || {};
     const showGridEl = document.getElementById('showGrid');
     const showSkirtingEl = document.getElementById('showSkirting');
+    const debugShowWallsEl = document.getElementById('debugShowWalls');
+    const threeDShowWallsEl = document.getElementById('threeDShowWalls');
     const removalModeEl = document.getElementById('removalMode');
 
     if (showGridEl) next.view.showGrid = Boolean(showGridEl.checked);
     if (showSkirtingEl) next.view.showSkirting = Boolean(showSkirtingEl.checked);
+    if (debugShowWallsEl) next.view.showWalls = Boolean(debugShowWallsEl.checked);
+    if (threeDShowWallsEl) next.view.showWalls3D = Boolean(threeDShowWallsEl.checked);
     if (removalModeEl) next.view.removalMode = Boolean(removalModeEl.checked);
 
     const nextRoom = getCurrentRoom(next);
@@ -460,6 +465,52 @@ export function bindUI({
       if (!prevCutoutAllowed && cutoutAllowed && ref && nextRoom.skirting?.enabled && skirtingTypeEl) {
         nextRoom.skirting.type = "cutout";
       }
+
+      // Read edge properties from UI — write to wall entity
+      const edgeSelectEl = document.getElementById("edgeSelect");
+      const nextFloor = getCurrentFloor(next);
+      if (edgeSelectEl && nextFloor) {
+        const idx = Number(edgeSelectEl.value) || 0;
+        // Apply wall-level properties (thickness, height) to first wall for the edge
+        const wall = getWallForEdge(nextFloor, nextRoom.id, idx);
+        if (wall) {
+          wall.thicknessCm = Number(document.getElementById("edgeThickness")?.value) || 12;
+          wall.heightStartCm = Number(document.getElementById("edgeHeightStart")?.value) || 200;
+          wall.heightEndCm = Number(document.getElementById("edgeHeightEnd")?.value) || 200;
+        }
+
+        // Read doorway inputs — form shows edge-local offsets, convert back to wall-space.
+        // Doorways may span multiple walls for the same edge, so use data-dw-id to find
+        // the correct wall and edgeOffsetToWallOffset for centralized reverse conversion.
+        const dwContainer = document.getElementById("doorwaysList");
+        if (dwContainer) {
+          const wallGeometry = computeFloorWallGeometry(nextFloor);
+          const edgeWalls = getWallsForEdge(nextFloor, nextRoom.id, idx);
+          const offsets = dwContainer.querySelectorAll(".dw-offset");
+          const widths = dwContainer.querySelectorAll(".dw-width");
+          const heights = dwContainer.querySelectorAll(".dw-height");
+
+          for (let d = 0; d < offsets.length; d++) {
+            const dwId = offsets[d].dataset.dwId;
+            if (!dwId) continue;
+
+            // Find the wall that owns this doorway
+            const ownerWall = edgeWalls.find(w => w.doorways?.some(dw => dw.id === dwId));
+            if (!ownerWall) continue;
+            const dwObj = ownerWall.doorways.find(dw => dw.id === dwId);
+            if (!dwObj) continue;
+
+            const formOffset = Number(offsets[d].value) || 0;
+            const formWidth = Number(widths[d]?.value) || 80;
+            const wDesc = wallGeometry.get(ownerWall.id);
+            dwObj.offsetCm = wDesc
+              ? edgeOffsetToWallOffset(wDesc, nextRoom, idx, formOffset, formWidth)
+              : formOffset;
+            dwObj.widthCm = formWidth;
+            dwObj.heightCm = Number(heights[d]?.value) || 200;
+          }
+        }
+      }
     }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -481,43 +532,51 @@ export function bindUI({
     const currentRoom = getCurrentRoom(next);
     if (!currentRoom) return;
 
+    // Determine write target: surface (when wall selected) or room
+    const wall = getSelectedWall(next);
+    const surfIdx = next.selectedSurfaceIdx ?? 0;
+    const surface = wall?.surfaces?.[surfIdx];
+    const target = surface || currentRoom;
+
+    // If targeting a surface with tiling disabled, skip
+    if (surface && !surface.tile) return;
+
     const shape = document.getElementById("tileShape")?.value || "rect";
     const widthCm = Number(document.getElementById("tileW")?.value);
 
-    currentRoom.tile.shape = shape;
-    currentRoom.tile.widthCm = widthCm;
-    currentRoom.tile.reference = document.getElementById("tileReference")?.value ?? "";
+    target.tile.shape = shape;
+    target.tile.widthCm = widthCm;
+    target.tile.reference = document.getElementById("tileReference")?.value ?? "";
 
     if (shape === "hex") {
       const sideLength = widthCm / Math.sqrt(3);
-      currentRoom.tile.heightCm = sideLength * 2;
+      target.tile.heightCm = sideLength * 2;
     } else if (shape === "square") {
-      currentRoom.tile.heightCm = widthCm;
+      target.tile.heightCm = widthCm;
     } else if (shape === "rhombus") {
-      // For rhombus, we can also use width for height if they are meant to be equal-sided,
-      // but let's allow custom height for now to define the other diagonal.
-      currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
+      target.tile.heightCm = Number(document.getElementById("tileH")?.value);
     } else {
-      currentRoom.tile.heightCm = Number(document.getElementById("tileH")?.value);
+      target.tile.heightCm = Number(document.getElementById("tileH")?.value);
     }
 
     // Convert mm input to cm for state
-    currentRoom.grout.widthCm = Number(document.getElementById("groutW")?.value) / 10;
-    currentRoom.grout.colorHex = document.getElementById("groutColor")?.value || "#ffffff";
+    target.grout.widthCm = Number(document.getElementById("groutW")?.value) / 10;
+    target.grout.colorHex = document.getElementById("groutColor")?.value || "#ffffff";
 
-    currentRoom.pattern.type = document.getElementById("patternType")?.value;
-    currentRoom.pattern.bondFraction = Number(
+    target.pattern.type = document.getElementById("patternType")?.value;
+    target.pattern.bondFraction = Number(
       document.getElementById("bondFraction")?.value
     );
-    currentRoom.pattern.rotationDeg = Number(
+    target.pattern.rotationDeg = Number(
       document.getElementById("rotationDeg")?.value
     );
-    currentRoom.pattern.offsetXcm = Number(document.getElementById("offsetX")?.value);
-    currentRoom.pattern.offsetYcm = Number(document.getElementById("offsetY")?.value);
+    target.pattern.offsetXcm = Number(document.getElementById("offsetX")?.value);
+    target.pattern.offsetYcm = Number(document.getElementById("offsetY")?.value);
 
-    currentRoom.pattern.origin.preset = document.getElementById("originPreset")?.value;
-    currentRoom.pattern.origin.xCm = Number(document.getElementById("originX")?.value);
-    currentRoom.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
+    target.pattern.origin = target.pattern.origin || {};
+    target.pattern.origin.preset = document.getElementById("originPreset")?.value;
+    target.pattern.origin.xCm = Number(document.getElementById("originX")?.value);
+    target.pattern.origin.yCm = Number(document.getElementById("originY")?.value);
 
     // Pricing
     const reserveTiles = document.getElementById("reserveTiles");
@@ -544,20 +603,22 @@ export function bindUI({
     const dbg = document.getElementById("debugShowNeeds");
     if (dbg) next.view.showNeeds = Boolean(dbg.checked);
 
-    // Sync other rooms with same reference to maintain consistency
-    const ref = currentRoom.tile.reference;
-    if (ref) {
-      next.floors.forEach((f) => {
-        if (f.rooms) {
-          f.rooms.forEach((rm) => {
-            if (rm.id !== currentRoom.id && rm.tile?.reference === ref) {
-              rm.tile.widthCm = currentRoom.tile.widthCm;
-              rm.tile.heightCm = currentRoom.tile.heightCm;
-              rm.tile.shape = currentRoom.tile.shape;
-            }
-          });
-        }
-      });
+    // Sync other rooms with same reference (only when editing room, not surface)
+    if (!surface) {
+      const ref = currentRoom.tile.reference;
+      if (ref) {
+        next.floors.forEach((f) => {
+          if (f.rooms) {
+            f.rooms.forEach((rm) => {
+              if (rm.id !== currentRoom.id && rm.tile?.reference === ref) {
+                rm.tile.widthCm = currentRoom.tile.widthCm;
+                rm.tile.heightCm = currentRoom.tile.heightCm;
+                rm.tile.shape = currentRoom.tile.shape;
+              }
+            });
+          }
+        });
+      }
     }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -754,6 +815,117 @@ export function bindUI({
     commitLabel: t("room.changed"),
     commitFn: commitFromRoomInputs
   });
+  // Edge property inputs (wall height is per-edge now, not global)
+  const edgeSelectEl = document.getElementById("edgeSelect");
+  edgeSelectEl?.addEventListener("change", () => renderAll());
+  wireInputCommit(document.getElementById("edgeThickness"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("edgeHeightStart"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+  wireInputCommit(document.getElementById("edgeHeightEnd"), {
+    markDirty: () => store.markDirty(),
+    commitLabel: t("edge.changed"),
+    commitFn: commitFromRoomInputs
+  });
+
+  // Add doorway button
+  document.getElementById("addDoorwayBtn")?.addEventListener("click", () => {
+    const state = store.getState();
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    if (!room) return;
+    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
+    const nextFloor = getCurrentFloor(next);
+    if (!nextFloor) return;
+
+    const wall = getWallForEdge(nextFloor, room.id, idx);
+    if (!wall) return;
+
+    const dwElevation = 0;
+    const preferredWidth = 101;
+    const preferredHeight = 211;
+
+    const verts = room.polygonVertices;
+    if (!verts || verts.length < 3 || idx < 0 || idx >= verts.length) return;
+    const A = verts[idx];
+    const B = verts[(idx + 1) % verts.length];
+    const edgeLength = Math.hypot(B.x - A.x, B.y - A.y);
+    const hStart = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+    const hEnd = wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
+    const minWallH = Math.min(hStart, hEnd);
+    const dwHeight = Math.min(preferredHeight, Math.max(0, minWallH - 10));
+
+    const allEdgeDoorways = wall.doorways || [];
+
+    const vOverlapping = allEdgeDoorways.filter(sib => {
+      return dwElevation < (sib.elevationCm ?? 0) + sib.heightCm &&
+        dwElevation + dwHeight > (sib.elevationCm ?? 0);
+    });
+    const sorted = vOverlapping.slice().sort((a, b) => a.offsetCm - b.offsetCm);
+
+    const MIN_DW = 20;
+    const gaps = [];
+    let cursor = 0;
+    for (const sib of sorted) {
+      const gap = sib.offsetCm - cursor;
+      if (gap >= MIN_DW) gaps.push({ start: cursor, size: gap });
+      cursor = Math.max(cursor, sib.offsetCm + sib.widthCm);
+    }
+    const tailGap = edgeLength - cursor;
+    if (tailGap >= MIN_DW) gaps.push({ start: cursor, size: tailGap });
+    if (gaps.length === 0 || dwHeight < MIN_DW) return;
+
+    const edgeCenter = edgeLength / 2;
+    let bestGap = gaps[0];
+    let bestDist = Math.abs(bestGap.start + bestGap.size / 2 - edgeCenter);
+    for (let i = 1; i < gaps.length; i++) {
+      const dist = Math.abs(gaps[i].start + gaps[i].size / 2 - edgeCenter);
+      if (dist < bestDist) { bestDist = dist; bestGap = gaps[i]; }
+    }
+
+    const dwWidth = Math.max(MIN_DW, Math.min(preferredWidth, bestGap.size - 10));
+    const offsetCm = bestGap.start + (bestGap.size - dwWidth) / 2;
+
+    wall.doorways.push({
+      id: crypto?.randomUUID?.() || String(Date.now()),
+      offsetCm,
+      widthCm: dwWidth,
+      heightCm: Math.max(MIN_DW, dwHeight),
+      elevationCm: dwElevation
+    });
+    store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
+  // Doorway remove & edit (event delegation)
+  document.getElementById("doorwaysList")?.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("dw-remove")) return;
+    const dwIdx = Number(e.target.dataset.dwIdx);
+    const state = store.getState();
+    const next = structuredClone(state);
+    const room = getCurrentRoom(next);
+    const nextFloor = getCurrentFloor(next);
+    if (!room || !nextFloor) return;
+    const idx = Number(document.getElementById("edgeSelect")?.value) || 0;
+    const wall = getWallForEdge(nextFloor, room.id, idx);
+    if (!wall) return;
+    const edgeDoorways = wall.doorways || [];
+    if (dwIdx < 0 || dwIdx >= edgeDoorways.length) return;
+    const doorwayId = edgeDoorways[dwIdx].id;
+    wall.doorways = wall.doorways.filter(d => d.id !== doorwayId);
+    store.commit(t("edge.doorwayChanged"), next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+  document.getElementById("doorwaysList")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("dw-offset") || e.target.classList.contains("dw-width") || e.target.classList.contains("dw-height")) {
+      commitFromRoomInputs(t("edge.doorwayChanged"));
+    }
+  });
+
   wireInputCommit(document.getElementById("tileReference"), {
     markDirty: () => store.markDirty(),
     commitLabel: t("tile.changed"),

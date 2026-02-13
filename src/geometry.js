@@ -3,7 +3,6 @@ import { degToRad, getCurrentRoom, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET 
 import {
   CIRCLE_APPROXIMATION_STEPS,
   TILE_MARGIN_MULTIPLIER,
-  MAX_PREVIEW_TILES,
   TILE_AREA_TOLERANCE,
   BOND_PERIOD_MIN,
   BOND_PERIOD_MAX,
@@ -167,7 +166,7 @@ export function computeSkirtingArea(room, exclusions) {
  * Calculates the lengths of all segments where skirting should be applied.
  * Returns an array of segment objects: { p1, p2, length, id, excluded }
  */
-export function computeSkirtingSegments(room, includeExcluded = false) {
+export function computeSkirtingSegments(room, includeExcluded = false, floor = null) {
   if (!room) return [];
   const area = computeSkirtingArea(room, room.exclusions);
   if (!area.mp) return [];
@@ -184,6 +183,9 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
     ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
     : longSide;
 
+  // Build doorway intervals per polygon edge for fast lookup
+  const doorwayIntervals = buildDoorwayIntervals(room, floor);
+
   const segments = [];
   for (const poly of area.mp) {
     for (const ring of poly) {
@@ -197,8 +199,14 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
         const wallLength = Math.sqrt(dx * dx + dy * dy);
         if (wallLength <= 0) continue;
 
-        const overlaps = boundaryOverlapIntervals(p1, p2, avail.mp);
+        let overlaps = boundaryOverlapIntervals(p1, p2, avail.mp);
         if (overlaps.length === 0) continue;
+
+        // Subtract doorway intervals from skirting overlaps
+        if (doorwayIntervals.length > 0) {
+          overlaps = subtractDoorwayIntervals(overlaps, p1, p2, wallLength, doorwayIntervals);
+          if (overlaps.length === 0) continue;
+        }
 
         // Normalize points for stable Wall ID regardless of direction
         const pts = [p1, p2].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -235,6 +243,120 @@ export function computeSkirtingSegments(room, includeExcluded = false) {
     }
   }
   return segments;
+}
+
+/**
+ * Build sorted doorway intervals from wall entities (or empty if no floor).
+ * Each interval is { edgeIndex, startCm, endCm, edgeStartPt, edgeDirX, edgeDirY, edgeLen }.
+ */
+function buildDoorwayIntervals(room, floor) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+  if (!floor?.walls) return [];
+
+  const intervals = [];
+  for (let i = 0; i < verts.length; i++) {
+    // Find wall for this edge
+    const wall = floor.walls.find(
+      w => w.roomEdge && w.roomEdge.roomId === room.id && w.roomEdge.edgeIndex === i
+    ) || floor.walls.find(
+      w => w.surfaces && w.surfaces.some(s => s.roomId === room.id && s.edgeIndex === i)
+    );
+
+    if (!wall || !wall.doorways || wall.doorways.length === 0) continue;
+
+    const A = verts[i];
+    const B = verts[(i + 1) % verts.length];
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const L = Math.sqrt(dx * dx + dy * dy);
+    if (L < 1) continue;
+
+    for (const dw of wall.doorways) {
+      intervals.push({
+        edgeIndex: i,
+        startCm: dw.offsetCm,
+        endCm: dw.offsetCm + dw.widthCm,
+        edgeStartX: A.x,
+        edgeStartY: A.y,
+        edgeDirX: dx / L,
+        edgeDirY: dy / L,
+        edgeLen: L
+      });
+    }
+  }
+  return intervals;
+}
+
+/**
+ * Subtract doorway intervals from skirting overlap intervals.
+ * Matches by checking if the skirting segment lies on a polygon edge with doorways.
+ */
+function subtractDoorwayIntervals(overlaps, p1, p2, wallLength, doorwayIntervals) {
+  if (!doorwayIntervals || doorwayIntervals.length === 0) return overlaps;
+
+  const eps = EPSILON;
+
+  // Find doorway intervals that match this skirting segment
+  const matchingIntervals = [];
+
+  for (const interval of doorwayIntervals) {
+    const { edgeStartX, edgeStartY, edgeDirX, edgeDirY, edgeLen, startCm, endCm } = interval;
+
+    // Check if p1→p2 is collinear with this edge
+    const segDx = p2[0] - p1[0];
+    const segDy = p2[1] - p1[1];
+    const cross = edgeDirX * segDy - edgeDirY * segDx;
+    if (Math.abs(cross) > eps) continue;
+
+    // Check if p1 is on the edge line
+    const toP1x = p1[0] - edgeStartX;
+    const toP1y = p1[1] - edgeStartY;
+    const cross2 = edgeDirX * toP1y - edgeDirY * toP1x;
+    if (Math.abs(cross2) > eps) continue;
+
+    // Project p1 onto edge to find the offset
+    const t1 = toP1x * edgeDirX + toP1y * edgeDirY;
+    // Direction: same or reversed?
+    const dot = segDx * edgeDirX + segDy * edgeDirY;
+    const sameDir = dot >= 0;
+    const baseOffset = t1;
+
+    // Calculate doorway exclusion in skirting-local coordinates
+    let dwStart, dwEnd;
+    if (sameDir) {
+      dwStart = startCm - baseOffset;
+      dwEnd = endCm - baseOffset;
+    } else {
+      dwStart = baseOffset - endCm;
+      dwEnd = baseOffset - startCm;
+    }
+
+    if (dwEnd > eps && dwStart < wallLength - eps) {
+      matchingIntervals.push([Math.max(0, dwStart), Math.min(wallLength, dwEnd)]);
+    }
+  }
+
+  if (matchingIntervals.length === 0) return overlaps;
+
+  // Sort exclusions
+  matchingIntervals.sort((a, b) => a[0] - b[0]);
+
+  // Subtract exclusions from each overlap
+  const result = [];
+  for (const [oStart, oEnd] of overlaps) {
+    let cursor = oStart;
+    for (const [exStart, exEnd] of matchingIntervals) {
+      if (exStart > cursor && exStart < oEnd) {
+        result.push([cursor, Math.min(exStart, oEnd)]);
+      }
+      cursor = Math.max(cursor, exEnd);
+    }
+    if (cursor < oEnd - eps) {
+      result.push([cursor, oEnd]);
+    }
+  }
+  return result;
 }
 
 /**
@@ -346,8 +468,8 @@ function isPointOnLine(p, q1, q2, eps) {
 /**
  * Calculates the total length where skirting should be applied.
  */
-export function computeSkirtingPerimeter(room) {
-  const segments = computeSkirtingSegments(room);
+export function computeSkirtingPerimeter(room, floor = null) {
+  const segments = computeSkirtingSegments(room, false, floor);
   return segments.reduce((sum, s) => sum + s.length, 0);
 }
 
@@ -595,6 +717,45 @@ function detectBondPeriod(frac) {
   return 0;
 }
 
+/**
+ * Resolves room, floor, pattern settings, rotation, offset, origin, and room bounds
+ * shared by all tilesForPreview* functions.
+ * Returns null if no valid room is available.
+ */
+function prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride) {
+  const room = roomOverride || getCurrentRoom(state);
+  if (!room) return null;
+  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
+  const patternSettings = patternSettingsOverride || room.pattern;
+  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
+  const rotRad = degToRad(rotDeg);
+  const offX = Number(patternSettings?.offsetXcm) || 0;
+  const offY = Number(patternSettings?.offsetYcm) || 0;
+  const origin = originOverride || computeOriginPoint(room, patternSettings, floor);
+  const preset = patternSettings?.origin?.preset || "tl";
+  const bounds = getRoomBounds(room);
+  return { room, floor, patternSettings, rotDeg, rotRad, offX, offY, origin, preset, bounds };
+}
+
+/**
+ * Clips a tile polygon against the available area multipolygon.
+ * Returns { d, isFull } or null if the tile doesn't intersect the area.
+ */
+function clipTileToArea(availableMP, tilePolygon, fullArea) {
+  let clipped;
+  try {
+    clipped = polygonClipping.intersection(availableMP, tilePolygon);
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+  if (!clipped || !clipped.length) return null;
+  const d = multiPolygonToPathD(clipped);
+  if (!d) return null;
+  const gotArea = multiPolyArea(clipped);
+  const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
+  return { d, isFull };
+}
+
 export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeInclude = null, floorOverride = null, options = null) {
   let roomOverride = null;
   let includeExcluded = false;
@@ -694,8 +855,7 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   const minY = b.minY - marginY;
   const maxY = b.maxY + marginY;
 
-  // === FIX A: "center" means tile CENTER on room center ===
-  // Only for preset="center": shift anchor by half tile so that a tile is centered on origin.
+  // For preset="center": shift anchor by half tile so that a tile is centered on the origin point.
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
   if (preset === "center") {
@@ -709,17 +869,12 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
   const estCols = Math.ceil((maxX - startX) / stepX) + 1;
   const estRows = Math.ceil((maxY - startY) / stepY) + 1;
 
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
-
   const tiles = [];
 
   for (let r = 0; r < estRows; r++) {
     const y = startY + r * stepY;
 
-    // === FIX B: running bond must be periodic, not cumulative drift ===
+    // Running bond: periodic row shift to prevent cumulative drift at non-reciprocal fractions.
     let shift = 0;
     if (rowShiftCm) {
       if (bondPeriod > 0) shift = (r % bondPeriod) * rowShiftCm;
@@ -758,17 +913,9 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
 }
 
 function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const sideLength = tw / Math.sqrt(3);
   const hexHeight = sideLength * 2;
@@ -777,37 +924,20 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
   const stepX = hexWidth + grout;
   const stepY = hexHeight * HEX_STEP_RATIO + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
 
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= hexWidth / 2;
-    anchorY -= hexHeight / 2;
-  }
+  if (preset === "center") { anchorX -= hexWidth / 2; anchorY -= hexHeight / 2; }
 
-  const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
-  const startY = anchorY + floorDiv(minY - anchorY, stepY) * stepY;
+  const startX = anchorX + floorDiv(b.minX - marginX - anchorX, stepX) * stepX;
+  const startY = anchorY + floorDiv(b.minY - marginY - anchorY, stepY) * stepY;
 
-  const estCols = Math.ceil((maxX - startX) / stepX) + 2;
-  const estRows = Math.ceil((maxY - startY) / stepY) + 2;
-
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
+  const estCols = Math.ceil((b.maxX + marginX - startX) / stepX) + 2;
+  const estRows = Math.ceil((b.maxY + marginY - startY) / stepY) + 2;
 
   const tiles = [];
   const hexFullArea = (3 * Math.sqrt(3) / 2) * sideLength * sideLength;
@@ -818,28 +948,15 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
 
     for (let c = 0; c < estCols; c++) {
       const x = startX + c * stepX + rowOffset;
-
       const tileId = `hex-r${r}c${c}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(room.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
 
-      const tileP = tileHexPolygon(x, y, tw, origin.x, origin.y, rotRad);
+      const result = clipTileToArea(availableMP, tileHexPolygon(x, y, tw, origin.x, origin.y, rotRad), hexFullArea);
+      if (result?.error) return { tiles: [], error: result.error };
+      if (!result) continue;
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (!clipped || !clipped.length) continue;
-
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
-
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= hexFullArea * TILE_AREA_TOLERANCE;
-
-      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
+      tiles.push({ d: result.d, isFull: result.isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -847,17 +964,9 @@ function tilesForPreviewHex(state, availableMP, tw, th, grout, includeExcluded =
 }
 
 function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, patternSettings, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const type = patternSettings?.type || "grid";
   const frac = Number(patternSettings?.bondFraction) || 0.5;
@@ -867,44 +976,27 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
   const stepX = tw + grout;
   const stepY = tw + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= tw / 2;
-    anchorY -= tw / 2;
-  }
+  if (preset === "center") { anchorX -= tw / 2; anchorY -= tw / 2; }
 
+  const minX = b.minX - marginX, maxX = b.maxX + marginX;
+  const minY = b.minY - marginY, maxY = b.maxY + marginY;
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
   const startY = anchorY + floorDiv(minY - anchorY, stepY) * stepY;
 
   const estCols = Math.ceil((maxX - startX) / stepX) + 1;
   const estRows = Math.ceil((maxY - startY) / stepY) + 1;
 
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
-
   const tiles = [];
   const fullArea = tw * tw;
 
   for (let r = 0; r < estRows; r++) {
     const y = startY + r * stepY;
-
     let shift = 0;
     if (rowShiftCm) {
       if (bondPeriod > 0) shift = (r % bondPeriod) * rowShiftCm;
@@ -914,25 +1006,14 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
     for (let c = 0; c < estCols; c++) {
       const x = startX + c * stepX + shift;
       const tileId = `sq-r${r}c${c}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(room.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
-      const tileP = tileRectPolygon(x, y, tw, tw, origin.x, origin.y, rotRad);
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (!clipped || !clipped.length) continue;
+      const result = clipTileToArea(availableMP, tileRectPolygon(x, y, tw, tw, origin.x, origin.y, rotRad), fullArea);
+      if (result?.error) return { tiles: [], error: result.error };
+      if (!result) continue;
 
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
-
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-
-      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
+      tiles.push({ d: result.d, isFull: result.isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -940,52 +1021,28 @@ function tilesForPreviewSquare(state, availableMP, tw, grout, includeExcluded = 
 }
 
 function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const stepX = tw + grout;
-  const stepY = th / 2 + grout / 2; // For staggered rhombus grid
+  const stepY = th / 2 + grout / 2;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= tw / 2;
-    anchorY -= th / 2;
-  }
+  if (preset === "center") { anchorX -= tw / 2; anchorY -= th / 2; }
 
+  const minX = b.minX - marginX, maxX = b.maxX + marginX;
+  const minY = b.minY - marginY, maxY = b.maxY + marginY;
   const startX = anchorX + floorDiv(minX - anchorX, stepX) * stepX;
   const startY = anchorY + floorDiv(minY - anchorY, stepY) * stepY;
 
   const estCols = Math.ceil((maxX - startX) / stepX) + 2;
   const estRows = Math.ceil((maxY - startY) / stepY) + 2;
-
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = (tw * th) / 2;
@@ -996,28 +1053,15 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
 
     for (let c = 0; c < estCols; c++) {
       const x = startX + c * stepX + rowOffset;
-
       const tileId = `rho-r${r}c${c}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(room.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
 
-      const tileP = tileRhombusPolygon(x, y, tw, th, origin.x, origin.y, rotRad);
+      const result = clipTileToArea(availableMP, tileRhombusPolygon(x, y, tw, th, origin.x, origin.y, rotRad), fullArea);
+      if (result?.error) return { tiles: [], error: result.error };
+      if (!result) continue;
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (!clipped || !clipped.length) continue;
-
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
-
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-
-      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
+      tiles.push({ d: result.d, isFull: result.isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -1025,17 +1069,9 @@ function tilesForPreviewRhombus(state, availableMP, tw, th, grout, includeExclud
 }
 
 function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const L = Math.max(tw, th);
   const W = Math.min(tw, th);
@@ -1043,45 +1079,24 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
   const stepY = W + grout;
   const shear = Math.max(L - W, 0) + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const margin = TILE_MARGIN_MULTIPLIER * (L + W + grout);
-  const minX = b.minX - margin;
-  const maxX = b.maxX + margin;
-  const minY = b.minY - margin;
-  const maxY = b.maxY + margin;
+  const minX = b.minX - margin, maxX = b.maxX + margin;
+  const minY = b.minY - margin, maxY = b.maxY + margin;
 
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= L / 2;
-    anchorY -= W / 2;
-  }
+  if (preset === "center") { anchorX -= L / 2; anchorY -= W / 2; }
 
   const startRow = Math.floor((minY - anchorY) / stepY) - 2;
   const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
-
   const minRowShift = Math.min(startRow, endRow) * shear;
   const maxRowShift = Math.max(startRow, endRow) * shear;
-
   const startCol = Math.floor((minX - anchorX - maxRowShift) / stepX) - 2;
   const endCol = Math.ceil((maxX - anchorX - minRowShift) / stepX) + 2;
 
   const estRows = endRow - startRow + 1;
   const estCols = endCol - startCol + 1;
-  const estTiles = estRows * estCols;
-  const areaEst = (w * h) / (W * L);
-  const maxTiles = Math.min(
-    MAX_PREVIEW_TILES * 4,
-    Math.max(MAX_PREVIEW_TILES, Math.ceil(areaEst * 20))
-  );
-  if (estTiles > maxTiles) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = W * L;
@@ -1091,9 +1106,8 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
     for (let col = startCol; col <= endCol; col++) {
       const baseX = anchorX + col * stepX + row * shear;
       const isHorizontal = (row + col) % 2 === 0;
-
       const tileId = `hb-r${row}c${col}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(room.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
 
       const tileX = isHorizontal ? baseX : baseX + (L - W);
@@ -1101,22 +1115,11 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
       const tileW = isHorizontal ? L : W;
       const tileH = isHorizontal ? W : L;
 
-      const tileP = tileRectPolygon(tileX, tileY, tileW, tileH, origin.x, origin.y, rotRad);
+      const result = clipTileToArea(availableMP, tileRectPolygon(tileX, tileY, tileW, tileH, origin.x, origin.y, rotRad), fullArea);
+      if (result?.error) return { tiles: [], error: result.error };
+      if (!result) continue;
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (!clipped || !clipped.length) continue;
-
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
-
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
+      tiles.push({ d: result.d, isFull: result.isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -1127,60 +1130,32 @@ function tilesForPreviewHerringbone(state, availableMP, tw, th, grout, includeEx
 export { tilesForPreviewHerringbone };
 
 function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const L = Math.max(tw, th);
   const W = Math.min(tw, th);
   const W2 = 2 * W + grout;
-
   const stepX = L + grout;
   const stepY = W2 + grout;
   const shear = Math.max(L - W2, 0) + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const margin = TILE_MARGIN_MULTIPLIER * (L + W2 + grout);
-  const minX = b.minX - margin;
-  const maxX = b.maxX + margin;
-  const minY = b.minY - margin;
-  const maxY = b.maxY + margin;
+  const minX = b.minX - margin, maxX = b.maxX + margin;
+  const minY = b.minY - margin, maxY = b.maxY + margin;
 
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= L / 2;
-    anchorY -= W2 / 2;
-  }
+  if (preset === "center") { anchorX -= L / 2; anchorY -= W2 / 2; }
 
   const startRow = Math.floor((minY - anchorY) / stepY) - 2;
   const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
-
   const minRowShift = Math.min(startRow, endRow) * shear;
   const maxRowShift = Math.max(startRow, endRow) * shear;
-
   const startCol = Math.floor((minX - anchorX - maxRowShift) / stepX) - 2;
   const endCol = Math.ceil((maxX - anchorX - minRowShift) / stepX) + 2;
-
-  const estRows = endRow - startRow + 1;
-  const estCols = endCol - startCol + 1;
-  const estTiles = estRows * estCols * 2;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = W * L;
@@ -1191,56 +1166,25 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
       const baseX = anchorX + col * stepX + row * shear;
       const isHorizontal = (row + col) % 2 === 0;
 
-      if (isHorizontal) {
-        const hx = baseX;
-        const hy = baseY;
-        const placements = [
-          { x: hx, y: hy, w: L, h: W, id: `dhb-r${row}c${col}-h0` },
-          { x: hx, y: hy + W + grout, w: L, h: W, id: `dhb-r${row}c${col}-h1` },
-        ];
-        for (const t of placements) {
-          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
-          if (!includeExcluded && isExcluded) continue;
+      const placements = isHorizontal
+        ? [
+            { x: baseX, y: baseY, w: L, h: W, id: `dhb-r${row}c${col}-h0` },
+            { x: baseX, y: baseY + W + grout, w: L, h: W, id: `dhb-r${row}c${col}-h1` },
+          ]
+        : [
+            { x: baseX + (L - W2), y: baseY - (L - W2), w: W, h: L, id: `dhb-r${row}c${col}-v0` },
+            { x: baseX + (L - W2) + W + grout, y: baseY - (L - W2), w: W, h: L, id: `dhb-r${row}c${col}-v1` },
+          ];
 
-          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
-          let clipped;
-          try {
-            clipped = polygonClipping.intersection(availableMP, tileP);
-          } catch (e) {
-            return { tiles: [], error: String(e?.message || e) };
-          }
-          if (!clipped || !clipped.length) continue;
-          const d = multiPolygonToPathD(clipped);
-          if (!d) continue;
-          const gotArea = multiPolyArea(clipped);
-          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
-        }
-      } else {
-        const vx = baseX + (L - W2);
-        const vy = baseY - (L - W2);
-        const placements = [
-          { x: vx, y: vy, w: W, h: L, id: `dhb-r${row}c${col}-v0` },
-          { x: vx + W + grout, y: vy, w: W, h: L, id: `dhb-r${row}c${col}-v1` },
-        ];
-        for (const t of placements) {
-          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
-          if (!includeExcluded && isExcluded) continue;
+      for (const t of placements) {
+        const isExcluded = Boolean(room.excludedTiles?.includes(t.id));
+        if (!includeExcluded && isExcluded) continue;
 
-          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
-          let clipped;
-          try {
-            clipped = polygonClipping.intersection(availableMP, tileP);
-          } catch (e) {
-            return { tiles: [], error: String(e?.message || e) };
-          }
-          if (!clipped || !clipped.length) continue;
-          const d = multiPolygonToPathD(clipped);
-          if (!d) continue;
-          const gotArea = multiPolyArea(clipped);
-          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
-        }
+        const result = clipTileToArea(availableMP, tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad), fullArea);
+        if (result?.error) return { tiles: [], error: result.error };
+        if (!result) continue;
+
+        tiles.push({ d: result.d, isFull: result.isFull, id: t.id, excluded: isExcluded });
       }
     }
   }
@@ -1249,56 +1193,29 @@ function tilesForPreviewDoubleHerringbone(state, availableMP, tw, th, grout, inc
 }
 
 function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const L = Math.max(tw, th);
   const W = Math.min(tw, th);
   const stepX = W + grout;
   const stepY = L + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const marginX = TILE_MARGIN_MULTIPLIER * stepX;
   const marginY = TILE_MARGIN_MULTIPLIER * stepY;
 
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= W / 2;
-    anchorY -= L / 2;
-  }
+  if (preset === "center") { anchorX -= W / 2; anchorY -= L / 2; }
 
+  const minX = b.minX - marginX, maxX = b.maxX + marginX;
+  const minY = b.minY - marginY, maxY = b.maxY + marginY;
   const startCol = Math.floor((minX - anchorX) / stepX) - 2;
   const endCol = Math.ceil((maxX - anchorX) / stepX) + 2;
-
   const startRow = Math.floor((minY - anchorY) / stepY) - 2;
   const endRow = Math.ceil((maxY - anchorY) / stepY) + 2;
-
-  const estCols = endCol - startCol + 1;
-  const estRows = endRow - startRow + 1;
-  const estTiles = estCols * estRows;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = W * L;
@@ -1310,25 +1227,14 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
     for (let row = startRow; row <= endRow; row++) {
       const baseY = anchorY + row * stepY + shiftY;
       const tileId = `vsa-r${row}c${col}`;
-      const isExcluded = Boolean(currentRoom.excludedTiles?.includes(tileId));
+      const isExcluded = Boolean(room.excludedTiles?.includes(tileId));
       if (!includeExcluded && isExcluded) continue;
 
-      const tileP = tileRectPolygon(baseX, baseY, W, L, origin.x, origin.y, rotRad);
+      const result = clipTileToArea(availableMP, tileRectPolygon(baseX, baseY, W, L, origin.x, origin.y, rotRad), fullArea);
+      if (result?.error) return { tiles: [], error: result.error };
+      if (!result) continue;
 
-      let clipped;
-      try {
-        clipped = polygonClipping.intersection(availableMP, tileP);
-      } catch (e) {
-        return { tiles: [], error: String(e?.message || e) };
-      }
-      if (!clipped || !clipped.length) continue;
-
-      const d = multiPolygonToPathD(clipped);
-      if (!d) continue;
-
-      const gotArea = multiPolyArea(clipped);
-      const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-      tiles.push({ d, isFull, id: tileId, excluded: isExcluded });
+      tiles.push({ d: result.d, isFull: result.isFull, id: tileId, excluded: isExcluded });
     }
   }
 
@@ -1336,17 +1242,9 @@ function tilesForPreviewVerticalStackAlternating(state, availableMP, tw, th, gro
 }
 
 function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeExcluded = false, roomOverride = null, floorOverride = null, originOverride = null, patternSettingsOverride = null) {
-  const currentRoom = roomOverride || getCurrentRoom(state);
-  const floor = floorOverride || (state.floors?.find(f => f.id === state.selectedFloorId) || null);
-  const patternSettings = patternSettingsOverride || currentRoom.pattern;
-  const rotDeg = Number(patternSettings?.rotationDeg) || 0;
-  const rotRad = degToRad(rotDeg);
-
-  const offX = Number(patternSettings?.offsetXcm) || 0;
-  const offY = Number(patternSettings?.offsetYcm) || 0;
-
-  const origin = originOverride || computeOriginPoint(currentRoom, patternSettings, floor);
-  const preset = patternSettings?.origin?.preset || "tl";
+  const ctx = prepareTileContext(state, roomOverride, floorOverride, originOverride, patternSettingsOverride);
+  if (!ctx) return { tiles: [], error: "Kein Raum ausgewählt." };
+  const { room, origin, preset, rotRad, offX, offY, bounds } = ctx;
 
   const L = Math.max(tw, th);
   const W = Math.min(tw, th);
@@ -1354,39 +1252,20 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeEx
   const unitW = 2 * L + 2 * grout;
   const unitH = L + grout;
 
-  const bounds = getRoomBounds(currentRoom);
-  const w = bounds.width;
-  const h = bounds.height;
-
-  const b = inverseRotatedRoomBounds(w, h, origin, rotRad, bounds.minX, bounds.minY);
-
+  const b = inverseRotatedRoomBounds(bounds.width, bounds.height, origin, rotRad, bounds.minX, bounds.minY);
   const marginX = TILE_MARGIN_MULTIPLIER * unitW;
   const marginY = TILE_MARGIN_MULTIPLIER * unitH;
 
-  const minX = b.minX - marginX;
-  const maxX = b.maxX + marginX;
-  const minY = b.minY - marginY;
-  const maxY = b.maxY + marginY;
-
   let anchorX = origin.x + offX;
   let anchorY = origin.y + offY;
-  if (preset === "center") {
-    anchorX -= unitW / 2;
-    anchorY -= unitH / 2;
-  }
+  if (preset === "center") { anchorX -= unitW / 2; anchorY -= unitH / 2; }
 
+  const minX = b.minX - marginX, maxX = b.maxX + marginX;
+  const minY = b.minY - marginY, maxY = b.maxY + marginY;
   const startCol = Math.floor((minX - anchorX) / unitW) - 2;
   const endCol = Math.ceil((maxX - anchorX) / unitW) + 2;
   const startRow = Math.floor((minY - anchorY) / unitH) - 2;
   const endRow = Math.ceil((maxY - anchorY) / unitH) + 2;
-
-  const estCols = endCol - startCol + 1;
-  const estRows = endRow - startRow + 1;
-
-  const estTiles = estCols * estRows * tilesPerStack * 2;
-  if (estTiles > MAX_PREVIEW_TILES) {
-    return { tiles: [], error: `Zu viele Fliesen für Preview (${estTiles}).` };
-  }
 
   const tiles = [];
   const fullArea = tw * th;
@@ -1398,37 +1277,20 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeEx
       const baseX = anchorX + col * unitW + rowOffset;
 
       for (let i = 0; i < tilesPerStack; i++) {
-        const hx = baseX;
-        const hy = baseY + i * (W + grout);
-        const vx = baseX + L + grout + i * (W + grout);
-        const vy = baseY;
-
         const placements = [
-          { x: hx, y: hy, w: L, h: W, id: `bw-r${row}c${col}-i${i}-h` },
-          { x: vx, y: vy, w: W, h: L, id: `bw-r${row}c${col}-i${i}-v` },
+          { x: baseX, y: baseY + i * (W + grout), w: L, h: W, id: `bw-r${row}c${col}-i${i}-h` },
+          { x: baseX + L + grout + i * (W + grout), y: baseY, w: W, h: L, id: `bw-r${row}c${col}-i${i}-v` },
         ];
 
         for (const t of placements) {
-          const isExcluded = Boolean(currentRoom.excludedTiles?.includes(t.id));
+          const isExcluded = Boolean(room.excludedTiles?.includes(t.id));
           if (!includeExcluded && isExcluded) continue;
 
-          const tileP = tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad);
+          const result = clipTileToArea(availableMP, tileRectPolygon(t.x, t.y, t.w, t.h, origin.x, origin.y, rotRad), fullArea);
+          if (result?.error) return { tiles: [], error: result.error };
+          if (!result) continue;
 
-          let clipped;
-          try {
-            clipped = polygonClipping.intersection(availableMP, tileP);
-          } catch (e) {
-            return { tiles: [], error: String(e?.message || e) };
-          }
-          if (!clipped || !clipped.length) continue;
-
-          const d = multiPolygonToPathD(clipped);
-          if (!d) continue;
-
-          const gotArea = multiPolyArea(clipped);
-          const isFull = gotArea >= fullArea * TILE_AREA_TOLERANCE;
-
-          tiles.push({ d, isFull, id: t.id, excluded: isExcluded });
+          tiles.push({ d: result.d, isFull: result.isFull, id: t.id, excluded: isExcluded });
         }
       }
     }

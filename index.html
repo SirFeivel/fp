@@ -427,6 +427,15 @@
                 </button>
               </div>
               <div class="view-toggle-divider"></div>
+              <div class="view-toggle" id="renderModeToggle">
+                <button id="view2DBtn" class="view-toggle-btn active" title="2D View">
+                  <span>2D</span>
+                </button>
+                <button id="view3DBtn" class="view-toggle-btn" title="3D View">
+                  <span>3D</span>
+                </button>
+              </div>
+              <div class="view-toggle-divider"></div>
               <label class="planning-room-select">
                 <span data-i18n="tabs.floor">Floor:</span>
                 <select id="planningFloorSelect"></select>
@@ -434,6 +443,14 @@
               <label class="planning-room-select" id="roomSelectLabel">
                 <span data-i18n="tabs.room">Room:</span>
                 <select id="planningRoomSelect"></select>
+              </label>
+              <label class="planning-room-select" id="wallSelectLabel">
+                <span data-i18n="tabs.structure">Structure:</span>
+                <select id="wallSelect"></select>
+              </label>
+              <label class="planning-room-select" id="surfaceSelectLabel">
+                <span data-i18n="tabs.surface">Surface:</span>
+                <select id="surfaceSelect"></select>
               </label>
               <label class="planning-room-select" id="groupSelectLabel" style="display: none;">
                 <span data-i18n="patternGroups.selectedGroup">Selected Group:</span>
@@ -505,13 +522,6 @@
                   <button id="floorAddCircle" class="quick-btn" title="Demo: Circle">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
-                    </svg>
-                  </button>
-                  <button id="floorUnfold3D" class="quick-btn" title="3D View">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M4 8l8-4 8 4v8l-8 4-8-4z"/>
-                      <path d="M4 8l8 4 8-4"/>
-                      <line x1="12" y1="12" x2="12" y2="20"/>
                     </svg>
                   </button>
                   <button id="floorDeleteRoom" class="quick-btn danger" title="Delete selected room" disabled>
@@ -663,19 +673,31 @@
               <!-- 3D View Quick Controls (hidden by default) -->
               <div class="quick-controls" id="threeDQuickControls" style="display: none;">
                 <div class="quick-actions">
-                  <button id="threeDBackToFloor" class="quick-btn" title="Back to Floor View">
+                  <button id="threeDBackToFloor" class="quick-btn" title="Exit 3D">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="19" y1="12" x2="5" y2="12"></line>
                       <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
-                    Back
+                    <span data-i18n="planning.exit3D">Exit 3D</span>
                   </button>
                   <button id="threeDResetCamera" class="quick-btn" title="Reset Camera">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1-2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                       <circle cx="12" cy="13" r="4"></circle>
                     </svg>
                   </button>
+                </div>
+                <div class="quick-control-divider"></div>
+                <div class="quick-toggles">
+                  <label class="quick-toggle" title="Show Walls">
+                    <input id="threeDShowWalls" type="checkbox" />
+                    <span class="quick-toggle-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </span>
+                  </label>
                 </div>
                 <div class="quick-control-group">
                   <span class="quick-label" id="threeDHoverInfo"></span>
@@ -756,6 +778,13 @@
                       </button>
                     </div>
                   </div>
+                  <button id="quickAddDoorway" class="quick-btn" title="Add Doorway" data-i18n-title="edge.addDoorway" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 21V3h18v18H3z"/>
+                      <path d="M9 21V11h6v10"/>
+                      <circle cx="14" cy="16" r="1"/>
+                    </svg>
+                  </button>
                   <button id="roomDeleteObject" class="quick-btn danger" title="Delete selected" data-i18n-title="planning.deleteSelected" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -1028,6 +1057,35 @@
                   <input id="planningRoomSkirtingEnabled" type="checkbox" checked />
                   <div class="toggle-slider"></div>
                 </label>
+              </div>
+            </div>
+
+            <!-- Wall Height is now per-edge in Edge Properties section below -->
+
+            <!-- Edge / Wall Properties -->
+            <div class="panel-section" id="edgePropertiesSection">
+              <h4 class="panel-section-title" data-i18n="edge.properties">Wall Properties</h4>
+              <div class="panel-fields">
+                <div class="field">
+                  <label data-i18n="edge.selectEdge">Select Edge</label>
+                  <select id="edgeSelect"></select>
+                </div>
+                <div class="field">
+                  <label data-i18n="edge.thickness">Wall Thickness (cm)</label>
+                  <input id="edgeThickness" type="number" min="1" step="1" value="12" />
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label data-i18n="edge.heightStart">Height Start (cm)</label>
+                    <input id="edgeHeightStart" type="number" min="1" step="1" value="200" />
+                  </div>
+                  <div class="field">
+                    <label data-i18n="edge.heightEnd">Height End (cm)</label>
+                    <input id="edgeHeightEnd" type="number" min="1" step="1" value="200" />
+                  </div>
+                </div>
+                <div id="doorwaysList"></div>
+                <button id="addDoorwayBtn" class="btn btn-small" data-i18n="edge.addDoorway">Add Doorway</button>
               </div>
             </div>
 
@@ -1325,6 +1383,13 @@
           <label class="toggle-switch">
             <span class="toggle-label" data-i18n="debug.showNeeds">Show Offcut Needs</span>
             <input id="debugShowNeeds" type="checkbox" />
+            <div class="toggle-slider"></div>
+          </label>
+        </div>
+        <div class="field">
+          <label class="toggle-switch">
+            <span class="toggle-label" data-i18n="debug.showWalls">Show Walls (2D)</span>
+            <input id="debugShowWalls" type="checkbox" />
             <div class="toggle-slider"></div>
           </label>
         </div>

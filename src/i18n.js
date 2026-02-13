@@ -60,8 +60,15 @@ const translations = {
       displayOptions: "Anzeigeoptionen",
       showGrid: "Rasterlinien anzeigen",
       showSkirting: "Sockelleisten anzeigen",
+      showWalls: "Wände anzeigen",
+      view2D: "2D",
+      view3D: "3D",
+      exit3D: "3D beenden",
       removalMode: "Entfernungsmodus",
-      deleteSelected: "Auswahl löschen"
+      deleteSelected: "Auswahl löschen",
+      surfaceEditHint: "Doppelklick auf die Wandfläche, um die Flieseneinstellungen zu bearbeiten.",
+      enableTiling: "Fliesenverlegung aktivieren",
+      tiling: "Fliesen"
     },
     floor: {
       uploadBg: "Bild",
@@ -165,6 +172,11 @@ const translations = {
       title: "Gebäude",
       floor: "Etage",
       room: "Raum",
+      wall: "Wand",
+      structure: "Struktur",
+      surface: "Fläche",
+      floorSurface: "Boden",
+      roomFloor: "Raumboden",
       addFloor: "Etage hinzufügen",
       deleteFloor: "Etage löschen",
       floorName: "Etagenname",
@@ -176,6 +188,23 @@ const translations = {
       roomAdded: "Raum hinzugefügt",
       roomDeleted: "Raum gelöscht",
       commercial: "Kommerziell"
+    },
+    wall: {
+      configuration: "Wandkonfiguration",
+      thickness: "Wandstärke (cm)",
+      heightStart: "Höhe Anfang (cm)",
+      heightEnd: "Höhe Ende (cm)",
+      configChanged: "Wandkonfiguration geändert",
+      wall: "Wand",
+      top: "Obere Wand",
+      right: "Rechte Wand",
+      bottom: "Untere Wand",
+      left: "Linke Wand"
+    },
+    surface: {
+      enableTiling: "Fliesenverlegung aktivieren",
+      editSurface: "Wandflächeneinstellungen",
+      tilingChanged: "Flieseneinstellung geändert"
     },
     room: {
       title: "Ihr Projekt",
@@ -197,6 +226,31 @@ const translations = {
       newRoom: "Neuer Raum",
       added: "Raum hinzugefügt",
       deleted: "Raum gelöscht"
+    },
+    edge: {
+      properties: "Wandeigenschaften",
+      thickness: "Wandstärke (cm)",
+      heightStart: "Wandhöhe Anfang (cm)",
+      heightEnd: "Wandhöhe Ende (cm)",
+      selectEdge: "Kante auswählen",
+      edgeN: "Kante {n}",
+      changed: "Wandeigenschaft geändert",
+      doorway: "Türöffnung",
+      doorways: "Türöffnungen",
+      addDoorway: "Tür hinzufügen",
+      removeDoorway: "Tür entfernen",
+      doorwayOffset: "Abstand (cm)",
+      doorwayWidth: "Breite (cm)",
+      doorwayHeight: "Höhe (cm)",
+      doorwayChanged: "Türöffnung geändert",
+      doorwayElevation: "Höhe ab Boden (cm)",
+      doorwayDistNear: "Abstand linke Ecke (cm)",
+      doorwayDistFar: "Abstand rechte Ecke (cm)",
+      doorwayMaxHeight: "Höhe begrenzt: Wandhöhe {0} cm",
+      doorwayMaxWidth: "Breite begrenzt: Wandlänge {0} cm",
+      doorwayOverlap: "Überlappt mit anderer Türöffnung",
+      doorwayNoSpace: "Kein Platz für weitere Türöffnung auf dieser Wand",
+      selectWallFirst: "Zuerst eine Wand auswählen"
     },
     skirting: {
       title: "Sockelleisten Konfiguration",
@@ -241,6 +295,8 @@ const translations = {
       sectionPricing: "Fliesenhandling",
       sectionLayout: "Fliesen Layout",
       preset: "Preset",
+      presetSelect: "Fliesen-Preset",
+      presetCustom: "Benutzerdefiniert",
       createPreset: "Preset erstellen",
       presetEmptyHint: "Erstelle zuerst ein Fliesen-Preset, um zu starten.",
       custom: "Benutzerdefiniert",
@@ -536,6 +592,7 @@ const translations = {
       title: "Debug",
       sectionOptions: "Debug Optionen",
       showNeeds: "Reststück-Bedarf anzeigen",
+      showWalls: "Wände anzeigen (2D)",
       changed: "Debug geändert"
     },
     init: {
@@ -656,8 +713,15 @@ const translations = {
       displayOptions: "Display Options",
       showGrid: "Show grid lines",
       showSkirting: "Show skirting",
+      showWalls: "Show walls",
+      view2D: "2D",
+      view3D: "3D",
+      exit3D: "Exit 3D",
       removalMode: "Removal mode",
-      deleteSelected: "Delete selected"
+      deleteSelected: "Delete selected",
+      surfaceEditHint: "Double-click the wall surface to edit its tiling configuration.",
+      enableTiling: "Enable Tiling",
+      tiling: "Tiling"
     },
     floor: {
       uploadBg: "Image",
@@ -761,6 +825,11 @@ const translations = {
       title: "Building",
       floor: "Floor",
       room: "Room",
+      wall: "Wall",
+      structure: "Structure",
+      surface: "Surface",
+      floorSurface: "Floor",
+      roomFloor: "Room floor",
       addFloor: "Add Floor",
       deleteFloor: "Delete Floor",
       floorName: "Floor Name",
@@ -772,6 +841,23 @@ const translations = {
       roomAdded: "Room added",
       roomDeleted: "Room deleted",
       commercial: "Commercial"
+    },
+    wall: {
+      configuration: "Wall Configuration",
+      thickness: "Wall Thickness (cm)",
+      heightStart: "Height Start (cm)",
+      heightEnd: "Height End (cm)",
+      configChanged: "Wall configuration changed",
+      wall: "Wall",
+      top: "Top wall",
+      right: "Right wall",
+      bottom: "Bottom wall",
+      left: "Left wall"
+    },
+    surface: {
+      enableTiling: "Enable Tiling",
+      editSurface: "Wall Surface Settings",
+      tilingChanged: "Surface tiling changed"
     },
     room: {
       title: "Your Project",
@@ -793,6 +879,31 @@ const translations = {
       newRoom: "New Room",
       added: "Room added",
       deleted: "Room deleted"
+    },
+    edge: {
+      properties: "Wall Properties",
+      thickness: "Wall Thickness (cm)",
+      heightStart: "Wall Height Start (cm)",
+      heightEnd: "Wall Height End (cm)",
+      selectEdge: "Select Edge",
+      edgeN: "Edge {n}",
+      changed: "Wall property changed",
+      doorway: "Doorway",
+      doorways: "Doorways",
+      addDoorway: "Add Doorway",
+      removeDoorway: "Remove Doorway",
+      doorwayOffset: "Offset (cm)",
+      doorwayWidth: "Width (cm)",
+      doorwayHeight: "Height (cm)",
+      doorwayChanged: "Doorway changed",
+      doorwayElevation: "Elevation from floor (cm)",
+      doorwayDistNear: "Distance from left corner (cm)",
+      doorwayDistFar: "Distance from right corner (cm)",
+      doorwayMaxHeight: "Height limited: wall height {0} cm",
+      doorwayMaxWidth: "Width limited: wall length {0} cm",
+      doorwayOverlap: "Overlaps with another doorway",
+      doorwayNoSpace: "No space for another doorway on this wall",
+      selectWallFirst: "Select a wall first"
     },
     skirting: {
       title: "Skirting Configuration",
@@ -837,6 +948,8 @@ const translations = {
       sectionPricing: "Handling Tiles",
       sectionLayout: "Tile Layout",
       preset: "Preset",
+      presetSelect: "Tile Preset",
+      presetCustom: "Custom",
       createPreset: "Create preset",
       presetEmptyHint: "Create a tile preset to get started.",
       custom: "Custom",
@@ -1132,6 +1245,7 @@ const translations = {
       title: "Debug",
       sectionOptions: "Debug Options",
       showNeeds: "Show leftover needs",
+      showWalls: "Show walls (2D)",
       changed: "Debug changed"
     },
     init: {

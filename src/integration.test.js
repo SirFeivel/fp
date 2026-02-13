@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createStateStore } from "./state.js";
 import { defaultStateWithRoom, defaultState, deepClone } from "./core.js";
-import { computePlanMetrics, computeSkirtingNeeds } from "./calc.js";
+import { computePlanMetrics, computeSkirtingNeeds, clearMetricsCache } from "./calc.js";
+
+beforeEach(() => clearMetricsCache());
 
 const validateStateFn = () => ({ errors: [], warns: [] });
 

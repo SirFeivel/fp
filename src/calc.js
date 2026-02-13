@@ -4,6 +4,7 @@ import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
 import { TRIANGULAR_CUT_MIN, TRIANGULAR_CUT_MAX, AREA_RATIO_SCALING_THRESHOLD, COMPLEMENTARY_FIT_MIN, COMPLEMENTARY_FIT_MAX } from "./constants.js";
 
+
 /**
  * Calculates material requirements for skirting.
  */
@@ -21,7 +22,8 @@ export function computeSkirtingNeeds(state, roomOverride = null) {
   }
 
   const skirting = room.skirting || {};
-  const segments = computeSkirtingSegments(room);
+  const floor = state?.floors?.find(f => f.rooms?.some(r => r.id === room.id));
+  const segments = computeSkirtingSegments(room, false, floor);
   const totalLengthCm = segments.reduce((sum, s) => sum + s.length, 0);
 
   if (segments.length === 0 || totalLengthCm <= 0) {
@@ -110,7 +112,7 @@ function clampPos(n) {
   return Number.isFinite(x) ? Math.max(0, x) : 0;
 }
 
-function calculateTileArea(tw, th, shape) {
+export function calculateTileArea(tw, th, shape) {
   if (shape === "hex") {
     const radius = tw / Math.sqrt(3);
     return (3 * Math.sqrt(3) / 2) * radius * radius;
@@ -207,7 +209,7 @@ function parsePathDToPolygon(d) {
 /**
  * Analyze a cut tile to extract its geometric properties
  */
-function analyzeCutTile(tile, tileAreaCm2) {
+export function analyzeCutTile(tile, tileAreaCm2) {
   const bb = bboxFromPathD(tile.d);
   if (!bb || !(bb.w > 0 && bb.h > 0)) {
     return null;
@@ -233,7 +235,7 @@ function analyzeCutTile(tile, tileAreaCm2) {
  * Find complementary pairs of cut tiles that can be cut from the same tile.
  * Returns a Map: tileIndex -> pairedWithIndex
  */
-function findComplementaryPairs(tiles, analyses, tw, th) {
+export function findComplementaryPairs(tiles, analyses, tw, th) {
   const pairs = new Map();
   const tileAreaCm2 = tw * th;
   const dimensionTol = 1.0;
@@ -481,6 +483,10 @@ export function clearMetricsCache(roomId = null) {
 }
 
 function getMetricsKey(state, room) {
+  const floor = state?.floors?.find(f => f.rooms?.some(r => r.id === room.id));
+  const group = floor?.patternGroups?.find(g => g.memberRoomIds?.includes(room.id));
+  const originRoom = group?.originRoomId
+    ? floor.rooms.find(r => r.id === group.originRoomId) : null;
   return JSON.stringify({
     tile: room.tile,
     grout: room.grout,
@@ -488,6 +494,11 @@ function getMetricsKey(state, room) {
     exclusions: room.exclusions,
     polygonVertices: room.polygonVertices,
     waste: state?.waste,
+    originTile: originRoom?.tile || null,
+    originPattern: originRoom?.pattern || null,
+    originGrout: originRoom?.grout || null,
+    originFloorPos: originRoom?.floorPosition || null,
+    roomFloorPos: room.floorPosition || null,
   });
 }
 
@@ -728,6 +739,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
 
   const priceTotal = installedAreaM2 * pricePerM2;
   const packs = packM2 > 0 ? Math.ceil(installedAreaM2 / packM2) : null;
+  const purchasedCost = packs && packM2 > 0 ? packs * packM2 * pricePerM2 : priceTotal;
 
   const result = {
     ok: true,
@@ -780,6 +792,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
         packM2,
         packs,
         priceTotal,
+        purchasedCost,
       },
 
       debug: {
@@ -817,23 +830,27 @@ export function computeFloorMetrics(state, floor) {
       error: "No rooms on floor",
       rooms: [],
       totals: null,
+      wallTotals: null,
       sharedPool: null
     };
   }
 
-  const useSharedPool = floor?.offcutSharing?.enabled;
+  const useSharedPool = Boolean(state?.waste?.shareOffcuts);
   const sharedPool = useSharedPool ? new OffcutPool() : null;
+
+  const floorRooms = floor?.rooms || [];
 
   const roomMetrics = [];
   let totalFullTiles = 0;
   let totalCutTiles = 0;
   let totalReusedCuts = 0;
-  let totalAreaCm2 = 0;
-  let totalWasteAreaCm2 = 0;
+  let totalNetAreaM2 = 0;
+  let totalWasteAreaM2 = 0;
   let totalPurchasedTiles = 0;
   let totalCost = 0;
 
-  for (const room of floor.rooms) {
+  // Floor rooms
+  for (const room of floorRooms) {
     const options = {
       externalPool: sharedPool,
       returnPool: useSharedPool,
@@ -843,6 +860,7 @@ export function computeFloorMetrics(state, floor) {
     const metrics = computePlanMetrics(state, room, options);
 
     roomMetrics.push({
+      type: "floor",
       room,
       roomId: room.id,
       roomName: room.name,
@@ -854,10 +872,10 @@ export function computeFloorMetrics(state, floor) {
       totalFullTiles += d.tiles.fullTiles || 0;
       totalCutTiles += d.tiles.cutTiles || 0;
       totalReusedCuts += d.tiles.reusedCuts || 0;
-      totalAreaCm2 += d.area.roomAreaCm2 || 0;
-      totalWasteAreaCm2 += d.waste.wasteAreaCm2 || 0;
+      totalNetAreaM2 += d.area.netAreaM2 || 0;
+      totalWasteAreaM2 += d.material.wasteAreaM2 || 0;
       totalPurchasedTiles += d.tiles.purchasedTiles || 0;
-      totalCost += d.cost.tilesCost || 0;
+      totalCost += d.pricing.priceTotal || 0;
     }
   }
 
@@ -868,11 +886,15 @@ export function computeFloorMetrics(state, floor) {
       fullTiles: totalFullTiles,
       cutTiles: totalCutTiles,
       reusedCuts: totalReusedCuts,
-      totalAreaCm2,
-      totalAreaM2: totalAreaCm2 / 10000,
-      wasteAreaCm2: totalWasteAreaCm2,
+      netAreaM2: totalNetAreaM2,
+      wasteAreaM2: totalWasteAreaM2,
       purchasedTiles: totalPurchasedTiles,
       totalCost
+    },
+    wallTotals: {
+      totalTiles: 0,
+      totalCost: 0,
+      netAreaM2: 0
     },
     sharedPool: sharedPool?.snapshot() || null
   };
@@ -946,66 +968,69 @@ export function computeProjectTotals(state) {
   let totalSkirtingAreaM2 = 0;
 
   const rooms = [];
+  const wallRooms = [];
   const byMaterial = {};
+  let wallTotalTiles = 0;
+  let wallTotalCost = 0;
+  let wallTotalAreaM2 = 0;
 
   if (state.floors) {
     for (const floor of state.floors) {
-      if (floor.rooms) {
-        for (const room of floor.rooms) {
-          const grand = computeGrandTotals(state, room);
-          if (grand.ok) {
-            totalTiles += grand.totalTiles;
-            totalCost += grand.totalCost;
-            totalPurchasedAreaM2 += grand.totalAreaM2;
-            totalNetAreaM2 += grand.netAreaM2;
-            totalFloorAreaM2 += grand.floorAreaM2;
-            totalSkirtingAreaM2 += grand.skirtingAreaM2;
-            roomCount++;
+      for (const room of (floor.rooms || [])) {
+        const grand = computeGrandTotals(state, room);
+        if (grand.ok) {
+          totalTiles += grand.totalTiles;
+          totalCost += grand.totalCost;
+          totalPurchasedAreaM2 += grand.totalAreaM2;
+          totalNetAreaM2 += grand.netAreaM2;
+          totalFloorAreaM2 += grand.floorAreaM2;
+          totalSkirtingAreaM2 += grand.skirtingAreaM2;
+          roomCount++;
 
-            const roomInfo = {
-              id: room.id,
-              name: room.name,
-              floorName: floor.name,
-              reference: room.tile?.reference || "",
-              totalTiles: grand.totalTiles,
-              totalAreaM2: grand.totalAreaM2,
-              netAreaM2: grand.netAreaM2,
-              totalCost: grand.totalCost,
-              totalPacks: grand.totalPacks,
-              floorPacks: grand.floorPacks,
-              skirtingPacks: grand.skirtingPacks,
+          const roomInfo = {
+            id: room.id,
+            name: room.name,
+            floorName: floor.name,
+            reference: room.tile?.reference || "",
+            totalTiles: grand.totalTiles,
+            totalAreaM2: grand.totalAreaM2,
+            netAreaM2: grand.netAreaM2,
+            totalCost: grand.totalCost,
+            totalPacks: grand.totalPacks,
+            floorPacks: grand.floorPacks,
+            skirtingPacks: grand.skirtingPacks,
+          };
+          rooms.push(roomInfo);
+
+          const ref = roomInfo.reference;
+          if (!byMaterial[ref]) {
+            const pricing = getRoomPricing(state, room);
+            byMaterial[ref] = {
+              reference: ref,
+              totalTiles: 0,
+              totalAreaM2: 0,
+              netAreaM2: 0,
+              totalCost: 0,
+              floorAreaM2: 0,
+              skirtingAreaM2: 0,
+              floorTiles: 0,
+              skirtingTiles: 0,
+              pricePerM2: pricing.pricePerM2,
+              packM2: pricing.packM2,
+              extraPacks: (state.materials && state.materials[ref]?.extraPacks) || 0,
             };
-            rooms.push(roomInfo);
-
-            const ref = roomInfo.reference;
-            if (!byMaterial[ref]) {
-              const pricing = getRoomPricing(state, room);
-              byMaterial[ref] = {
-                reference: ref,
-                totalTiles: 0,
-                totalAreaM2: 0,
-                netAreaM2: 0,
-                totalCost: 0,
-                floorAreaM2: 0,
-                skirtingAreaM2: 0,
-                floorTiles: 0,
-                skirtingTiles: 0,
-                pricePerM2: pricing.pricePerM2,
-                packM2: pricing.packM2,
-                extraPacks: (state.materials && state.materials[ref]?.extraPacks) || 0,
-              };
-            }
-            byMaterial[ref].totalTiles += grand.totalTiles;
-            byMaterial[ref].totalAreaM2 += grand.totalAreaM2;
-            byMaterial[ref].netAreaM2 += grand.netAreaM2;
-            byMaterial[ref].totalCost += grand.totalCost;
-            byMaterial[ref].floorAreaM2 += grand.floorAreaM2;
-            byMaterial[ref].skirtingAreaM2 += grand.skirtingAreaM2;
-            byMaterial[ref].floorTiles += grand.floorTiles;
-            byMaterial[ref].skirtingTiles += grand.skirtingTiles;
           }
+          byMaterial[ref].totalTiles += grand.totalTiles;
+          byMaterial[ref].totalAreaM2 += grand.totalAreaM2;
+          byMaterial[ref].netAreaM2 += grand.netAreaM2;
+          byMaterial[ref].totalCost += grand.totalCost;
+          byMaterial[ref].floorAreaM2 += grand.floorAreaM2;
+          byMaterial[ref].skirtingAreaM2 += grand.skirtingAreaM2;
+          byMaterial[ref].floorTiles += grand.floorTiles;
+          byMaterial[ref].skirtingTiles += grand.skirtingTiles;
         }
       }
+
     }
   }
 
@@ -1031,6 +1056,10 @@ export function computeProjectTotals(state) {
     totalPacks,
     roomCount,
     rooms,
-    materials
+    materials,
+    wallRooms,
+    wallTotalTiles,
+    wallTotalCost,
+    wallTotalAreaM2,
   };
 }

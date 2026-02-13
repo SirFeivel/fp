@@ -1,28 +1,9 @@
 // src/drag.js
-import { deepClone, getCurrentRoom } from "./core.js";
+import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
-
-function pointerToSvgXY(svg, clientX, clientY) {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX;
-  pt.y = clientY;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const inv = ctm.inverse();
-  const p = pt.matrixTransform(inv);
-  return { x: p.x, y: p.y };
-}
-
-function snapToMm(value) {
-  return Math.round(value * 10) / 10;
-}
-
-function formatCm(value) {
-  const rounded = Math.round(value * 10) / 10;
-  if (!Number.isFinite(rounded)) return "0";
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
+import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
+import { pointerToSvgXY, svgPointToClient, snapToMm, snapToHalfCm, formatCm, dist } from "./svg-coords.js";
 
 function getResizeOverlay() {
   return document.getElementById("resizeMetrics");
@@ -43,16 +24,6 @@ function hideResizeOverlay() {
   const el = getResizeOverlay();
   if (!el) return;
   el.classList.add("hidden");
-}
-
-function svgPointToClient(svg, x, y) {
-  const pt = svg.createSVGPoint();
-  pt.x = x;
-  pt.y = y;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const p = pt.matrixTransform(ctm);
-  return { x: p.x, y: p.y };
 }
 
 function showDragOverlay(text, svg, cursorClient, fallbackSvgPoint) {
@@ -104,12 +75,6 @@ function getTriResizePoints(startShape, handleType, dx, dy) {
     p2: pointNum === "2" ? { x: startShape.p2.x + dx, y: startShape.p2.y + dy } : startShape.p2,
     p3: pointNum === "3" ? { x: startShape.p3.x + dx, y: startShape.p3.y + dy } : startShape.p3
   };
-}
-
-function dist(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function getExclusionBounds(startShape, dx, dy) {
@@ -260,7 +225,6 @@ function findResizeHandles(id) {
 export function createExclusionDragController({
   getSvg, // () => SVGElement
   getState, // () => state
-  setStateDirect, // (nextState) => void
   commit, // (label, nextState) => void
   render, // (label?) => void
   getSelectedExcl, // () => excl or null
@@ -283,21 +247,21 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = snapToMm(curMouse.x - drag.startMouse.x);
-    const dy = snapToMm(curMouse.y - drag.startMouse.y);
+    const svgDx = snapToMm(curMouse.x - drag.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - drag.startMouse.y);
 
-    // Store current delta for final state computation
-    drag.currentDx = dx;
-    drag.currentDy = dy;
+    // Store SVG-space delta for final state computation
+    drag.currentDx = svgDx;
+    drag.currentDy = svgDy;
 
     // Apply CSS transform to all matching elements (main SVG + fullscreen SVG)
     const elements = findExclElements(drag.id);
     elements.forEach(el => {
-      el.setAttribute("transform", `translate(${dx}, ${dy})`);
+      el.setAttribute("transform", `translate(${svgDx}, ${svgDy})`);
     });
 
     if (drag.bounds && drag.startShape) {
-      const box = getExclusionBounds(drag.startShape, dx, dy);
+      const box = getExclusionBounds(drag.startShape, svgDx, svgDy);
       const text = getDragOverlayText(drag.bounds, box);
       const center = {
         x: (box.minX + box.maxX) / 2,
@@ -331,9 +295,9 @@ export function createExclusionDragController({
 
     if (!drag || !dragStartState) return;
 
-    const dx = drag.currentDx || 0;
-    const dy = drag.currentDy || 0;
-    const hasMoved = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
+    const svgDx = drag.currentDx || 0;
+    const svgDy = drag.currentDy || 0;
+    const hasMoved = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasMoved) {
       // Build final state with updated exclusion position
@@ -343,22 +307,22 @@ export function createExclusionDragController({
 
       if (excl) {
         if (excl.type === "rect") {
-          excl.x += dx;
-          excl.y += dy;
+          excl.x += svgDx;
+          excl.y += svgDy;
         } else if (excl.type === "circle") {
-          excl.cx += dx;
-          excl.cy += dy;
+          excl.cx += svgDx;
+          excl.cy += svgDy;
         } else if (excl.type === "tri") {
-          excl.p1.x += dx;
-          excl.p1.y += dy;
-          excl.p2.x += dx;
-          excl.p2.y += dy;
-          excl.p3.x += dx;
-          excl.p3.y += dy;
+          excl.p1.x += svgDx;
+          excl.p1.y += svgDy;
+          excl.p2.x += svgDx;
+          excl.p2.y += svgDy;
+          excl.p3.x += svgDx;
+          excl.p3.y += svgDy;
         } else if (excl.type === "freeform" && excl.vertices) {
           for (const v of excl.vertices) {
-            v.x += dx;
-            v.y += dy;
+            v.x += svgDx;
+            v.y += svgDy;
           }
         }
       }
@@ -428,7 +392,7 @@ export function createExclusionDragController({
       startShape: deepClone(ex),
       currentDx: 0,
       currentDy: 0,
-      bounds
+      bounds,
     };
 
     const box = getExclusionBounds(ex, 0, 0);
@@ -451,11 +415,11 @@ export function createExclusionDragController({
 
     const svg = getSvg();
     const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const dx = curMouse.x - resize.startMouse.x;
-    const dy = curMouse.y - resize.startMouse.y;
+    const svgDx = snapToMm(curMouse.x - resize.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - resize.startMouse.y);
 
-    resize.currentDx = dx;
-    resize.currentDy = dy;
+    resize.currentDx = svgDx;
+    resize.currentDy = svgDy;
 
     // Calculate new dimensions based on handle type and shape
     const { startShape, handleType } = resize;
@@ -468,18 +432,16 @@ export function createExclusionDragController({
     let freeformVertices = null;
 
     if (startShape.type === "rect") {
-      rectDims = getRectResizeDims(startShape, handleType, dx, dy);
+      rectDims = getRectResizeDims(startShape, handleType, svgDx, svgDy);
       overlayText = `${formatCm(rectDims.newW)} x ${formatCm(rectDims.newH)} cm`;
     } else if (startShape.type === "circle") {
-      const centerX = startShape.cx;
-      const centerY = startShape.cy;
-      const distToMouse = Math.sqrt(
-        Math.pow(curMouse.x - centerX, 2) + Math.pow(curMouse.y - centerY, 2)
-      );
-      circleR = Math.max(1, distToMouse);
+      const local = { x: curMouse.x, y: curMouse.y };
+      circleR = Math.max(1, Math.sqrt(
+        Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
+      ));
       overlayText = `Ø ${formatCm(circleR * 2)} cm`;
     } else if (startShape.type === "tri") {
-      triPoints = getTriResizePoints(startShape, handleType, dx, dy);
+      triPoints = getTriResizePoints(startShape, handleType, svgDx, svgDy);
       const a = dist(triPoints.p1, triPoints.p2);
       const b = dist(triPoints.p2, triPoints.p3);
       const c = dist(triPoints.p3, triPoints.p1);
@@ -489,7 +451,7 @@ export function createExclusionDragController({
       const vertexIndex = parseInt(handleType.substring(1), 10);
       freeformVertices = startShape.vertices.map((v, i) =>
         i === vertexIndex
-          ? { x: v.x + dx, y: v.y + dy }
+          ? { x: v.x + svgDx, y: v.y + svgDy }
           : { ...v }
       );
       overlayText = `x ${formatCm(freeformVertices[vertexIndex].x)} · y ${formatCm(freeformVertices[vertexIndex].y)} cm`;
@@ -531,7 +493,7 @@ export function createExclusionDragController({
     }
 
     // Update handle positions
-    updateResizeHandlePositions(resize.id, startShape, dx, dy, handleType, curMouse, freeformVertices);
+    updateResizeHandlePositions(resize.id, startShape, svgDx, svgDy, handleType, curMouse, freeformVertices);
   }
 
   function updateResizeHandlePositions(id, startShape, dx, dy, activeHandle, curMouse, freeformVertices = null) {
@@ -577,8 +539,9 @@ export function createExclusionDragController({
           handle.setAttribute("cy", positions[ht].cy);
         }
       } else if (startShape.type === "circle") {
+        const local = { x: curMouse.x, y: curMouse.y };
         const newR = Math.max(1, Math.sqrt(
-          Math.pow(curMouse.x - startShape.cx, 2) + Math.pow(curMouse.y - startShape.cy, 2)
+          Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
         ));
         // Position handle at edge of circle
         handle.setAttribute("cx", startShape.cx + newR);
@@ -626,9 +589,9 @@ export function createExclusionDragController({
 
     if (!resize || !dragStartState) return;
 
-    const dx = resize.currentDx || 0;
-    const dy = resize.currentDy || 0;
-    const hasResized = Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01;
+    const svgDx = resize.currentDx || 0;
+    const svgDy = resize.currentDy || 0;
+    const hasResized = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
 
     if (hasResized) {
       const finalState = deepClone(dragStartState);
@@ -640,34 +603,35 @@ export function createExclusionDragController({
 
         if (excl.type === "rect") {
           if (handleType.includes("w")) {
-            excl.x = startShape.x + dx;
-            excl.w = Math.max(1, startShape.w - dx);
+            excl.x = startShape.x + svgDx;
+            excl.w = Math.max(1, startShape.w - svgDx);
           }
           if (handleType.includes("e")) {
-            excl.w = Math.max(1, startShape.w + dx);
+            excl.w = Math.max(1, startShape.w + svgDx);
           }
           if (handleType.includes("n")) {
-            excl.y = startShape.y + dy;
-            excl.h = Math.max(1, startShape.h - dy);
+            excl.y = startShape.y + svgDy;
+            excl.h = Math.max(1, startShape.h - svgDy);
           }
           if (handleType.includes("s")) {
-            excl.h = Math.max(1, startShape.h + dy);
+            excl.h = Math.max(1, startShape.h + svgDy);
           }
         } else if (excl.type === "circle") {
           const svg = getSvg();
           const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+          const local = { x: curMouse.x, y: curMouse.y };
           excl.r = Math.max(1, Math.sqrt(
-            Math.pow(curMouse.x - startShape.cx, 2) + Math.pow(curMouse.y - startShape.cy, 2)
+            Math.pow(local.x - startShape.cx, 2) + Math.pow(local.y - startShape.cy, 2)
           ));
         } else if (excl.type === "tri") {
           const pointNum = handleType.replace("p", "");
-          excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + dx;
-          excl[`p${pointNum}`].y = startShape[`p${pointNum}`].y + dy;
+          excl[`p${pointNum}`].x = startShape[`p${pointNum}`].x + svgDx;
+          excl[`p${pointNum}`].y = startShape[`p${pointNum}`].y + svgDy;
         } else if (excl.type === "freeform" && excl.vertices && handleType.startsWith("v")) {
           const vertexIndex = parseInt(handleType.substring(1), 10);
           if (excl.vertices[vertexIndex]) {
-            excl.vertices[vertexIndex].x = startShape.vertices[vertexIndex].x + dx;
-            excl.vertices[vertexIndex].y = startShape.vertices[vertexIndex].y + dy;
+            excl.vertices[vertexIndex].x = startShape.vertices[vertexIndex].x + svgDx;
+            excl.vertices[vertexIndex].y = startShape.vertices[vertexIndex].y + svgDy;
           }
         }
       }
@@ -711,7 +675,7 @@ export function createExclusionDragController({
       startMouse,
       startShape: deepClone(ex),
       currentDx: 0,
-      currentDy: 0
+      currentDy: 0,
     };
 
     if (ex.type === "rect") {
@@ -856,8 +820,8 @@ export function createRoomDragController({
     const rawDy = current.y - drag.startMouse.y;
 
     // Snap to 0.5cm grid
-    drag.currentDx = Math.round(rawDx / 0.5) * 0.5;
-    drag.currentDy = Math.round(rawDy / 0.5) * 0.5;
+    drag.currentDx = snapToHalfCm(rawDx);
+    drag.currentDy = snapToHalfCm(rawDy);
 
     const newX = drag.startPos.x + drag.currentDx;
     const newY = drag.startPos.y + drag.currentDy;
@@ -906,6 +870,7 @@ export function createRoomDragController({
         room.floorPosition.x = snappedPos.x;
         room.floorPosition.y = snappedPos.y;
 
+        syncFloorWalls(floor);
         commit(getMoveLabel?.() || "Room moved", next);
       }
     }
@@ -934,6 +899,32 @@ export function createRoomResizeController({
 }) {
   let resize = null;
   let resizeStartState = null;
+
+  function calcResizeDims(r, dx, dy) {
+    let newWidth = r.startDims.widthCm;
+    let newHeight = r.startDims.heightCm;
+    let newPosX = r.startPos.x;
+    let newPosY = r.startPos.y;
+    const handle = r.handleType;
+
+    if (handle.includes("e")) {
+      newWidth = Math.max(50, r.startDims.widthCm + dx);
+    } else if (handle.includes("w")) {
+      const widthChange = Math.min(dx, r.startDims.widthCm - 50);
+      newWidth = r.startDims.widthCm - widthChange;
+      newPosX = r.startPos.x + widthChange;
+    }
+
+    if (handle.includes("s")) {
+      newHeight = Math.max(50, r.startDims.heightCm + dy);
+    } else if (handle.includes("n")) {
+      const heightChange = Math.min(dy, r.startDims.heightCm - 50);
+      newHeight = r.startDims.heightCm - heightChange;
+      newPosY = r.startPos.y + heightChange;
+    }
+
+    return { newWidth, newHeight, newPosX, newPosY };
+  }
 
   function onRoomResizePointerDown(e, roomId, handleType) {
     const svg = getSvg();
@@ -996,37 +987,13 @@ export function createRoomResizeController({
     const rawDy = current.y - resize.startMouse.y;
 
     // Snap to 0.5cm grid
-    const dx = Math.round(rawDx / 0.5) * 0.5;
-    const dy = Math.round(rawDy / 0.5) * 0.5;
+    const dx = snapToHalfCm(rawDx);
+    const dy = snapToHalfCm(rawDy);
 
     resize.currentDx = dx;
     resize.currentDy = dy;
 
-    // Calculate new dimensions based on handle type
-    let newWidth = resize.startDims.widthCm;
-    let newHeight = resize.startDims.heightCm;
-    let newPosX = resize.startPos.x;
-    let newPosY = resize.startPos.y;
-
-    const handle = resize.handleType;
-
-    // Horizontal resizing
-    if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startDims.widthCm + dx);
-    } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
-      newWidth = resize.startDims.widthCm - widthChange;
-      newPosX = resize.startPos.x + widthChange;
-    }
-
-    // Vertical resizing
-    if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startDims.heightCm + dy);
-    } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
-      newHeight = resize.startDims.heightCm - heightChange;
-      newPosY = resize.startPos.y + heightChange;
-    }
+    const { newWidth, newHeight, newPosX, newPosY } = calcResizeDims(resize, dx, dy);
 
     // Update visual during drag
     const roomGroup = svg.querySelector(`[data-roomid="${resize.roomId}"]`);
@@ -1069,30 +1036,7 @@ export function createRoomResizeController({
     hideResizeOverlay();
 
     // Commit changes if dimensions changed
-    const handle = resize.handleType;
-    const dx = resize.currentDx;
-    const dy = resize.currentDy;
-
-    let newWidth = resize.startDims.widthCm;
-    let newHeight = resize.startDims.heightCm;
-    let newPosX = resize.startPos.x;
-    let newPosY = resize.startPos.y;
-
-    if (handle.includes("e")) {
-      newWidth = Math.max(50, resize.startDims.widthCm + dx);
-    } else if (handle.includes("w")) {
-      const widthChange = Math.min(dx, resize.startDims.widthCm - 50);
-      newWidth = resize.startDims.widthCm - widthChange;
-      newPosX = resize.startPos.x + widthChange;
-    }
-
-    if (handle.includes("s")) {
-      newHeight = Math.max(50, resize.startDims.heightCm + dy);
-    } else if (handle.includes("n")) {
-      const heightChange = Math.min(dy, resize.startDims.heightCm - 50);
-      newHeight = resize.startDims.heightCm - heightChange;
-      newPosY = resize.startPos.y + heightChange;
-    }
+    const { newWidth, newHeight, newPosX, newPosY } = calcResizeDims(resize, resize.currentDx, resize.currentDy);
 
     const hasChanges =
       newWidth !== resize.startDims.widthCm ||
@@ -1113,6 +1057,7 @@ export function createRoomResizeController({
         room.widthCm = newWidth;
         room.heightCm = newHeight;
 
+        syncFloorWalls(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       } else if (room && room.polygonVertices?.length === 4) {
         room.floorPosition = { x: newPosX, y: newPosY };
@@ -1127,6 +1072,7 @@ export function createRoomResizeController({
         room.widthCm = newWidth;
         room.heightCm = newHeight;
 
+        syncFloorWalls(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       }
     } else {
@@ -1154,10 +1100,6 @@ export function createPolygonVertexDragController({
 }) {
   let drag = null;
   let dragStartState = null;
-
-  function snapToHalfCm(value) {
-    return Math.round(value / 0.5) * 0.5;
-  }
 
   function onVertexPointerDown(e, roomId, vertexIndex) {
     const svg = getSvg();
@@ -1307,6 +1249,9 @@ export function createPolygonVertexDragController({
         room.widthCm = Math.round(maxX);
         room.heightCm = Math.round(maxY);
 
+        // Sync walls after vertex drag
+        syncFloorWalls(floor);
+
         commit(getVertexMoveLabel?.() || "Vertex moved", next);
       }
     } else {
@@ -1318,4 +1263,371 @@ export function createPolygonVertexDragController({
   }
 
   return { onVertexPointerDown };
+}
+
+/**
+ * Drag controller for doorways — constrained to wall edge direction.
+ */
+export function createDoorwayDragController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getSelectedDoorwayId,
+  setSelectedDoorway,
+  getMoveLabel,
+  onDblClick
+}) {
+  let drag = null;
+  let dragStartState = null;
+  let pendingFrame = false;
+  let lastMoveEvent = null;
+  let lastClickTime = 0;
+  let lastClickDoorwayId = null;
+
+  function cancelPendingRender() {
+    // kept for API compatibility (called by main.js onDoorwayDblClick)
+  }
+
+  function applyDragMove(e) {
+    if (!drag) return;
+
+    const svg = getSvg();
+    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+
+    // Project mouse delta onto wall direction (storage direction)
+    const dx = curMouse.x - drag.startMouse.x;
+    const dy = curMouse.y - drag.startMouse.y;
+    const projectedDelta = dx * drag.edgeDirX + dy * drag.edgeDirY;
+
+    // Activate drag mode on first significant movement (lazy pointer capture)
+    if (!drag.activated && Math.abs(projectedDelta) > 2) {
+      drag.activated = true;
+      svg.setPointerCapture(e.pointerId);
+    }
+    if (!drag.activated) return;
+
+    // Clamp offset (respects wall bounds + sibling doorways)
+    const newOffset = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + projectedDelta));
+    drag.currentOffset = newOffset;
+
+    // Move the doorway element along the visual edge direction
+    // dirSign accounts for reversed edge direction on non-owner rooms
+    const deltaAlongWall = newOffset - drag.startOffset;
+    const visualDirX = drag.visualEdgeDirX || drag.edgeDirX;
+    const visualDirY = drag.visualEdgeDirY || drag.edgeDirY;
+    const sign = drag.dirSign || 1;
+    const translateX = deltaAlongWall * sign * visualDirX;
+    const translateY = deltaAlongWall * sign * visualDirY;
+
+    const elements = document.querySelectorAll(`[data-doorway-id="${drag.doorwayId}"]`);
+    elements.forEach(el => {
+      el.setAttribute("transform", `translate(${translateX}, ${translateY})`);
+    });
+
+    // Show overlay
+    const text = `${formatCm(newOffset)} cm`;
+    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, {
+      x: drag.startInner.x + translateX,
+      y: drag.startInner.y + translateY
+    });
+  }
+
+  function scheduleDragMove(e) {
+    lastMoveEvent = e;
+    if (pendingFrame) return;
+    pendingFrame = true;
+    requestAnimationFrame(() => {
+      pendingFrame = false;
+      const evt = lastMoveEvent;
+      lastMoveEvent = null;
+      if (evt) applyDragMove(evt);
+    });
+  }
+
+  function onSvgPointerMove(e) {
+    if (!drag) return;
+    scheduleDragMove(e);
+  }
+
+  function onSvgPointerUp() {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onSvgPointerMove);
+    hideResizeOverlay();
+
+    if (!drag || !dragStartState) {
+      drag = null;
+      dragStartState = null;
+      return;
+    }
+
+    if (drag.activated) {
+      // Actual drag happened — commit
+      const finalState = deepClone(dragStartState);
+      const room = getCurrentRoom(finalState);
+      const floor = getCurrentFloor(finalState);
+      const wallResult = findWallByDoorwayId(floor, drag.doorwayId);
+      if (wallResult) {
+        const dw = wallResult.doorway;
+        const newOffset = snapToMm(drag.currentOffset);
+        dw.offsetCm = newOffset;
+        dw.widthCm = drag.effectiveWidth;
+      }
+      commit(getMoveLabel?.() || "Doorway moved", finalState);
+    }
+    if (!drag.activated) {
+      // No movement — render immediately to show selection + indicators
+      if (render) render();
+    }
+
+    drag = null;
+    dragStartState = null;
+  }
+
+  function onDoorwayPointerDown(e, doorwayId, edgeIndex) {
+    e.stopPropagation();
+
+    // Manual dblclick detection — two pointerdowns on same doorway within 400ms
+    const now = Date.now();
+    if (doorwayId === lastClickDoorwayId && now - lastClickTime < 400) {
+      lastClickTime = 0;
+      lastClickDoorwayId = null;
+      // Fire the dblclick callback directly via the render callback's onDoorwayDblClick
+      // The SVG element's dblclick listener handles this, but since render may have
+      // replaced the element, we call it from main.js via the returned handler
+      if (onDblClick) onDblClick(doorwayId, edgeIndex);
+      return;
+    }
+    lastClickTime = now;
+    lastClickDoorwayId = doorwayId;
+
+    if (setSelectedDoorway) setSelectedDoorway(doorwayId);
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    const floor = getCurrentFloor(state);
+    if (!room?.polygonVertices?.length || !floor) return;
+
+    const wallResult = findWallByDoorwayId(floor, doorwayId);
+    if (!wallResult) return;
+    const dw = wallResult.doorway;
+    const wall = wallResult.wall;
+
+    // Use wall direction for drag projection (storage direction),
+    // not edge direction which can be reversed for non-owner rooms
+    const wdx = wall.end.x - wall.start.x;
+    const wdy = wall.end.y - wall.start.y;
+    const wallLen = Math.hypot(wdx, wdy);
+    if (wallLen < 1) return;
+    const wallDirX = wdx / wallLen;
+    const wallDirY = wdy / wallLen;
+
+    // For visual rendering we still need edge direction
+    const verts = room.polygonVertices;
+    const A = verts[edgeIndex];
+    const B = verts[(edgeIndex + 1) % verts.length];
+    const edgeDx = B.x - A.x;
+    const edgeDy = B.y - A.y;
+    const edgeLen = Math.hypot(edgeDx, edgeDy);
+    const edgeDirX = edgeLen > 0 ? edgeDx / edgeLen : wallDirX;
+    const edgeDirY = edgeLen > 0 ? edgeDy / edgeLen : wallDirY;
+
+    const svg = getSvg();
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    dragStartState = deepClone(state);
+
+    // Doorway's offset/width are in wall-space
+    const effectiveOffset = dw.offsetCm;
+    const effectiveWidth = dw.widthCm;
+    const allEdgeDoorways = wall.doorways || [];
+
+    let minOffset = 0;
+    let maxOffset = Math.max(0, wallLen - effectiveWidth);
+    const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
+    for (const sib of siblings) {
+      // Only constrain against siblings that vertically overlap
+      const vOverlap = (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
+        (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
+      if (!vOverlap) continue;
+      if (sib.offsetCm + sib.widthCm <= effectiveOffset + 0.01) {
+        // Sibling is to the left — its right edge is our minimum
+        minOffset = Math.max(minOffset, sib.offsetCm + sib.widthCm);
+      } else if (sib.offsetCm >= effectiveOffset + effectiveWidth - 0.01) {
+        // Sibling is to the right — can't go past it
+        maxOffset = Math.min(maxOffset, sib.offsetCm - effectiveWidth);
+      }
+    }
+
+    // Determine direction match for visual rendering
+    const dirDot = edgeDirX * wallDirX + edgeDirY * wallDirY;
+    const dirSign = dirDot >= 0 ? 1 : -1;
+
+    drag = {
+      doorwayId,
+      edgeIndex,
+      startMouse,
+      startOffset: effectiveOffset,
+      currentOffset: effectiveOffset,
+      effectiveWidth,
+      edgeDirX: wallDirX,   // Use wall direction for delta projection
+      edgeDirY: wallDirY,
+      minOffset,
+      maxOffset,
+      startInner: { x: A.x + edgeDirX * effectiveOffset, y: A.y + edgeDirY * effectiveOffset },
+      activated: false,
+      visualEdgeDirX: edgeDirX,  // For visual rendering (translate doorway element)
+      visualEdgeDirY: edgeDirY,
+      dirSign,   // +1 if edge and wall are same direction, -1 if reversed
+    };
+
+    svg.addEventListener("pointermove", onSvgPointerMove);
+    svg.addEventListener("pointerup", onSvgPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onSvgPointerUp, { once: true });
+  }
+
+  // --- Doorway resize ---
+  let resizeDrag = null;
+  let resizeStartState = null;
+
+  function onDoorwayResizePointerDown(e, doorwayId, edgeIndex, handleSide) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    const floor = getCurrentFloor(state);
+    if (!room?.polygonVertices?.length || !floor) return;
+
+    const wallResult = findWallByDoorwayId(floor, doorwayId);
+    if (!wallResult) return;
+    const dw = wallResult.doorway;
+    const wall = wallResult.wall;
+
+    // Use wall direction for delta projection (storage direction)
+    const wdx = wall.end.x - wall.start.x;
+    const wdy = wall.end.y - wall.start.y;
+    const wallLen = Math.hypot(wdx, wdy);
+    if (wallLen < 1) return;
+    const wallDirX = wdx / wallLen;
+    const wallDirY = wdy / wallLen;
+
+    if (setSelectedDoorway) setSelectedDoorway(doorwayId);
+
+    const svg = getSvg();
+    svg.setPointerCapture(e.pointerId);
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    resizeStartState = deepClone(state);
+
+    const allEdgeDoorways = wall.doorways || [];
+    const effectiveOffset = dw.offsetCm;
+    const effectiveWidth = dw.widthCm;
+
+    const siblings = allEdgeDoorways.filter(d => d.id !== doorwayId);
+    const vOverlapping = siblings.filter(sib => {
+      return (dw.elevationCm ?? 0) < (sib.elevationCm ?? 0) + sib.heightCm &&
+        (dw.elevationCm ?? 0) + dw.heightCm > (sib.elevationCm ?? 0);
+    });
+
+    let minEdgePos, maxEdgePos; // absolute position of the dragged edge along the wall
+    if (handleSide === "start") {
+      // Dragging left edge: can go from 0 (or right edge of left sibling) to offset + width - MIN
+      minEdgePos = 0;
+      for (const sib of vOverlapping) {
+        const sibRight = sib.offsetCm + sib.widthCm;
+        if (sibRight <= effectiveOffset + 0.01) {
+          minEdgePos = Math.max(minEdgePos, sibRight);
+        }
+      }
+      maxEdgePos = effectiveOffset + effectiveWidth - 20; // minimum doorway width 20cm
+    } else {
+      // Dragging right edge: from offset + MIN to edge end (or left edge of right sibling)
+      minEdgePos = effectiveOffset + 20;
+      maxEdgePos = wallLen;
+      for (const sib of vOverlapping) {
+        if (sib.offsetCm >= effectiveOffset + effectiveWidth - 0.01) {
+          maxEdgePos = Math.min(maxEdgePos, sib.offsetCm);
+        }
+      }
+    }
+
+    resizeDrag = {
+      doorwayId,
+      edgeIndex,
+      handleSide,
+      startMouse,
+      edgeDirX: wallDirX,
+      edgeDirY: wallDirY,
+      edgeLen: wallLen,
+      startOffset: effectiveOffset,
+      startWidth: effectiveWidth,
+      minEdgePos,
+      maxEdgePos,
+      currentOffset: effectiveOffset,
+      currentWidth: effectiveWidth,
+    };
+
+    svg.addEventListener("pointermove", onResizeMove);
+    svg.addEventListener("pointerup", onResizeUp, { once: true });
+    svg.addEventListener("pointercancel", onResizeUp, { once: true });
+  }
+
+  function onResizeMove(e) {
+    if (!resizeDrag) return;
+    const svg = getSvg();
+    const cur = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const dx = cur.x - resizeDrag.startMouse.x;
+    const dy = cur.y - resizeDrag.startMouse.y;
+    const delta = dx * resizeDrag.edgeDirX + dy * resizeDrag.edgeDirY;
+
+    if (resizeDrag.handleSide === "start") {
+      // Moving left edge: offset changes, width adjusts inversely
+      const newEdgePos = Math.max(resizeDrag.minEdgePos, Math.min(resizeDrag.maxEdgePos,
+        resizeDrag.startOffset + delta));
+      resizeDrag.currentOffset = snapToMm(newEdgePos);
+      resizeDrag.currentWidth = snapToMm(resizeDrag.startOffset + resizeDrag.startWidth - newEdgePos);
+    } else {
+      // Moving right edge: width changes
+      const newEdgePos = Math.max(resizeDrag.minEdgePos, Math.min(resizeDrag.maxEdgePos,
+        resizeDrag.startOffset + resizeDrag.startWidth + delta));
+      resizeDrag.currentOffset = resizeDrag.startOffset;
+      resizeDrag.currentWidth = snapToMm(newEdgePos - resizeDrag.startOffset);
+    }
+
+    const text = `${formatCm(resizeDrag.currentWidth)} cm`;
+    showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, cur);
+  }
+
+  function onResizeUp() {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onResizeMove);
+    hideResizeOverlay();
+
+    if (!resizeDrag || !resizeStartState) {
+      resizeDrag = null;
+      resizeStartState = null;
+      return;
+    }
+
+    const changed = Math.abs(resizeDrag.currentWidth - resizeDrag.startWidth) > 0.05 ||
+      Math.abs(resizeDrag.currentOffset - resizeDrag.startOffset) > 0.05;
+
+    if (changed) {
+      const finalState = deepClone(resizeStartState);
+      const floor = getCurrentFloor(finalState);
+      const wallResult = findWallByDoorwayId(floor, resizeDrag.doorwayId);
+      if (wallResult) {
+        const dw = wallResult.doorway;
+        dw.offsetCm = resizeDrag.currentOffset;
+        dw.widthCm = resizeDrag.currentWidth;
+      }
+      commit(getMoveLabel?.() || "Doorway resized", finalState);
+    } else {
+      if (render) render();
+    }
+
+    resizeDrag = null;
+    resizeStartState = null;
+  }
+
+  return { onDoorwayPointerDown, onDoorwayResizePointerDown, cancelPendingRender };
 }

@@ -99,7 +99,7 @@ export function buildCommercialExportModel(state) {
   const skirtingRows = [];
 
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || [])) {
       const metrics = computePlanMetrics(state, room);
       const skirting = computeSkirtingNeeds(state, room);
       const pricing = getRoomPricing(state, room);
@@ -146,7 +146,7 @@ export function buildCommercialExportModel(state) {
 function buildRoomList(state) {
   const list = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || [])) {
       list.push({ floor, room });
     }
   }
@@ -794,7 +794,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const tileAreaForRef = new Map();
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || [])) {
       const ref = room.tile?.reference || t("commercial.defaultMaterial");
       if (!tileAreaForRef.has(ref)) {
         tileAreaForRef.set(ref, calcTileAreaM2(room));
@@ -827,7 +827,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const roomsRows = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || [])) {
       const grand = computeGrandTotals(state, room);
       if (!grand.ok) continue;
       const pricing = getRoomPricing(state, room);
@@ -947,7 +947,7 @@ export async function buildCommercialXlsxWorkbook(state) {
 
   const skirtingRows = [];
   for (const floor of state.floors || []) {
-    for (const room of floor.rooms || []) {
+    for (const room of (floor.rooms || [])) {
       const skirting = computeSkirtingNeeds(state, room);
       if (!skirting || !skirting.enabled) continue;
       skirtingRows.push([

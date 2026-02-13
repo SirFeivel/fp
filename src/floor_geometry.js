@@ -3,6 +3,7 @@
 
 import polygonClipping from 'polygon-clipping';
 import { getRoomBounds, roomPolygon } from './geometry.js';
+import { DEFAULT_WALL_THICKNESS_CM, WALL_ADJACENCY_TOLERANCE_CM } from './constants.js';
 
 /**
  * Compute floor bounds encompassing all rooms
@@ -87,7 +88,7 @@ export function getRoomPolygonOnFloor(room) {
  * @param {number} dy - Y offset
  * @returns {Array} Translated multipolygon
  */
-export function translateMultiPolygon(multiPolygon, dx, dy) {
+function translateMultiPolygon(multiPolygon, dx, dy) {
   if (!multiPolygon || !Array.isArray(multiPolygon)) return [];
 
   return multiPolygon.map(polygon =>
@@ -130,7 +131,7 @@ export function getRoomEdgesOnFloor(room) {
  * @param {number} tolerance - Max perpendicular distance to consider collinear
  * @returns {number} Length of overlap, 0 if not collinear or no overlap
  */
-function getEdgeOverlapLength(edge1, edge2, tolerance = 1) {
+function getEdgeOverlapLength(edge1, edge2, tolerance = WALL_ADJACENCY_TOLERANCE_CM) {
   // Check if edges are roughly collinear (same line)
   // First, determine if edges are horizontal, vertical, or diagonal
 
@@ -189,7 +190,7 @@ function getEdgeOverlapLength(edge1, edge2, tolerance = 1) {
  * @param {number} tolerance - Max gap to consider touching
  * @returns {number} Total shared edge length in cm
  */
-export function getSharedEdgeLength(roomA, roomB, tolerance = 1) {
+export function getSharedEdgeLength(roomA, roomB, tolerance = WALL_ADJACENCY_TOLERANCE_CM) {
   const edgesA = getRoomEdgesOnFloor(roomA);
   const edgesB = getRoomEdgesOnFloor(roomB);
 
@@ -215,7 +216,7 @@ export function getSharedEdgeLength(roomA, roomB, tolerance = 1) {
  * @param {number} minSharedLength - Minimum shared edge length required (cm), default 10
  * @returns {boolean}
  */
-export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 10) {
+export function areRoomsAdjacent(roomA, roomB, tolerance = WALL_ADJACENCY_TOLERANCE_CM, minSharedLength = 10) {
   // Quick bounding box check first (optimization)
   const boundsA = getRoomAbsoluteBounds(roomA);
   const boundsB = getRoomAbsoluteBounds(roomB);
@@ -240,7 +241,7 @@ export function areRoomsAdjacent(roomA, roomB, tolerance = 1, minSharedLength = 
  * @param {number} tolerance - Max gap to consider adjacent (cm)
  * @returns {Array} Array of adjacent room objects
  */
-export function findAdjacentRooms(floor, roomId, tolerance = 1) {
+export function findAdjacentRooms(floor, roomId, tolerance = WALL_ADJACENCY_TOLERANCE_CM) {
   const targetRoom = floor?.rooms?.find(r => r.id === roomId);
   if (!targetRoom) return [];
 
@@ -329,21 +330,21 @@ export function findRoomSnapPositions(room, otherRooms) {
   for (const other of otherRooms) {
     const ob = getRoomAbsoluteBounds(other);
 
-    // Snap to right edge of other (room's left touches other's right)
-    snapPositions.push({ x: ob.right, y: ob.top });
-    snapPositions.push({ x: ob.right, y: ob.bottom - roomHeight });
+    // Snap to right edge of other (with wall gap)
+    snapPositions.push({ x: ob.right + DEFAULT_WALL_THICKNESS_CM, y: ob.top });
+    snapPositions.push({ x: ob.right + DEFAULT_WALL_THICKNESS_CM, y: ob.bottom - roomHeight });
 
-    // Snap to left edge of other (room's right touches other's left)
-    snapPositions.push({ x: ob.left - roomWidth, y: ob.top });
-    snapPositions.push({ x: ob.left - roomWidth, y: ob.bottom - roomHeight });
+    // Snap to left edge of other (with wall gap)
+    snapPositions.push({ x: ob.left - roomWidth - DEFAULT_WALL_THICKNESS_CM, y: ob.top });
+    snapPositions.push({ x: ob.left - roomWidth - DEFAULT_WALL_THICKNESS_CM, y: ob.bottom - roomHeight });
 
-    // Snap to bottom edge of other (room's top touches other's bottom)
-    snapPositions.push({ x: ob.left, y: ob.bottom });
-    snapPositions.push({ x: ob.right - roomWidth, y: ob.bottom });
+    // Snap to bottom edge of other (with wall gap)
+    snapPositions.push({ x: ob.left, y: ob.bottom + DEFAULT_WALL_THICKNESS_CM });
+    snapPositions.push({ x: ob.right - roomWidth, y: ob.bottom + DEFAULT_WALL_THICKNESS_CM });
 
-    // Snap to top edge of other (room's bottom touches other's top)
-    snapPositions.push({ x: ob.left, y: ob.top - roomHeight });
-    snapPositions.push({ x: ob.right - roomWidth, y: ob.top - roomHeight });
+    // Snap to top edge of other (with wall gap)
+    snapPositions.push({ x: ob.left, y: ob.top - roomHeight - DEFAULT_WALL_THICKNESS_CM });
+    snapPositions.push({ x: ob.right - roomWidth, y: ob.top - roomHeight - DEFAULT_WALL_THICKNESS_CM });
   }
 
   return snapPositions;
@@ -505,9 +506,9 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
   for (const other of otherRooms) {
     const ob = getRoomAbsoluteBounds(other);
 
-    // Positions along right edge of other room
+    // Positions along right edge of other room (with wall gap)
     for (let y = ob.top - roomHeight + 1; y < ob.bottom; y += 10) {
-      const pos = { x: ob.right, y };
+      const pos = { x: ob.right + DEFAULT_WALL_THICKNESS_CM, y };
       if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
           isRoomConnected(room, otherRooms, pos.x, pos.y)) {
         const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
@@ -518,9 +519,9 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
       }
     }
 
-    // Positions along left edge of other room
+    // Positions along left edge of other room (with wall gap)
     for (let y = ob.top - roomHeight + 1; y < ob.bottom; y += 10) {
-      const pos = { x: ob.left - roomWidth, y };
+      const pos = { x: ob.left - roomWidth - DEFAULT_WALL_THICKNESS_CM, y };
       if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
           isRoomConnected(room, otherRooms, pos.x, pos.y)) {
         const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
@@ -531,9 +532,9 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
       }
     }
 
-    // Positions along bottom edge of other room
+    // Positions along bottom edge of other room (with wall gap)
     for (let x = ob.left - roomWidth + 1; x < ob.right; x += 10) {
-      const pos = { x, y: ob.bottom };
+      const pos = { x, y: ob.bottom + DEFAULT_WALL_THICKNESS_CM };
       if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
           isRoomConnected(room, otherRooms, pos.x, pos.y)) {
         const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
@@ -544,9 +545,9 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
       }
     }
 
-    // Positions along top edge of other room
+    // Positions along top edge of other room (with wall gap)
     for (let x = ob.left - roomWidth + 1; x < ob.right; x += 10) {
-      const pos = { x, y: ob.top - roomHeight };
+      const pos = { x, y: ob.top - roomHeight - DEFAULT_WALL_THICKNESS_CM };
       if (!wouldRoomOverlap(room, otherRooms, pos.x, pos.y) &&
           isRoomConnected(room, otherRooms, pos.x, pos.y)) {
         const dist = Math.sqrt(Math.pow(pos.x - desiredX, 2) + Math.pow(pos.y - desiredY, 2));
@@ -575,7 +576,7 @@ export function findNearestConnectedPosition(room, otherRooms, desiredX, desired
  * @param {number} tolerance - Distance tolerance for considering edges as touching
  * @returns {Array} Array of free segments { p1, p2, length }
  */
-function getEdgeFreeSegments(edge, otherRooms, tolerance = 1) {
+export function getEdgeFreeSegments(edge, otherRooms, tolerance = WALL_ADJACENCY_TOLERANCE_CM) {
   const dx = edge.p2.x - edge.p1.x;
   const dy = edge.p2.y - edge.p1.y;
   const edgeLen = Math.sqrt(dx * dx + dy * dy);
@@ -778,24 +779,20 @@ export function findPositionOnFreeEdge(newRoom, existingRooms, preference = 'rig
     let x, y;
 
     if (fe.isVertical) {
-      // Vertical edge - place room to the side
+      // Vertical edge - place room to the side (offset by wall thickness)
       if (fe.normal.x > 0) {
-        // Edge faces right - place room to the right
-        x = Math.max(fe.edge.p1.x, fe.edge.p2.x);
+        x = Math.max(fe.edge.p1.x, fe.edge.p2.x) + DEFAULT_WALL_THICKNESS_CM;
       } else {
-        // Edge faces left - place room to the left
-        x = Math.min(fe.edge.p1.x, fe.edge.p2.x) - newWidth;
+        x = Math.min(fe.edge.p1.x, fe.edge.p2.x) - newWidth - DEFAULT_WALL_THICKNESS_CM;
       }
       // Align top of new room with top of edge
       y = Math.min(fe.edge.p1.y, fe.edge.p2.y);
     } else {
-      // Horizontal edge - place room above or below
+      // Horizontal edge - place room above or below (offset by wall thickness)
       if (fe.normal.y > 0) {
-        // Edge faces down - place room below
-        y = Math.max(fe.edge.p1.y, fe.edge.p2.y);
+        y = Math.max(fe.edge.p1.y, fe.edge.p2.y) + DEFAULT_WALL_THICKNESS_CM;
       } else {
-        // Edge faces up - place room above
-        y = Math.min(fe.edge.p1.y, fe.edge.p2.y) - newHeight;
+        y = Math.min(fe.edge.p1.y, fe.edge.p2.y) - newHeight - DEFAULT_WALL_THICKNESS_CM;
       }
       // Align left of new room with left of edge
       x = Math.min(fe.edge.p1.x, fe.edge.p2.x);
@@ -896,8 +893,9 @@ export function subtractOverlappingAreas(newRoom, existingRooms) {
       // Convert the result back to room-local coordinates and update the room
       const pos = existingRoom.floorPosition || { x: 0, y: 0 };
 
-      // Take the first polygon from the multipolygon result
-      // (in case of complex shapes, this simplifies to the main body)
+      // Take the outer ring of the first polygon body from the multipolygon result.
+      // When subtraction splits a room into disjoint pieces, we keep only the
+      // largest body — a deliberate simplification to avoid multi-body rooms.
       const resultRing = difference[0]?.[0];
       if (!resultRing || resultRing.length < 4) {
         errors.push(`Room "${existingRoom.name}" resulted in invalid geometry`);
@@ -965,7 +963,7 @@ export function findConnectedRoomGroups(rooms, minSharedLength = 10) {
 
   for (let i = 0; i < rooms.length; i++) {
     for (let j = i + 1; j < rooms.length; j++) {
-      if (areRoomsAdjacent(rooms[i], rooms[j], 1, minSharedLength)) {
+      if (areRoomsAdjacent(rooms[i], rooms[j], WALL_ADJACENCY_TOLERANCE_CM, minSharedLength)) {
         adjacencyMap.get(rooms[i].id).push(rooms[j].id);
         adjacencyMap.get(rooms[j].id).push(rooms[i].id);
       }
@@ -1048,7 +1046,7 @@ export function findPatternLinkedGroups(rooms, minSharedLength = 10) {
 
   for (let i = 0; i < linkableRooms.length; i++) {
     for (let j = i + 1; j < linkableRooms.length; j++) {
-      if (areRoomsAdjacent(linkableRooms[i], linkableRooms[j], 1, minSharedLength)) {
+      if (areRoomsAdjacent(linkableRooms[i], linkableRooms[j], WALL_ADJACENCY_TOLERANCE_CM, minSharedLength)) {
         adjacencyMap.get(linkableRooms[i].id).push(linkableRooms[j].id);
         adjacencyMap.get(linkableRooms[j].id).push(linkableRooms[i].id);
       }
@@ -1101,11 +1099,17 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
     return { valid: true, groups: [], message: 'No rooms to validate' };
   }
 
-  if (floor.rooms.length === 1) {
-    return { valid: true, groups: [[floor.rooms[0].id]], message: 'Single room is always valid' };
+  const floorRooms = floor.rooms || [];
+
+  if (floorRooms.length === 0) {
+    return { valid: true, groups: [], message: 'No rooms to validate' };
   }
 
-  const groups = findConnectedRoomGroups(floor.rooms, minSharedLength);
+  if (floorRooms.length === 1) {
+    return { valid: true, groups: [[floorRooms[0].id]], message: 'Single room is always valid' };
+  }
+
+  const groups = findConnectedRoomGroups(floorRooms, minSharedLength);
 
   if (groups.length === 1) {
     return {
@@ -1116,7 +1120,7 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
   }
 
   // Find room names for each group for better error message
-  const roomMap = new Map(floor.rooms.map(r => [r.id, r]));
+  const roomMap = new Map(floorRooms.map(r => [r.id, r]));
   const groupDetails = groups.map(group => ({
     roomIds: group,
     roomNames: group.map(id => roomMap.get(id)?.name || 'Unknown')
@@ -1129,3 +1133,292 @@ export function validateFloorConnectivity(floor, minSharedLength = 10) {
     message: `Found ${groups.length} disconnected room groups. All rooms must be connected.`
   };
 }
+
+/**
+ * Compute a mitered outer polygon from inner vertices and per-edge thicknesses.
+ * Adjacent offset lines are intersected at each vertex to produce clean corners.
+ *
+ * @param {Array<{x:number, y:number}>} verts - Inner polygon vertices (room-local)
+ * @param {Array<number>} thicknesses - Per-edge outward thickness (one per edge, same index as edge i→i+1)
+ * @param {number} sign - Winding sign (+1 or -1) for outward normal direction
+ * @returns {Array<{x:number, y:number}>} Outer polygon vertices (one per input vertex)
+ */
+export function computeOuterPolygon(verts, thicknesses, sign) {
+  const n = verts.length;
+  if (n < 3) return verts.map(v => ({ x: v.x, y: v.y }));
+
+  const outerVerts = [];
+
+  for (let i = 0; i < n; i++) {
+    const prevIdx = (i - 1 + n) % n;
+    const nextIdx = (i + 1) % n;
+
+    // Previous edge: prevIdx → i
+    const dPrevX = verts[i].x - verts[prevIdx].x;
+    const dPrevY = verts[i].y - verts[prevIdx].y;
+    const lenPrev = Math.hypot(dPrevX, dPrevY);
+
+    // Next edge: i → nextIdx
+    const dNextX = verts[nextIdx].x - verts[i].x;
+    const dNextY = verts[nextIdx].y - verts[i].y;
+    const lenNext = Math.hypot(dNextX, dNextY);
+
+    if (lenPrev < 0.001 || lenNext < 0.001) {
+      outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      continue;
+    }
+
+    // Normalized directions
+    const dpx = dPrevX / lenPrev, dpy = dPrevY / lenPrev;
+    const dnx = dNextX / lenNext, dny = dNextY / lenNext;
+
+    // Outward normals
+    const nPrevX = sign * dpy, nPrevY = sign * -dpx;
+    const nNextX = sign * dny, nNextY = sign * -dnx;
+
+    const tPrev = thicknesses[prevIdx] || 0;
+    const tNext = thicknesses[i] || 0;
+
+    // If both thicknesses are 0, outer vertex = inner vertex
+    if (tPrev === 0 && tNext === 0) {
+      outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      continue;
+    }
+
+    // Points on the two offset lines, both passing through the neighborhood of verts[i]
+    const pPrevX = verts[i].x + nPrevX * tPrev;
+    const pPrevY = verts[i].y + nPrevY * tPrev;
+    const pNextX = verts[i].x + nNextX * tNext;
+    const pNextY = verts[i].y + nNextY * tNext;
+
+    // Intersect: pPrev + s*dPrev = pNext + t*dNext
+    // Cross product of directions
+    const cross = dpx * dny - dpy * dnx;
+
+    if (Math.abs(cross) < 1e-8) {
+      // Parallel edges — just use average offset
+      const avgT = (tPrev + tNext) / 2;
+      const avgNX = (nPrevX + nNextX) / 2;
+      const avgNY = (nPrevY + nNextY) / 2;
+      const avgLen = Math.hypot(avgNX, avgNY);
+      if (avgLen > 0.001) {
+        outerVerts.push({
+          x: verts[i].x + (avgNX / avgLen) * avgT,
+          y: verts[i].y + (avgNY / avgLen) * avgT
+        });
+      } else {
+        outerVerts.push({ x: verts[i].x, y: verts[i].y });
+      }
+      continue;
+    }
+
+    // Solve for s: intersection = pPrev + s * dPrev
+    const diffX = pNextX - pPrevX;
+    const diffY = pNextY - pPrevY;
+    const s = (diffX * dny - diffY * dnx) / cross;
+
+    const ix = pPrevX + s * dpx;
+    const iy = pPrevY + s * dpy;
+
+    // Miter limit: clamp if distance > 3× max adjacent thickness
+    const maxT = Math.max(tPrev, tNext, 1);
+    const dist = Math.hypot(ix - verts[i].x, iy - verts[i].y);
+    if (dist > 3 * maxT) {
+      // Clamp along bisector direction
+      const bisX = ix - verts[i].x;
+      const bisY = iy - verts[i].y;
+      const scale = (3 * maxT) / dist;
+      outerVerts.push({
+        x: verts[i].x + bisX * scale,
+        y: verts[i].y + bisY * scale
+      });
+    } else {
+      outerVerts.push({ x: ix, y: iy });
+    }
+  }
+
+  return outerVerts;
+}
+
+/**
+ * Get per-edge-index free segments for a room against other rooms.
+ * Returns parametric free segments (t ∈ [0,1]) for each edge of the room polygon.
+ *
+ * @param {Object} room - Room with polygonVertices and floorPosition
+ * @param {Array} otherRooms - Other rooms on the same floor (non-wall, non-circle)
+ * @returns {Array<Array<{tStart:number, tEnd:number}>>} Per-edge array of free segment ranges
+ */
+export function getEdgeFreeSegmentsByIndex(room, otherRooms) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+  const result = [];
+
+  for (let i = 0; i < n; i++) {
+    const A = verts[i];
+    const B = verts[(i + 1) % n];
+
+    // Convert to floor coordinates
+    const edge = {
+      p1: { x: pos.x + A.x, y: pos.y + A.y },
+      p2: { x: pos.x + B.x, y: pos.y + B.y }
+    };
+
+    const freeSegs = getEdgeFreeSegments(edge, otherRooms);
+
+    // Convert returned absolute segments back to parametric [0,1] range
+    const dx = edge.p2.x - edge.p1.x;
+    const dy = edge.p2.y - edge.p1.y;
+    const edgeLen = Math.hypot(dx, dy);
+
+    if (edgeLen < 0.01) {
+      result.push([]);
+      continue;
+    }
+
+    const nx = dx / edgeLen;
+    const ny = dy / edgeLen;
+
+    const parametric = [];
+    for (const seg of freeSegs) {
+      // Project seg.p1 and seg.p2 onto the edge to get t values
+      const t1 = ((seg.p1.x - edge.p1.x) * nx + (seg.p1.y - edge.p1.y) * ny) / edgeLen;
+      const t2 = ((seg.p2.x - edge.p1.x) * nx + (seg.p2.y - edge.p1.y) * ny) / edgeLen;
+      const tStart = Math.max(0, Math.min(t1, t2));
+      const tEnd = Math.min(1, Math.max(t1, t2));
+      if (tEnd > tStart + 0.001) {
+        parametric.push({ tStart, tEnd });
+      }
+    }
+    result.push(parametric);
+  }
+
+  return result;
+}
+
+// ── Shared-wall abstraction ──────────────────────────────────────────────────
+// Reusable helpers for querying relationships between edges of adjacent rooms.
+// Useful for doorway propagation, wall thickness negotiation, acoustic/thermal
+// calculations, or any future feature that needs cross-room edge awareness.
+
+/**
+ * For a given room edge, find all collinear overlapping edges on other rooms.
+ * Returns match descriptors with coordinate-mapping metadata so callers can
+ * transform positions between the two edge coordinate spaces.
+ *
+ * @param {Object} room - Room with polygonVertices and floorPosition
+ * @param {number} edgeIndex - Edge index (edge from vertex[i] to vertex[(i+1)%n])
+ * @param {Array} otherRooms - Other rooms on the floor (non-wall, non-circle)
+ * @param {number} [tolerance=1] - Max perpendicular distance for collinearity (cm)
+ * @returns {Array<{room: Object, edgeIndex: number, overlapStartCm: number,
+ *   overlapEndCm: number, targetEdgeDir: {x:number,y:number},
+ *   targetEdgeOrigin: {x:number,y:number}, sourceEdgeDir: {x:number,y:number},
+ *   sourceEdgeOrigin: {x:number,y:number}, antiParallel: boolean}>}
+ */
+export function findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance = WALL_ADJACENCY_TOLERANCE_CM) {
+  const verts = room.polygonVertices;
+  if (!verts || verts.length < 3) return [];
+
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  const n = verts.length;
+  const A = verts[edgeIndex];
+  const B = verts[(edgeIndex + 1) % n];
+
+  const sax = pos.x + A.x, say = pos.y + A.y;
+  const sbx = pos.x + B.x, sby = pos.y + B.y;
+  const sdx = sbx - sax, sdy = sby - say;
+  const sLen = Math.hypot(sdx, sdy);
+  if (sLen < 0.01) return [];
+
+  const snx = sdx / sLen, sny = sdy / sLen;
+  const matches = [];
+
+  for (const other of otherRooms) {
+    if (other.id === room.id) continue;
+    const oVerts = other.polygonVertices;
+    if (!oVerts || oVerts.length < 3) continue;
+
+    const oPos = other.floorPosition || { x: 0, y: 0 };
+    const oN = oVerts.length;
+
+    for (let j = 0; j < oN; j++) {
+      const C = oVerts[j];
+      const D = oVerts[(j + 1) % oN];
+      const tcx = oPos.x + C.x, tcy = oPos.y + C.y;
+      const tdx = oPos.x + D.x - tcx, tdy = oPos.y + D.y - tcy;
+      const tLen = Math.hypot(tdx, tdy);
+      if (tLen < 0.01) continue;
+
+      const tnx = tdx / tLen, tny = tdy / tLen;
+
+      // Must be parallel
+      const cross = snx * tny - sny * tnx;
+      if (Math.abs(cross) > 0.01) continue;
+
+      // Must be collinear (same line)
+      const vx = tcx - sax, vy = tcy - say;
+      const perpDist = Math.abs(vx * sny - vy * snx);
+      if (perpDist > tolerance) continue;
+
+      // Compute overlap on source edge (in cm along source edge)
+      const t1 = vx * snx + vy * sny;
+      const vx2 = oPos.x + D.x - sax, vy2 = oPos.y + D.y - say;
+      const t2 = vx2 * snx + vy2 * sny;
+
+      const overlapStart = Math.max(0, Math.min(t1, t2));
+      const overlapEnd = Math.min(sLen, Math.max(t1, t2));
+      if (overlapEnd - overlapStart < 1) continue;
+
+      matches.push({
+        room: other,
+        edgeIndex: j,
+        overlapStartCm: overlapStart,
+        overlapEndCm: overlapEnd,
+        targetEdgeOrigin: { x: tcx, y: tcy },
+        targetEdgeDir: { x: tnx, y: tny },
+        targetEdgeLen: tLen,
+        sourceEdgeOrigin: { x: sax, y: say },
+        sourceEdgeDir: { x: snx, y: sny },
+        sourceEdgeLen: sLen,
+        antiParallel: (snx * tnx + sny * tny) < 0,
+      });
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Collect all doorways that affect a room edge.
+ * Doorways are stored on wall entities in floor.walls[].
+ * A shared wall's doorways are automatically visible from both sides.
+ *
+ * @param {Object} floor - Floor object with walls[] array
+ * @param {Object} room - Room with polygonVertices, floorPosition
+ * @param {number} edgeIndex - Edge index
+ * @param {Array} [_otherRooms] - Unused legacy parameter (kept for backward compatibility)
+ * @param {number} [_tolerance] - Unused legacy parameter (kept for backward compatibility)
+ * @returns {Array<{id: string, offsetCm: number, widthCm: number, heightCm: number, elevationCm: number}>}
+ * @deprecated Legacy convenience wrapper — doorways now live on wall entities directly.
+ *   Retained because tests exercise this function.
+ */
+export function collectEdgeDoorways(floor, room, edgeIndex, _otherRooms, _tolerance) {
+  if (!floor?.walls) return [];
+  // Find wall for this room edge (inline lookup to avoid circular import with walls.js)
+  const wall = floor.walls.find(
+    w => (w.roomEdge && w.roomEdge.roomId === room.id && w.roomEdge.edgeIndex === edgeIndex)
+  ) || floor.walls.find(
+    w => w.surfaces.some(s => s.roomId === room.id && s.edgeIndex === edgeIndex)
+  );
+  if (!wall) return [];
+  return (wall.doorways || []).map(dw => ({
+    id: dw.id,
+    offsetCm: dw.offsetCm,
+    widthCm: dw.widthCm,
+    heightCm: dw.heightCm,
+    elevationCm: dw.elevationCm || 0,
+  }));
+}
+
