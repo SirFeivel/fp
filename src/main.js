@@ -24,7 +24,6 @@ import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
-import { createWallFinalizationController } from "./walls_finalization.js";
 
 import {
   renderWarnings,
@@ -774,8 +773,7 @@ function renderPlanningSection(state, opts) {
       // Compute wall geometry once for the entire floor
       const wallGeometry = computeFloorWallGeometry(floor);
       const wallDescs = prepareFloorWallData(state, floor, wallGeometry);
-      const wallsFinalized = floor.wallsFinalized !== false; // Default true for safety
-      const showWalls = state.view?.showWalls3D !== false && wallsFinalized;
+      const showWalls = state.view?.showWalls3D !== false;
       if (isFloorView) {
         // Floor 3D: all rooms
         const floorRooms = floor.rooms.filter(r => r.polygonVertices?.length >= 3);
@@ -1095,7 +1093,6 @@ function renderCommon(state, label) {
   renderCounts(store.getUndoStack(), store.getRedoStack(), label);
   refreshProjectSelect();
   updateMeta();
-  wallFinalization.updateFinalizationUI(state);
   if (afterRenderHook) afterRenderHook();
 }
 
@@ -1690,8 +1687,6 @@ const structure = createStructureController({
 });
 
 const removal = createRemovalController(store, renderAll);
-
-const wallFinalization = createWallFinalizationController(store, renderAll);
 
 const backgroundController = createBackgroundController({
   store,
@@ -2882,17 +2877,6 @@ function updateAllTranslations() {
   });
   document.getElementById("floorZoomReset")?.addEventListener("click", () => {
     zoomPanController.reset();
-  });
-
-  // Wall finalization
-  document.getElementById("finalizeWallsBtn")?.addEventListener("click", () => {
-    const floor = getCurrentFloor(store.getState());
-    if (floor) wallFinalization.toggleWallsFinalized(floor.id);
-  });
-
-  document.getElementById("finalizeBannerBtn")?.addEventListener("click", () => {
-    const floor = getCurrentFloor(store.getState());
-    if (floor) wallFinalization.setWallsFinalized(floor.id, true);
   });
 
   // Floor view room management - Add rectangle room

@@ -201,20 +201,6 @@ const translations = {
       bottom: "Untere Wand",
       left: "Linke Wand"
     },
-    walls: {
-      finalize: "Wände finalisieren",
-      unfinalize: "Wände ausblenden",
-      finalizeTitle: "Wände finalisieren?",
-      finalizeMessage: "Wände werden mit Standardmaßen (12cm dick, 200cm hoch) erstellt. Sie können danach Wandeigenschaften bearbeiten, ohne die Raumabmessungen zu ändern.",
-      finalizeConfirm: "Finalisieren",
-      finalizeNow: "Jetzt finalisieren",
-      unfinalizeTitle: "Wände ausblenden?",
-      unfinalizeWarning: "Wände werden nicht mehr angezeigt. Bestehende Wandkonfigurationen bleiben gespeichert.",
-      unfinalizeConfirm: "Ausblenden",
-      finalized: "Wände finalisiert",
-      unfinalized: "Wände ausgeblendet",
-      planningPhase: "Planungsphase: Raumlayout definieren"
-    },
     surface: {
       enableTiling: "Fliesenverlegung aktivieren",
       editSurface: "Wandflächeneinstellungen",
@@ -867,20 +853,6 @@ const translations = {
       right: "Right wall",
       bottom: "Bottom wall",
       left: "Left wall"
-    },
-    walls: {
-      finalize: "Finalize walls",
-      unfinalize: "Hide walls",
-      finalizeTitle: "Finalize walls?",
-      finalizeMessage: "Walls will be created with default dimensions (12cm thick, 200cm high). You can then edit wall properties without affecting room dimensions.",
-      finalizeConfirm: "Finalize",
-      finalizeNow: "Finalize now",
-      unfinalizeTitle: "Hide walls?",
-      unfinalizeWarning: "Walls will no longer be rendered. Existing wall configurations will be preserved.",
-      unfinalizeConfirm: "Hide",
-      finalized: "Walls finalized",
-      unfinalized: "Walls hidden",
-      planningPhase: "Planning phase: Define room layout"
     },
     surface: {
       enableTiling: "Enable Tiling",

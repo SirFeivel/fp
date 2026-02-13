@@ -26,17 +26,7 @@ export const HEX_STEP_RATIO = 0.75;
 
 export const DEFAULT_WALL_THICKNESS_CM = 12;
 export const DEFAULT_WALL_HEIGHT_CM = 200;
-
-// Wall adjacency detection tolerance - how far apart can rooms be and still share a wall?
-// Increased from 13cm to 50cm to accommodate floor plan extraction use case
-// where users trace rooms from architectural drawings with varying wall thicknesses:
-// - Interior walls: 10-15cm
-// - Load-bearing walls: 15-20cm
-// - Exterior walls: 20-30cm
-// - Thick exterior walls: 30-50cm
-export const WALL_ADJACENCY_TOLERANCE_CM = 50;
-
-export const WALL_ENFORCEMENT_TOLERANCE_FACTOR = 2; // 2× wall thickness for enforcement
+export const WALL_ADJACENCY_TOLERANCE_CM = DEFAULT_WALL_THICKNESS_CM + 1;
 
 export const COLORS = {
   background: "#081022",

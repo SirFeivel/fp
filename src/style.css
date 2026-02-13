@@ -1529,67 +1529,6 @@ body{
   cursor: not-allowed;
 }
 
-/* Finalize Walls Button States */
-#finalizeWallsBtn.finalized {
-  background: #10b98120;
-  border-color: #10b981;
-}
-
-#finalizeWallsBtn.finalized svg {
-  stroke: #10b981;
-}
-
-#finalizeWallsBtn.planning svg {
-  stroke: #f59e0b;
-}
-
-/* Status Banner */
-.status-banner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  margin: 1rem;
-  border-radius: 0.5rem;
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  max-width: 600px;
-}
-
-.status-banner.warning {
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  color: #92400e;
-}
-
-.status-banner.hidden {
-  display: none;
-}
-
-.status-icon {
-  font-size: 1.2rem;
-}
-
-.banner-action {
-  margin-left: auto;
-  padding: 0.25rem 0.75rem;
-  background: white;
-  border: 1px solid currentColor;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  transition: all 0.15s;
-}
-
-.banner-action:hover {
-  background: #f59e0b;
-  color: white;
-}
-
 /* Quick Dropdown */
 .quick-dropdown {
   position: relative;
