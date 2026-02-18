@@ -24,7 +24,6 @@ import { createPolygonDrawController } from "./polygon-draw.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
-import { extractFloorPlan, showExtractionValidation, checkBrowserSupport } from "./plan-extraction/index.js";
 
 import {
   renderWarnings,
@@ -1421,7 +1420,6 @@ function initPatternGroupsControls() {
 function initBackgroundControls() {
   const bgUpload = document.getElementById("bgUpload");
   const bgUploadBtn = document.getElementById("bgUploadBtn");
-  const bgExtractBtn = document.getElementById("bgExtractBtn");
   const bgCalibrateBtn = document.getElementById("bgCalibrateBtn");
   const bgOpacitySlider = document.getElementById("bgOpacitySlider");
 
@@ -1440,39 +1438,10 @@ function initBackgroundControls() {
       // Enable calibration and opacity controls
       if (bgCalibrateBtn) bgCalibrateBtn.disabled = false;
       if (bgOpacitySlider) bgOpacitySlider.disabled = false;
-      // Enable extraction button
-      if (bgExtractBtn) bgExtractBtn.disabled = false;
     }
 
     // Clear input so same file can be selected again
     e.target.value = "";
-  });
-
-  // Extract floor plan button
-  bgExtractBtn?.addEventListener("click", async () => {
-    // Check browser support
-    const support = checkBrowserSupport();
-    if (!support.supported) {
-      await showAlert({
-        title: t("dialog.error"),
-        message: "Floor plan extraction requires a modern browser with WebAssembly and Web Worker support.",
-        type: "error"
-      });
-      return;
-    }
-
-    const state = store.getState();
-    const floor = getCurrentFloor(state);
-    if (!floor?.layout?.background?.dataUrl) {
-      await showAlert({
-        title: t("dialog.error"),
-        message: "Please upload a background image first.",
-        type: "error"
-      });
-      return;
-    }
-
-    await handleFloorPlanExtraction(floor.layout.background.dataUrl);
   });
 
   // Calibration panel elements
@@ -1803,146 +1772,6 @@ function cancelCalibrationMode() {
   // Also ensure panel is hidden
   const calibrationPanel = document.getElementById("calibrationPanel");
   if (calibrationPanel) calibrationPanel.classList.add("hidden");
-}
-
-// Handle floor plan extraction
-async function handleFloorPlanExtraction(imageDataUrl) {
-  const extractionPanel = document.getElementById("extractionPanel");
-  const extractionPhase = document.getElementById("extractionPhase");
-  const extractionPhaseText = document.getElementById("extractionPhaseText");
-  const extractionProgressFill = document.getElementById("extractionProgressFill");
-  const btnCancelExtraction = document.getElementById("btnCancelExtraction");
-
-  let cancelled = false;
-
-  // Show extraction panel
-  extractionPanel?.classList.remove("hidden");
-
-  // Cancel button
-  const cancelHandler = () => {
-    cancelled = true;
-    extractionPanel?.classList.add("hidden");
-  };
-  btnCancelExtraction?.addEventListener("click", cancelHandler, { once: true });
-
-  try {
-    // Start extraction
-    const result = await extractFloorPlan(imageDataUrl, {
-      onProgress: ({ phase, progress }) => {
-        if (cancelled) throw new Error("Cancelled");
-
-        // Update progress bar
-        if (extractionProgressFill) {
-          extractionProgressFill.style.width = `${progress * 100}%`;
-        }
-
-        // Update phase text
-        const phaseMap = {
-          preprocessing: t("extraction.phasePreprocessing"),
-          ocr: t("extraction.phaseOCR"),
-          walls: t("extraction.phaseWalls"),
-          calibration: t("extraction.phaseCalibration"),
-          rooms: t("extraction.phaseRooms"),
-          naming: t("extraction.phaseNaming"),
-          converting: t("extraction.phaseComplete"),
-          complete: t("extraction.phaseComplete")
-        };
-
-        if (extractionPhaseText) {
-          extractionPhaseText.textContent = phaseMap[phase] || phase;
-        }
-      },
-      onError: (error) => {
-        console.error("Extraction error:", error);
-      }
-    });
-
-    if (cancelled) return;
-
-    // Hide extraction panel
-    extractionPanel?.classList.add("hidden");
-
-    if (!result.success) {
-      await showAlert({
-        title: t("dialog.error"),
-        message: result.error || "Floor plan extraction failed.",
-        type: "error"
-      });
-      return;
-    }
-
-    // Show validation UI
-    try {
-      const validatedResult = await showExtractionValidation(result);
-
-      // Import rooms into current floor
-      await importExtractedRooms(validatedResult);
-
-      await showAlert({
-        title: t("dialog.success"),
-        message: t("extraction.imported"),
-        type: "success"
-      });
-    } catch (error) {
-      if (error.message !== "Extraction cancelled by user") {
-        console.error("Validation error:", error);
-        await showAlert({
-          title: t("dialog.error"),
-          message: error.message,
-          type: "error"
-        });
-      }
-    }
-  } catch (error) {
-    extractionPanel?.classList.add("hidden");
-    if (error.message !== "Cancelled") {
-      console.error("Extraction failed:", error);
-      await showAlert({
-        title: t("dialog.error"),
-        message: error.message || "An unexpected error occurred during extraction.",
-        type: "error"
-      });
-    }
-  } finally {
-    btnCancelExtraction?.removeEventListener("click", cancelHandler);
-  }
-}
-
-// Import extracted rooms into current floor
-async function importExtractedRooms(extractionResult) {
-  const state = store.getState();
-  const next = deepClone(state);
-  const floor = getCurrentFloor(next);
-
-  if (!floor) {
-    throw new Error("No floor selected");
-  }
-
-  // Create rooms from extracted data
-  const roomsToAdd = extractionResult.rooms.map(room => ({
-    id: room.id,
-    name: room.name || t("room.newRoom"),
-    widthCm: room.widthCm,
-    heightCm: room.heightCm,
-    x: room.positionX || 0,
-    y: room.positionY || 0,
-    tile: getDefaultTilePresetTemplate(),
-    grout: { widthCm: 0.5, color: "#CCCCCC" },
-    pattern: { type: "grid", rotation: 0, bondFraction: 0.5, offsetX: 0, offsetY: 0, runLength: 2 },
-    origin: { preset: "topLeft", x: 0, y: 0 },
-    pricing: getDefaultPricing(),
-    waste: { allowRotate: true, optimizeCuts: false, kerfWidthMm: 3 },
-    exclusions: [],
-    skirting: { enabled: false, type: "bought", heightCm: 10, boughtWidthCm: 240, pricePerPiece: 5 }
-  }));
-
-  // Add rooms to floor
-  floor.rooms = [...(floor.rooms || []), ...roomsToAdd];
-
-  store.commit(t("extraction.imported"), next, {
-    onRender: renderAll,
-    updateMetaCb: updateMeta
-  });
 }
 
 const roomResizeController = createRoomResizeController({

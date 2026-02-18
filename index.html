@@ -542,14 +542,6 @@
                       <polyline points="21 15 16 10 5 21"></polyline>
                     </svg>
                   </button>
-                  <button id="bgExtractBtn" class="quick-btn" title="Extract floor plan from image" data-i18n-title="extraction.extractFloorPlan">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <path d="M12 18v-6"></path>
-                      <path d="M9 15l3-3 3 3"></path>
-                    </svg>
-                  </button>
                   <button id="bgCalibrateBtn" class="quick-btn" title="Calibrate scale" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M2 12h4m12 0h4M12 2v4m0 12v4"></path>
@@ -621,25 +613,6 @@
                   <p data-i18n="floor.calibrateFailedTitle">Calibration failed</p>
                   <p class="calibration-failed-reason" id="calibrationFailedReason"></p>
                   <button id="btnRetryCalibration" class="btn small primary" data-i18n="floor.calibrateRetry">Retry</button>
-                </div>
-              </div>
-
-              <!-- Extraction Progress Panel (shown during extraction) -->
-              <div id="extractionPanel" class="calibration-panel hidden">
-                <div class="calibration-header">
-                  <span class="calibration-step" id="extractionPhase" data-i18n="extraction.processing">Processing floor plan...</span>
-                  <button id="btnCancelExtraction" class="btn-icon small" title="Cancel">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-                <div class="extraction-progress">
-                  <div class="progress-bar">
-                    <div class="progress-fill" id="extractionProgressFill" style="width: 0%"></div>
-                  </div>
-                  <p class="extraction-phase-text" id="extractionPhaseText" data-i18n="extraction.phasePreprocessing">Preparing image</p>
                 </div>
               </div>
 
