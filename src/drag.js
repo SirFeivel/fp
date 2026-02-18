@@ -1,6 +1,6 @@
 // src/drag.js
 import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
-import { getRoomBounds } from "./geometry.js";
+import { getRoomBounds, isRectRoom } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
 import { pointerToSvgXY, svgPointToClient, snapToMm, snapToHalfCm, formatCm, dist } from "./svg-coords.js";
@@ -936,7 +936,7 @@ export function createRoomResizeController({
 
     const room = floor.rooms?.find(r => r.id === roomId);
     const isCircle = room?.circle && room.circle.rx > 0;
-    if (!isCircle && (!room || !room.polygonVertices || room.polygonVertices.length !== 4)) return;
+    if (!isCircle && !isRectRoom(room)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1059,7 +1059,7 @@ export function createRoomResizeController({
 
         syncFloorWalls(floor);
         commit(getResizeLabel?.() || "Room resized", next);
-      } else if (room && room.polygonVertices?.length === 4) {
+      } else if (room && isRectRoom(room)) {
         room.floorPosition = { x: newPosX, y: newPosY };
         // Update polygonVertices for rectangle
         room.polygonVertices = [

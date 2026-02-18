@@ -603,11 +603,13 @@ export function createPolygonDrawController({
     // Normal snapping for subsequent points - try geometry snap, then grid
     const lastPoint = points.length > 0 ? points[points.length - 1] : null;
     let snappedPoint;
+    let snapType = "grid";
 
     // Use geometry snapping if we have existing rooms
     if (edgeSnapMode && roomVertices.length > 0) {
       const snapResult = snapToRoomGeometry(svgPoint, roomVertices, roomEdges, lastPoint, e.shiftKey);
       snappedPoint = snapResult.point;
+      snapType = snapResult.type;
     } else {
       snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
     }
@@ -618,9 +620,10 @@ export function createPolygonDrawController({
       return;
     }
 
-    // Reject clicks inside existing rooms (floor view)
-    if (cachedFloor && isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null) {
-      // Point is inside a room - don't add it
+    // Reject clicks strictly inside existing rooms (floor view).
+    // Points snapped to room geometry (vertex or edge) sit on a boundary and
+    // are intentionally allowed — they connect the new room to an existing one.
+    if (cachedFloor && snapType === "grid" && isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null) {
       return;
     }
 
@@ -694,10 +697,13 @@ export function createPolygonDrawController({
       snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey);
     }
 
-    // Check if the snapped point is inside any existing room
+    // Mark as inside-room only when NOT snapped to geometry — a snapped vertex
+    // or edge point is on a boundary and is a valid placement target.
     currentMousePoint = snappedPoint;
     currentSnapType = snapType;
-    isMouseInsideRoom = cachedFloor ? isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null : false;
+    isMouseInsideRoom = cachedFloor && snapType === "grid"
+      ? isPointInsideAnyRoom(snappedPoint, cachedFloor) !== null
+      : false;
 
     updatePreview(snappedPoint);
   }

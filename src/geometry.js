@@ -75,6 +75,20 @@ export function getRoomBounds(room) {
   return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
 }
 
+/**
+ * Returns true when a room has exactly 4 polygon vertices forming an
+ * axis-aligned rectangle (exactly 2 distinct x-values and 2 distinct y-values).
+ * Used to distinguish plain rectangular rooms (which support bounding-box
+ * resize handles) from freeform polygons that happen to have 4 vertices.
+ */
+export function isRectRoom(room) {
+  const verts = room?.polygonVertices;
+  if (!verts || verts.length !== 4) return false;
+  const xs = new Set(verts.map(v => v.x));
+  const ys = new Set(verts.map(v => v.y));
+  return xs.size === 2 && ys.size === 2;
+}
+
 export function multiPolygonToPathD(mp) {
   let d = "";
   for (const poly of mp) {

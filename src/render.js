@@ -13,6 +13,7 @@ import {
   roomPolygon,
   tilesForPreview,
   getRoomBounds,
+  isRectRoom,
   computeOriginPoint,
   computeMultiPolygonPerimeter,
   computeSkirtingSegments
@@ -3095,9 +3096,8 @@ export function renderFloorCanvas({
 
     svg.appendChild(roomGroup);
 
-    // Add resize handles for selected room (only for simple rectangular rooms)
-    const isSimpleRect = room.polygonVertices?.length === 4;
-    if (isSelected && onRoomResizePointerDown && isSimpleRect && !isCircleRoom(room)) {
+    // Add resize handles for selected room (only for true axis-aligned rectangles)
+    if (isSelected && onRoomResizePointerDown && isRectRoom(room)) {
       const handleRadius = 6;
       const handles = [
         { type: "nw", x: roomBounds.minX, y: roomBounds.minY, cursor: "nwse-resize" },
