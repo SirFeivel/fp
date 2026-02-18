@@ -21,6 +21,7 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
+import { createRoomDetectionController } from "./room-detection-controller.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
@@ -1171,6 +1172,7 @@ function switchToFloorView() {
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
+  cancelRoomDetectionMode();
   selectedWallEdge = null;
   selectedDoorwayId = null;
   const next = deepClone(state);
@@ -1185,6 +1187,7 @@ function switchToPatternGroupsView() {
 
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
+  cancelRoomDetectionMode();
   selectedWallEdge = null;
   selectedDoorwayId = null;
   const next = deepClone(state);
@@ -1202,6 +1205,7 @@ function is3DAvailable(state) {
 function toggle3D() {
   cancelFreeformDrawing();
   cancelCalibrationMode();
+  cancelRoomDetectionMode();
   const state = store.getState();
   const next = deepClone(state);
   next.view = next.view || {};
@@ -1212,6 +1216,7 @@ function toggle3D() {
 async function switchToRoomView(skipValidation = false) {
   cancelFreeformDrawing(); // Cancel any active freeform drawing
   cancelCalibrationMode(); // Cancel any active calibration
+  cancelRoomDetectionMode();
   const state = store.getState();
   if (state.view?.planningMode === "room") {
     return;
@@ -1619,6 +1624,28 @@ function initBackgroundControls() {
     });
   });
 
+  // Detect Room button
+  const bgDetectRoomBtn = document.getElementById("bgDetectRoom");
+  bgDetectRoomBtn?.addEventListener("click", () => {
+    if (roomDetectionController.isActive()) {
+      roomDetectionController.cancel();
+    } else {
+      cancelFreeformDrawing();
+      cancelCalibrationMode();
+      roomDetectionController.activate();
+    }
+  });
+
+  // Room detection panel: Confirm
+  document.getElementById("btnConfirmRoomDetection")?.addEventListener("click", () => {
+    roomDetectionController.confirmDetection();
+  });
+
+  // Room detection panel: Cancel
+  document.getElementById("btnCancelRoomDetection")?.addEventListener("click", () => {
+    roomDetectionController.cancel();
+  });
+
   // Opacity slider
   bgOpacitySlider?.addEventListener("input", (e) => {
     const opacity = parseInt(e.target.value, 10) / 100;
@@ -1692,6 +1719,17 @@ const backgroundController = createBackgroundController({
   store,
   renderAll,
   updateMeta
+});
+
+const roomDetectionController = createRoomDetectionController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: () => renderAll(),
+  getCurrentFloor: (state) => {
+    const s = state || store.getState();
+    return s.floors?.find(f => f.id === s.selectedFloorId) || null;
+  }
 });
 
 const dragController = createExclusionDragController({
@@ -1772,6 +1810,13 @@ function cancelCalibrationMode() {
   // Also ensure panel is hidden
   const calibrationPanel = document.getElementById("calibrationPanel");
   if (calibrationPanel) calibrationPanel.classList.add("hidden");
+}
+
+// Helper to cancel room detection mode
+function cancelRoomDetectionMode() {
+  if (roomDetectionController.isActive()) {
+    roomDetectionController.cancel();
+  }
 }
 
 const roomResizeController = createRoomResizeController({
@@ -2339,6 +2384,7 @@ function updateAllTranslations() {
   document.getElementById("floorSelect")?.addEventListener("change", (e) => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
     cancelCalibrationMode(); // Cancel any active calibration
+    cancelRoomDetectionMode();
     structure.selectFloor(e.target.value);
   });
 
@@ -2746,6 +2792,7 @@ function updateAllTranslations() {
     planningFloorSelect.addEventListener("change", (e) => {
       cancelFreeformDrawing(); // Cancel any active freeform drawing
       cancelCalibrationMode(); // Cancel any active calibration
+      cancelRoomDetectionMode();
       structure.selectFloor(e.target.value);
     });
   }
@@ -2883,6 +2930,7 @@ function updateAllTranslations() {
   document.getElementById("floorAddRoom")?.addEventListener("click", () => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
     cancelCalibrationMode(); // Cancel any active calibration
+    cancelRoomDetectionMode();
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -2951,6 +2999,7 @@ function updateAllTranslations() {
   document.getElementById("floorAddCircle")?.addEventListener("click", () => {
     cancelFreeformDrawing();
     cancelCalibrationMode();
+    cancelRoomDetectionMode();
     const state = store.getState();
     const floor = getCurrentFloor(state);
     if (!floor) return;
@@ -3671,7 +3720,10 @@ function updateAllTranslations() {
     const floorDrawRoom = document.getElementById("floorDrawRoom");
     const floorDeleteRoom = document.getElementById("floorDeleteRoom");
 
+    const isCalibrated = Boolean(floor?.layout?.background?.scale?.calibrated);
     if (bgCalibrateBtn) bgCalibrateBtn.disabled = !hasBackground;
+    const bgDetectRoomBtn = document.getElementById("bgDetectRoom");
+    if (bgDetectRoomBtn) bgDetectRoomBtn.disabled = !isCalibrated;
     if (bgOpacitySlider) {
       bgOpacitySlider.disabled = !hasBackground;
       if (hasBackground && floor?.layout?.background?.opacity !== undefined) {
@@ -3940,6 +3992,7 @@ function updateAllTranslations() {
   document.getElementById("floorQuickSelect")?.addEventListener("change", (e) => {
     cancelFreeformDrawing(); // Cancel any active freeform drawing
     cancelCalibrationMode(); // Cancel any active calibration
+    cancelRoomDetectionMode();
     structure.selectFloor(e.target.value);
   });
 

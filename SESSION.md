@@ -1,3 +1,60 @@
+## Session: Room Autodetect Feature (2026-02-18)
+
+### Branch
+`wall-optimisation`
+
+### Goal
+Implement semi-automatic room detection from calibrated background floor plan images.
+
+### Status: COMPLETE — ready to commit
+
+All 1052 tests pass. Verification test against real reference floor plan: errors ≤ 1 cm on all four sides.
+
+### What was implemented
+
+**New files (untracked — must be committed):**
+- `src/room-detection.js` — Pure image-processing pipeline (no DOM/state dependencies)
+- `src/room-detection-controller.js` — State machine controller (idle → waitingForClick → processing → preview → idle)
+- `src/room-detection.test.js` — 27 unit tests
+- `src/room-detection.verify.test.js` — Integration test vs. real floor plan image
+
+**Modified files (unstaged):**
+- `index.html` — +24 lines: "Detect Room" button (`#bgDetectRoom`) + `#roomDetectionPanel`
+- `src/i18n.js` — +14 lines: `roomDetection.*` keys in DE + EN
+- `src/main.js` — +53 lines: `createRoomDetectionController` instantiation + wiring + `cancelRoomDetectionMode()`
+
+### Key algorithm fix (done in this session)
+
+The original `detectDoorGaps` function compared the full image masks and produced **236 false door gap detections** (noise, anti-aliasing, exterior). Root cause: large close radius (~69px) sealed entire image regions.
+
+**Fix:** Replaced with `detectDoorGapsAlongEdges()` — scans along each polygon edge in the opened wall mask for runs of missing gray fill. Targeted, avoids whole-image comparison.
+
+### Verification bbox accuracy (vs. reference floor plan)
+- Reference: `x=492.5–991, y=99–492 cm`
+- Detected: `x=491.8–990.5, y=98.6–491.8 cm`
+- Errors: left=0.7 cm, right=0.5 cm, top=0.4 cm, bottom=0.2 cm ✅
+
+### Detection pipeline
+1. `autoDetectWallRange()` — histogram analysis, finds gray wall fill range
+2. `buildGrayWallMask()` — marks mid-gray pixels as wall
+3. `morphologicalOpen()` — removes interior noise (text, anti-aliasing)
+4. `morphologicalClose()` — seals door gaps (radius ≈ 80×ppc, capped at 300px)
+5. `floodFill()` — fills room interior from seed
+6. `traceContour()` — Moore neighbor boundary tracing
+7. `douglasPeucker()` — polygon simplification (epsilon ≈ 4×ppc)
+8. `detectDoorGapsAlongEdges()` — targeted edge-scan for doorway gaps
+
+### UI wiring
+- Button `#bgDetectRoom`: disabled until `bg.scale.calibrated` is true
+- Panel `#roomDetectionPanel` uses `.calibration-panel` CSS (no new CSS needed)
+- `cancelRoomDetectionMode()` called from all view-switch functions
+
+### Next steps
+- Commit all changes (4 new files + 3 modified files)
+- Test in browser with a real calibrated floor plan image
+
+---
+
 ## Session: Setup Project Section Adjustments (2026-01-31)
 ### Goal
 - Reorder Project controls in Setup and update labels.

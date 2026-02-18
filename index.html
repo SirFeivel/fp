@@ -548,6 +548,12 @@
                       <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                   </button>
+                  <button id="bgDetectRoom" class="quick-btn" title="Detect Room" disabled data-i18n-title="roomDetection.activate">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
+                      <path d="M13 13l6 6"></path>
+                    </svg>
+                  </button>
                 </div>
                 <div class="quick-control-group">
                   <span class="quick-label" data-i18n="floor.opacity">Opacity:</span>
@@ -614,6 +620,24 @@
                   <p class="calibration-failed-reason" id="calibrationFailedReason"></p>
                   <button id="btnRetryCalibration" class="btn small primary" data-i18n="floor.calibrateRetry">Retry</button>
                 </div>
+              </div>
+
+              <!-- Room Detection Panel (shown during detection preview) -->
+              <div id="roomDetectionPanel" class="calibration-panel hidden">
+                <div class="calibration-header">
+                  <span class="calibration-step" data-i18n="roomDetection.activate">Detect Room</span>
+                  <button id="btnCancelRoomDetection" class="btn-icon small" title="Cancel">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <p class="calibration-instruction" id="roomDetectionInstruction" data-i18n="roomDetection.clickPrompt">Click inside a room on the plan</p>
+                <div id="roomDetectionPreviewActions" class="hidden">
+                  <button id="btnConfirmRoomDetection" class="btn small primary" data-i18n="roomDetection.confirm">Insert Room</button>
+                </div>
+                <p class="calibration-hint hidden" id="roomDetectionError" data-i18n="roomDetection.failed">Room not detected</p>
               </div>
 
               <!-- Pattern Groups View Quick Controls (hidden by default) -->

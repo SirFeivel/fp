@@ -588,6 +588,13 @@ const translations = {
     state: {
       title: "Live State (read-only)"
     },
+    roomDetection: {
+      activate: "Raum erkennen",
+      clickPrompt: "Klicke auf einen Raum im Plan",
+      confirm: "Raum einfügen",
+      cancel: "Abbrechen",
+      failed: "Raum nicht erkannt — näher zur Mitte klicken"
+    },
     debug: {
       title: "Debug",
       sectionOptions: "Debug Optionen",
@@ -1240,6 +1247,13 @@ const translations = {
     },
     state: {
       title: "Live State (read-only)"
+    },
+    roomDetection: {
+      activate: "Detect Room",
+      clickPrompt: "Click inside a room on the plan",
+      confirm: "Insert Room",
+      cancel: "Cancel",
+      failed: "Room not detected — try clicking closer to the centre"
     },
     debug: {
       title: "Debug",
