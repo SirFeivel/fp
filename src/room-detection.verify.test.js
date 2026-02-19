@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { decode } from 'fast-png';
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents } from './room-detection.js';
-import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES } from './floor-plan-rules.js';
+import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
 const calibrated = JSON.parse(
@@ -417,5 +417,40 @@ describe('Step 4 pipeline reorder produces identical output (300dpi KG)', () => 
     const hWall = oldResult.spanningWalls.find(w => w.orientation === 'H');
     expect(hWall.thicknessCm).toBeGreaterThan(15);
     expect(hWall.thicknessCm).toBeLessThan(35);
+  });
+
+  // ── Step 5: wall type classification E2E ──────────────────────────
+
+  it('classifyWallTypes discovers 2 types: structural + outer (300dpi)', () => {
+    runBothPipelines();
+    const allThicknesses = [
+      ...newResult.wallThicknesses.edges.map(e => e.thicknessCm),
+      ...newResult.spanningWalls.map(w => w.thicknessCm),
+    ];
+    const wallTypes = classifyWallTypes(allThicknesses);
+    console.log('classifyWallTypes result:', JSON.stringify(wallTypes));
+    expect(wallTypes.length).toBe(2);
+    expect(wallTypes[0].id).toBe("structural");
+    expect(wallTypes[0].thicknessCm).toBe(24);
+    expect(wallTypes[1].id).toBe("outer");
+    expect(wallTypes[1].thicknessCm).toBe(30);
+  });
+
+  it('envelope outer wall edges snap to outer (30cm)', () => {
+    runBothPipelines();
+    for (const edge of newResult.wallThicknesses.edges) {
+      const { snappedCm, typeId } = snapToWallType(edge.thicknessCm);
+      expect(typeId, `edge ${edge.edgeIndex} (${edge.thicknessCm}cm) → ${typeId}`).toBe("outer");
+      expect(snappedCm).toBe(30);
+    }
+  });
+
+  it('spanning wall snaps to structural (24cm)', () => {
+    runBothPipelines();
+    const hWall = newResult.spanningWalls.find(w => w.orientation === 'H');
+    expect(hWall, 'no H spanning wall found').toBeTruthy();
+    const { snappedCm, typeId } = snapToWallType(hWall.thicknessCm);
+    expect(typeId).toBe("structural");
+    expect(snappedCm).toBe(24);
   });
 });

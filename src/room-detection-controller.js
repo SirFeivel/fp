@@ -10,7 +10,7 @@ import { getCurrentFloor, deepClone, uuid } from "./core.js";
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
-import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
+import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES, DEFAULT_WALL_TYPES, DEFAULT_FLOOR_HEIGHT_CM, snapToWallType, classifyWallTypes } from "./floor-plan-rules.js";
 import { closestPointOnSegment } from "./polygon-draw.js";
 
 /** Scale factor for rasterizing SVG backgrounds before detection.
@@ -380,7 +380,21 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
         if (bestEdge < 0) continue;
         const wall = getWallForEdge(floor, room.id, bestEdge);
         if (wall) {
-          wall.thicknessCm = Math.round(edgeMeas.thicknessCm);
+          const wallTypes = floor.layout?.wallDefaults?.types;
+          const { snappedCm } = snapToWallType(edgeMeas.thicknessCm, wallTypes);
+          wall.thicknessCm = snappedCm;
+        }
+      }
+    }
+
+    // Apply floor height from wallDefaults to all detection-created walls
+    const floorHeight = floor.layout?.wallDefaults?.heightCm;
+    if (floorHeight && Number.isFinite(floorHeight)) {
+      for (let i = 0; i < localVertices.length; i++) {
+        const wall = getWallForEdge(floor, room.id, i);
+        if (wall) {
+          wall.heightStartCm = floorHeight;
+          wall.heightEndCm = floorHeight;
         }
       }
     }
@@ -578,6 +592,13 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     effectivePpc, { probeInward: true }
   );
 
+  // Classify wall types from all measured thicknesses
+  const allThicknesses = [
+    ...wallThicknesses.edges.map(e => e.thicknessCm),
+    ...spanningWalls.map(w => w.thicknessCm),
+  ];
+  const wallTypes = classifyWallTypes(allThicknesses);
+
   // Store in state
   const next = deepClone(getState());
   const nextFloor = getFloor(next);
@@ -588,7 +609,16 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     wallThicknesses,
     spanningWalls,
     validAngles,
+    wallTypes,
   };
+
+  // Populate floor-level wall defaults (if absent — preserves user customizations)
+  if (!nextFloor.layout.wallDefaults) {
+    nextFloor.layout.wallDefaults = {
+      types: DEFAULT_WALL_TYPES.map(t => ({ ...t })),
+      heightCm: DEFAULT_FLOOR_HEIGHT_CM,
+    };
+  }
 
   commit("Detect floor envelope", next);
   return true;

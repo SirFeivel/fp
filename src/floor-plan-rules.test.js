@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FLOOR_PLAN_RULES, extractValidAngles, rectifyPolygon, expandPolygonOutward, alignToExistingRooms } from './floor-plan-rules.js';
+import { FLOOR_PLAN_RULES, extractValidAngles, rectifyPolygon, expandPolygonOutward, alignToExistingRooms, DEFAULT_WALL_TYPES, DEFAULT_FLOOR_HEIGHT_CM, snapToWallType, classifyWallTypes } from './floor-plan-rules.js';
 
 describe('FLOOR_PLAN_RULES config', () => {
   it('has expected top-level keys', () => {
@@ -451,5 +451,119 @@ describe('alignToExistingRooms', () => {
     const result = alignToExistingRooms(newVerts, newPos, [existingRoom]);
     // Should align to Y=0 (delta = -3)
     expect(result.floorPosition.y).toBeCloseTo(0, 1);
+  });
+});
+
+// ── snapToWallType ────────────────────────────────────────────────
+
+describe('snapToWallType', () => {
+  // Snap boundaries for defaults [11.5, 24, 30]:
+  //   partition: [5, 17.75)
+  //   structural: [17.75, 27)
+  //   outer: [27, 51)
+
+  it('snaps 31 → outer (30)', () => {
+    expect(snapToWallType(31)).toEqual({ snappedCm: 30, typeId: "outer" });
+  });
+
+  it('snaps 26 → structural (24) — below midpoint 27', () => {
+    expect(snapToWallType(26)).toEqual({ snappedCm: 24, typeId: "structural" });
+  });
+
+  it('snaps 28 → outer (30) — above midpoint 27', () => {
+    expect(snapToWallType(28)).toEqual({ snappedCm: 30, typeId: "outer" });
+  });
+
+  it('snaps 27 → outer (30) — at midpoint (>= boundary)', () => {
+    expect(snapToWallType(27)).toEqual({ snappedCm: 30, typeId: "outer" });
+  });
+
+  it('snaps 12 → partition (11.5)', () => {
+    expect(snapToWallType(12)).toEqual({ snappedCm: 11.5, typeId: "partition" });
+  });
+
+  it('snaps 18 → structural (24) — above midpoint 17.75', () => {
+    expect(snapToWallType(18)).toEqual({ snappedCm: 24, typeId: "structural" });
+  });
+
+  it('snaps 5 → partition (11.5) — at minCm', () => {
+    expect(snapToWallType(5)).toEqual({ snappedCm: 11.5, typeId: "partition" });
+  });
+
+  it('snaps 50 → outer (30) — at maxCm', () => {
+    expect(snapToWallType(50)).toEqual({ snappedCm: 30, typeId: "outer" });
+  });
+
+  it('returns raw rounded for empty types', () => {
+    expect(snapToWallType(25.7, [])).toEqual({ snappedCm: 26, typeId: null });
+  });
+
+  it('works with custom types [8, 40]', () => {
+    const custom = [
+      { id: "thin", thicknessCm: 8 },
+      { id: "thick", thicknessCm: 40 },
+    ];
+    // midpoint = (8 + 40) / 2 = 24
+    expect(snapToWallType(20, custom)).toEqual({ snappedCm: 8, typeId: "thin" });
+    expect(snapToWallType(25, custom)).toEqual({ snappedCm: 40, typeId: "thick" });
+  });
+});
+
+// ── classifyWallTypes ─────────────────────────────────────────────
+
+describe('classifyWallTypes', () => {
+  it('clusters [25, 30, 30, 30] into structural + outer', () => {
+    const result = classifyWallTypes([25, 30, 30, 30]);
+    expect(result).toEqual([
+      { id: "structural", thicknessCm: 24 },
+      { id: "outer", thicknessCm: 30 },
+    ]);
+  });
+
+  it('clusters [30, 30, 31] into one outer type', () => {
+    const result = classifyWallTypes([30, 30, 31]);
+    expect(result).toEqual([
+      { id: "outer", thicknessCm: 30 },
+    ]);
+  });
+
+  it('clusters [12, 12, 25, 30, 30] into three types', () => {
+    const result = classifyWallTypes([12, 12, 25, 30, 30]);
+    expect(result).toEqual([
+      { id: "partition", thicknessCm: 11.5 },
+      { id: "structural", thicknessCm: 24 },
+      { id: "outer", thicknessCm: 30 },
+    ]);
+  });
+
+  it('filters out-of-bounds values [3, 55, 30]', () => {
+    const result = classifyWallTypes([3, 55, 30]);
+    expect(result).toEqual([
+      { id: "outer", thicknessCm: 30 },
+    ]);
+  });
+
+  it('returns empty for empty input', () => {
+    expect(classifyWallTypes([])).toEqual([]);
+  });
+});
+
+// ── Constants ─────────────────────────────────────────────────────
+
+describe('DEFAULT_WALL_TYPES', () => {
+  it('has 3 types in ascending thickness order', () => {
+    expect(DEFAULT_WALL_TYPES).toHaveLength(3);
+    expect(DEFAULT_WALL_TYPES[0].id).toBe("partition");
+    expect(DEFAULT_WALL_TYPES[1].id).toBe("structural");
+    expect(DEFAULT_WALL_TYPES[2].id).toBe("outer");
+    for (let i = 1; i < DEFAULT_WALL_TYPES.length; i++) {
+      expect(DEFAULT_WALL_TYPES[i].thicknessCm).toBeGreaterThan(DEFAULT_WALL_TYPES[i - 1].thicknessCm);
+    }
+  });
+});
+
+describe('DEFAULT_FLOOR_HEIGHT_CM', () => {
+  it('is 240', () => {
+    expect(DEFAULT_FLOOR_HEIGHT_CM).toBe(240);
   });
 });

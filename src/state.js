@@ -149,6 +149,16 @@ export function createStateStore(defaultStateFn, validateStateFn) {
         if (!floor.patternGroups) floor.patternGroups = [];
         if (!floor.walls) floor.walls = [];
 
+        // Validate wallDefaults if present
+        if (floor.layout.wallDefaults) {
+          const wd = floor.layout.wallDefaults;
+          if (!Array.isArray(wd.types) || wd.types.length === 0) {
+            delete floor.layout.wallDefaults;
+          } else if (!Number.isFinite(wd.heightCm) || wd.heightCm <= 0) {
+            wd.heightCm = DEFAULT_WALL_HEIGHT_CM;
+          }
+        }
+
         if (floor.rooms && Array.isArray(floor.rooms)) {
           for (const room of floor.rooms) {
             // Normalize room-level v7 properties

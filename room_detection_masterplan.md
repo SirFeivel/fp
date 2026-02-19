@@ -579,19 +579,144 @@ Runs both OLD (hardcoded `FLOOR_PLAN_RULES.standardAngles`) and NEW (discovered 
 
 ---
 
-## Step 5: Classify wall types from the envelope
+## Step 5: Classify wall types from the envelope + auto-correct to defaults ✅
 
-Cluster the thickness measurements from all envelope segments (outer boundary edges + spanning walls) into distinct wall types. Different floor plans will produce different numbers of types — this must be data-driven, not hardcoded.
+**Status:** Implemented — branch `wall-type-classification`
 
-Example (floorplan_KG.svg): measurements cluster into ~30 cm (outer) and ~24 cm (inner) → 2 wall types.
+**Files:** `src/floor-plan-rules.js`, `src/room-detection-controller.js`, `src/state.js`, `src/floor-plan-rules.test.js`, `src/room-detection.verify.test.js`
 
-A different floor plan might have 3 types (e.g., 36 cm load-bearing exterior, 24 cm interior structural, 12 cm partition) or just 1 (uniform thickness throughout). The classification derives from what the image shows, not from assumptions about how many types exist.
+**Concept:** Two parts that compose naturally:
 
-Short edges below a minimum length threshold (from `FLOOR_PLAN_RULES.minEdgeLengthCm`) are classified as geometric details, not wall types.
+1. **Data-driven clustering:** cluster the envelope's thickness measurements into distinct wall types. The number and values of types come from the image, not from assumptions.
+2. **Auto-correction to defaults:** predefined wall type defaults (outer=30cm, structural=24cm, partition=11.5cm) and a default floor height (240cm). Measured thicknesses snap to the nearest default within a data-derived tolerance. Hardcoded for now; user-configurable later.
 
-**Storage:** `floor.layout.envelope.wallTypes` — array of `{ thicknessCm, label }` derived from clustering.
+### Algorithm
 
-**To be detailed:** Clustering algorithm, threshold for distinguishing types vs measurement noise, tests.
+**`classifyWallTypes(thicknesses, defaultTypes = DEFAULT_WALL_TYPES)`:**
+
+1. Filter valid measurements: keep those in `[FLOOR_PLAN_RULES.wallThickness.minCm, maxCm]` = [5, 50]
+2. Sort ascending
+3. Compute gap threshold: `minInterTypeGap / 2` where `minInterTypeGap` is the smallest gap between any two adjacent predefined defaults. For defaults [11.5, 24, 30]: min gap = 6 (24→30), threshold = 3cm. Fallback: `FLOOR_PLAN_RULES.alignmentToleranceCm` (6cm) when no defaults.
+4. Split at consecutive gaps > threshold → groups
+5. Each group becomes a type with centroid = median of group
+6. Snap each centroid to nearest predefined default via `snapToWallType`
+7. Deduplicate (two clusters may snap to the same type)
+8. Return array of `{ id, thicknessCm }` sorted ascending
+
+**`snapToWallType(measuredCm, types = DEFAULT_WALL_TYPES)`:**
+
+For each type (sorted by thickness), compute snap region bounded by midpoints to adjacent types. Edge types use `FLOOR_PLAN_RULES.wallThickness.minCm`/`maxCm` as outer bounds. Returns `{ snappedCm, typeId }`. When types is empty, returns `{ snappedCm: Math.round(measuredCm), typeId: null }`.
+
+Snap boundaries for defaults [11.5, 24, 30]:
+
+| Type | thicknessCm | Lower bound | Upper bound |
+|------|-------------|-------------|-------------|
+| partition | 11.5 | 5 (minCm) | 17.75 |
+| structural | 24 | 17.75 | 27 |
+| outer | 30 | 27 | 51 (maxCm+1) |
+
+### Implementation details
+
+**Constants in `floor-plan-rules.js`** (after `extractValidAngles`, before `rectifyPolygon`):
+
+```js
+export const DEFAULT_WALL_TYPES = [
+  { id: "partition",  thicknessCm: 11.5 },
+  { id: "structural", thicknessCm: 24 },
+  { id: "outer",      thicknessCm: 30 },
+];
+export const DEFAULT_FLOOR_HEIGHT_CM = 240;
+```
+
+**`snapToWallType`** — pure function. Sorts types ascending, computes midpoint boundaries between adjacent types, uses `minCm`/`maxCm+1` for outer bounds. The `+1` on `maxCm` ensures the last type captures measurements exactly at `maxCm` (50cm).
+
+**`classifyWallTypes`** — pure function. Gap threshold derived from the minimum distance between adjacent default types (data-driven, not hardcoded). Uses median (not mean) for cluster centroids — robust to outliers. Deduplicates after snapping (two close clusters may snap to the same default type).
+
+**`detectAndStoreEnvelope` integration** — collects all thicknesses from envelope edges and spanning walls, calls `classifyWallTypes`, stores result in `envelope.wallTypes`. Also populates `floor.layout.wallDefaults` (if absent) with predefined defaults. The `if (!nextFloor.layout.wallDefaults)` guard prevents overwriting user-customized defaults on re-detection.
+
+**`confirmDetection` integration** — replaces `wall.thicknessCm = Math.round(edgeMeas.thicknessCm)` with `snapToWallType(edgeMeas.thicknessCm, floor.layout?.wallDefaults?.types)`. Also applies `wallDefaults.heightCm` to all detection-created walls. When `wallDefaults` is absent, `snapToWallType` falls back to `DEFAULT_WALL_TYPES`, and heights stay at 200cm from `createDefaultWall`.
+
+**State normalization** (`state.js`) — validates `wallDefaults` structure: deletes if `types` array is empty/missing, resets `heightCm` to `DEFAULT_WALL_HEIGHT_CM` (200) if invalid. No state version bump — `wallDefaults` is optional.
+
+### Storage
+
+```js
+// Discovered from image (inside envelope)
+floor.layout.envelope.wallTypes = [
+  { id: "structural", thicknessCm: 24 },
+  { id: "outer",      thicknessCm: 30 },
+];
+
+// Predefined defaults (at floor level, persists through re-detection)
+floor.layout.wallDefaults = {
+  types: [
+    { id: "partition",  thicknessCm: 11.5 },
+    { id: "structural", thicknessCm: 24 },
+    { id: "outer",      thicknessCm: 30 },
+  ],
+  heightCm: 240,
+};
+```
+
+`envelope.wallTypes` = what the image shows (data-driven, may have 1, 2, or 3 types).
+`wallDefaults` = what the user expects (predefined, includes partition even if not detected).
+
+**Lifecycle of `wallDefaults`:** Created during `detectAndStoreEnvelope` (if absent). NOT cleared when background changes (`delete floor.layout.envelope` doesn't touch `wallDefaults`). Eventually user-configurable.
+
+### Runtime behavior changes
+
+| Before | After |
+|--------|-------|
+| `wall.thicknessCm = Math.round(31.1)` → 31 | `snapToWallType(31.1)` → 30 (outer) |
+| `wall.thicknessCm = Math.round(25.5)` → 26 | `snapToWallType(25.5)` → 24 (structural) |
+| Wall heights = 200cm | Wall heights = 240cm (from `wallDefaults.heightCm`) |
+| No wall types stored | `envelope.wallTypes` + `wallDefaults` stored |
+
+### Consequences trace
+
+**`DEFAULT_WALL_THICKNESS_CM` (12cm) and `DEFAULT_WALL_HEIGHT_CM` (200cm) — NOT changed.** Detection-created walls get snapped thickness from `wallDefaults.types` and height from `wallDefaults.heightCm`. Non-detection walls keep 12cm/200cm from `createDefaultWall`.
+
+### Verified results (KG floor plan, 300dpi)
+
+| Input | Clustering | Snap |
+|-------|-----------|------|
+| Envelope edges: [29.6, 29.6, 30.5, 30.5] | 1 cluster, centroid ≈ 30 | → outer (30) |
+| Spanning wall: [25.8] | 1 cluster, centroid = 25.8 | → structural (24) |
+| Combined | 2 types discovered | `[{structural, 24}, {outer, 30}]` |
+
+### Tests
+
+All 1187 tests pass (1167 existing + 20 new):
+
+**Unit tests (17 new in `floor-plan-rules.test.js`):**
+
+| # | Test | Assertion |
+|---|------|-----------|
+| 1 | `snapToWallType(31)` | `{ snappedCm: 30, typeId: "outer" }` |
+| 2 | `snapToWallType(26)` — below midpoint 27 | `{ snappedCm: 24, typeId: "structural" }` |
+| 3 | `snapToWallType(28)` — above midpoint 27 | `{ snappedCm: 30, typeId: "outer" }` |
+| 4 | `snapToWallType(27)` — at midpoint (≥ boundary) | `{ snappedCm: 30, typeId: "outer" }` |
+| 5 | `snapToWallType(12)` | `{ snappedCm: 11.5, typeId: "partition" }` |
+| 6 | `snapToWallType(18)` — above midpoint 17.75 | `{ snappedCm: 24, typeId: "structural" }` |
+| 7 | `snapToWallType(5)` — at minCm | `{ snappedCm: 11.5, typeId: "partition" }` |
+| 8 | `snapToWallType(50)` — at maxCm | `{ snappedCm: 30, typeId: "outer" }` |
+| 9 | Empty types → raw rounded | `{ snappedCm: 26, typeId: null }` for 25.7 |
+| 10 | Custom types [8, 40] | midpoint 24: 20→8, 25→40 |
+| 11 | `classifyWallTypes([25, 30, 30, 30])` — two clusters | `[structural(24), outer(30)]` |
+| 12 | `classifyWallTypes([30, 30, 31])` — one cluster | `[outer(30)]` |
+| 13 | `classifyWallTypes([12, 12, 25, 30, 30])` — three clusters | `[partition(11.5), structural(24), outer(30)]` |
+| 14 | Out-of-bounds filtered `[3, 55, 30]` | `[outer(30)]` |
+| 15 | Empty input | `[]` |
+| 16 | `DEFAULT_WALL_TYPES` structure | 3 types, ascending, correct ids |
+| 17 | `DEFAULT_FLOOR_HEIGHT_CM` | 240 |
+
+**E2E tests (3 new in `room-detection.verify.test.js`):**
+
+| # | Test | Assertion |
+|---|------|-----------|
+| 18 | `classifyWallTypes` on 300dpi envelope | Discovers 2 types: structural(24) + outer(30) |
+| 19 | Envelope outer wall edges snap to outer | All 4 edges → `typeId: "outer"`, `snappedCm: 30` |
+| 20 | Spanning wall snaps to structural | H wall → `typeId: "structural"`, `snappedCm: 24` |
 
 ---
 

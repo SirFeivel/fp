@@ -110,6 +110,131 @@ export function extractValidAngles(polygonCm, spanningWalls = [], options = {}) 
 }
 
 /**
+ * Predefined wall type defaults.
+ * Ordered by ascending thickness. User-configurable later.
+ */
+export const DEFAULT_WALL_TYPES = [
+  { id: "partition",  thicknessCm: 11.5 },
+  { id: "structural", thicknessCm: 24 },
+  { id: "outer",      thicknessCm: 30 },
+];
+
+/** Default floor height for detection-created walls. */
+export const DEFAULT_FLOOR_HEIGHT_CM = 240;
+
+/**
+ * Snap a measured wall thickness to the nearest predefined wall type.
+ *
+ * For each type (sorted by thickness), the snap region is bounded by
+ * midpoints to adjacent types. Edge types use wallThickness min/max
+ * as outer bounds. If the measurement falls in a type's region, returns
+ * that type's thickness. Otherwise returns raw value (rounded).
+ *
+ * @param {number} measuredCm - Measured wall thickness in cm
+ * @param {Array<{id: string, thicknessCm: number}>} [types=DEFAULT_WALL_TYPES]
+ * @returns {{ snappedCm: number, typeId: string|null }}
+ */
+export function snapToWallType(measuredCm, types = DEFAULT_WALL_TYPES) {
+  if (!types || types.length === 0) {
+    return { snappedCm: Math.round(measuredCm), typeId: null };
+  }
+
+  // Sort ascending by thickness
+  const sorted = [...types].sort((a, b) => a.thicknessCm - b.thicknessCm);
+  const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const lower = i === 0
+      ? minCm
+      : (sorted[i - 1].thicknessCm + sorted[i].thicknessCm) / 2;
+    const upper = i === sorted.length - 1
+      ? maxCm + 1 // last type captures everything up to and including maxCm
+      : (sorted[i].thicknessCm + sorted[i + 1].thicknessCm) / 2;
+
+    if (measuredCm >= lower && measuredCm < upper) {
+      return { snappedCm: sorted[i].thicknessCm, typeId: sorted[i].id };
+    }
+  }
+
+  return { snappedCm: Math.round(measuredCm), typeId: null };
+}
+
+/**
+ * Cluster measured wall thicknesses into distinct wall types.
+ *
+ * Algorithm:
+ *   1. Filter valid measurements (within [minCm, maxCm])
+ *   2. Sort ascending
+ *   3. Compute gap threshold from minimum gap between adjacent defaults / 2
+ *   4. Split at consecutive gaps > threshold → groups
+ *   5. Each group → type with centroid = median of group
+ *   6. Snap each centroid to nearest predefined default via snapToWallType
+ *   7. Deduplicate (two clusters may snap to the same type)
+ *
+ * @param {number[]} thicknesses - Measured wall thicknesses (cm)
+ * @param {Array<{id: string, thicknessCm: number}>} [defaultTypes=DEFAULT_WALL_TYPES]
+ * @returns {Array<{id: string, thicknessCm: number}>} Discovered types, ascending
+ */
+export function classifyWallTypes(thicknesses, defaultTypes = DEFAULT_WALL_TYPES) {
+  const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+
+  // 1. Filter valid measurements
+  const valid = thicknesses.filter(t => Number.isFinite(t) && t >= minCm && t <= maxCm);
+  if (valid.length === 0) return [];
+
+  // 2. Sort ascending
+  valid.sort((a, b) => a - b);
+
+  // 3. Gap threshold from defaults
+  let gapThreshold = FLOOR_PLAN_RULES.alignmentToleranceCm; // fallback: 6cm
+  if (defaultTypes && defaultTypes.length >= 2) {
+    const sorted = [...defaultTypes].sort((a, b) => a.thicknessCm - b.thicknessCm);
+    let minGap = Infinity;
+    for (let i = 1; i < sorted.length; i++) {
+      minGap = Math.min(minGap, sorted[i].thicknessCm - sorted[i - 1].thicknessCm);
+    }
+    if (Number.isFinite(minGap) && minGap > 0) {
+      gapThreshold = minGap / 2;
+    }
+  }
+
+  // 4. Split at gaps > threshold
+  const groups = [[valid[0]]];
+  for (let i = 1; i < valid.length; i++) {
+    if (valid[i] - valid[i - 1] > gapThreshold) {
+      groups.push([valid[i]]);
+    } else {
+      groups[groups.length - 1].push(valid[i]);
+    }
+  }
+
+  // 5-6. Median centroid → snap to default type
+  const seen = new Set();
+  const result = [];
+
+  for (const group of groups) {
+    // Median
+    const mid = Math.floor(group.length / 2);
+    const centroid = group.length % 2 === 1
+      ? group[mid]
+      : (group[mid - 1] + group[mid]) / 2;
+
+    const { snappedCm, typeId } = snapToWallType(centroid, defaultTypes);
+    const id = typeId || `custom_${Math.round(snappedCm)}`;
+
+    // 7. Deduplicate
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push({ id, thicknessCm: snappedCm });
+    }
+  }
+
+  // Sort ascending by thickness
+  result.sort((a, b) => a.thicknessCm - b.thicknessCm);
+  return result;
+}
+
+/**
  * Snap a detected polygon to axis-aligned edges and remove noise.
  *
  * Algorithm:
