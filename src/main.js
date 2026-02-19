@@ -2575,6 +2575,52 @@ function updateAllTranslations() {
       document.getElementById("debugPanel")?.classList.add("hidden");
     });
 
+    // Envelope debug buttons
+    document.getElementById("btnEnvelopeClear")?.addEventListener("click", () => {
+      const next = deepClone(store.getState());
+      const floor = next.floors?.find(f => f.id === next.selectedFloorId);
+      if (floor?.layout?.envelope) {
+        delete floor.layout.envelope;
+        commitViaStore("Clear envelope", next);
+      }
+    });
+
+    document.getElementById("btnEnvelopeCreate")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btnEnvelopeCreate");
+      btn.textContent = "Detecting...";
+      btn.disabled = true;
+      try {
+        const ok = await detectAndStoreEnvelope({
+          getState: () => store.getState(),
+          commit: (label, next) => commitViaStore(label, next),
+          getCurrentFloor: (state) => {
+            const s = state || store.getState();
+            return s.floors?.find(f => f.id === s.selectedFloorId) || null;
+          }
+        });
+        btn.textContent = ok ? "Done!" : "No result";
+      } catch (err) {
+        console.error("Envelope detection failed:", err);
+        btn.textContent = "Error";
+      }
+      setTimeout(() => { btn.textContent = "Create Envelope"; btn.disabled = false; }, 2000);
+    });
+
+    document.getElementById("btnEnvelopeExport")?.addEventListener("click", async () => {
+      const state = store.getState();
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      const envelope = floor?.layout?.envelope;
+      if (!envelope) {
+        alert("No envelope detected on current floor.");
+        return;
+      }
+      const json = JSON.stringify(envelope, null, 2);
+      await navigator.clipboard.writeText(json);
+      const btn = document.getElementById("btnEnvelopeExport");
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Export Envelope"; }, 2000);
+    });
+
     document.getElementById("menuReset")?.addEventListener("click", async () => {
       settingsDropdown.classList.add("hidden");
       const confirmed = await showConfirm({

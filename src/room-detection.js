@@ -1218,5 +1218,296 @@ export function detectEnvelope(imageData, options = {}) {
   // because the envelope polygon traces the outer boundary
   const wallThicknesses = detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm, { probeInward: true });
 
-  return { polygonPixels, wallThicknesses };
+  return { polygonPixels, wallThicknesses, wallMask, buildingMask };
+}
+
+/**
+ * Detect full-span structural walls inside the building envelope.
+ *
+ * Uses row/column density profiling: a structural spanning wall shows up as
+ * a band of consecutive rows (or columns) where wall pixels fill most of the
+ * building width. Room partitions only cover a fraction and are rejected.
+ *
+ * @param {ImageData} imageData - Source RGBA image data (for thickness probing)
+ * @param {Uint8Array} wallMask - Cleaned wall mask (1=wall, 0=open)
+ * @param {Uint8Array} buildingMask - Building interior mask (1=inside, 0=outside)
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @param {{ pixelsPerCm?: number, minThicknessCm?: number, maxThicknessCm?: number }} options
+ * @returns {Array<{ orientation: string, startPx: {x:number,y:number}, endPx: {x:number,y:number}, thicknessPx: number }>}
+ */
+export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, options = {}) {
+  const {
+    pixelsPerCm: ppc = 1,
+    minThicknessCm = 5,
+    maxThicknessCm = 50,
+  } = options;
+
+  const data = imageData.data;
+  const DENSITY_THRESHOLD = 0.4;
+  const SPAN_THRESHOLD = 0.7;
+  const MIN_BUILDING_WIDTH_PX = 50;
+  const GAP_MERGE = 3; // merge bands separated by ≤ 3 rows/columns
+  const MIN_BUILDING_WIDTH_CM = 100;
+  const NUM_SAMPLES = 5; // thickness probe sample count
+
+  // Quick check: any building pixels at all?
+  let hasBldg = false;
+  for (let i = 0; i < w * h && !hasBldg; i++) {
+    if (buildingMask[i]) hasBldg = true;
+  }
+  if (!hasBldg) return [];
+
+  const results = [];
+
+  // ---- Horizontal spanning walls (scan rows) ----
+  const hBands = profileAndDetectBands(
+    /* scanCount */ h,
+    /* crossCount */ w,
+    /* getWall */ (scan, cross) => wallMask[scan * w + cross],
+    /* getBldg */ (scan, cross) => buildingMask[scan * w + cross]
+  );
+  for (const band of hBands) {
+    const wall = validateAndMeasureBand(band, 'H');
+    if (wall) results.push(wall);
+  }
+
+  // ---- Vertical spanning walls (scan columns) ----
+  const vBands = profileAndDetectBands(
+    /* scanCount */ w,
+    /* crossCount */ h,
+    /* getWall */ (scan, cross) => wallMask[cross * w + scan],
+    /* getBldg */ (scan, cross) => buildingMask[cross * w + scan]
+  );
+  for (const band of vBands) {
+    const wall = validateAndMeasureBand(band, 'V');
+    if (wall) results.push(wall);
+  }
+
+  return results;
+
+  // ---- Inner functions ----
+
+  /**
+   * Profile rows (or columns) and detect candidate bands.
+   * scanCount = number of rows (H) or columns (V)
+   * crossCount = number of columns (H) or rows (V)
+   * getWall(scanIdx, crossIdx) → 0|1
+   * getBldg(scanIdx, crossIdx) → 0|1
+   */
+  function profileAndDetectBands(scanCount, crossCount, getWall, getBldg) {
+    // Step 1: Row profiling
+    const profiles = [];
+    for (let s = 0; s < scanCount; s++) {
+      let bldgFirst = -1, bldgLast = -1;
+      for (let c = 0; c < crossCount; c++) {
+        if (getBldg(s, c)) {
+          if (bldgFirst < 0) bldgFirst = c;
+          bldgLast = c;
+        }
+      }
+      const bldgWidth = bldgFirst >= 0 ? bldgLast - bldgFirst + 1 : 0;
+      if (bldgWidth < MIN_BUILDING_WIDTH_PX) {
+        profiles.push({ density: 0, spanFraction: 0, bldgFirst: 0, bldgLast: 0, bldgWidth: 0 });
+        continue;
+      }
+
+      let wallCount = 0;
+      let wallFirst = -1, wallLast = -1;
+      for (let c = bldgFirst; c <= bldgLast; c++) {
+        if (getWall(s, c)) {
+          wallCount++;
+          if (wallFirst < 0) wallFirst = c;
+          wallLast = c;
+        }
+      }
+      const density = wallCount / bldgWidth;
+      const wallSpan = wallFirst >= 0 ? wallLast - wallFirst + 1 : 0;
+      const spanFraction = wallSpan / bldgWidth;
+
+      profiles.push({ density, spanFraction, bldgFirst, bldgLast, bldgWidth });
+    }
+
+    // Step 2: Band detection — group consecutive qualifying rows
+    const bands = [];
+    let bandStart = -1;
+    for (let s = 0; s < scanCount; s++) {
+      const p = profiles[s];
+      if (p.density >= DENSITY_THRESHOLD && p.spanFraction >= SPAN_THRESHOLD) {
+        if (bandStart < 0) bandStart = s;
+      } else {
+        if (bandStart >= 0) {
+          bands.push({ start: bandStart, end: s - 1 });
+          bandStart = -1;
+        }
+      }
+    }
+    if (bandStart >= 0) bands.push({ start: bandStart, end: scanCount - 1 });
+
+    // Merge bands separated by small gaps
+    const merged = [];
+    for (const band of bands) {
+      if (merged.length > 0 && band.start - merged[merged.length - 1].end <= GAP_MERGE + 1) {
+        merged[merged.length - 1].end = band.end;
+      } else {
+        merged.push({ ...band });
+      }
+    }
+
+    // Annotate each band with average building extent
+    for (const band of merged) {
+      let sumFirst = 0, sumLast = 0, sumWidth = 0, count = 0;
+      for (let s = band.start; s <= band.end; s++) {
+        const p = profiles[s];
+        if (p.bldgWidth > 0) {
+          sumFirst += p.bldgFirst;
+          sumLast += p.bldgLast;
+          sumWidth += p.bldgWidth;
+          count++;
+        }
+      }
+      band.avgBldgFirst = count > 0 ? Math.round(sumFirst / count) : 0;
+      band.avgBldgLast = count > 0 ? Math.round(sumLast / count) : 0;
+      band.avgBldgWidth = count > 0 ? sumWidth / count : 0;
+    }
+
+    return merged;
+  }
+
+  /**
+   * Validate a candidate band and measure its wall thickness.
+   * Returns a wall object or null if rejected.
+   *
+   * Criteria (from human visual inspection):
+   * (1) Band thickness in [minThicknessCm, maxThicknessCm]
+   * (2) Average building width at band >= 100 cm
+   * (3) Band is far enough from building edge (rejects outer wall inner edges)
+   * (4) Thickness consistent: ≥80% of perpendicular probes detect a real wall.
+   *     A phantom band (density from unrelated crossing walls) has many probe
+   *     positions with no detectable wall in the band direction.
+   */
+  function validateAndMeasureBand(band, orientation) {
+    const bandHeight = band.end - band.start + 1;
+    const bandCm = bandHeight / ppc;
+
+    // (1) Thickness check
+    if (bandCm < minThicknessCm || bandCm > maxThicknessCm) return null;
+
+    // (2) Minimum building width at the band
+    if (band.avgBldgWidth < MIN_BUILDING_WIDTH_CM * ppc) return null;
+
+    // (3) Boundary proximity: reject bands within one band-height of building edge.
+    // These are outer wall inner edges, not interior spanning walls.
+    // Uses per-band local sampling (not global bbox) to handle non-rectangular buildings.
+    const distToBoundary = distanceToBuildingBoundary(band, orientation);
+    if (distToBoundary < bandHeight) return null;
+
+    // (4) Thickness consistency: probe perpendicular to the wall at NUM_SAMPLES points.
+    // A real spanning wall is present at all sample positions; a phantom band
+    // (created by coincidental density from unrelated wall structures such as outer
+    // walls or crossing walls) will have many positions with no detectable wall.
+    const { thicknessPx, validCount } = measureBandThickness(band, orientation);
+    if (validCount < Math.ceil(NUM_SAMPLES * 0.8)) return null;
+
+    // Build endpoints
+    const mid = (band.start + band.end) / 2;
+    if (orientation === 'H') {
+      return {
+        orientation: 'H',
+        startPx: { x: band.avgBldgFirst, y: mid },
+        endPx: { x: band.avgBldgLast, y: mid },
+        thicknessPx
+      };
+    } else {
+      return {
+        orientation: 'V',
+        startPx: { x: mid, y: band.avgBldgFirst },
+        endPx: { x: mid, y: band.avgBldgLast },
+        thicknessPx
+      };
+    }
+  }
+
+  /**
+   * Measure distance from a band to the nearest building boundary in the scan direction.
+   * Samples cross-positions within the band's extent and finds how far the band edges
+   * are from the building mask boundary at each sample. Returns the median.
+   * This handles non-rectangular buildings (e.g., L-shapes with notches) correctly.
+   */
+  function distanceToBuildingBoundary(band, orientation) {
+    const numSamples = 5;
+    const distances = [];
+
+    for (let i = 0; i < numSamples; i++) {
+      const t = (i + 0.5) / numSamples;
+      const crossPos = Math.round(band.avgBldgFirst + t * (band.avgBldgLast - band.avgBldgFirst));
+
+      // Scan in the scan direction to find building boundaries at this cross position
+      const scanLimit = orientation === 'H' ? h : w;
+      let scanFirst = -1, scanLast = -1;
+      for (let s = 0; s < scanLimit; s++) {
+        const val = orientation === 'H'
+          ? buildingMask[s * w + crossPos]    // scan rows at column crossPos
+          : buildingMask[crossPos * w + s];   // scan columns at row crossPos
+        if (val) {
+          if (scanFirst < 0) scanFirst = s;
+          scanLast = s;
+        }
+      }
+
+      if (scanFirst >= 0) {
+        const distStart = band.start - scanFirst;
+        const distEnd = scanLast - band.end;
+        distances.push(Math.min(distStart, distEnd));
+      }
+    }
+
+    if (distances.length === 0) return Infinity;
+    distances.sort((a, b) => a - b);
+    return distances[Math.floor(distances.length / 2)];
+  }
+
+  /**
+   * Measure wall thickness at NUM_SAMPLES points along the band using RGBA probing.
+   * Returns { thicknessPx: median of valid measurements, validCount: number of
+   * positions where a real wall was detected }.
+   */
+  function measureBandThickness(band, orientation) {
+    const bandHeight = band.end - band.start + 1;
+    const maxProbe = bandHeight + 10;
+    const measurements = [];
+    let validCount = 0;
+
+    for (let i = 0; i < NUM_SAMPLES; i++) {
+      const t = (i + 0.5) / NUM_SAMPLES;
+      const crossPos = Math.round(band.avgBldgFirst + t * (band.avgBldgLast - band.avgBldgFirst));
+
+      // Probe start: just above/left of the band
+      const probeStart = band.start - 2;
+      let startX, startY, perpX, perpY;
+      if (orientation === 'H') {
+        startX = crossPos;
+        startY = probeStart;
+        perpX = 0;
+        perpY = 1;
+      } else {
+        startX = probeStart;
+        startY = crossPos;
+        perpX = 1;
+        perpY = 0;
+      }
+
+      const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe);
+      if (thickness > 0) {
+        measurements.push(thickness);
+        validCount++;
+      }
+    }
+
+    const thicknessPx = measurements.length === 0
+      ? bandHeight
+      : (measurements.sort((a, b) => a - b), measurements[Math.floor(measurements.length / 2)]);
+
+    return { thicknessPx, validCount };
+  }
 }

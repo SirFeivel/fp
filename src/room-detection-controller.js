@@ -7,7 +7,7 @@ import { svgEl } from "./geometry.js";
 import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
-import { detectRoomAtPixel, detectEnvelope } from "./room-detection.js";
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
@@ -532,6 +532,23 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   // Rectify polygon: snap edges to standard angles
   const rectified = rectifyPolygon(polygonCm);
 
+  // Detect structural spanning walls inside the envelope
+  let spanningWalls = [];
+  if (result.wallMask && result.buildingMask) {
+    const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const rawWalls = detectSpanningWalls(
+      imageData, result.wallMask, result.buildingMask,
+      imageData.width, imageData.height,
+      { pixelsPerCm: effectivePpc, minThicknessCm: minCm, maxThicknessCm: maxCm }
+    );
+    spanningWalls = rawWalls.map(wall => ({
+      orientation: wall.orientation,
+      startCm: imagePxToCm(wall.startPx.x, wall.startPx.y, effectiveBg),
+      endCm: imagePxToCm(wall.endPx.x, wall.endPx.y, effectiveBg),
+      thicknessCm: Math.round(wall.thicknessPx / effectivePpc * 10) / 10,
+    }));
+  }
+
   // Store in state
   const next = deepClone(getState());
   const nextFloor = getFloor(next);
@@ -539,7 +556,8 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
 
   nextFloor.layout.envelope = {
     polygonCm: rectified,
-    wallThicknesses: result.wallThicknesses
+    wallThicknesses: result.wallThicknesses,
+    spanningWalls,
   };
 
   commit("Detect floor envelope", next);

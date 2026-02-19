@@ -15,7 +15,8 @@ import {
   detectWallThickness,
   detectDoorGaps,
   detectRoomAtPixel,
-  detectEnvelope
+  detectEnvelope,
+  detectSpanningWalls
 } from './room-detection.js';
 
 // ---------------------------------------------------------------------------
@@ -1060,6 +1061,11 @@ describe('floodFillFromBorder', () => {
 // ---------------------------------------------------------------------------
 // detectEnvelope
 // ---------------------------------------------------------------------------
+// Reference: floorplan_KG.svg (Kellergeschoss)
+//   Outer walls: 30 cm thick
+//   Inner (structural) walls: 24 cm thick
+//   Building: ~10 m × 8.5 m, roughly rectangular with small stairwell notch
+//   ppc at 4× SVG upscale: ~1.51
 describe('detectEnvelope', () => {
   /** Build a synthetic building image: white background, gray-fill walls forming a rectangle. */
   function makeBuildingImage(imgW, imgH, bldgRect, wallThick = 8) {
@@ -1228,5 +1234,288 @@ describe('detectEnvelope', () => {
     expect(envMaxX).toBeGreaterThanOrEqual(roomMaxX);
     expect(envMinY).toBeLessThanOrEqual(roomMinY);
     expect(envMaxY).toBeGreaterThanOrEqual(roomMaxY);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectSpanningWalls
+// ---------------------------------------------------------------------------
+// Reference: floorplan_KG.svg (Kellergeschoss)
+//   Outer walls: 30 cm thick
+//   Inner (structural) walls: 24 cm thick
+//   1 horizontal spanning wall separating upper/lower zones
+//   3 vertical spanning walls dividing into room columns
+//   Building: ~10 m × 8.5 m
+describe('detectSpanningWalls', () => {
+  const IMG_W = 200;
+  const IMG_H = 200;
+  const WALL_THICK = 10; // pixels
+  const PPC = 0.5; // pixels per cm → 10 px = 20 cm (within [5,50])
+
+  /**
+   * Create a blank white RGBA image with all masks zeroed.
+   */
+  function createBlankImage() {
+    const data = new Uint8ClampedArray(IMG_W * IMG_H * 4);
+    for (let i = 0; i < IMG_W * IMG_H; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+    const wallMask = new Uint8Array(IMG_W * IMG_H);
+    const buildingMask = new Uint8Array(IMG_W * IMG_H);
+    const imageData = { data, width: IMG_W, height: IMG_H };
+    return { imageData, wallMask, buildingMask };
+  }
+
+  /**
+   * Draw a rectangular wall band into all three data structures.
+   * gray = 140 for wall fill, black edges at top/bottom (or left/right for V).
+   */
+  function addWallBand(imageData, wallMask, x0, y0, x1, y1) {
+    const w = imageData.width;
+    const data = imageData.data;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (x < 0 || x >= IMG_W || y < 0 || y >= IMG_H) continue;
+        const idx = y * w + x;
+        wallMask[idx] = 1;
+        // RGBA: gray fill with black edges at boundaries
+        const pi = idx * 4;
+        const atEdge = (y === y0 || y === y1 || x === x0 || x === x1);
+        const gray = atEdge ? 30 : 140;
+        data[pi] = gray; data[pi + 1] = gray; data[pi + 2] = gray;
+      }
+    }
+  }
+
+  /**
+   * Fill the building mask for a rectangular region.
+   */
+  function fillBuilding(buildingMask, x0, y0, x1, y1) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (x < 0 || x >= IMG_W || y < 0 || y >= IMG_H) continue;
+        buildingMask[y * IMG_W + x] = 1;
+      }
+    }
+  }
+
+  /**
+   * Build a standard test building: outer walls + building mask.
+   * Building occupies [20..179] × [20..179] with WALL_THICK outer walls.
+   */
+  function makeStandardBuilding() {
+    const { imageData, wallMask, buildingMask } = createBlankImage();
+
+    // Building interior
+    fillBuilding(buildingMask, 20, 20, 179, 179);
+
+    // Outer walls
+    addWallBand(imageData, wallMask, 20, 20, 179, 20 + WALL_THICK - 1); // top
+    addWallBand(imageData, wallMask, 20, 179 - WALL_THICK + 1, 179, 179); // bottom
+    addWallBand(imageData, wallMask, 20, 20, 20 + WALL_THICK - 1, 179); // left
+    addWallBand(imageData, wallMask, 179 - WALL_THICK + 1, 20, 179, 179); // right
+
+    return { imageData, wallMask, buildingMask };
+  }
+
+  it('detects a single horizontal spanning wall', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Add horizontal interior wall at y ~ 100 (spanning full building width)
+    const wallY = 95;
+    addWallBand(imageData, wallMask, 20, wallY, 179, wallY + WALL_THICK - 1);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    expect(hWalls.length).toBe(1);
+    // Center y should be near the wall center
+    const centerY = (wallY + wallY + WALL_THICK - 1) / 2;
+    expect(hWalls[0].startPx.y).toBeCloseTo(centerY, 0);
+    expect(hWalls[0].endPx.y).toBeCloseTo(centerY, 0);
+  });
+
+  it('detects a single vertical spanning wall', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Add vertical interior wall at x ~ 100
+    const wallX = 95;
+    addWallBand(imageData, wallMask, wallX, 20, wallX + WALL_THICK - 1, 179);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    const vWalls = walls.filter(w => w.orientation === 'V');
+    expect(vWalls.length).toBe(1);
+    const centerX = (wallX + wallX + WALL_THICK - 1) / 2;
+    expect(vWalls[0].startPx.x).toBeCloseTo(centerX, 0);
+    expect(vWalls[0].endPx.x).toBeCloseTo(centerX, 0);
+  });
+
+  it('returns empty array when no interior walls exist', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+    expect(walls.length).toBe(0);
+  });
+
+  it('rejects a short room partition (low span fraction)', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Short partition: only 20% of building width (32px out of 160px)
+    const wallY = 95;
+    addWallBand(imageData, wallMask, 80, wallY, 112, wallY + WALL_THICK - 1);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+    expect(walls.length).toBe(0);
+  });
+
+  it('does not detect outer boundary walls', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Add one interior wall to ensure we get exactly 1 result, not 5
+    const wallY = 95;
+    addWallBand(imageData, wallMask, 20, wallY, 179, wallY + WALL_THICK - 1);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    // Top/bottom outer walls should be excluded (no building above/below)
+    // Only the interior wall should be detected
+    expect(walls.length).toBe(1);
+    expect(walls[0].orientation).toBe('H');
+  });
+
+  it('rejects wall band at building mask boundary (outer wall inner edge)', () => {
+    const { imageData, wallMask, buildingMask } = createBlankImage();
+
+    // Building fills [20..179] in both dimensions
+    fillBuilding(buildingMask, 20, 20, 179, 179);
+
+    // Wall band flush with left building edge (columns 20-29) — outer wall
+    addWallBand(imageData, wallMask, 20, 20, 29, 179);
+
+    // Interior wall well inside the building (columns 95-104)
+    addWallBand(imageData, wallMask, 95, 20, 95 + WALL_THICK - 1, 179);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    // Only the interior wall should be detected, not the edge-flush wall
+    const vWalls = walls.filter(w => w.orientation === 'V');
+    expect(vWalls.length).toBe(1);
+    expect(vWalls[0].startPx.x).toBeGreaterThan(50);
+  });
+
+  it('rejects discontinuous wall segments (zone partitions at same x)', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Two disconnected V wall segments at x=95, separated by a large gap (y=61..119).
+    // Simulates partitions in separate zones that happen to share an x position.
+    // 5 thickness probes at y≈36,68,100,131,163: y=36 hits upper, y=68+100 hit the gap,
+    // y=131+163 hit lower → validCount=3 < threshold(4) → rejected.
+    addWallBand(imageData, wallMask, 95, 20, 95 + WALL_THICK - 1, 60);   // upper segment
+    addWallBand(imageData, wallMask, 95, 120, 95 + WALL_THICK - 1, 179); // lower segment
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+    expect(walls.filter(w => w.orientation === 'V').length).toBe(0);
+  });
+
+  it('detects both H and V spanning walls (cross shape)', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Horizontal interior wall at y=95
+    addWallBand(imageData, wallMask, 20, 95, 179, 95 + WALL_THICK - 1);
+    // Vertical interior wall at x=95
+    addWallBand(imageData, wallMask, 95, 20, 95 + WALL_THICK - 1, 179);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    const vWalls = walls.filter(w => w.orientation === 'V');
+    expect(hWalls.length).toBe(1);
+    expect(vWalls.length).toBe(1);
+  });
+
+  it('rejects walls outside thickness bounds', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Wall that is too thin: 1 px at ppc=0.5 → 2 cm (below min 5 cm)
+    addWallBand(imageData, wallMask, 20, 100, 179, 100);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, {
+      pixelsPerCm: PPC,
+      minThicknessCm: 5,
+      maxThicknessCm: 50
+    });
+    expect(walls.length).toBe(0);
+  });
+
+  it('E2E: detectEnvelope + detectSpanningWalls pipeline', () => {
+    // Larger image: 400×300, building at (50,50)-(350,250) with 12px walls + 1 H interior wall
+    const imgW = 400, imgH = 300;
+    const data = new Uint8ClampedArray(imgW * imgH * 4);
+    for (let i = 0; i < imgW * imgH; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+
+    function setPixel(x, y, gray) {
+      if (x < 0 || x >= imgW || y < 0 || y >= imgH) return;
+      const idx = (y * imgW + x) * 4;
+      data[idx] = gray; data[idx + 1] = gray; data[idx + 2] = gray;
+    }
+
+    const wallThick = 12;
+    const bx = 50, by = 50, bw = 300, bh = 200;
+
+    // Draw outer walls
+    for (let y = by; y < by + bh; y++) {
+      for (let x = bx; x < bx + bw; x++) {
+        const inInterior =
+          x >= bx + wallThick && x < bx + bw - wallThick &&
+          y >= by + wallThick && y < by + bh - wallThick;
+        if (inInterior) continue;
+        const atEdge = x < bx + 2 || x >= bx + bw - 2 || y < by + 2 || y >= by + bh - 2;
+        setPixel(x, y, atEdge ? 30 : 140);
+      }
+    }
+
+    // Draw horizontal interior wall at y=145 (midpoint of interior)
+    const intWallY = 145;
+    for (let y = intWallY; y < intWallY + wallThick; y++) {
+      for (let x = bx; x < bx + bw; x++) {
+        const atEdge = y === intWallY || y === intWallY + wallThick - 1;
+        setPixel(x, y, atEdge ? 30 : 140);
+      }
+    }
+
+    const imageData = { data, width: imgW, height: imgH };
+    const ppc = 0.5;
+
+    // Run envelope detection first
+    const envelope = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(envelope).not.toBeNull();
+    expect(envelope.wallMask).toBeDefined();
+    expect(envelope.buildingMask).toBeDefined();
+
+    // Run spanning wall detection on the envelope masks
+    const walls = detectSpanningWalls(
+      imageData, envelope.wallMask, envelope.buildingMask,
+      imgW, imgH, { pixelsPerCm: ppc }
+    );
+
+    // Should find the interior wall
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    expect(hWalls.length).toBeGreaterThanOrEqual(1);
+
+    // Wall center should be within the envelope bbox
+    const envXs = envelope.polygonPixels.map(p => p.x);
+    const envYs = envelope.polygonPixels.map(p => p.y);
+    const envMinX = Math.min(...envXs), envMaxX = Math.max(...envXs);
+    const envMinY = Math.min(...envYs), envMaxY = Math.max(...envYs);
+
+    for (const wall of hWalls) {
+      expect(wall.startPx.x).toBeGreaterThanOrEqual(envMinX - 10);
+      expect(wall.endPx.x).toBeLessThanOrEqual(envMaxX + 10);
+      expect(wall.startPx.y).toBeGreaterThanOrEqual(envMinY);
+      expect(wall.startPx.y).toBeLessThanOrEqual(envMaxY);
+    }
   });
 });

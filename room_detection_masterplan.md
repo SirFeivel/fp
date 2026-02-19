@@ -215,24 +215,114 @@ Test images use realistic sizes (400×300 to 500×500 at ppc=0.5) to survive the
 
 ---
 
-## Step 3: Detect full-span structural walls inside the envelope
+## Step 3: Detect full-span structural walls inside the envelope ✅
+
+**Status:** Implemented — branch `structural-walls`
+
+**Files:** `src/room-detection.js`, `src/room-detection-controller.js`, `src/room-detection.test.js`, `index.html`, `src/main.js`
 
 **Concept:** Beyond the outer boundary, floor plans contain continuous interior walls that run the full span of the building — from one outer wall to the opposite outer wall. These are structural dividing walls, not room partitions.
 
-**Example (floorplan_KG.svg):** One horizontal 24 cm wall runs from the left outer wall to the right outer wall, separating Trockenraum/Keller (above) from Heizraum/Flur/Waschküche/TRH (below).
+**Example (floorplan_KG.svg):** One horizontal 24 cm wall runs from the left outer wall to the right outer wall, separating Trockenraum/Keller (above) from Heizraum/Flur/Waschküche/TRH (below). Vertical room partitions within each zone do NOT span the full building height — they stop at the H spanning wall.
 
-**Properties shared with outer walls:**
-- Continuous — they span the full building width or height without interruption (except doorways)
-- Consistent thickness along their length
-- Constrain multiple rooms on both sides
+### Algorithm
 
-**How the envelope expands:** The envelope is no longer just a closed outer polygon. It becomes the outer boundary + full-span dividing walls — a structural grid (connected line segments / simple graph) that forms the skeleton of the building. All rooms fit within cells of this grid.
+**Phase 1 — Density profiling:**
 
-**Storage:** `floor.layout.envelope` extends to include:
-- Outer polygon vertices + thickness (from Step 2)
-- Array of spanning walls, each with: start point, end point, thickness (cm), orientation (H/V)
+For each row (horizontal scan) or column (vertical scan), compute:
+- `bldgFirst`/`bldgLast`: first/last building mask pixel in the cross direction
+- `density = wallCount / bldgWidth` (wall pixels within building extent)
+- `spanFraction = wallSpan / bldgWidth` (coverage from first to last wall pixel)
 
-**To be detailed:** Detection algorithm (how to identify full-span walls from the image), integration with room detection, tests.
+Qualifying rows/columns: `density ≥ 0.4 AND spanFraction ≥ 0.7`. Skip rows/columns with building width < 50 px (thin protrusions).
+
+**Phase 2 — Band detection:**
+
+Group consecutive qualifying rows (or columns) into bands. Merge bands separated by ≤3 rows/columns to handle anti-aliasing. Annotate each band with average building extent (`avgBldgFirst`, `avgBldgLast`, `avgBldgWidth`).
+
+**Phase 3 — Band validation (four criteria):**
+
+1. **Thickness bounds:** band height in cm must be in `[minThicknessCm, maxThicknessCm]` (passed from controller using `FLOOR_PLAN_RULES.wallThickness`).
+
+2. **Building width:** average building width at band ≥ 100 cm — rejects wall-like features in degenerate thin sections.
+
+3. **Boundary proximity:** band must be at least one band-height away from the building boundary. Measured via `distanceToBuildingBoundary()` — samples 5 cross positions, at each scans the building mask in the scan direction to find building extent, takes median of min(distToStart, distToEnd). Rejects outer wall inner edges even in non-rectangular buildings (L-shapes, notches). **Critical:** uses per-band local sampling, not global bbox, because a building notch can push the global bbox edge far from the main body, making outer wall edges appear far from the global boundary.
+
+4. **Thickness consistency (`measureBandThickness`):** probes perpendicular to the wall at `NUM_SAMPLES = 5` evenly-spaced positions along its cross extent. Counts `validCount` = positions where `probeWallThickness > 0`. Requires `validCount ≥ ceil(5 × 0.8) = 4`. A real spanning wall is present at every sampled position; a phantom band created by coincidental density from unrelated crossing walls (outer walls, the H spanning wall itself) has many cross-positions in open room space where the probe finds nothing.
+
+**Phase 4 — Measurement and endpoints:**
+
+Surviving bands: `measureBandThickness` returns median of valid probe measurements as `thicknessPx`. Endpoints: `startPx = (avgBldgFirst, bandMid)`, `endPx = (avgBldgLast, bandMid)` for H; transposed for V.
+
+### Implementation details
+
+**`detectEnvelope` modified return (room-detection.js):** Now returns `wallMask` and `buildingMask` alongside `polygonPixels` and `wallThicknesses`. Backward-compatible — existing callers ignore extra fields.
+
+**`detectSpanningWalls(imageData, wallMask, buildingMask, w, h, options)` — new export (room-detection.js):**
+- Options: `{ pixelsPerCm, minThicknessCm, maxThicknessCm }`
+- Returns: `[{ orientation: 'H'|'V', startPx: {x,y}, endPx: {x,y}, thicknessPx }]`
+- Runs `profileAndDetectBands` twice — once for H bands (scanning rows), once for V bands (scanning columns)
+- All inner functions are closures within `detectSpanningWalls` (no pollution of module scope)
+
+**Controller wiring (`room-detection-controller.js`):** After `detectEnvelope` call in `detectAndStoreEnvelope`, calls `detectSpanningWalls` with `effectivePpc` and thickness bounds from `FLOOR_PLAN_RULES.wallThickness`. Converts px→cm via `imagePxToCm`. Stores as `spanningWalls` array in `floor.layout.envelope`.
+
+**Debug buttons (`index.html`, `main.js`):** Three buttons in debug panel: **Clear Envelope** (deletes `floor.layout.envelope` and commits), **Create Envelope** (calls `detectAndStoreEnvelope` manually; useful after background changes without recalibration), **Export Envelope** (copies `floor.layout.envelope` JSON to clipboard for inspection and test fixture extraction).
+
+### Approaches that were tried and discarded
+
+**Interior check (`hasBuildingAtScanLine`):** Originally checked that building exists on both sides of the band (above/below for H, left/right for V). Replaced by boundary proximity check which handles this more robustly.
+
+**Continuity check (`checkBandContinuity`):** At the band's middle scan line, required max gap in wall pixels < 30% of building extent. Intended to reject phantom bands from disjoint partitions in separate zones. **Failed** in the KG floor plan because: (a) outer walls contribute wall pixels at ALL cross positions including the phantom band's column, (b) the H spanning wall (a horizontal wall) crosses every vertical column, creating wall pixels at mid-height — together these pixels form a chain with no single gap > 30%, so the continuity check passed for the phantom while being too strict for real walls with wide doorways. Removed entirely.
+
+**Global bbox boundary proximity:** First attempt used global building bounding box to find min/max extent. Failed because the KG building has a notch (left protrusion at x=531, main body from x=647) — the global bboxMinX=531 made the outer wall inner edge at x=661 appear 130 cm from the boundary, passing the check. Fixed by per-band local sampling.
+
+### Key insight on phantom band formation
+
+The phantom V band at x≈1187 cm (KG floor plan) was caused by the inwards corner structure of Trockenraum creating vertically-oriented wall pixels at that column, plus contributions from the outer walls and H spanning wall, pushing column density above 40%. The thickness consistency check rejected it because probing horizontally at 5 y positions within the building height found mostly open room space (only the H spanning wall rows and one zone's partition would return non-zero) — fewer than 4 of 5 probes succeeded.
+
+### Storage
+
+```js
+floor.layout.envelope = {
+  polygonCm: [{x, y}, ...],          // Building outer boundary (from Step 2b)
+  wallThicknesses: { ... },           // Per-edge thickness (from Step 2b)
+  spanningWalls: [                    // NEW (Step 3)
+    {
+      orientation: 'H' | 'V',
+      startCm: { x, y },             // Wall centerline left/top endpoint (floor-global cm)
+      endCm: { x, y },               // Wall centerline right/bottom endpoint (floor-global cm)
+      thicknessCm: number,            // Measured wall thickness (rounded to 0.1 cm)
+    }
+  ]
+}
+```
+
+`spanningWalls` is always an array (empty if no interior walls found). Cleared with the rest of the envelope when background changes.
+
+### Verified results (floorplan_KG.svg, Kellergeschoss)
+
+| Wall | Orientation | Position | Thickness | Assessment |
+|------|-------------|----------|-----------|------------|
+| H at y=1425.7 cm | H | y=1425.7 cm | 25.1 cm | ✓ Real spanning wall (reference: 24 cm inner) |
+
+KG reference: outer walls 30 cm, inner/structural walls 24 cm. One horizontal spanning wall correctly detected; all phantom vertical walls rejected.
+
+### Tests
+
+All 1132 tests pass (1122 existing + 10 new):
+
+| # | Test | Assertion |
+|---|------|-----------|
+| 1 | Single H spanning wall | 1 wall, orientation='H', center y correct |
+| 2 | Single V spanning wall | 1 wall, orientation='V', center x correct |
+| 3 | No interior walls | 0 walls |
+| 4 | Short room partition rejected | 0 walls (span < 0.7) |
+| 5 | Outer boundary walls not detected | Only interior wall detected (not outer H/V walls) |
+| 6 | Boundary proximity: edge-flush band rejected | Outer wall inner edge excluded, interior wall kept |
+| 7 | Discontinuous segments rejected | Two segments at same x with 60px gap → validCount=3 < 4 → 0 walls |
+| 8 | Cross shape: both H+V detected | 2 walls (1 H, 1 V) |
+| 9 | Thickness bounds enforced | 1px wall at ppc=0.5 → 2 cm < minThicknessCm → 0 walls |
+| 10 | E2E: `detectEnvelope` + `detectSpanningWalls` pipeline | Returns masks; spanning wall inside envelope bbox |
 
 ---
 
