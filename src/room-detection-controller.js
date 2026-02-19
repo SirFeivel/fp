@@ -12,6 +12,11 @@ import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls }
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, alignToExistingRooms } from "./floor-plan-rules.js";
 
+/** Scale factor for rasterizing SVG backgrounds before detection.
+ *  SVGs at native 96 DPI give ppc ≈ 0.38 (each pixel = ~2.6 cm).
+ *  At 4×, ppc ≈ 1.51 — measurements stabilize within ±2 cm. */
+const SVG_DETECTION_SCALE = 4;
+
 // ---- Coordinate helpers (background-specific space, internal to this file) ----
 
 /**
@@ -243,16 +248,25 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     _state = "processing";
     svg.style.cursor = "wait";
 
-    // Convert SVG click coordinates to image pixel coordinates
     const svgPt = pointerToSvgXY(svg, e.clientX, e.clientY);
-    const imgPt = cmToImagePx(svgPt.x, svgPt.y, bg);
     const pixelsPerCm = bg.scale.pixelsPerCm;
 
-    // Load the background image and run detection
+    // Load the background image (SVGs are upscaled for sharper detection)
     try {
-      const imageData = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+      const { imageData, scaleFactor } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+      const effectivePpc = pixelsPerCm * scaleFactor;
+
+      // Build effective bg for coordinate conversion with upscaled image
+      const effectiveBg = scaleFactor === 1 ? bg : {
+        ...bg,
+        scale: { ...bg.scale, pixelsPerCm: effectivePpc }
+      };
+
+      // Convert click point to upscaled image pixel space
+      const imgPt = cmToImagePx(svgPt.x, svgPt.y, effectiveBg);
+
       const result = detectRoomAtPixel(imageData, imgPt.x, imgPt.y, {
-        pixelsPerCm,
+        pixelsPerCm: effectivePpc,
         maxAreaCm2: 500000
       });
 
@@ -264,12 +278,12 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
       }
 
       // Convert pixel polygon to floor-global cm coordinates
-      const polygonCm = result.polygonPixels.map(p => imagePxToCm(p.x, p.y, bg));
+      const polygonCm = result.polygonPixels.map(p => imagePxToCm(p.x, p.y, effectiveBg));
 
       // Convert door gap midpoints to cm; estimate gap width from bounding box span
       const doorGapsCm = result.doorGapsPx.map(g => ({
-        midpointCm: imagePxToCm(g.midpointPx.x, g.midpointPx.y, bg),
-        gapWidthCm: Math.max(g.spanPx?.x ?? 0, g.spanPx?.y ?? 0) / pixelsPerCm
+        midpointCm: imagePxToCm(g.midpointPx.x, g.midpointPx.y, effectiveBg),
+        gapWidthCm: Math.max(g.spanPx?.x ?? 0, g.spanPx?.y ?? 0) / effectivePpc
       }));
 
       enterPreview(polygonCm, doorGapsCm);
@@ -408,12 +422,24 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
 // ---------------------------------------------------------------------------
 // Helper: load image into ImageData
 // ---------------------------------------------------------------------------
+/**
+ * Returns the rasterization scale factor for a given dataUrl.
+ * SVGs are upscaled by SVG_DETECTION_SCALE; raster images use 1×.
+ * Exported for testing.
+ */
+export function getDetectionScaleFactor(dataUrl) {
+  return dataUrl && dataUrl.startsWith("data:image/svg+xml") ? SVG_DETECTION_SCALE : 1;
+}
+
 function loadImageData(dataUrl, nativeWidth, nativeHeight) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const w = nativeWidth || img.naturalWidth;
-      const h = nativeHeight || img.naturalHeight;
+      const scaleFactor = getDetectionScaleFactor(dataUrl);
+      const baseW = nativeWidth || img.naturalWidth;
+      const baseH = nativeHeight || img.naturalHeight;
+      const w = baseW * scaleFactor;
+      const h = baseH * scaleFactor;
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
@@ -423,7 +449,7 @@ function loadImageData(dataUrl, nativeWidth, nativeHeight) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-      resolve(ctx.getImageData(0, 0, w, h));
+      resolve({ imageData: ctx.getImageData(0, 0, w, h), scaleFactor });
     };
     img.onerror = reject;
     img.src = dataUrl;
