@@ -91,3 +91,9 @@ Before presenting any non-trivial code change, spawn a review subagent (Task too
 4. Would this change surprise someone reading the code for the first time?
 
 If the review finds violations, fix them before presenting. Do not present code with known rulebook violations and a disclaimer — fix it first.
+
+### Execution Rules
+
+6. **Follow confirmed plans to completion.** Once the user has approved a plan, execute every item in it. Do not stop, skip, or downgrade a goal without explicit user approval. "I believe this is hard" is not a reason to stop — it is a reason to ask.
+7. **Verify goals before declaring them reached.** When a plan has a measurable success criterion (e.g. ≤0.5 cm error, all tests pass, no visual artifacts), verify the criterion is actually met before reporting completion. Do not approximate, round, or declare a "known limitation" and move on — confirm the exact number against the exact threshold.
+8. **Never unilaterally abandon a constraint.** If you conclude a constraint is impossible to satisfy with your current approach, you must surface that to the user with a clear explanation and ask how to proceed. The decision to change or drop a constraint belongs to the user, not to you.
