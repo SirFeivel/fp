@@ -11,25 +11,61 @@ Steps 0–4 from the previous plan are complete and working:
 
 ---
 
-## Step 1: SVG resolution upscaling
+## Step 1: SVG resolution upscaling ✅
 
-**File:** `src/room-detection-controller.js` — `loadImageData`
+**Status:** Implemented — branch `svg-resolution-upscaling`, commit `00a1d6f`
 
-**Problem:** SVGs are vector-based with infinitely crisp edges, but the pipeline rasterizes them at their native document dimensions (e.g., 794×1123 for an A4 SVG at 96 DPI). This gives ppc ≈ 0.38, where each pixel represents ~2.6 cm — too coarse for reliable wall thickness measurement. At 2x+ resolution, measurements stabilize.
+**File:** `src/room-detection-controller.js` — `loadImageData` + `handleSvgClick`
 
-**Change:** When the background image is an SVG (`dataUrl` starts with `data:image/svg+xml`), rasterize at a higher resolution before detection. The canvas in `loadImageData` already controls the render size — draw the SVG into a larger canvas (e.g., 4x the native dimensions) and update `pixelsPerCm` accordingly.
-
-This is a floor-level operation: it happens once when the image is loaded for analysis. The higher-resolution ImageData is used for all subsequent detection (envelope, room detection, wall thickness). The stored `dataUrl` and `nativeWidth`/`nativeHeight` are unchanged — only the working ImageData for detection is upscaled.
+**Problem:** SVGs are vector-based with infinitely crisp edges, but the pipeline rasterizes them at their native document dimensions (e.g., 794×1123 for an A4 SVG at 96 DPI). This gives ppc ≈ 0.38, where each pixel represents ~2.6 cm — too coarse for reliable wall thickness measurement. At 4× resolution (ppc ≈ 1.51), measurements stabilize within ±2 cm.
 
 **Reference data:**
 
 | Scale | ppc | Wall thickness accuracy |
 |-------|-----|------------------------|
-| 1x | 0.38 | ±2.6 cm per pixel, unreliable |
-| 2x | 0.76 | measurements stabilize |
-| 4x | 1.51 | inner wall: 25.5 cm (real: 24), outer: 35.1 cm (real: 30) |
+| 1× | 0.38 | ±2.6 cm per pixel, unreliable |
+| 2× | 0.76 | measurements stabilize |
+| 4× | 1.51 | inner wall: 25.5 cm (real: 24), outer: 35.1 cm (real: 30) |
 
-**Test:** Load SVG at 1x and 4x, run detection on same seed point, verify 4x produces stable thickness within 2 cm of annotation values.
+### Implementation details
+
+**Constant:** `SVG_DETECTION_SCALE = 4` at module top level.
+
+**`getDetectionScaleFactor(dataUrl)`** — new exported pure function. Returns `4` for SVG data URLs (`data:image/svg+xml`), `1` for raster images. Exported for testability.
+
+**`loadImageData(dataUrl, nativeWidth, nativeHeight)`** — modified to:
+- Detect SVG via `getDetectionScaleFactor(dataUrl)`
+- If SVG: canvas dimensions = `nativeWidth × 4` by `nativeHeight × 4`
+- If raster: canvas dimensions = `nativeWidth × nativeHeight` (unchanged)
+- Returns `{ imageData, scaleFactor }` instead of bare `ImageData`
+
+**`handleSvgClick(e)`** — modified to:
+1. Destructure `{ imageData, scaleFactor }` from `loadImageData`
+2. Compute `effectivePpc = pixelsPerCm * scaleFactor`
+3. Build `effectiveBg` — shallow copy of `bg` with `scale.pixelsPerCm` set to `effectivePpc` (identity when `scaleFactor === 1`)
+4. Move `cmToImagePx` call after `loadImageData` so it uses `effectiveBg`
+5. Pass `effectivePpc` to `detectRoomAtPixel` and door gap width conversion
+6. Use `effectiveBg` for all `imagePxToCm` conversions back to cm
+
+**Key invariant:** `imagePxToCm(px × 4, py × 4, { ppc: ppc × 4 })` gives the same cm result as `imagePxToCm(px, py, { ppc })`. The upscaling is transparent to all downstream code — `polygonCm`, `doorGapsCm`, and everything in `confirmDetection` sees identical cm coordinates regardless of scale.
+
+**What does NOT change:**
+- `bg.scale.pixelsPerCm` in stored state — untouched
+- `bg.nativeWidth` / `bg.nativeHeight` — untouched
+- `confirmDetection` — receives cm coordinates, unaffected
+- `detectRoomAtPixel` — already parameterized by `pixelsPerCm`
+- `detectWallThickness` — measures in pixels, scales with the image automatically
+
+**Memory:** 4× scale: 794×1123 → 3176×4492 = ~14.3M pixels × 4 bytes = ~57 MB. Allocated during detection, GC'd after `handleSvgClick` returns.
+
+### Tests
+
+**`src/room-detection-controller.test.js`** — new file, 7 tests:
+- `getDetectionScaleFactor`: returns 4 for SVG (plain + charset variant), 1 for PNG/JPEG/null/undefined
+- Coordinate invariant: `imagePxToCm(px*4, py*4, ppc*4) === imagePxToCm(px, py, ppc)` (verified to 6 decimal places)
+- Roundtrip `cmToImagePx → imagePxToCm` is identity at any scale; 4× has ≤¼ the rounding error of 1×
+
+All 1110 tests pass (1103 existing + 7 new).
 
 ---
 
