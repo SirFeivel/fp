@@ -720,6 +720,187 @@ export function autoDetectWallRange(imageData) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Image preprocessing: remove colored annotation noise
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a binary protection mask covering envelope wall regions.
+ * Pixels inside this mask are immune from annotation removal.
+ *
+ * For each envelope polygon edge, a band of wall thickness + margin is filled
+ * inward (toward polygon centroid). For each spanning wall, a band is filled
+ * on both sides.
+ *
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @param {Array<{x:number,y:number}>} envelopePx - Envelope polygon vertices in pixel coords
+ * @param {{ edges: Array<{thicknessPx:number}>, medianPx: number }} wallThicknesses
+ * @param {Array<{startPx:{x,y}, endPx:{x,y}, thicknessPx:number}>} spanningWallsPx
+ * @param {number} pixelsPerCm
+ * @returns {Uint8Array} Binary mask (1=protected, 0=unprotected)
+ */
+function buildWallProtectionMask(w, h, envelopePx, wallThicknesses, spanningWallsPx, pixelsPerCm) {
+  const mask = new Uint8Array(w * h);
+  const marginPx = Math.ceil(2 * pixelsPerCm);
+  const n = envelopePx.length;
+  if (n < 3) return mask;
+
+  // Compute centroid to determine inward direction
+  let cx = 0, cy = 0;
+  for (const p of envelopePx) { cx += p.x; cy += p.y; }
+  cx /= n; cy /= n;
+
+  const medianPx = wallThicknesses?.medianPx || Math.round(30 * pixelsPerCm);
+
+  // Fill band along each envelope edge
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const ax = envelopePx[i].x, ay = envelopePx[i].y;
+    const bx = envelopePx[j].x, by = envelopePx[j].y;
+    const edgeDx = bx - ax, edgeDy = by - ay;
+    const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    if (edgeLen < 1) continue;
+
+    // Unit edge direction
+    const ux = edgeDx / edgeLen, uy = edgeDy / edgeLen;
+
+    // Two candidate perpendiculars: (-uy, ux) and (uy, -ux)
+    // Choose the one pointing toward the centroid (inward)
+    const midX = (ax + bx) / 2, midY = (ay + by) / 2;
+    const toCx = cx - midX, toCy = cy - midY;
+    const dot1 = (-uy) * toCx + ux * toCy;
+    const dot2 = uy * toCx + (-ux) * toCy;
+    const nx = dot1 >= dot2 ? -uy : uy;
+    const ny = dot1 >= dot2 ? ux : -ux;
+
+    // Wall thickness for this edge
+    const edgeThickness = wallThicknesses?.edges?.[i]?.thicknessPx || medianPx;
+    const depth = edgeThickness + marginPx;
+
+    // Walk along edge and fill inward
+    const steps = Math.ceil(edgeLen);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const ex = ax + edgeDx * t;
+      const ey = ay + edgeDy * t;
+      for (let d = 0; d <= depth; d++) {
+        const px = Math.round(ex + nx * d);
+        const py = Math.round(ey + ny * d);
+        if (px >= 0 && px < w && py >= 0 && py < h) {
+          mask[py * w + px] = 1;
+        }
+      }
+    }
+  }
+
+  // Fill band along each spanning wall
+  for (const wall of (spanningWallsPx || [])) {
+    const sx = wall.startPx.x, sy = wall.startPx.y;
+    const ex = wall.endPx.x, ey = wall.endPx.y;
+    const dx = ex - sx, dy = ey - sy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1) continue;
+
+    const ux = dx / len, uy = dy / len;
+    // Perpendiculars on both sides
+    const halfDepth = Math.round(wall.thicknessPx / 2) + marginPx;
+
+    const steps = Math.ceil(len);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const px0 = sx + dx * t;
+      const py0 = sy + dy * t;
+      for (let d = -halfDepth; d <= halfDepth; d++) {
+        const px = Math.round(px0 + (-uy) * d);
+        const py = Math.round(py0 + ux * d);
+        if (px >= 0 && px < w && py >= 0 && py < h) {
+          mask[py * w + px] = 1;
+        }
+      }
+    }
+  }
+
+  return mask;
+}
+
+/**
+ * Preprocess image for room detection by removing colored annotation noise.
+ *
+ * Colored annotations (dimension text, markers, door arcs) share the same
+ * luminance/saturation signature as colored wall fills, causing them to be
+ * captured by buildGrayWallMask's secondary classification. This function
+ * removes thin colored features (annotations) while preserving thick ones
+ * (wall fills) using morphological opening.
+ *
+ * Envelope wall regions are additionally protected by a spatial mask built
+ * from the detected envelope polygon and spanning walls.
+ *
+ * Modifies imageData.data in-place.
+ *
+ * @param {ImageData} imageData - Source RGBA image (modified in-place)
+ * @param {{ pixelsPerCm?: number, envelopePolygonPx?: Array<{x,y}>, envelopeWallThicknesses?: object, spanningWallsPx?: Array }} options
+ */
+export function preprocessForRoomDetection(imageData, options = {}) {
+  const {
+    pixelsPerCm = 1,
+    envelopePolygonPx,
+    envelopeWallThicknesses,
+    spanningWallsPx,
+  } = options;
+
+  const { data, width: w, height: h } = imageData;
+  const total = w * h;
+
+  // Step 1: Build wall protection mask (if envelope data provided)
+  let protectionMask = null;
+  if (envelopePolygonPx && envelopePolygonPx.length >= 3) {
+    protectionMask = buildWallProtectionMask(
+      w, h, envelopePolygonPx, envelopeWallThicknesses,
+      spanningWallsPx, pixelsPerCm
+    );
+  }
+
+  // Step 2: Build colored pixel mask
+  const coloredMask = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (gray < 10 || gray >= 200) continue; // skip pure black and near-white
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+    if (sat > 0.3 && maxC > 40) {
+      coloredMask[i] = 1;
+    }
+  }
+
+  // Quick bail: no colored pixels found
+  let hasColored = false;
+  for (let i = 0; i < total; i++) {
+    if (coloredMask[i]) { hasColored = true; break; }
+  }
+  if (!hasColored) return;
+
+  // Step 3: Morphological open to find thick colored features
+  const { minCm } = FLOOR_PLAN_RULES.wallThickness;
+  const erosionRadiusPx = Math.max(2, Math.round(minCm / 3 * pixelsPerCm));
+  const thickMask = morphologicalOpen(coloredMask, w, h, erosionRadiusPx);
+
+  // Step 4: Bleach thin unprotected colored pixels
+  for (let i = 0; i < total; i++) {
+    if (coloredMask[i] === 1 && thickMask[i] === 0) {
+      if (protectionMask && protectionMask[i] === 1) continue; // protected
+      data[i * 4]     = 255;
+      data[i * 4 + 1] = 255;
+      data[i * 4 + 2] = 255;
+      data[i * 4 + 3] = 255;
+    }
+  }
+}
+
 /**
  * Scan along each polygon edge in the wall mask for runs of missing wall pixels.
  * These "blank" runs along the wall line correspond to real doorways / openings.

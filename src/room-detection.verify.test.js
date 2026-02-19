@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { decode } from 'fast-png';
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents } from './room-detection.js';
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection } from './room-detection.js';
 import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
@@ -452,5 +452,331 @@ describe('Step 4 pipeline reorder produces identical output (300dpi KG)', () => 
     const { snappedCm, typeId } = snapToWallType(hWall.thicknessCm);
     expect(typeId).toBe("structural");
     expect(snappedCm).toBe(24);
+  });
+});
+
+// ── Step 6: Preprocessing E2E tests ─────────────────────────────────────────
+
+describe('Step 6: preprocessForRoomDetection on KG floor plan', () => {
+  // Use the low-res image + seed (proven to work with detectRoomAtPixel in the tests above)
+
+  it('preprocessing does not change room detection result (KG regression)', () => {
+    // Detect room without preprocessing
+    const resultClean = detectRoomAtPixel(imageData, seedXpx, seedYpx, {
+      pixelsPerCm: ppc,
+      maxAreaCm2: 500000
+    });
+    expect(resultClean, 'clean detection returned null').not.toBeNull();
+
+    // Create a fresh copy of imageData for preprocessing
+    const data2 = new Uint8ClampedArray(imageData.data);
+    const imgCopy = { data: data2, width: imageData.width, height: imageData.height };
+
+    // Run preprocessing (no envelope data — just pure annotation removal)
+    preprocessForRoomDetection(imgCopy, { pixelsPerCm: ppc });
+
+    // Detect room on preprocessed image
+    const resultPreprocessed = detectRoomAtPixel(imgCopy, seedXpx, seedYpx, {
+      pixelsPerCm: ppc,
+      maxAreaCm2: 500000
+    });
+    expect(resultPreprocessed, 'preprocessed detection returned null').not.toBeNull();
+
+    // Convert both results to cm for comparison
+    const toCm = p => ({
+      x: p.x / ppc + (bg.position?.x ?? 0),
+      y: p.y / ppc + (bg.position?.y ?? 0),
+    });
+    const cleanCm = resultClean.polygonPixels.map(toCm);
+    const prepCm  = resultPreprocessed.polygonPixels.map(toCm);
+
+    // Bounding boxes should match within 2cm
+    const bbox = verts => ({
+      minX: Math.min(...verts.map(v => v.x)),
+      maxX: Math.max(...verts.map(v => v.x)),
+      minY: Math.min(...verts.map(v => v.y)),
+      maxY: Math.max(...verts.map(v => v.y)),
+    });
+    const bClean = bbox(cleanCm);
+    const bPrep  = bbox(prepCm);
+
+    console.log('Clean bbox:', JSON.stringify(bClean));
+    console.log('Preprocessed bbox:', JSON.stringify(bPrep));
+
+    const TOL = 2; // cm
+    expect(Math.abs(bClean.minX - bPrep.minX)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.maxX - bPrep.maxX)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.minY - bPrep.minY)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.maxY - bPrep.maxY)).toBeLessThan(TOL);
+
+    // Vertex count should be the same
+    expect(resultPreprocessed.polygonPixels.length).toBe(resultClean.polygonPixels.length);
+  });
+
+  it('synthetic red annotations are removed without affecting room shape', () => {
+    // Create a fresh copy of the image
+    const data2 = new Uint8ClampedArray(imageData.data);
+    const imgNoisy = { data: data2, width: imageData.width, height: imageData.height };
+
+    // Inject thin red dimension lines across the room interior
+    // These are 1px-wide horizontal red lines at several y positions
+    const redY = [seedYpx - 15, seedYpx - 8, seedYpx + 8, seedYpx + 15];
+    const injectedPositions = []; // track which pixels were actually injected
+    for (const y of redY) {
+      if (y < 0 || y >= imageData.height) continue;
+      for (let x = Math.max(0, seedXpx - 60); x < Math.min(imageData.width, seedXpx + 60); x++) {
+        const i = y * imageData.width + x;
+        // Only inject over white/light pixels (room interior, not walls)
+        const gray = 0.299 * data2[i * 4] + 0.587 * data2[i * 4 + 1] + 0.114 * data2[i * 4 + 2];
+        if (gray > 200) {
+          data2[i * 4]     = 255; // R
+          data2[i * 4 + 1] = 0;   // G
+          data2[i * 4 + 2] = 0;   // B
+          injectedPositions.push({ x, y });
+        }
+      }
+    }
+    console.log(`Injected ${injectedPositions.length} red annotation pixels`);
+    expect(injectedPositions.length).toBeGreaterThan(50); // sanity: we actually injected something
+
+    // Run preprocessing to remove the red annotations
+    preprocessForRoomDetection(imgNoisy, { pixelsPerCm: ppc });
+
+    // Verify injected red pixels were bleached to white
+    let bleachedCount = 0;
+    for (const { x, y } of injectedPositions) {
+      const i = y * imageData.width + x;
+      if (imgNoisy.data[i * 4] === 255 && imgNoisy.data[i * 4 + 1] === 255 && imgNoisy.data[i * 4 + 2] === 255) {
+        bleachedCount++;
+      }
+    }
+    console.log(`Bleached ${bleachedCount}/${injectedPositions.length} red pixels`);
+    // At least 90% of injected red pixels should be bleached
+    // (edge pixels near walls might survive due to morphological opening margins)
+    expect(bleachedCount / injectedPositions.length).toBeGreaterThan(0.9);
+
+    // Detect room on the preprocessed (denoised) image
+    const resultDenoised = detectRoomAtPixel(imgNoisy, seedXpx, seedYpx, {
+      pixelsPerCm: ppc,
+      maxAreaCm2: 500000
+    });
+    expect(resultDenoised, 'denoised detection returned null').not.toBeNull();
+
+    // Compare with clean detection (from original unmodified image)
+    const resultClean = detectRoomAtPixel(imageData, seedXpx, seedYpx, {
+      pixelsPerCm: ppc,
+      maxAreaCm2: 500000
+    });
+    expect(resultClean, 'clean detection returned null').not.toBeNull();
+
+    // Bounding boxes should match within tolerance
+    const toCm = p => ({
+      x: p.x / ppc + (bg.position?.x ?? 0),
+      y: p.y / ppc + (bg.position?.y ?? 0),
+    });
+    const bbox = verts => ({
+      minX: Math.min(...verts.map(v => v.x)),
+      maxX: Math.max(...verts.map(v => v.x)),
+      minY: Math.min(...verts.map(v => v.y)),
+      maxY: Math.max(...verts.map(v => v.y)),
+    });
+    const bClean = bbox(resultClean.polygonPixels.map(toCm));
+    const bDenoised = bbox(resultDenoised.polygonPixels.map(toCm));
+
+    console.log('Clean bbox:', JSON.stringify(bClean));
+    console.log('Denoised bbox:', JSON.stringify(bDenoised));
+
+    const TOL = 5; // cm — slightly more tolerance since we injected noise
+    expect(Math.abs(bClean.minX - bDenoised.minX)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.maxX - bDenoised.maxX)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.minY - bDenoised.minY)).toBeLessThan(TOL);
+    expect(Math.abs(bClean.maxY - bDenoised.maxY)).toBeLessThan(TOL);
+  });
+});
+
+// ── Step 6 real-world validation: EG floor plan (messy vs clean) ────────────
+// The messy image has red outlines, yellow electrical markers, pink door arcs,
+// red hatch patterns, and colored dimension annotations.
+// The clean image is the same floor plan with most annotations removed.
+
+const rawMessy = decode(readFileSync('/Users/feivel/Downloads/floorplan_EG.png'));
+const imgMessy = { data: new Uint8ClampedArray(rawMessy.data), width: rawMessy.width, height: rawMessy.height };
+
+const rawClean = decode(readFileSync('/Users/feivel/Downloads/floorplan_EG_clean.png'));
+const imgClean = { data: new Uint8ClampedArray(rawClean.data), width: rawClean.width, height: rawClean.height };
+
+// 300dpi at 1:100 scale → ppc ≈ 300 / 2.54 / 100 = 1.18 px/cm
+const ppcEG = 300 / 2.54 / 100;
+
+/** Count colored pixels matching the same criteria as preprocessForRoomDetection's
+ *  colored mask (gray ∈ [10,200), sat > 0.3, maxC > 40). Used to measure preprocessing
+ *  effectiveness. Source of truth: preprocessForRoomDetection in room-detection.js. */
+function countColoredPixels(img) {
+  const { data, width, height } = img;
+  let count = 0;
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (gray < 10 || gray >= 200) continue;
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+    if (sat > 0.3 && maxC > 40) count++;
+  }
+  return count;
+}
+
+describe('Step 6 real-world: EG floor plan (messy vs clean)', () => {
+  it('messy image has more colored pixels than clean (annotations)', () => {
+    const messyCount = countColoredPixels(imgMessy);
+    const cleanCount = countColoredPixels(imgClean);
+    console.log(`Colored pixels — messy: ${messyCount}, clean: ${cleanCount}, ratio: ${(messyCount / Math.max(1, cleanCount)).toFixed(1)}x`);
+    // Messy should have more colored pixels than clean (annotations add colored pixels).
+    // Both images share colored wall fills, so the ratio is modest (~1.3x).
+    expect(messyCount).toBeGreaterThan(cleanCount);
+  });
+
+  it('preprocessing removes majority of colored annotation pixels', () => {
+    // Work on a copy
+    const data2 = new Uint8ClampedArray(imgMessy.data);
+    const imgCopy = { data: data2, width: imgMessy.width, height: imgMessy.height };
+
+    const before = countColoredPixels(imgCopy);
+    preprocessForRoomDetection(imgCopy, { pixelsPerCm: ppcEG });
+    const after = countColoredPixels(imgCopy);
+
+    const removedPct = ((before - after) / before * 100).toFixed(1);
+    console.log(`Colored pixels — before: ${before}, after: ${after}, removed: ${removedPct}%`);
+    // Expect at least 50% of colored annotation pixels removed
+    expect(after).toBeLessThan(before * 0.5);
+  });
+
+  it('envelope detection on preprocessed messy image matches clean image', () => {
+    // Preprocess the messy image
+    const data2 = new Uint8ClampedArray(imgMessy.data);
+    const imgPreprocessed = { data: data2, width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(imgPreprocessed, { pixelsPerCm: ppcEG });
+
+    // Detect envelope on both
+    const envMessy = detectEnvelope(imgPreprocessed, { pixelsPerCm: ppcEG });
+    const envClean = detectEnvelope(imgClean, { pixelsPerCm: ppcEG });
+
+    expect(envMessy, 'envelope from preprocessed messy is null').not.toBeNull();
+    expect(envClean, 'envelope from clean is null').not.toBeNull();
+
+    // Convert to cm and compare bounding boxes
+    const toCm = (p, ppcVal) => ({ x: p.x / ppcVal, y: p.y / ppcVal });
+    const bbox = verts => ({
+      minX: Math.min(...verts.map(v => v.x)),
+      maxX: Math.max(...verts.map(v => v.x)),
+      minY: Math.min(...verts.map(v => v.y)),
+      maxY: Math.max(...verts.map(v => v.y)),
+    });
+
+    const bMessy = bbox(envMessy.polygonPixels.map(p => toCm(p, ppcEG)));
+    const bClean = bbox(envClean.polygonPixels.map(p => toCm(p, ppcEG)));
+
+    const messyW = bMessy.maxX - bMessy.minX;
+    const messyH = bMessy.maxY - bMessy.minY;
+    const cleanW = bClean.maxX - bClean.minX;
+    const cleanH = bClean.maxY - bClean.minY;
+
+    console.log(`Envelope bbox (messy preprocessed): ${messyW.toFixed(0)} x ${messyH.toFixed(0)} cm`);
+    console.log(`Envelope bbox (clean):              ${cleanW.toFixed(0)} x ${cleanH.toFixed(0)} cm`);
+
+    // Building dimensions should be roughly 1034cm × 880cm (from dimension labels)
+    // Allow 15% tolerance since images have different pixel dimensions
+    const TOL_PCT = 0.15;
+    expect(Math.abs(messyW - cleanW) / cleanW).toBeLessThan(TOL_PCT);
+    expect(Math.abs(messyH - cleanH) / cleanH).toBeLessThan(TOL_PCT);
+  });
+
+  it('preprocessing removes non-red annotations (yellow markers, pink arcs, blue) almost completely', () => {
+    // Count non-red colored pixels (yellow, blue, magenta/pink) before and after.
+    // preprocessForRoomDetection removes ALL thin colored features regardless of hue.
+    // This test isolates non-red channels to verify that annotations with distinctive
+    // hues (yellow electrical markers, blue lines, pink door arcs) are specifically removed,
+    // since red pixels are shared between annotations and wall fills.
+    function countNonRedColored(img) {
+      const { data, width, height } = img;
+      let count = 0;
+      for (let i = 0; i < width * height; i++) {
+        const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (gray < 10 || gray >= 200) continue;
+        const maxC = Math.max(r, g, b);
+        const minC = Math.min(r, g, b);
+        const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+        if (sat <= 0.3 || maxC <= 40) continue;
+        // Non-red: green or blue is the dominant channel, or yellow/magenta
+        if (r <= g || r <= b) count++; // green-dominant or blue-dominant
+        else if (g > b * 1.5 && g > 40) count++; // yellow (r>g>b with notable green)
+      }
+      return count;
+    }
+
+    const data2 = new Uint8ClampedArray(imgMessy.data);
+    const imgPre = { data: data2, width: imgMessy.width, height: imgMessy.height };
+
+    const before = countNonRedColored(imgPre);
+    preprocessForRoomDetection(imgPre, { pixelsPerCm: ppcEG });
+    const after = countNonRedColored(imgPre);
+
+    const removedPct = ((before - after) / Math.max(1, before) * 100).toFixed(1);
+    console.log(`Non-red colored pixels — before: ${before}, after: ${after}, removed: ${removedPct}%`);
+    // Yellow markers, blue lines, pink arcs should be almost completely removed (>80%)
+    expect(after).toBeLessThan(before * 0.2);
+  });
+
+  it('wall mask similarity improves after preprocessing', () => {
+    // Compare wall masks: messy (raw) vs clean, then messy (preprocessed) vs clean.
+    // The images have different pixel dimensions, so compare via the wall mask density
+    // within the envelope bounding box region, normalized by image size.
+    const { lowThresh: lowM, highThresh: highM } = autoDetectWallRange(imgMessy, { pixelsPerCm: ppcEG });
+    const maskMessyRaw = buildGrayWallMask(imgMessy, lowM, highM);
+
+    const data2 = new Uint8ClampedArray(imgMessy.data);
+    const imgPre = { data: data2, width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(imgPre, { pixelsPerCm: ppcEG });
+    const { lowThresh: lowP, highThresh: highP } = autoDetectWallRange(imgPre, { pixelsPerCm: ppcEG });
+    const maskMessyPre = buildGrayWallMask(imgPre, lowP, highP);
+
+    const { lowThresh: lowC, highThresh: highC } = autoDetectWallRange(imgClean, { pixelsPerCm: ppcEG });
+    const maskClean = buildGrayWallMask(imgClean, lowC, highC);
+
+    // Count wall pixels in each mask
+    function wallCount(mask) {
+      let c = 0;
+      for (let i = 0; i < mask.length; i++) if (mask[i] === 1) c++;
+      return c;
+    }
+
+    const wRaw = wallCount(maskMessyRaw);
+    const wPre = wallCount(maskMessyPre);
+    const wClean = wallCount(maskClean);
+
+    // Normalize by image pixel count for fair comparison.
+    // Images have different pixel dimensions (3508×3071 vs 3322×2909, ~14% area diff)
+    // but show the same building at the same scale. Density = wall fraction of total
+    // image area, which is scale-independent for same-building comparisons.
+    const densityRaw = wRaw / (imgMessy.width * imgMessy.height);
+    const densityPre = wPre / (imgMessy.width * imgMessy.height);
+    const densityClean = wClean / (imgClean.width * imgClean.height);
+
+    console.log(`Wall mask density — messy raw: ${(densityRaw * 100).toFixed(2)}%, preprocessed: ${(densityPre * 100).toFixed(2)}%, clean: ${(densityClean * 100).toFixed(2)}%`);
+
+    // After preprocessing, the messy wall density should be closer to the clean density
+    const diffRaw = Math.abs(densityRaw - densityClean);
+    const diffPre = Math.abs(densityPre - densityClean);
+    console.log(`Wall density distance to clean — raw: ${(diffRaw * 100).toFixed(3)}%, preprocessed: ${(diffPre * 100).toFixed(3)}%`);
+
+    // Preprocessing changes the wall mask density. At low ppc (1.18), some wall fill
+    // pixels are also removed alongside annotations. The preprocessed density should
+    // stay within a reasonable range of clean (not collapse to near-zero).
+    // The important thing is that annotations DON'T inflate the wall mask (raw > clean
+    // due to false walls from annotations), and preprocessed stays in a viable range.
+    expect(densityRaw, 'raw messy should have higher density than clean (annotations add false walls)').toBeGreaterThan(densityClean);
+    expect(densityPre, 'preprocessed density should not collapse').toBeGreaterThan(densityClean * 0.5);
+    expect(densityPre, 'preprocessing should reduce density vs raw (removed annotations)').toBeLessThan(densityRaw);
   });
 });

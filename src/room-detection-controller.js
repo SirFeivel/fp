@@ -7,7 +7,7 @@ import { svgEl } from "./geometry.js";
 import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness } from "./room-detection.js";
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, preprocessForRoomDetection } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES, DEFAULT_WALL_TYPES, DEFAULT_FLOOR_HEIGHT_CM, snapToWallType, classifyWallTypes } from "./floor-plan-rules.js";
@@ -265,6 +265,25 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
         ...bg,
         scale: { ...bg.scale, pixelsPerCm: effectivePpc }
       };
+
+      // Preprocess image: remove colored annotation noise
+      const envelope = floor.layout?.envelope;
+      if (envelope?.polygonCm) {
+        const envelopePolygonPx = envelope.polygonCm.map(p =>
+          cmToImagePx(p.x, p.y, effectiveBg)
+        );
+        const spanningWallsPx = (envelope.spanningWalls || []).map(w => ({
+          startPx: cmToImagePx(w.startCm.x, w.startCm.y, effectiveBg),
+          endPx: cmToImagePx(w.endCm.x, w.endCm.y, effectiveBg),
+          thicknessPx: Math.round(w.thicknessCm * effectivePpc),
+        }));
+        preprocessForRoomDetection(imageData, {
+          pixelsPerCm: effectivePpc,
+          envelopePolygonPx,
+          envelopeWallThicknesses: envelope.wallThicknesses,
+          spanningWallsPx,
+        });
+      }
 
       // Convert click point to upscaled image pixel space
       const imgPt = cmToImagePx(svgPt.x, svgPt.y, effectiveBg);
