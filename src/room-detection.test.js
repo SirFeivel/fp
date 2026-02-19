@@ -564,6 +564,73 @@ describe('detectWallThickness', () => {
     expect(result.medianPx).toBeLessThanOrEqual(12);
   });
 
+  it('detects wall thickness for brown-colored walls', () => {
+    // Brown walls: fill=(139,69,19), edges=(50,25,5) — common in architectural plans
+    const w = 60, h = 60;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h * 4; i += 4) {
+      data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+    }
+    function set(x, y, r, g, b) {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const idx = (y * w + x) * 4;
+      data[idx] = r; data[idx+1] = g; data[idx+2] = b;
+    }
+    // Draw brown wall ring: outer (5,5)→(55,55), inner (15,15)→(45,45)
+    for (let y = 5; y < 55; y++) {
+      for (let x = 5; x < 55; x++) {
+        const inRoom = x >= 15 && x < 45 && y >= 15 && y < 45;
+        if (inRoom) continue;
+        const atEdge = (y < 7 || y >= 53 || x < 7 || x >= 53) ||
+          (Math.abs(x - 15) < 2 || Math.abs(x - 44) < 2 || Math.abs(y - 15) < 2 || Math.abs(y - 44) < 2);
+        if (atEdge) set(x, y, 50, 25, 5);    // dark brown edge
+        else set(x, y, 139, 69, 19);         // brown fill
+      }
+    }
+    const imageData = { data, width: w, height: h };
+    const polygon = [
+      { x: 15, y: 15 }, { x: 45, y: 15 },
+      { x: 45, y: 45 }, { x: 15, y: 45 },
+    ];
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    expect(result.edges.length).toBeGreaterThanOrEqual(2);
+    expect(result.medianPx).toBeGreaterThanOrEqual(5);
+    expect(result.medianPx).toBeLessThanOrEqual(12);
+  });
+
+  it('detects wall thickness for blue-colored walls', () => {
+    // Blue walls: fill=(0,0,180), edges=(0,0,80) — CAD-style colored layers
+    const w = 60, h = 60;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h * 4; i += 4) {
+      data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+    }
+    function set(x, y, r, g, b) {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const idx = (y * w + x) * 4;
+      data[idx] = r; data[idx+1] = g; data[idx+2] = b;
+    }
+    for (let y = 5; y < 55; y++) {
+      for (let x = 5; x < 55; x++) {
+        const inRoom = x >= 15 && x < 45 && y >= 15 && y < 45;
+        if (inRoom) continue;
+        const atEdge = (y < 7 || y >= 53 || x < 7 || x >= 53) ||
+          (Math.abs(x - 15) < 2 || Math.abs(x - 44) < 2 || Math.abs(y - 15) < 2 || Math.abs(y - 44) < 2);
+        if (atEdge) set(x, y, 0, 0, 80);    // dark blue edge
+        else set(x, y, 0, 0, 180);           // blue fill
+      }
+    }
+    const imageData = { data, width: w, height: h };
+    const polygon = [
+      { x: 15, y: 15 }, { x: 45, y: 15 },
+      { x: 45, y: 45 }, { x: 15, y: 45 },
+    ];
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    expect(result.edges.length).toBeGreaterThanOrEqual(2);
+    expect(result.medianPx).toBeGreaterThanOrEqual(5);
+    expect(result.medianPx).toBeLessThanOrEqual(12);
+  });
+
   it('returns per-edge measurements that can differ', () => {
     const w = 80, h = 80;
     // Build image manually: top/bottom walls 10px thick, left/right walls 20px thick
@@ -853,6 +920,24 @@ describe('buildGrayWallMask', () => {
     const imageData = makeImageData([80], 1, 1);
     expect(buildGrayWallMask(imageData, 80, 210)[0]).toBe(1); // 80 ≥ 80 → wall
     expect(buildGrayWallMask(imageData, 90, 210)[0]).toBe(0); // 80 < 90 → open
+  });
+
+  it('captures colored wall fills via saturation fallback', () => {
+    // Brown wall pixel (139,69,19): gray≈84, sat≈0.86, maxC=139
+    // With lowThresh=100, gray 84 < 100, but saturation fallback should include it.
+    const w = 3, h = 1;
+    const data = new Uint8ClampedArray(3 * 1 * 4);
+    // Pixel 0: brown wall (139,69,19)
+    data[0] = 139; data[1] = 69; data[2] = 19; data[3] = 255;
+    // Pixel 1: white background (255,255,255)
+    data[4] = 255; data[5] = 255; data[6] = 255; data[7] = 255;
+    // Pixel 2: dark gray neutral (50,50,50) — below lowThresh, low sat → open
+    data[8] = 50; data[9] = 50; data[10] = 50; data[11] = 255;
+    const imageData = { data, width: w, height: h };
+    const mask = buildGrayWallMask(imageData, 100, 210);
+    expect(mask[0]).toBe(1); // brown → wall (saturation fallback)
+    expect(mask[1]).toBe(0); // white → open
+    expect(mask[2]).toBe(0); // dark neutral below thresh → open (no saturation)
   });
 });
 
@@ -1478,6 +1563,57 @@ describe('detectSpanningWalls', () => {
     // The phantom V band at x=95 should NOT be detected
     const vWalls = walls.filter(w => w.orientation === 'V');
     expect(vWalls.length).toBe(0);
+  });
+
+  it('rejects short partition in narrow L-shaped building arm', () => {
+    // L-shaped building: wide main body [20..179] × [20..100] + narrow arm [20..70] × [100..179]
+    // Partition wall in narrow arm (50px wide = 100cm at ppc=0.5) should NOT be detected
+    // as a spanning wall, even though it spans 100% of the arm width.
+    const { imageData, wallMask, buildingMask } = createBlankImage();
+
+    // Main body
+    fillBuilding(buildingMask, 20, 20, 179, 100);
+    addWallBand(imageData, wallMask, 20, 20, 179, 20 + WALL_THICK - 1); // top
+    addWallBand(imageData, wallMask, 20, 91, 179, 100);                  // mid (shared)
+    addWallBand(imageData, wallMask, 20, 20, 20 + WALL_THICK - 1, 100); // left
+    addWallBand(imageData, wallMask, 170, 20, 179, 100);                 // right
+
+    // Narrow arm (only 50px = 100cm wide)
+    fillBuilding(buildingMask, 20, 100, 70, 179);
+    addWallBand(imageData, wallMask, 20, 170, 70, 179);                  // bottom
+    addWallBand(imageData, wallMask, 20, 100, 20 + WALL_THICK - 1, 179);// left
+    addWallBand(imageData, wallMask, 61, 100, 70, 179);                  // right
+
+    // Partition wall spanning the narrow arm at y=140
+    addWallBand(imageData, wallMask, 20, 135, 70, 135 + WALL_THICK - 1);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, { pixelsPerCm: PPC });
+
+    // The partition in the narrow arm should be rejected: span = 50px = 100cm < 200cm minimum
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    expect(hWalls.length).toBe(0);
+  });
+
+  it('populates rejections array when passed in options', () => {
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Add a too-thin wall (1px) and a proper spanning wall
+    addWallBand(imageData, wallMask, 20, 100, 179, 100); // 1px = 2cm < 5cm min
+    addWallBand(imageData, wallMask, 20, 60, 179, 60 + WALL_THICK - 1); // proper wall
+
+    const rej = [];
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, {
+      pixelsPerCm: PPC,
+      rejections: rej,
+    });
+
+    // The proper wall should be detected
+    expect(walls.filter(w => w.orientation === 'H').length).toBe(1);
+
+    // The thin wall should be rejected with a reason
+    const thicknessRejections = rej.filter(r => r.reason === 'thickness');
+    expect(thicknessRejections.length).toBeGreaterThanOrEqual(1);
+    expect(thicknessRejections[0].details).toHaveProperty('bandCm');
   });
 
   it('E2E: detectEnvelope + detectSpanningWalls pipeline', () => {

@@ -1,6 +1,8 @@
 // src/room-detection.js
-// Pure image-processing functions for semi-automatic room detection.
-// No DOM, state, or geometry dependencies.
+// Image-processing functions for semi-automatic room detection.
+// Depends on floor-plan-rules.js for wall thickness bounds.
+
+import { FLOOR_PLAN_RULES } from './floor-plan-rules.js';
 
 /**
  * Converts RGBA imageData to a binary mask.
@@ -632,7 +634,29 @@ export function buildGrayWallMask(imageData, lowThresh = 80, highThresh = 210) {
     const g = data[i * 4 + 1];
     const b = data[i * 4 + 2];
     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    mask[i] = (gray >= lowThresh && gray <= highThresh) ? 1 : 0;
+
+    // Primary: luminance in the detected wall range
+    if (gray >= lowThresh && gray <= highThresh) {
+      mask[i] = 1;
+      continue;
+    }
+
+    // Secondary: dark colored pixels (gray below lowThresh but not near-black).
+    // Colored wall fills (brown, red, blue) may have lower luminance than
+    // the detected gray range. Include them if they are not pure black
+    // edge lines (which should remain open for flood fill to work).
+    if (gray >= 10 && gray < lowThresh) {
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+      // High saturation + not too dark = colored wall material
+      if (sat > 0.3 && maxC > 40) {
+        mask[i] = 1;
+        continue;
+      }
+    }
+
+    mask[i] = 0;
   }
   return mask;
 }
@@ -671,21 +695,28 @@ export function autoDetectWallRange(imageData) {
     if (cumFromTop > total * 0.20) { whiteLevel = g + 1; break; }
   }
 
-  // Find the dominant mid-gray peak (wall fill) in range [30, whiteLevel - 20]
+  // Find the dominant wall fill peak in range [10, whiteLevel - 20].
+  // Starts at 10 (not 30) to capture very dark colored walls (blue at gray≈29,
+  // dark brown at gray≈20). Pure black edge lines cluster at 0-5 and are thin
+  // enough to be excluded by the pixel count threshold.
   let maxCount = 0;
   let wallCenter = -1;
-  const midLow = 30;
+  const midLow = 10;
   const midHigh = Math.max(midLow + 1, whiteLevel - 20);
   for (let g = midLow; g < midHigh; g++) {
     if (hist[g] > maxCount) { maxCount = hist[g]; wallCenter = g; }
   }
 
-  // Require the peak to represent at least 0.5% of all pixels
-  if (wallCenter < 0 || maxCount < total * 0.005) return null;
+  // Require the peak to represent at least 0.3% of all pixels.
+  // Lowered from 0.5% to handle thin-walled plans and colored fills that
+  // spread across multiple luminance bins.
+  if (wallCenter < 0 || maxCount < total * 0.003) return null;
 
+  // Use ±80 range (widened from ±60) to capture multi-toned walls
+  // (e.g. colored fills with gradient transitions or aliasing).
   return {
-    low:  Math.max(20, wallCenter - 60),
-    high: Math.min(whiteLevel - 15, wallCenter + 60)
+    low:  Math.max(5, wallCenter - 80),
+    high: Math.min(whiteLevel - 15, wallCenter + 80)
   };
 }
 
@@ -814,9 +845,18 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
  * Classify an RGBA pixel as 'edge' (dark wall line), 'fill' (wall interior),
  * or 'background' (light/white or colored annotation).
  *
- * - edge: gray < 80, neutral hue (r-g < 40 AND r-b < 40)
- * - fill: gray ∈ [80, 200), neutral hue; also dark pixels with red/pink tint
- * - background: gray >= 200; also mid-gray with red/pink tint
+ * Uses luminance + saturation to handle both neutral (grayscale) walls and
+ * colored walls (brown, blue, red, beige fills common in architectural plans).
+ *
+ * - edge: gray < 80, regardless of hue (dark = wall line)
+ * - fill: gray ∈ [80, 200) with low-to-moderate saturation; OR gray ∈ [200, 220)
+ *   with very low saturation (light beige/cream fills)
+ * - background: bright pixels (gray ≥ 200) with high saturation or very light
+ *   neutral pixels (gray ≥ 220)
+ *
+ * Saturation is measured as max channel spread / max channel value — 0 = gray,
+ * 1 = fully saturated. The threshold scales with luminance: darker pixels are
+ * more likely wall material even with some color.
  *
  * @param {number} r - Red channel (0-255)
  * @param {number} g - Green channel (0-255)
@@ -825,14 +865,35 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
  */
 function classifyWallPixel(r, g, b) {
   const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-  const isNeutral = (r - g) < 40 && (r - b) < 40;
 
-  if (gray < 80) {
-    return isNeutral ? "edge" : "fill";
-  }
+  // Measure saturation: spread of channels relative to the brightest channel.
+  // 0 = perfectly neutral gray, 1 = fully saturated pure hue.
+  const maxC = Math.max(r, g, b);
+  const minC = Math.min(r, g, b);
+  const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+
+  // Dark pixels (gray < 80): edge lines for walls of any color.
+  // Previous neutral-hue gate rejected colored walls; now all dark pixels qualify.
+  if (gray < 80) return "edge";
+
+  // Dark-to-mid pixels (80–120): edge if low saturation (black/dark-gray wall lines),
+  // fill otherwise (colored wall body — e.g. brown 139,69,19 has gray≈84, sat≈0.86).
+  if (gray < 120) return sat < 0.3 ? "edge" : "fill";
+
+  // Mid-tone pixels (120–200): wall fill if saturation is moderate.
+  // At gray=120 allow sat≤0.65, at gray=200 allow sat≤0.35.
+  // Darker mid-tones tolerate more color (wall fills); brighter ones need
+  // lower saturation to distinguish from colored annotations/text.
   if (gray < 200) {
-    return isNeutral ? "fill" : "background";
+    const satThreshold = 0.65 - (gray - 120) / 80 * 0.30;
+    return sat <= satThreshold ? "fill" : "background";
   }
+
+  // Light pixels (gray ≥ 200): background unless very low saturation AND not too bright.
+  // Light beige/cream fills (e.g. 220,210,190 → gray≈212, sat≈0.14) are wall fill.
+  // Pure white and near-white (gray ≥ 220) are always background.
+  if (gray < 220 && sat < 0.2) return "fill";
+
   return "background";
 }
 
@@ -980,9 +1041,11 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
     }
 
     // Sample at 7 points along the edge, evenly spaced.
-    // Cap probe distance to a reasonable wall thickness (60cm) to avoid
-    // crossing interior walls at junctions.
-    const maxWallProbe = Math.min(maxProbe, Math.round(60 * pixelsPerCm));
+    // Cap probe distance using FLOOR_PLAN_RULES.wallThickness.maxCm (+ margin)
+    // to avoid crossing interior walls at junctions.
+    const { minCm: ruleMinCm, maxCm: ruleMaxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const probeLimitCm = ruleMaxCm + 10; // small margin beyond max for anti-aliasing
+    const maxWallProbe = Math.min(maxProbe, Math.round(probeLimitCm * pixelsPerCm));
     const raw = [];
     for (let si = 1; si <= 7; si++) {
       const frac = si / 8;
@@ -996,11 +1059,11 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
 
     if (raw.length < 2) continue;
 
-    // Filter: reject samples that are physically unreasonable for a wall.
-    // Walls are 5–60 cm thick. Samples outside this range come from
-    // junction crossings (too large) or polygon misalignment (too small).
-    const minWallPx = Math.max(2, Math.round(5 * pixelsPerCm));
-    const maxWallPx = Math.round(60 * pixelsPerCm);
+    // Filter: reject samples outside FLOOR_PLAN_RULES.wallThickness bounds.
+    // Samples outside this range come from junction crossings (too large)
+    // or polygon misalignment (too small).
+    const minWallPx = Math.max(2, Math.round(ruleMinCm * pixelsPerCm));
+    const maxWallPx = Math.round(ruleMaxCm * pixelsPerCm);
     const filtered = raw.filter(v => v >= minWallPx && v <= maxWallPx);
 
     if (filtered.length < 2) continue;
@@ -1051,7 +1114,7 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
  * @param {number} maxBumpDepthCm - Maximum bump depth to remove (default 30)
  * @returns {Array<{x: number, y: number}>} Cleaned polygon
  */
-export function removePolygonMicroBumps(vertices, maxBumpDepthCm = 30) {
+export function removePolygonMicroBumps(vertices, maxBumpDepthCm = FLOOR_PLAN_RULES.wallThickness.maxCm) {
   if (!vertices || vertices.length < 5) return vertices; // need at least 5 vertices for a bump
 
   let pts = vertices.map(p => ({ x: p.x, y: p.y }));
@@ -1367,22 +1430,26 @@ export function detectEnvelope(imageData, options = {}) {
  * @param {Uint8Array} buildingMask - Building interior mask (1=inside, 0=outside)
  * @param {number} w - Image width
  * @param {number} h - Image height
- * @param {{ pixelsPerCm?: number, minThicknessCm?: number, maxThicknessCm?: number }} options
+ * @param {{ pixelsPerCm?: number, minThicknessCm?: number, maxThicknessCm?: number, rejections?: Array }} options
+ *   Pass `rejections: []` to collect rejection reasons for debugging.
+ *   Each entry: { orientation, band: {start,end}, reason: string, details: object }
  * @returns {Array<{ orientation: string, startPx: {x:number,y:number}, endPx: {x:number,y:number}, thicknessPx: number }>}
  */
 export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, options = {}) {
   const {
     pixelsPerCm: ppc = 1,
-    minThicknessCm = 5,
-    maxThicknessCm = 50,
+    minThicknessCm = FLOOR_PLAN_RULES.wallThickness.minCm,
+    maxThicknessCm = FLOOR_PLAN_RULES.wallThickness.maxCm,
+    rejections = null,
   } = options;
 
   const data = imageData.data;
   const DENSITY_THRESHOLD = 0.4;
   const SPAN_THRESHOLD = 0.7;
   const MIN_BUILDING_WIDTH_PX = 50;
-  const GAP_MERGE = 3; // merge bands separated by ≤ 3 rows/columns
+  const GAP_MERGE = Math.max(1, Math.ceil(2 * ppc)); // merge bands separated by ≤ ~2cm
   const MIN_BUILDING_WIDTH_CM = 100;
+  const MIN_SPAN_LENGTH_CM = 200; // wall must span ≥200cm to be structural (not a partition in a narrow arm)
   const NUM_SAMPLES = 5; // thickness probe sample count
 
   // Quick check: any building pixels at all?
@@ -1528,36 +1595,62 @@ export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, opt
     const bandHeight = band.end - band.start + 1;
     const bandCm = bandHeight / ppc;
 
+    function reject(reason, details = {}) {
+      if (rejections) {
+        rejections.push({ orientation, band: { start: band.start, end: band.end }, reason, details });
+      }
+      return null;
+    }
+
     // (1) Thickness check
-    if (bandCm < minThicknessCm || bandCm > maxThicknessCm) return null;
+    if (bandCm < minThicknessCm || bandCm > maxThicknessCm) {
+      return reject('thickness', { bandCm, minThicknessCm, maxThicknessCm });
+    }
 
     // (2) Minimum building width at the band
-    if (band.avgBldgWidth < MIN_BUILDING_WIDTH_CM * ppc) return null;
+    if (band.avgBldgWidth < MIN_BUILDING_WIDTH_CM * ppc) {
+      return reject('building_width', { avgBldgWidthCm: band.avgBldgWidth / ppc, minCm: MIN_BUILDING_WIDTH_CM });
+    }
 
     // (3) Boundary proximity: reject bands within one band-height of building edge.
     // These are outer wall inner edges, not interior spanning walls.
     // Uses per-band local sampling (not global bbox) to handle non-rectangular buildings.
     const distToBoundary = distanceToBuildingBoundary(band, orientation);
-    if (distToBoundary < bandHeight) return null;
+    if (distToBoundary < bandHeight) {
+      return reject('boundary_proximity', { distToBoundary, bandHeight });
+    }
 
     // (4) Continuity: scan the cross direction within the band and find the
     // largest gap where no wall pixels exist. A real spanning wall is continuous;
     // aligned partition walls have room-sized gaps between them.
-    // Allow gaps up to 200cm for door openings (single, double, sliding doors).
-    // Room-sized gaps (>200cm) between separate partition walls are rejected.
-    const maxAllowedGap = Math.max(bandHeight * 2, Math.round(200 * ppc));
+    // Allow gaps proportional to building width (25%) to accommodate multiple
+    // door openings. Minimum is 2× band thickness for anti-aliasing tolerance.
+    const maxAllowedGap = Math.max(bandHeight * 2, Math.round(band.avgBldgWidth * 0.25));
     const { maxGap, wallFirst, wallLast } = measureContinuity(band, orientation);
-    if (maxGap > maxAllowedGap) return null;
+    if (maxGap > maxAllowedGap) {
+      return reject('continuity', { maxGap, maxAllowedGap, maxGapCm: maxGap / ppc });
+    }
 
     // (5) Touches both outer walls: wall pixels must exist near both building edges.
     const margin = bandHeight * 2;
     const touchesStart = wallFirst <= band.avgBldgFirst + margin;
     const touchesEnd = wallLast >= band.avgBldgLast - margin;
-    if (!touchesStart || !touchesEnd) return null;
+    if (!touchesStart || !touchesEnd) {
+      return reject('edge_touch', { touchesStart, touchesEnd, wallFirst, wallLast, margin });
+    }
+
+    // (5b) Minimum absolute span length: prevents partitions in narrow building arms
+    // from being classified as structural spanning walls.
+    const spanLengthPx = wallLast - wallFirst;
+    if (spanLengthPx < MIN_SPAN_LENGTH_CM * ppc) {
+      return reject('span_length', { spanLengthCm: spanLengthPx / ppc, minSpanCm: MIN_SPAN_LENGTH_CM });
+    }
 
     // (6) Thickness consistency: probe perpendicular to the wall at NUM_SAMPLES points.
     const { thicknessPx, validCount } = measureBandThickness(band, orientation);
-    if (validCount < Math.ceil(NUM_SAMPLES * 0.8)) return null;
+    if (validCount < Math.ceil(NUM_SAMPLES * 0.8)) {
+      return reject('thickness_consistency', { validCount, required: Math.ceil(NUM_SAMPLES * 0.8), NUM_SAMPLES });
+    }
 
     // Build endpoints
     const mid = (band.start + band.end) / 2;
