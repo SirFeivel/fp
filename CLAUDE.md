@@ -79,6 +79,25 @@ State contains:
 
 **Never present unverified results.** Before reporting a task as complete: all tests pass, real-world data (if provided) produces correct results, and the specific success criteria from the plan are confirmed with exact values. "Should work" is not verification.
 
+### Plan Scorecard (BLOCKING — every plan must include this)
+
+Before presenting any plan, score it honestly on these five dimensions (0–10). Display the scorecard in a table. **Threshold is 7 on every score.** If any score is below 7, do not present the plan — iterate on the weak areas or discuss with the user first.
+
+| Score | Meaning |
+|---|---|
+| **Hacky** (0 = duct tape, 10 = clean) | Does this solve the problem properly or is it a workaround? |
+| **Compliance** (0 = violates everything, 10 = textbook) | Do the proposed changes respect the project architecture, rulebook, and best practices? |
+| **Complexity** (0 = extremely complex, 10 = minimal) | Is this the simplest solution that works? Could it be simpler? |
+| **Problem Understanding** (0 = guessing, 10 = fully mapped) | Have I read the real data, traced all callers, identified root cause, and understood every consequence? |
+| **Confidence** (0 = hope, 10 = certain) | How sure am I this will work end-to-end without surprises? Based on evidence, not optimism. |
+
+**Rules:**
+- Scores must be honest self-assessments based on evidence, not aspirational.
+- A low score is not a failure — it is a signal to do more research, simplify, or ask the user.
+- If Problem Understanding is below 7, stop planning and investigate first.
+- If Confidence is below 7, identify what is uncertain and resolve it before proceeding.
+- Inflating scores to pass the threshold is a rulebook violation.
+
 ### Architecture Rules
 
 1. **Use existing APIs.** Before writing conversion logic, coordinate math, or helper code inline, check if a centralized function already exists. If it does, use it. If it almost does, extend it — don't duplicate it with a "local version."
