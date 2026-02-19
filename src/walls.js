@@ -3,6 +3,7 @@ import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
 import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
 import { computeSkirtingSegments, roomPolygon } from "./geometry.js";
+import { FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
 
 export const DEFAULT_WALL = {
   thicknessCm: DEFAULT_WALL_THICKNESS_CM,
@@ -342,6 +343,119 @@ function enforceAdjacentPositions(floor) {
       x: adjPos.x + normal.x * delta,
       y: adjPos.y + normal.y * delta,
     };
+  }
+}
+
+/**
+ * Merge collinear wall segments from different rooms that form a continuous
+ * building wall. Designed for rectified (axis-aligned) polygons.
+ *
+ * Groups walls by axis line, then sweeps to merge overlapping/close segments.
+ * Gap tolerance comes from FLOOR_PLAN_RULES.mergeGapFactor × wall thickness.
+ *
+ * @param {Object} floor - Floor object with walls[]
+ */
+export function mergeCollinearWalls(floor) {
+  if (!floor?.walls || floor.walls.length < 2) return;
+
+  // Find max thickness for gap tolerance
+  let maxThick = DEFAULT_WALL_THICKNESS_CM;
+  for (const w of floor.walls) {
+    const t = w.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    if (t > maxThick) maxThick = t;
+  }
+  const gapTolerance = Math.round(maxThick * FLOOR_PLAN_RULES.mergeGapFactor);
+
+  // Merge loop: restart after each merge (indices shift)
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < floor.walls.length && !merged; i++) {
+      const wA = floor.walls[i];
+      if (!wA.roomEdge) continue;
+      const dxA = wA.end.x - wA.start.x;
+      const dyA = wA.end.y - wA.start.y;
+      const lenA = Math.hypot(dxA, dyA);
+      if (lenA < 1) continue;
+      const dirAx = dxA / lenA, dirAy = dyA / lenA;
+
+      for (let j = i + 1; j < floor.walls.length && !merged; j++) {
+        const wB = floor.walls[j];
+        if (!wB.roomEdge) continue;
+        if (wB.roomEdge.roomId === wA.roomEdge.roomId) continue;
+
+        const dxB = wB.end.x - wB.start.x;
+        const dyB = wB.end.y - wB.start.y;
+        const lenB = Math.hypot(dxB, dyB);
+        if (lenB < 1) continue;
+        const dirBx = dxB / lenB, dirBy = dyB / lenB;
+
+        // Must be parallel
+        const cross = dirAx * dirBy - dirAy * dirBx;
+        if (Math.abs(cross) > 0.02) continue;
+
+        // Must be on the same line (perpendicular distance < 2 cm)
+        const vx = wB.start.x - wA.start.x;
+        const vy = wB.start.y - wA.start.y;
+        const perpDist = Math.abs(vx * (-dirAy) + vy * dirAx);
+        if (perpDist > 2) continue;
+
+        // Project B onto A's axis
+        const bStart = vx * dirAx + vy * dirAy;
+        const bEnd = (wB.end.x - wA.start.x) * dirAx + (wB.end.y - wA.start.y) * dirAy;
+        const bMin = Math.min(bStart, bEnd);
+        const bMax = Math.max(bStart, bEnd);
+
+        // Check overlap or close gap
+        const gap = Math.max(0, Math.max(bMin - lenA, 0 - bMax));
+        if (gap > gapTolerance) continue;
+
+        // Merge: extend A to cover union of both
+        wA.thicknessCm = Math.max(
+          wA.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM,
+          wB.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM
+        );
+
+        const newMin = Math.min(0, bMin);
+        const newMax = Math.max(lenA, bMax);
+        const shift = -newMin;
+
+        if (shift > 0.5) {
+          for (const s of wA.surfaces) { s.fromCm += shift; s.toCm += shift; }
+          for (const d of wA.doorways) { d.offsetCm += shift; }
+        }
+
+        wA.start = {
+          x: wA.start.x + dirAx * newMin,
+          y: wA.start.y + dirAy * newMin
+        };
+        wA.end = {
+          x: wA.start.x + dirAx * (newMax - newMin),
+          y: wA.start.y + dirAy * (newMax - newMin)
+        };
+
+        // Transfer surfaces and doorways from B to A
+        for (const s of wB.surfaces) {
+          if (!wA.surfaces.some(ws => ws.roomId === s.roomId && ws.edgeIndex === s.edgeIndex)) {
+            const sFrom = Math.min(bStart, bEnd) + shift;
+            const sTo = sFrom + (s.toCm - s.fromCm);
+            wA.surfaces.push({ ...s, fromCm: Math.max(0, sFrom), toCm: sTo });
+          }
+        }
+        for (const dw of wB.doorways) {
+          const bStartOnA = Math.min(bStart, bEnd) + shift;
+          wA.doorways.push({ ...dw, offsetCm: dw.offsetCm + bStartOnA });
+        }
+
+        // Delete all doorways when wall geometry changes significantly
+        if (shift > 0.5 || newMax > lenA + 0.5) {
+          wA.doorways = [];
+        }
+
+        floor.walls.splice(j, 1);
+        merged = true;
+      }
+    }
   }
 }
 

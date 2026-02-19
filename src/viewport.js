@@ -11,7 +11,7 @@ const DEFAULT_VIEWPORT = {
 };
 
 export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 10;
+export const MAX_ZOOM = 50;
 
 export function getViewport(roomId) {
   if (!roomId) return { ...DEFAULT_VIEWPORT };

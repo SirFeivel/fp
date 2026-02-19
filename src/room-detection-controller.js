@@ -8,8 +8,9 @@ import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
 import { detectRoomAtPixel } from "./room-detection.js";
-import { getWallForEdge, syncFloorWalls, addDoorwayToWall } from "./walls.js";
+import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
+import { rectifyPolygon, alignToExistingRooms } from "./floor-plan-rules.js";
 
 // ---- Coordinate helpers (background-specific space, internal to this file) ----
 
@@ -290,36 +291,47 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     const floor = getCurrentFloor(next);
     if (!floor) return;
 
+    // Rectify polygon: snap edges to standard angles, remove detection noise
+    const rectifiedGlobal = rectifyPolygon(_detectedPolygonCm);
+
     // Compute bounding box for floorPosition (top-left corner)
     let minX = Infinity, minY = Infinity;
-    for (const p of _detectedPolygonCm) {
+    for (const p of rectifiedGlobal) {
       if (p.x < minX) minX = p.x;
       if (p.y < minY) minY = p.y;
     }
 
-    const localVertices = _detectedPolygonCm.map(p => ({
+    const localVertices = rectifiedGlobal.map(p => ({
       x: Math.round((p.x - minX) * 10) / 10,
       y: Math.round((p.y - minY) * 10) / 10
     }));
 
+    const floorPos = {
+      x: Math.round(minX * 10) / 10,
+      y: Math.round(minY * 10) / 10
+    };
+
+    // Align to existing rooms' edges (adjusts floorPosition only)
+    const { floorPosition: alignedPos } = alignToExistingRooms(
+      localVertices, floorPos, floor.rooms || []
+    );
+
     const room = createSurface({
       name: t("room.newRoom") || "New Room",
       polygonVertices: localVertices,
-      floorPosition: {
-        x: Math.round(minX * 10) / 10,
-        y: Math.round(minY * 10) / 10
-      }
+      floorPosition: alignedPos
     });
 
     floor.rooms = floor.rooms || [];
     floor.rooms.push(room);
     next.selectedRoomId = room.id;
 
-    // Sync walls so door gaps can be wired as doorways
+    // Sync walls and merge collinear segments from different rooms
     syncFloorWalls(floor);
+    mergeCollinearWalls(floor);
 
     // Insert each detected door gap as a wall doorway
-    const n = _detectedPolygonCm.length;
+    const n = rectifiedGlobal.length;
     for (const gap of (_detectedDoorGapsCm || [])) {
       const { midpointCm, gapWidthCm } = gap;
 
@@ -331,8 +343,8 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
 
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
-        const sx = _detectedPolygonCm[i].x, sy = _detectedPolygonCm[i].y;
-        const ex = _detectedPolygonCm[j].x, ey = _detectedPolygonCm[j].y;
+        const sx = rectifiedGlobal[i].x, sy = rectifiedGlobal[i].y;
+        const ex = rectifiedGlobal[j].x, ey = rectifiedGlobal[j].y;
         const dx = ex - sx, dy = ey - sy;
         const edgeLenSq = dx * dx + dy * dy;
         if (edgeLenSq < 1e-6) continue;
@@ -406,6 +418,10 @@ function loadImageData(dataUrl, nativeWidth, nativeHeight) {
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
+      // Fill white so transparent SVG areas don't render as black (which
+      // the wall mask would misclassify as wall pixels).
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
       resolve(ctx.getImageData(0, 0, w, h));
     };

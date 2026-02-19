@@ -5,9 +5,13 @@ import {
   buildGrayWallMask,
   autoDetectWallRange,
   morphologicalClose,
+  filterSmallComponents,
   floodFill,
+  fillInteriorHoles,
   traceContour,
   douglasPeucker,
+  snapPolygonEdges,
+  detectWallThickness,
   detectDoorGaps,
   detectRoomAtPixel
 } from './room-detection.js';
@@ -130,6 +134,48 @@ describe('morphologicalClose', () => {
 });
 
 // ---------------------------------------------------------------------------
+// filterSmallComponents
+// ---------------------------------------------------------------------------
+describe('filterSmallComponents', () => {
+  it('removes small wall features (text) while keeping large walls', () => {
+    const w = 30, h = 30;
+    const mask = new Uint8Array(w * h);
+
+    // Large wall: 20px horizontal wall at y=15 (area = 20 pixels)
+    for (let x = 5; x < 25; x++) mask[15 * w + x] = 1;
+
+    // Small text: 3px cluster at (3, 3) (area = 3 pixels)
+    mask[3 * w + 3] = 1;
+    mask[3 * w + 4] = 1;
+    mask[4 * w + 3] = 1;
+
+    const result = filterSmallComponents(mask, w, h, 10);
+
+    // Wall should survive (area=20 ≥ 10)
+    expect(result[15 * w + 10]).toBe(1);
+    // Text should be removed (area=3 < 10)
+    expect(result[3 * w + 3]).toBe(0);
+    expect(result[3 * w + 4]).toBe(0);
+  });
+
+  it('preserves all components when minArea is 1', () => {
+    const w = 10, h = 10;
+    const mask = new Uint8Array(w * h);
+    mask[0] = 1; // single pixel
+    const result = filterSmallComponents(mask, w, h, 1);
+    expect(result[0]).toBe(1);
+  });
+
+  it('returns mask of same size', () => {
+    const w = 8, h = 8;
+    const mask = new Uint8Array(w * h);
+    const result = filterSmallComponents(mask, w, h, 5);
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect(result.length).toBe(w * h);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // floodFill
 // ---------------------------------------------------------------------------
 describe('floodFill', () => {
@@ -171,6 +217,47 @@ describe('floodFill', () => {
     const { filledMask, pixelCount } = floodFill(mask, w, h, -1, 2, 100);
     expect(pixelCount).toBe(0);
     expect(filledMask.every(v => v === 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fillInteriorHoles
+// ---------------------------------------------------------------------------
+describe('fillInteriorHoles', () => {
+  it('fills an interior hole (island of 0s surrounded by 1s)', () => {
+    const w = 10, h = 10;
+    const mask = new Uint8Array(w * h);
+    // Fill a ring of 1s with a hole at center
+    for (let y = 2; y <= 7; y++)
+      for (let x = 2; x <= 7; x++)
+        mask[y * w + x] = 1;
+    // Punch a hole at (4,4) and (5,5)
+    mask[4 * w + 4] = 0;
+    mask[5 * w + 5] = 0;
+
+    fillInteriorHoles(mask, w, h);
+
+    // Holes should be filled
+    expect(mask[4 * w + 4]).toBe(1);
+    expect(mask[5 * w + 5]).toBe(1);
+    // Border pixels should remain 0
+    expect(mask[0]).toBe(0);
+    expect(mask[w - 1]).toBe(0);
+  });
+
+  it('does not fill background pixels reachable from border', () => {
+    const w = 10, h = 10;
+    const mask = new Uint8Array(w * h);
+    // Small filled region in center
+    for (let y = 3; y <= 6; y++)
+      for (let x = 3; x <= 6; x++)
+        mask[y * w + x] = 1;
+
+    fillInteriorHoles(mask, w, h);
+
+    // Background around the region should remain 0
+    expect(mask[0]).toBe(0);
+    expect(mask[1 * w + 1]).toBe(0);
   });
 });
 
@@ -223,6 +310,157 @@ describe('douglasPeucker', () => {
     expect(result.length).toBeLessThanOrEqual(6);
     expect(result[0]).toEqual({ x: 0, y: 0 });
     expect(result[result.length - 1]).toEqual({ x: 0, y: 5 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapPolygonEdges
+// ---------------------------------------------------------------------------
+describe('snapPolygonEdges', () => {
+  it('snaps a near-axis-aligned rectangle to exact 90° corners', () => {
+    // Rectangle with slight angular noise (~1° off)
+    const verts = [
+      { x: 0, y: 0 },
+      { x: 100, y: 1.5 },   // nearly horizontal, ~0.86° off
+      { x: 101, y: 80 },    // nearly vertical
+      { x: 1, y: 79 },      // nearly horizontal
+    ];
+    const result = snapPolygonEdges(verts, 5);
+    expect(result.length).toBe(4);
+
+    // All edges should now be exactly axis-aligned
+    // Edge 0→1: horizontal (same y)
+    expect(Math.abs(result[1].y - result[0].y)).toBeLessThan(0.1);
+    // Edge 1→2: vertical (same x)
+    expect(Math.abs(result[2].x - result[1].x)).toBeLessThan(0.1);
+    // Edge 2→3: horizontal
+    expect(Math.abs(result[3].y - result[2].y)).toBeLessThan(0.1);
+    // Edge 3→0: vertical
+    expect(Math.abs(result[0].x - result[3].x)).toBeLessThan(0.1);
+  });
+
+  it('removes collinear vertices (180° angles)', () => {
+    // Rectangle with an extra point on one edge (all 3 points nearly collinear)
+    const verts = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0.3 },    // on top edge, slightly off
+      { x: 100, y: 0.1 },   // end of top edge
+      { x: 100, y: 80 },
+      { x: 0, y: 80 },
+    ];
+    const result = snapPolygonEdges(verts, 5);
+    // The middle point on the top edge should be removed (collinear)
+    expect(result.length).toBe(4);
+  });
+
+  it('preserves 45° diagonal edges', () => {
+    // Pentagon with a 45° chamfered corner
+    const verts = [
+      { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 100, y: 20 },    // 45° diagonal (dx=20, dy=20)
+      { x: 100, y: 80 },
+      { x: 0, y: 80 },
+    ];
+    const result = snapPolygonEdges(verts, 5);
+    expect(result.length).toBe(5);
+
+    // Edge from result[1] to result[2] should be at exactly 45°
+    const dx = result[2].x - result[1].x;
+    const dy = result[2].y - result[1].y;
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    expect(angle).toBeCloseTo(45, 0);
+  });
+
+  it('does not snap edges beyond tolerance', () => {
+    // Edge at 10° off horizontal — beyond 5° tolerance
+    const verts = [
+      { x: 0, y: 0 },
+      { x: 100, y: 17.6 },  // ~10° angle
+      { x: 100, y: 80 },
+      { x: 0, y: 80 },
+    ];
+    const result = snapPolygonEdges(verts, 5);
+    // Top edge should NOT be snapped (10° > 5° tolerance)
+    const dy = result[1].y - result[0].y;
+    expect(Math.abs(dy)).toBeGreaterThan(5);
+  });
+
+  it('returns input for fewer than 3 vertices', () => {
+    const result = snapPolygonEdges([{ x: 0, y: 0 }, { x: 1, y: 1 }], 5);
+    expect(result.length).toBe(2);
+  });
+
+  it('snaps L-shaped room with all 90° corners', () => {
+    // L-shape: 6 vertices, all should be 90° after snapping
+    const verts = [
+      { x: 0, y: 0 },
+      { x: 200, y: 1 },      // slight noise
+      { x: 201, y: 150 },
+      { x: 100, y: 149 },
+      { x: 99, y: 300 },
+      { x: 1, y: 301 },
+    ];
+    const result = snapPolygonEdges(verts, 5);
+    expect(result.length).toBe(6);
+
+    // Every edge should be exactly horizontal or vertical
+    for (let i = 0; i < result.length; i++) {
+      const j = (i + 1) % result.length;
+      const dx = Math.abs(result[j].x - result[i].x);
+      const dy = Math.abs(result[j].y - result[i].y);
+      const isHorizontal = dy < 0.1;
+      const isVertical = dx < 0.1;
+      expect(isHorizontal || isVertical).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectWallThickness
+// ---------------------------------------------------------------------------
+describe('detectWallThickness', () => {
+  it('detects wall thickness of a rectangular room with known wall width', () => {
+    const w = 60, h = 60;
+    const mask = new Uint8Array(w * h);
+
+    // Draw a room: 10px-thick wall ring between (5,5) and (55,55)
+    for (let y = 5; y < 55; y++) {
+      for (let x = 5; x < 55; x++) {
+        const isWall = y < 15 || y >= 45 || x < 15 || x >= 45;
+        if (isWall) mask[y * w + x] = 1;
+      }
+    }
+
+    // Polygon is the inner face of the wall
+    const polygon = [
+      { x: 15, y: 15 },
+      { x: 45, y: 15 },
+      { x: 45, y: 45 },
+      { x: 15, y: 45 },
+    ];
+
+    const thickness = detectWallThickness(mask, polygon, w, h);
+    // Wall is 10px thick on all sides
+    expect(thickness).toBeGreaterThanOrEqual(8);
+    expect(thickness).toBeLessThanOrEqual(12);
+  });
+
+  it('returns 0 for fewer than 3 vertices', () => {
+    const mask = new Uint8Array(100);
+    expect(detectWallThickness(mask, [{ x: 0, y: 0 }], 10, 10)).toBe(0);
+  });
+
+  it('returns 0 when no wall pixels are found outward', () => {
+    const w = 30, h = 30;
+    const mask = new Uint8Array(w * h); // All open
+    const polygon = [
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 20, y: 20 },
+      { x: 10, y: 20 },
+    ];
+    expect(detectWallThickness(mask, polygon, w, h)).toBe(0);
   });
 });
 
@@ -484,5 +722,122 @@ describe('autoDetectWallRange', () => {
     const imageData = makeImageData(pixels, w, h);
     const range = autoDetectWallRange(imageData);
     expect(range).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dashed line merging (detectDoorGapsAlongEdges via detectRoomAtPixel)
+// ---------------------------------------------------------------------------
+describe('dashed line merging', () => {
+  /**
+   * Build a 150×150 room image with an 8px-thick black wall ring.
+   * One wall has a dashed opening: alternating small gaps and short wall dashes.
+   *
+   * At ppc=0.3:
+   *   maxDashPx = max(1, round(10*0.3)) = 3
+   *   minGapPx  = max(2, round(45*0.3)) = 14
+   *   Individual gaps (6px each) < 14 → filtered without merging
+   *   Wall dashes (3px each) ≤ 3 maxDashPx → merged
+   *   Merged total span (33px) ≥ 14 minGapPx → reported as 1 gap
+   */
+  const DASH_OPT = { pixelsPerCm: 0.3, maxAreaCm2: 10_000_000 };
+
+  function makeDashedRoomImage() {
+    const w = 150, h = 150;
+    const gray = new Uint8Array(w * h).fill(255);
+
+    // 8px-thick black wall ring: (10,10)-(140,140)
+    const wT = 10, wB = 140, wL = 10, wR = 140, thick = 8;
+    for (let y = wT; y < wB; y++) {
+      for (let x = wL; x < wR; x++) {
+        const onBorder =
+          y < wT + thick || y >= wB - thick ||
+          x < wL + thick || x >= wR - thick;
+        if (onBorder) gray[y * w + x] = 0;
+      }
+    }
+
+    // Dashed opening in top wall: x=50..82, y=10..17
+    // Pattern: 6gap, 3wall, 6gap, 3wall, 6gap, 3wall, 6gap = 33px
+    const dashY0 = wT, dashY1 = wT + thick;
+    const segments = [
+      // [startX, endX, isGap]
+      [50, 56, true],   // 6px gap
+      [56, 59, false],  // 3px wall dash
+      [59, 65, true],   // 6px gap
+      [65, 68, false],  // 3px wall dash
+      [68, 74, true],   // 6px gap
+      [74, 77, false],  // 3px wall dash
+      [77, 83, true],   // 6px gap
+    ];
+    for (const [sx, ex, isGap] of segments) {
+      if (isGap) {
+        for (let y = dashY0; y < dashY1; y++)
+          for (let x = sx; x < ex; x++)
+            gray[y * w + x] = 255; // White = open
+      }
+      // Wall dashes stay black (already 0)
+    }
+
+    return makeImageData(gray, w, h);
+  }
+
+  it('merges dashed line gaps into a single door opening', () => {
+    const imageData = makeDashedRoomImage();
+    const result = detectRoomAtPixel(imageData, 75, 75, DASH_OPT);
+
+    expect(result).not.toBeNull();
+    expect(result.polygonPixels.length).toBeGreaterThanOrEqual(3);
+
+    // The 4 individual 6px gaps are each below minGapPx (14).
+    // Without dash merging, they'd all be filtered → 0 gaps.
+    // With merging, consecutive gaps separated by ≤3px wall dashes
+    // combine into a single ~33px opening → exactly 1 gap.
+    expect(result.doorGapsPx.length).toBe(1);
+
+    // The merged gap midpoint should be near x=66 (center of span 50..83)
+    const gap = result.doorGapsPx[0];
+    expect(gap.midpointPx.x).toBeGreaterThanOrEqual(55);
+    expect(gap.midpointPx.x).toBeLessThanOrEqual(78);
+  });
+
+  it('does not merge gaps separated by wide wall segments', () => {
+    // At ppc=0.05: minGapPx=2, maxDashPx=1, closeRadii=[3,4,7]
+    // Two solid 5px gaps far apart in the top wall, separated by ~30px of wall.
+    // Close radius 3 seals 5px gaps (2*3=6 > 5). Gaps are 5px ≥ 2 minGapPx.
+    // Distance between gaps (~30px) >> 1 maxDashPx → NOT merged → 2 gaps.
+    const SEP_OPT = { pixelsPerCm: 0.05, maxAreaCm2: 10_000_000 };
+    const w = 80, h = 80;
+    const gray = new Uint8Array(w * h).fill(255);
+
+    const wallT = 5, wallB = 75, wallL = 5, wallR = 75, wallThick = 3;
+    for (let y = wallT; y <= wallB; y++) {
+      for (let x = wallL; x <= wallR; x++) {
+        const onBorder =
+          y < wallT + wallThick ||
+          y > wallB - wallThick ||
+          x < wallL + wallThick ||
+          x > wallR - wallThick;
+        if (onBorder) gray[y * w + x] = 0;
+      }
+    }
+
+    // Gap 1: x=20..24 (5px) in top wall
+    for (let x = 20; x <= 24; x++)
+      for (let y = wallT; y < wallT + wallThick; y++)
+        gray[y * w + x] = 255;
+
+    // Gap 2: x=55..59 (5px) in top wall
+    for (let x = 55; x <= 59; x++)
+      for (let y = wallT; y < wallT + wallThick; y++)
+        gray[y * w + x] = 255;
+
+    const imageData = makeImageData(gray, w, h);
+    const result = detectRoomAtPixel(imageData, 40, 40, SEP_OPT);
+
+    expect(result).not.toBeNull();
+    // Each gap is 5px ≥ 2 minGapPx, and they're ~30px apart >> 1 maxDashPx
+    // → should remain as 2 separate door gaps
+    expect(result.doorGapsPx.length).toBe(2);
   });
 });

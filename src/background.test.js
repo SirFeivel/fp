@@ -1,6 +1,6 @@
 // src/background.test.js
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createBackgroundController } from './background.js';
+import { createBackgroundController, extractSvgDimensions } from './background.js';
 
 describe('createBackgroundController', () => {
   let store;
@@ -580,5 +580,48 @@ describe('createBackgroundController', () => {
       expect(expectedBackground.nativeWidth).toBe(2500);
       expect(expectedBackground.nativeHeight).toBe(1800);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractSvgDimensions
+// ---------------------------------------------------------------------------
+describe('extractSvgDimensions', () => {
+  function toBase64DataUrl(svgText) {
+    return `data:image/svg+xml;base64,${btoa(svgText)}`;
+  }
+
+  it('extracts dimensions from explicit width/height attributes', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toEqual({ width: 800, height: 600 });
+  });
+
+  it('extracts dimensions from viewBox when width/height are missing', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 768"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toEqual({ width: 1024, height: 768 });
+  });
+
+  it('prefers explicit width/height over viewBox', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400" viewBox="0 0 1000 800"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toEqual({ width: 500, height: 400 });
+  });
+
+  it('handles viewBox with non-zero origin', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 20 300 200"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toEqual({ width: 300, height: 200 });
+  });
+
+  it('returns null for non-SVG data URL', () => {
+    expect(extractSvgDimensions('data:image/png;base64,abc')).toBeNull();
+  });
+
+  it('returns null when no dimensions can be extracted', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toBeNull();
+  });
+
+  it('ignores percentage-based dimensions and falls back to viewBox', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 640 480"></svg>';
+    expect(extractSvgDimensions(toBase64DataUrl(svg))).toEqual({ width: 640, height: 480 });
   });
 });

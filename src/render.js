@@ -2885,6 +2885,19 @@ export function renderFloorCanvas({
     const scale = 1 / pixelsPerCm;
     imgAttrs.transform = `scale(${scale})`;
 
+    // White backing rect so transparent SVGs render with a white background
+    const backingRect = svgEl("rect", {
+      x: bg.position?.x || 0,
+      y: bg.position?.y || 0,
+      width: nativeW,
+      height: nativeH,
+      fill: "#ffffff",
+      opacity: imgAttrs.opacity,
+      transform: imgAttrs.transform,
+      "pointer-events": "none"
+    });
+    svg.appendChild(backingRect);
+
     const imgEl = svgEl("image", imgAttrs);
     svg.appendChild(imgEl);
   }

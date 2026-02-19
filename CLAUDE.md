@@ -125,6 +125,24 @@ Before presenting any non-trivial code change, spawn a review subagent (Task too
 
 If the review finds violations, fix them before presenting. Do not present code with known rulebook violations and a disclaimer — fix it first.
 
+### End-to-End Testing (BLOCKING — applies to all feature-related code changes)
+
+**Every feature-related code change must have end-to-end test coverage.** Unit tests alone are not sufficient. A feature can pass every unit test and still be completely broken in practice. End-to-end tests exercise the full pipeline — from user input through all intermediate transformations to final output — and catch integration failures that unit tests miss.
+
+**E2E test scenarios are part of the plan.** When planning a feature or change, define concrete end-to-end test scenarios before writing any code. These scenarios must appear in the plan alongside implementation steps, not as an afterthought. A plan without E2E test scenarios is incomplete and must not be approved.
+
+**What counts as an E2E test:** A test that wires together the actual modules involved in the feature (not mocks), feeds in realistic input (real state data, real coordinates, real images where applicable), and asserts on the final observable output. For detection features: input image + click coordinates → created room with correct geometry. For rendering features: state → SVG output with expected elements. For calculation features: room configuration → final metrics.
+
+**Verify the feature works, not just the functions.** After completing implementation, run the E2E tests AND manually verify in the running application if the feature has a UI component. "All tests pass" is necessary but not sufficient — confirm the feature actually works as a user would experience it.
+
+### Debugging Protocol (BLOCKING — governs all debugging)
+
+**Start with logging, not theorizing.** When investigating a bug, the first action is to add logging/instrumentation to observe what is actually happening at runtime. Do not analyze code in your head and guess at root causes. Theories formed without evidence are usually wrong and waste time.
+
+**Sequence:** (1) Add `console.log` / `console.warn` at key points in the suspected code path to capture actual values, flow, and state. (2) Reproduce the issue and read the logs. (3) Only then form a hypothesis based on the observed evidence. (4) Verify the hypothesis with more targeted logging if needed. (5) Fix the root cause. (6) Remove debug logging.
+
+**No armchair debugging.** Reading code and reasoning about "what should happen" is not debugging — it is speculation. The bug exists precisely because what happens differs from what should happen. Observing the actual runtime behavior is mandatory before proposing any fix.
+
 ### Execution Rules
 
 6. **Follow confirmed plans to completion.** Once the user has approved a plan, execute every item in it. Do not stop, skip, or downgrade a goal without explicit user approval. "I believe this is hard" is not a reason to stop — it is a reason to ask.

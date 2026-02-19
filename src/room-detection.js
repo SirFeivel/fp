@@ -110,6 +110,63 @@ export function morphologicalClose(mask, w, h, radius) {
 }
 
 /**
+ * Connected-component labeling to remove small wall features (text, arrows,
+ * dimension numbers) while preserving actual walls.
+ *
+ * @param {Uint8Array} mask - Binary mask (1=wall, 0=open)
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @param {number} minArea - Minimum area (px²) to keep a component
+ * @returns {Uint8Array} Filtered mask with small components zeroed out
+ */
+export function filterSmallComponents(mask, w, h, minArea) {
+  const labels = new Int32Array(w * h); // 0 = unlabeled
+  const areas = [0]; // areas[label] = pixel count; label 0 unused
+  let nextLabel = 1;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (mask[i] !== 1 || labels[i] !== 0) continue;
+
+      // BFS flood this component (4-connected)
+      const label = nextLabel++;
+      areas.push(0);
+      const queue = [x, y];
+      let head = 0;
+      labels[i] = label;
+      let area = 0;
+
+      while (head < queue.length) {
+        const cx = queue[head++];
+        const cy = queue[head++];
+        area++;
+
+        const neighbors = [cx - 1, cy, cx + 1, cy, cx, cy - 1, cx, cy + 1];
+        for (let k = 0; k < 8; k += 2) {
+          const nx = neighbors[k], ny = neighbors[k + 1];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const ni = ny * w + nx;
+          if (mask[ni] !== 1 || labels[ni] !== 0) continue;
+          labels[ni] = label;
+          queue.push(nx, ny);
+        }
+      }
+      areas[label] = area;
+    }
+  }
+
+  // Zero out small components
+  const out = new Uint8Array(mask);
+  for (let i = 0; i < w * h; i++) {
+    if (labels[i] > 0 && areas[labels[i]] < minArea) {
+      out[i] = 0;
+    }
+  }
+  return out;
+}
+
+/**
  * BFS flood fill from seed, filling only open (0) pixels in the mask.
  * Aborts early if pixelCount exceeds maxPixels.
  *
@@ -168,6 +225,56 @@ export function floodFill(mask, w, h, seedX, seedY, maxPixels) {
   }
 
   return { filledMask, pixelCount };
+}
+
+/**
+ * Fill interior holes in a flood-filled room mask.
+ * Any unfilled (0) pixel that is NOT reachable from the image border is an
+ * interior hole (e.g. text label inside the room) → set to 1.
+ *
+ * @param {Uint8Array} filledMask - Binary mask (1=room, 0=background); modified in place
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ */
+export function fillInteriorHoles(filledMask, w, h) {
+  // BFS from all border pixels that are 0 (background reachable from border)
+  const borderReachable = new Uint8Array(w * h);
+  const queue = [];
+  let head = 0;
+
+  function seed(x, y) {
+    const i = y * w + x;
+    if (filledMask[i] === 0 && borderReachable[i] === 0) {
+      borderReachable[i] = 1;
+      queue.push(x, y);
+    }
+  }
+
+  // Seed all 4 border rows/columns
+  for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
+  for (let y = 1; y < h - 1; y++) { seed(0, y); seed(w - 1, y); }
+
+  while (head < queue.length) {
+    const cx = queue[head++];
+    const cy = queue[head++];
+    const neighbors = [cx - 1, cy, cx + 1, cy, cx, cy - 1, cx, cy + 1];
+    for (let k = 0; k < 8; k += 2) {
+      const nx = neighbors[k], ny = neighbors[k + 1];
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (filledMask[ni] === 0 && borderReachable[ni] === 0) {
+        borderReachable[ni] = 1;
+        queue.push(nx, ny);
+      }
+    }
+  }
+
+  // Any 0-pixel NOT reached from border is an interior hole → fill it
+  for (let i = 0; i < w * h; i++) {
+    if (filledMask[i] === 0 && borderReachable[i] === 0) {
+      filledMask[i] = 1;
+    }
+  }
 }
 
 /**
@@ -286,6 +393,94 @@ export function douglasPeucker(points, epsilon) {
   }
 
   return [first, last];
+}
+
+// Standard edge directions in radians: 0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°
+const STANDARD_ANGLES_RAD = Array.from({ length: 8 }, (_, i) => i * Math.PI / 4);
+
+/**
+ * Snap polygon edge directions to the nearest standard angle (multiples of 45°),
+ * recompute vertex positions as intersections of adjacent snapped edge-lines,
+ * and remove collinear vertices (where consecutive edges snap to the same direction).
+ *
+ * @param {Array<{x: number, y: number}>} vertices - Polygon vertices (closed: last→first is an edge)
+ * @param {number} [toleranceDeg=5] - Maximum angular deviation (degrees) to snap
+ * @returns {Array<{x: number, y: number}>} Snapped polygon vertices
+ */
+export function snapPolygonEdges(vertices, toleranceDeg = 5) {
+  if (vertices.length < 3) return vertices.slice();
+
+  const tolRad = toleranceDeg * Math.PI / 180;
+  const n = vertices.length;
+
+  // 1. Compute edge midpoints and snap directions
+  const edges = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const dx = vertices[j].x - vertices[i].x;
+    const dy = vertices[j].y - vertices[i].y;
+    const angle = Math.atan2(dy, dx); // [-π, π]
+
+    // Find nearest standard angle
+    let bestStd = angle;
+    let bestDiff = Infinity;
+    for (const std of STANDARD_ANGLES_RAD) {
+      // Check both std and std - 2π to handle wrap-around
+      for (const candidate of [std, std - 2 * Math.PI, std + 2 * Math.PI]) {
+        const diff = Math.abs(angle - candidate);
+        if (diff < bestDiff) { bestDiff = diff; bestStd = candidate; }
+      }
+    }
+
+    const snapped = bestDiff <= tolRad ? bestStd : angle;
+    const midX = (vertices[i].x + vertices[j].x) / 2;
+    const midY = (vertices[i].y + vertices[j].y) / 2;
+
+    edges.push({
+      midX, midY,
+      dirX: Math.cos(snapped),
+      dirY: Math.sin(snapped),
+      snappedAngle: snapped,
+    });
+  }
+
+  // 2. Recompute each vertex as the intersection of adjacent edge-lines.
+  // Vertex i = intersection of edge (i-1) and edge (i).
+  const newVerts = [];
+  for (let i = 0; i < n; i++) {
+    const prev = edges[(i - 1 + n) % n];
+    const curr = edges[i];
+    const pt = lineLineIntersection(
+      prev.midX, prev.midY, prev.dirX, prev.dirY,
+      curr.midX, curr.midY, curr.dirX, curr.dirY
+    );
+    newVerts.push(pt || { x: vertices[i].x, y: vertices[i].y });
+  }
+
+  // 3. Remove collinear vertices (consecutive edges with same snapped direction).
+  const result = [];
+  for (let i = 0; i < newVerts.length; i++) {
+    const prevEdge = edges[(i - 1 + newVerts.length) % newVerts.length];
+    const currEdge = edges[i];
+    // Same direction (mod π) → collinear → skip vertex
+    const angleDiff = Math.abs(prevEdge.snappedAngle - currEdge.snappedAngle) % Math.PI;
+    if (angleDiff > 0.01 && Math.abs(angleDiff - Math.PI) > 0.01) {
+      result.push(newVerts[i]);
+    }
+  }
+
+  return result.length >= 3 ? result : newVerts;
+}
+
+/**
+ * Intersect two lines defined by (point, direction).
+ * Returns null if lines are parallel.
+ */
+function lineLineIntersection(ax, ay, adx, ady, bx, by, bdx, bdy) {
+  const denom = adx * bdy - ady * bdx;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((bx - ax) * bdy - (by - ay) * bdx) / denom;
+  return { x: ax + adx * t, y: ay + ady * t };
 }
 
 /**
@@ -462,7 +657,7 @@ export function autoDetectWallRange(imageData) {
  * @returns {Array<{midpointPx: {x,y}, spanPx: {x,y}}>}
  */
 function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
-  const { minGapPx = 40, maxGapPx = 300, searchDepthPx = 10 } = options;
+  const { minGapPx = 40, maxGapPx = 300, searchDepthPx = 10, maxDashPx = 0 } = options;
   const n = polygonPixels.length;
   const gaps = [];
 
@@ -485,6 +680,9 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
     const steps = Math.ceil(edgeLen);
     let inGap = false;
     let gapStart = 0;
+
+    // Collect ALL gaps along this edge (even tiny ones for dash merging)
+    const rawGaps = [];
 
     for (let s = 0; s <= steps; s++) {
       // Force-close any open gap at the end of the edge
@@ -509,19 +707,36 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
         gapStart = s;
       } else if (hasWall && inGap) {
         inGap = false;
-        const gapLen = s - gapStart;
-        if (gapLen >= minGapPx && gapLen <= maxGapPx) {
-          const midS = (gapStart + s - 1) / 2;
-          gaps.push({
-            midpointPx: {
-              x: Math.round(A.x + tx * midS),
-              y: Math.round(A.y + ty * midS)
-            },
-            // spanPx.x/.y encode the gap length so the controller can compute
-            // gapWidthCm = max(spanPx.x, spanPx.y) / pixelsPerCm
-            spanPx: { x: gapLen, y: gapLen }
-          });
-        }
+        rawGaps.push({ start: gapStart, end: s });
+      }
+    }
+
+    // Merge consecutive gaps separated by short wall segments (dashed lines).
+    // A dashed line indicates an opening; the short wall dashes between gaps
+    // are part of the dash pattern, not real walls.
+    const merged = [];
+    for (const g of rawGaps) {
+      const last = merged.length > 0 ? merged[merged.length - 1] : null;
+      if (last && maxDashPx > 0 && (g.start - last.end) <= maxDashPx) {
+        // Wall segment between gaps is short enough to be a dash → merge
+        last.end = g.end;
+      } else {
+        merged.push({ start: g.start, end: g.end });
+      }
+    }
+
+    // Filter to valid size range and emit
+    for (const g of merged) {
+      const gapLen = g.end - g.start;
+      if (gapLen >= minGapPx && gapLen <= maxGapPx) {
+        const midS = (g.start + g.end - 1) / 2;
+        gaps.push({
+          midpointPx: {
+            x: Math.round(A.x + tx * midS),
+            y: Math.round(A.y + ty * midS)
+          },
+          spanPx: { x: gapLen, y: gapLen }
+        });
       }
     }
   }
@@ -544,24 +759,109 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
  * @param {number} seedX - X coordinate of seed pixel (inside room)
  * @param {number} seedY - Y coordinate of seed pixel (inside room)
  * @param {{pixelsPerCm?: number, maxAreaCm2?: number}} options
- * @returns {{ polygonPixels: Array<{x,y}>, doorGapsPx: Array, pixelsPerCm: number } | null}
+ * @returns {{ polygonPixels: Array<{x,y}>, doorGapsPx: Array, pixelsPerCm: number, wallThicknessPx: number } | null}
  */
+
+/**
+ * Detect wall thickness by probing outward from polygon edges.
+ * For each edge, probe perpendicular (away from room interior) and count
+ * consecutive wall pixels. Returns the median of all edge measurements.
+ *
+ * @param {Uint8Array} mask - Binary wall mask (1=wall, 0=open)
+ * @param {Array<{x: number, y: number}>} polygonPixels - Detected polygon vertices
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @param {number} [maxProbe=200] - Maximum probe depth in pixels
+ * @returns {number} Median wall thickness in pixels (0 if undetermined)
+ */
+export function detectWallThickness(mask, polygonPixels, w, h, maxProbe = 200) {
+  const n = polygonPixels.length;
+  if (n < 3) return 0;
+
+  // Compute polygon centroid to determine "outward" direction
+  let cx = 0, cy = 0;
+  for (const p of polygonPixels) { cx += p.x; cy += p.y; }
+  cx /= n; cy /= n;
+
+  const measurements = [];
+
+  for (let i = 0; i < n; i++) {
+    const A = polygonPixels[i];
+    const B = polygonPixels[(i + 1) % n];
+    const dx = B.x - A.x, dy = B.y - A.y;
+    const edgeLen = Math.hypot(dx, dy);
+    if (edgeLen < 2) continue;
+
+    // Edge tangent and perpendicular
+    const tx = dx / edgeLen, ty = dy / edgeLen;
+    let perpX = -ty, perpY = tx; // one perpendicular direction
+
+    // Ensure perpendicular points away from centroid (outward)
+    const edgeMidX = (A.x + B.x) / 2;
+    const edgeMidY = (A.y + B.y) / 2;
+    const toCentroidX = cx - edgeMidX;
+    const toCentroidY = cy - edgeMidY;
+    if (perpX * toCentroidX + perpY * toCentroidY > 0) {
+      perpX = -perpX;
+      perpY = -perpY;
+    }
+
+    // Sample at 3 points along the edge (25%, 50%, 75%) to get multiple measurements
+    for (const frac of [0.25, 0.5, 0.75]) {
+      const startX = A.x + tx * edgeLen * frac;
+      const startY = A.y + ty * edgeLen * frac;
+
+      let wallCount = 0;
+      let started = false;
+      for (let d = 1; d <= maxProbe; d++) {
+        const px = Math.round(startX + perpX * d);
+        const py = Math.round(startY + perpY * d);
+        if (px < 0 || px >= w || py < 0 || py >= h) break;
+
+        if (mask[py * w + px] === 1) {
+          started = true;
+          wallCount++;
+        } else if (started) {
+          break; // Hit open space after wall → end of wall
+        }
+        // Skip initial open pixels (gap between room interior and wall)
+      }
+
+      if (wallCount >= 2) {
+        measurements.push(wallCount);
+      }
+    }
+  }
+
+  if (measurements.length === 0) return 0;
+
+  // Return median (robust to outliers at doorways and corners)
+  measurements.sort((a, b) => a - b);
+  const mid = Math.floor(measurements.length / 2);
+  return measurements.length % 2 === 1
+    ? measurements[mid]
+    : Math.round((measurements[mid - 1] + measurements[mid]) / 2);
+}
+
 export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   const { pixelsPerCm = 1, maxAreaCm2 = 100000 } = options;
   const w = imageData.width;
   const h = imageData.height;
   const maxPixels = Math.round(maxAreaCm2 * pixelsPerCm * pixelsPerCm);
 
-  // Morphological close radius: ~80 cm worth of pixels, clamped to [3, 300].
-  // Cap raised from 80 to 300: at ppc=2, a standard 90cm door gap is 180px and
-  // needs radius ≥ 90 to be sealed — the old 80px cap was insufficient.
-  const radius = Math.max(3, Math.min(300, Math.round(80 * pixelsPerCm)));
+  // Adaptive close radii: try small first (preserves narrow rooms like hallways),
+  // fall back to larger radii for rooms with wider door gaps.
+  // 20 cm seals gaps ≤ 40 cm, 40 cm seals ≤ 80 cm, 66 cm seals ≤ 132 cm.
+  const closeRadii = [20, 40, 66].map(
+    cm => Math.max(3, Math.min(300, Math.round(cm * pixelsPerCm)))
+  );
 
   // Open radius for noise removal: ~4 cm worth of pixels, clamped to [0, 5].
-  // The open (erode→dilate) removes isolated interior pixels (text anti-aliasing,
-  // labels) before the close step so they don't expand into the room interior.
-  // Capped at 5 to avoid eroding thin walls; 0 at very low ppc (no-op).
   const openRadius = Math.max(0, Math.min(5, Math.round(4 * pixelsPerCm)));
+
+  // Minimum area for wall components: smaller features are text/arrows.
+  // ~(8cm)² ensures wall segments survive but text characters are removed.
+  const minComponentArea = Math.max(16, Math.round(8 * pixelsPerCm) ** 2);
 
   // epsilon for Douglas-Peucker: ~4 cm worth of pixels, minimum 1
   const epsilon = Math.max(1, Math.round(4 * pixelsPerCm));
@@ -570,16 +870,26 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   let bestFilledMask = null;
   let bestPixelCount = 0;
 
-  function tryMask(wallMask, applyOpen = false) {
-    const processedMask = (applyOpen && openRadius > 0)
-      ? morphologicalOpen(wallMask, w, h, openRadius)
-      : wallMask;
-    const closedMask = morphologicalClose(processedMask, w, h, radius);
-    const { filledMask, pixelCount } = floodFill(closedMask, w, h, seedX, seedY, maxPixels);
-    if (pixelCount > 0 && pixelCount <= maxPixels && pixelCount > bestPixelCount) {
-      bestPixelCount = pixelCount;
-      bestProcessedMask = processedMask; // opened mask — used for door gap scanning
-      bestFilledMask = filledMask;
+  function tryMask(wallMask, applyOpen = false, label = "") {
+    // Filter small components (text, arrows, dimension numbers) before morphology
+    let processedMask = filterSmallComponents(wallMask, w, h, minComponentArea);
+
+    if (applyOpen && openRadius > 0) {
+      processedMask = morphologicalOpen(processedMask, w, h, openRadius);
+    }
+
+    // Try each close radius from smallest to largest.
+    // Smaller radii preserve narrow rooms; larger radii seal wider door gaps.
+    const seedIdx = seedY * w + seedX;
+    for (const radius of closeRadii) {
+      const closedMask = morphologicalClose(processedMask, w, h, radius);
+      const { filledMask, pixelCount } = floodFill(closedMask, w, h, seedX, seedY, maxPixels);
+      if (pixelCount > 0 && pixelCount <= maxPixels && pixelCount > bestPixelCount) {
+        bestPixelCount = pixelCount;
+        bestProcessedMask = processedMask;
+        bestFilledMask = filledMask;
+        break; // Smallest working radius wins — preserves room geometry best
+      }
     }
   }
 
@@ -587,7 +897,7 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   // Apply open first to remove interior anti-aliasing noise before the close.
   const range = autoDetectWallRange(imageData);
   if (range) {
-    tryMask(buildGrayWallMask(imageData, range.low, range.high), true);
+    tryMask(buildGrayWallMask(imageData, range.low, range.high), true, "gray");
   }
 
   // Fallback: dark-threshold masks (handles black-line-only floor plans,
@@ -595,27 +905,40 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   // No open needed: black-line plans don't have interior gray noise.
   if (bestPixelCount === 0) {
     for (const threshold of [180, 200, 220, 240]) {
-      tryMask(imageToBinaryMask(imageData, threshold));
+      tryMask(imageToBinaryMask(imageData, threshold), false, "dark-" + threshold);
+      if (bestPixelCount > 0) break;
     }
   }
 
   if (!bestFilledMask) return null;
 
+  // Fill interior holes (text/symbols inside the room that created unfilled islands)
+  fillInteriorHoles(bestFilledMask, w, h);
+
   const contour = traceContour(bestFilledMask, w, h);
   if (contour.length < 3) return null;
 
-  const polygonPixels = douglasPeucker(contour, epsilon);
+  const rawPolygon = douglasPeucker(contour, epsilon);
+  if (rawPolygon.length < 3) return null;
+
+  const polygonPixels = snapPolygonEdges(rawPolygon);
   if (polygonPixels.length < 3) return null;
+
+  // Detect wall thickness from the mask by probing outward from polygon edges
+  const wallThicknessPx = detectWallThickness(bestProcessedMask, polygonPixels, w, h);
 
   // Scan along each polygon edge in the opened wall mask for runs of missing
   // gray fill — these are the real door/opening gaps.
   const minGapPx = Math.max(2, Math.round(45 * pixelsPerCm));
   const maxGapPx = Math.round(250 * pixelsPerCm);
   const searchDepthPx = Math.max(3, Math.round(15 * pixelsPerCm));
+  // maxDashPx: short wall segments between gaps that form a dashed line pattern.
+  // ~10 cm of wall between dashes is considered part of the opening.
+  const maxDashPx = Math.max(1, Math.round(10 * pixelsPerCm));
   const doorGapsPx = detectDoorGapsAlongEdges(
     bestProcessedMask, polygonPixels, w, h,
-    { minGapPx, maxGapPx, searchDepthPx }
+    { minGapPx, maxGapPx, searchDepthPx, maxDashPx }
   );
 
-  return { polygonPixels, doorGapsPx, pixelsPerCm };
+  return { polygonPixels, doorGapsPx, pixelsPerCm, wallThicknessPx };
 }

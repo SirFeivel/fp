@@ -6,6 +6,43 @@ import { deepClone, getCurrentFloor } from "./core.js";
 import { showAlert } from "./dialog.js";
 
 /**
+ * Extracts width/height from an SVG data URL.
+ * Tries explicit width/height attributes first, then falls back to viewBox.
+ * Returns { width, height } or null if dimensions cannot be determined.
+ */
+export function extractSvgDimensions(dataUrl) {
+  let svgText;
+  try {
+    if (dataUrl.includes(";base64,")) {
+      svgText = atob(dataUrl.split(";base64,")[1]);
+    } else {
+      svgText = decodeURIComponent(dataUrl.split(",")[1] || "");
+    }
+  } catch { return null; }
+
+  if (!svgText) return null;
+
+  // Try explicit width/height attributes (numeric values only, ignore % or em)
+  const wMatch = svgText.match(/<svg[^>]*\bwidth=["'](\d+(?:\.\d+)?)(?:px)?["']/);
+  const hMatch = svgText.match(/<svg[^>]*\bheight=["'](\d+(?:\.\d+)?)(?:px)?["']/);
+  if (wMatch && hMatch) {
+    const w = parseFloat(wMatch[1]);
+    const h = parseFloat(hMatch[1]);
+    if (w > 0 && h > 0) return { width: Math.round(w), height: Math.round(h) };
+  }
+
+  // Fall back to viewBox
+  const vbMatch = svgText.match(/<svg[^>]*\bviewBox=["'][\s]*([^\s]+)[\s]+([^\s]+)[\s]+([^\s]+)[\s]+([^\s"']+)/);
+  if (vbMatch) {
+    const vbW = parseFloat(vbMatch[3]);
+    const vbH = parseFloat(vbMatch[4]);
+    if (vbW > 0 && vbH > 0) return { width: Math.round(vbW), height: Math.round(vbH) };
+  }
+
+  return null;
+}
+
+/**
  * Creates a background controller for handling floor background images.
  * Supports image upload, calibration (3 measurements), and opacity control.
  */
@@ -74,6 +111,15 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
       });
       nativeWidth = img.naturalWidth;
       nativeHeight = img.naturalHeight;
+
+      // SVG files without explicit width/height report 0; extract from viewBox
+      if ((!nativeWidth || !nativeHeight) && dataUrl.includes("image/svg")) {
+        const dims = extractSvgDimensions(dataUrl);
+        if (dims) {
+          nativeWidth = dims.width;
+          nativeHeight = dims.height;
+        }
+      }
     } catch (e) {
       console.warn("Could not get image dimensions:", e);
     }

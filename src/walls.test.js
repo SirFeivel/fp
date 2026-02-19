@@ -16,6 +16,7 @@ import {
   getDoorwaysInEdgeSpace,
   getWallRenderHelpers,
   computeDoorwayFloorPatches,
+  mergeCollinearWalls,
   DEFAULT_WALL,
 } from './walls.js';
 import { DEFAULT_WALL_THICKNESS_CM } from './constants.js';
@@ -904,6 +905,81 @@ describe('syncFloorWalls integration', () => {
 
     expect(snapshot2).toBe(snapshot1);
     expect(snapshot3).toBe(snapshot1);
+  });
+});
+
+// ── mergeCollinearWalls ─────────────────────────────────────────────
+
+describe('mergeCollinearWalls', () => {
+  it('merges collinear outer wall segments from adjacent rooms', () => {
+    // Two rooms side by side with a 24cm gap (wall between them).
+    // Top edges at Y=0 form a continuous outer wall that should merge.
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 424, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+
+    syncFloorWalls(floor);
+    for (const w of floor.walls) w.thicknessCm = 24;
+    syncFloorWalls(floor);
+
+    const wallCountBefore = floor.walls.length;
+    mergeCollinearWalls(floor);
+
+    // Top walls at Y=0 should merge into one
+    const topWalls = floor.walls.filter(w => {
+      const dy = Math.abs(w.end.y - w.start.y);
+      const minY = Math.min(w.start.y, w.end.y);
+      return dy < 1 && minY < 1;
+    });
+    expect(topWalls.length).toBe(1);
+
+    const merged = topWalls[0];
+    const mergedLen = Math.hypot(merged.end.x - merged.start.x, merged.end.y - merged.start.y);
+    expect(mergedLen).toBeGreaterThan(700);
+    expect(floor.walls.length).toBeLessThan(wallCountBefore);
+  });
+
+  it('uses max thickness when merging walls with different thicknesses', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 430, 0, 300, 300);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+
+    for (const w of floor.walls) {
+      if (w.roomEdge.roomId === 'r1') w.thicknessCm = 29;
+      if (w.roomEdge.roomId === 'r2') w.thicknessCm = 21;
+    }
+    syncFloorWalls(floor);
+    mergeCollinearWalls(floor);
+
+    const topWalls = floor.walls.filter(w => {
+      const dy = Math.abs(w.end.y - w.start.y);
+      const minY = Math.min(w.start.y, w.end.y);
+      return dy < 1 && minY < 1;
+    });
+    expect(topWalls.length).toBe(1);
+    expect(topWalls[0].thicknessCm).toBe(29);
+  });
+
+  it('does not merge walls from the same room', () => {
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const floor = makeFloor([r1]);
+    syncFloorWalls(floor);
+    const before = floor.walls.length;
+    mergeCollinearWalls(floor);
+    expect(floor.walls.length).toBe(before);
+  });
+
+  it('does not merge walls that are too far apart', () => {
+    // Two rooms with a large gap between them
+    const r1 = makeRoom('r1', 0, 0, 400, 300);
+    const r2 = makeRoom('r2', 600, 0, 300, 300); // 200cm gap
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    const before = floor.walls.length;
+    mergeCollinearWalls(floor);
+    // Gap of 200cm >> gapTolerance → no merge
+    expect(floor.walls.length).toBe(before);
   });
 });
 
