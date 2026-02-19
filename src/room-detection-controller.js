@@ -7,7 +7,7 @@ import { svgEl } from "./geometry.js";
 import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
-import { detectRoomAtPixel } from "./room-detection.js";
+import { detectRoomAtPixel, detectEnvelope } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
@@ -467,7 +467,7 @@ export function getDetectionScaleFactor(dataUrl) {
   return dataUrl && dataUrl.startsWith("data:image/svg+xml") ? SVG_DETECTION_SCALE : 1;
 }
 
-function loadImageData(dataUrl, nativeWidth, nativeHeight) {
+export function loadImageData(dataUrl, nativeWidth, nativeHeight) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -490,4 +490,58 @@ function loadImageData(dataUrl, nativeWidth, nativeHeight) {
     img.onerror = reject;
     img.src = dataUrl;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Standalone envelope detection (called after calibration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects and stores the building envelope for the current floor.
+ * Runs automatically after calibration completes.
+ *
+ * @param {{ getState: () => object, commit: (label: string, next: object) => void, getCurrentFloor: (state?: object) => object }} opts
+ * @returns {Promise<boolean>} true if envelope was detected and stored
+ */
+export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor: getFloor }) {
+  const state = getState();
+  const floor = getFloor(state);
+  const bg = floor?.layout?.background;
+
+  if (!bg?.dataUrl || !bg?.scale?.calibrated || !bg.scale.pixelsPerCm) {
+    return false;
+  }
+
+  const { imageData, scaleFactor } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+  const effectivePpc = bg.scale.pixelsPerCm * scaleFactor;
+
+  const result = detectEnvelope(imageData, { pixelsPerCm: effectivePpc });
+  if (!result || result.polygonPixels.length < 3) {
+    return false;
+  }
+
+  // Build effective bg for coordinate conversion with upscaled image
+  const effectiveBg = scaleFactor === 1 ? bg : {
+    ...bg,
+    scale: { ...bg.scale, pixelsPerCm: effectivePpc }
+  };
+
+  // Convert pixel polygon to floor-global cm coordinates
+  const polygonCm = result.polygonPixels.map(p => imagePxToCm(p.x, p.y, effectiveBg));
+
+  // Rectify polygon: snap edges to standard angles
+  const rectified = rectifyPolygon(polygonCm);
+
+  // Store in state
+  const next = deepClone(getState());
+  const nextFloor = getFloor(next);
+  if (!nextFloor?.layout) return false;
+
+  nextFloor.layout.envelope = {
+    polygonCm: rectified,
+    wallThicknesses: result.wallThicknesses
+  };
+
+  commit("Detect floor envelope", next);
+  return true;
 }

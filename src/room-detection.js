@@ -278,6 +278,54 @@ export function fillInteriorHoles(filledMask, w, h) {
 }
 
 /**
+ * Flood fill from all image border pixels through open (mask=0) pixels.
+ * Returns a Uint8Array where 1 = reachable from the border (exterior),
+ * 0 = not reachable (building interior or wall).
+ *
+ * Used for envelope detection: everything NOT reachable from the border
+ * is inside the building.
+ *
+ * @param {Uint8Array} mask - Binary mask (1=wall, 0=open)
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @returns {Uint8Array} Exterior mask (1=exterior, 0=building/wall)
+ */
+export function floodFillFromBorder(mask, w, h) {
+  const exterior = new Uint8Array(w * h);
+  const queue = [];
+  let head = 0;
+
+  function seed(x, y) {
+    const i = y * w + x;
+    if (mask[i] === 0 && exterior[i] === 0) {
+      exterior[i] = 1;
+      queue.push(x, y);
+    }
+  }
+
+  // Seed all 4 border rows/columns
+  for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
+  for (let y = 1; y < h - 1; y++) { seed(0, y); seed(w - 1, y); }
+
+  while (head < queue.length) {
+    const cx = queue[head++];
+    const cy = queue[head++];
+    const neighbors = [cx - 1, cy, cx + 1, cy, cx, cy - 1, cx, cy + 1];
+    for (let k = 0; k < 8; k += 2) {
+      const nx = neighbors[k], ny = neighbors[k + 1];
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (mask[ni] === 0 && exterior[ni] === 0) {
+        exterior[ni] = 1;
+        queue.push(nx, ny);
+      }
+    }
+  }
+
+  return exterior;
+}
+
+/**
  * Moore neighbor contour tracing with Jacob's stopping criterion.
  * Traces the outer boundary of the filled region in filledMask.
  *
@@ -877,18 +925,23 @@ function probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe) 
 }
 
 /**
- * Detect wall thickness by probing outward from polygon edges using RGBA
+ * Detect wall thickness by probing from polygon edges using RGBA
  * pixel classification. Returns per-edge measurements and overall median.
+ *
+ * By default probes outward (away from centroid) — correct for room polygons
+ * where the centroid is inside the room and walls are outside.
+ * Set probeInward=true for envelope polygons where walls are inside the boundary.
  *
  * @param {ImageData} imageData - Raw RGBA image data
  * @param {Array<{x: number, y: number}>} polygonPixels - Detected polygon vertices
  * @param {number} w - Image width
  * @param {number} h - Image height
  * @param {number} pixelsPerCm - Scale factor for px→cm conversion
- * @param {number} [maxProbe=200] - Maximum probe depth in pixels
+ * @param {{ maxProbe?: number, probeInward?: boolean }} [opts]
  * @returns {{ edges: Array<{edgeIndex: number, thicknessPx: number, thicknessCm: number}>, medianPx: number, medianCm: number }}
  */
-export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm = 1, maxProbe = 200) {
+export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm = 1, opts = {}) {
+  const { maxProbe = 200, probeInward = false } = typeof opts === "number" ? { maxProbe: opts } : opts;
   const empty = { edges: [], medianPx: 0, medianCm: 0 };
   const n = polygonPixels.length;
   if (n < 3) return empty;
@@ -913,12 +966,15 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
     const tx = dx / edgeLen, ty = dy / edgeLen;
     let perpX = -ty, perpY = tx; // one perpendicular direction
 
-    // Ensure perpendicular points away from centroid (outward)
+    // Ensure perpendicular points away from centroid (outward) by default,
+    // or toward centroid (inward) when probeInward is true (for envelope polygons).
     const edgeMidX = (A.x + B.x) / 2;
     const edgeMidY = (A.y + B.y) / 2;
     const toCentroidX = cx - edgeMidX;
     const toCentroidY = cy - edgeMidY;
-    if (perpX * toCentroidX + perpY * toCentroidY > 0) {
+    const dotProduct = perpX * toCentroidX + perpY * toCentroidY;
+    const shouldFlip = probeInward ? (dotProduct < 0) : (dotProduct > 0);
+    if (shouldFlip) {
       perpX = -perpX;
       perpY = -perpY;
     }
@@ -1062,4 +1118,105 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   );
 
   return { polygonPixels, doorGapsPx, pixelsPerCm, wallThicknesses };
+}
+
+/**
+ * Detect the building's outer envelope from a floor plan image.
+ *
+ * Algorithm:
+ *   1. Build wall mask (auto-detect gray range → buildGrayWallMask → filterSmallComponents
+ *      → morphologicalOpen; fallback to imageToBinaryMask with threshold sweep)
+ *   2. morphologicalClose to seal small gaps in envelope walls
+ *   3. floodFillFromBorder → exterior mask
+ *   4. Invert to building mask, fillInteriorHoles
+ *   5. Sanity: building must be 1–99% of image area
+ *   6. traceContour → douglasPeucker → snapPolygonEdges → envelope polygon
+ *   7. detectWallThickness on envelope edges
+ *
+ * @param {ImageData} imageData - Source image data
+ * @param {{ pixelsPerCm?: number }} options
+ * @returns {{ polygonPixels: Array<{x,y}>, wallThicknesses: object } | null}
+ */
+export function detectEnvelope(imageData, options = {}) {
+  const { pixelsPerCm = 1 } = options;
+  const w = imageData.width;
+  const h = imageData.height;
+  const totalPixels = w * h;
+
+  // Open radius for noise removal
+  const openRadius = Math.max(0, Math.min(5, Math.round(4 * pixelsPerCm)));
+
+  // Minimum area for wall components
+  const minComponentArea = Math.max(16, Math.round(8 * pixelsPerCm) ** 2);
+
+  // Close radius: must seal ALL openings (doorways 60–100cm, double doors up to 160cm).
+  // Room detection uses [20,40,66] cm and picks the smallest that works.
+  // Envelope needs the largest — 80cm seals gaps up to 160cm.
+  const closeRadius = Math.max(3, Math.min(300, Math.round(80 * pixelsPerCm)));
+
+  // Epsilon for Douglas-Peucker
+  const epsilon = Math.max(1, Math.round(4 * pixelsPerCm));
+
+  // Step 1: Build wall mask
+  let wallMask = null;
+  const range = autoDetectWallRange(imageData);
+  if (range) {
+    wallMask = buildGrayWallMask(imageData, range.low, range.high);
+    wallMask = filterSmallComponents(wallMask, w, h, minComponentArea);
+    if (openRadius > 0) {
+      wallMask = morphologicalOpen(wallMask, w, h, openRadius);
+    }
+  }
+
+  // Fallback: dark-threshold masks
+  if (!wallMask) {
+    for (const threshold of [180, 200, 220, 240]) {
+      const candidate = imageToBinaryMask(imageData, threshold);
+      // Check that the mask has a reasonable amount of wall pixels (0.5–50%)
+      let count = 0;
+      for (let i = 0; i < totalPixels; i++) count += candidate[i];
+      if (count > totalPixels * 0.005 && count < totalPixels * 0.5) {
+        wallMask = filterSmallComponents(candidate, w, h, minComponentArea);
+        break;
+      }
+    }
+  }
+
+  if (!wallMask) return null;
+
+  // Step 2: Morphological close to seal small gaps in envelope walls
+  const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
+
+  // Step 3: Flood fill from border to find exterior
+  const exteriorMask = floodFillFromBorder(closedMask, w, h);
+
+  // Step 4: Invert to building mask, fill interior holes
+  const buildingMask = new Uint8Array(totalPixels);
+  for (let i = 0; i < totalPixels; i++) {
+    buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+  }
+  fillInteriorHoles(buildingMask, w, h);
+
+  // Step 5: Sanity check — building must be 1–99% of image
+  let buildingArea = 0;
+  for (let i = 0; i < totalPixels; i++) buildingArea += buildingMask[i];
+  if (buildingArea < totalPixels * 0.01 || buildingArea > totalPixels * 0.99) {
+    return null;
+  }
+
+  // Step 6: Trace contour → simplify → snap
+  const contour = traceContour(buildingMask, w, h);
+  if (contour.length < 3) return null;
+
+  const rawPolygon = douglasPeucker(contour, epsilon);
+  if (rawPolygon.length < 3) return null;
+
+  const polygonPixels = snapPolygonEdges(rawPolygon);
+  if (polygonPixels.length < 3) return null;
+
+  // Step 7: Detect wall thickness — probe inward (toward building interior)
+  // because the envelope polygon traces the outer boundary
+  const wallThicknesses = detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm, { probeInward: true });
+
+  return { polygonPixels, wallThicknesses };
 }

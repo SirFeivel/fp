@@ -125,6 +125,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
     }
 
     floor.layout = floor.layout || { enabled: false, background: null };
+    delete floor.layout.envelope;
     floor.layout.enabled = true;
     floor.layout.background = {
       dataUrl,
@@ -155,6 +156,7 @@ export function createBackgroundController({ store, renderAll, updateMeta }) {
 
     if (floor.layout) {
       floor.layout.background = null;
+      delete floor.layout.envelope;
     }
 
     store.commit(t("floor.backgroundRemoved") || "Background removed", next, {

@@ -8,12 +8,14 @@ import {
   filterSmallComponents,
   floodFill,
   fillInteriorHoles,
+  floodFillFromBorder,
   traceContour,
   douglasPeucker,
   snapPolygonEdges,
   detectWallThickness,
   detectDoorGaps,
-  detectRoomAtPixel
+  detectRoomAtPixel,
+  detectEnvelope
 } from './room-detection.js';
 
 // ---------------------------------------------------------------------------
@@ -1003,5 +1005,228 @@ describe('dashed line merging', () => {
     // Each gap is 5px ≥ 2 minGapPx, and they're ~30px apart >> 1 maxDashPx
     // → should remain as 2 separate door gaps
     expect(result.doorGapsPx.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// floodFillFromBorder
+// ---------------------------------------------------------------------------
+describe('floodFillFromBorder', () => {
+  it('marks exterior pixels as 1 and interior inside a wall ring as 0', () => {
+    // 20×20 image with a wall ring: walls at rows/cols 5–6 and 13–14
+    const w = 20, h = 20;
+    const mask = new Uint8Array(w * h);
+    // Draw wall ring
+    for (let x = 5; x <= 14; x++) {
+      mask[5 * w + x] = 1; mask[6 * w + x] = 1;   // top wall
+      mask[13 * w + x] = 1; mask[14 * w + x] = 1;  // bottom wall
+    }
+    for (let y = 5; y <= 14; y++) {
+      mask[y * w + 5] = 1; mask[y * w + 6] = 1;    // left wall
+      mask[y * w + 13] = 1; mask[y * w + 14] = 1;  // right wall
+    }
+
+    const exterior = floodFillFromBorder(mask, w, h);
+
+    // Exterior pixel (0,0) should be 1 (reachable from border)
+    expect(exterior[0]).toBe(1);
+    // Exterior pixel (3,3) should be 1
+    expect(exterior[3 * w + 3]).toBe(1);
+    // Interior pixel (10,10) should be 0 (not reachable from border)
+    expect(exterior[10 * w + 10]).toBe(0);
+    // Wall pixel should be 0 (walls are mask=1, not traversed)
+    expect(exterior[5 * w + 5]).toBe(0);
+  });
+
+  it('marks entire image as exterior when no walls exist', () => {
+    const w = 10, h = 10;
+    const mask = new Uint8Array(w * h); // all 0 (open)
+    const exterior = floodFillFromBorder(mask, w, h);
+    for (let i = 0; i < w * h; i++) {
+      expect(exterior[i]).toBe(1);
+    }
+  });
+
+  it('marks nothing as exterior when entire image is wall', () => {
+    const w = 10, h = 10;
+    const mask = new Uint8Array(w * h).fill(1); // all wall
+    const exterior = floodFillFromBorder(mask, w, h);
+    for (let i = 0; i < w * h; i++) {
+      expect(exterior[i]).toBe(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectEnvelope
+// ---------------------------------------------------------------------------
+describe('detectEnvelope', () => {
+  /** Build a synthetic building image: white background, gray-fill walls forming a rectangle. */
+  function makeBuildingImage(imgW, imgH, bldgRect, wallThick = 8) {
+    const data = new Uint8ClampedArray(imgW * imgH * 4);
+    // Fill white
+    for (let i = 0; i < imgW * imgH; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+
+    function setPixel(x, y, gray) {
+      if (x < 0 || x >= imgW || y < 0 || y >= imgH) return;
+      const idx = (y * imgW + x) * 4;
+      data[idx] = gray; data[idx + 1] = gray; data[idx + 2] = gray;
+    }
+
+    const { x: bx, y: by, w: bw, h: bh } = bldgRect;
+    // Draw wall ring: gray fill with black edge lines
+    for (let y = by; y < by + bh; y++) {
+      for (let x = bx; x < bx + bw; x++) {
+        const inInterior =
+          x >= bx + wallThick && x < bx + bw - wallThick &&
+          y >= by + wallThick && y < by + bh - wallThick;
+        if (inInterior) continue; // room interior stays white
+
+        // Edge lines: 2px at inner and outer boundary
+        const atOuterEdge = x < bx + 2 || x >= bx + bw - 2 || y < by + 2 || y >= by + bh - 2;
+        const atInnerEdge =
+          Math.abs(x - (bx + wallThick)) < 2 || Math.abs(x - (bx + bw - wallThick - 1)) < 2 ||
+          Math.abs(y - (by + wallThick)) < 2 || Math.abs(y - (by + bh - wallThick - 1)) < 2;
+        if (atOuterEdge || atInnerEdge) {
+          setPixel(x, y, 30); // black edge
+        } else {
+          setPixel(x, y, 140); // gray fill
+        }
+      }
+    }
+
+    return { data, width: imgW, height: imgH };
+  }
+
+  it('detects a rectangular building envelope', () => {
+    // Realistic size: 400×300 image, building 300×200 px at ppc=0.5 → 6m × 4m building
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+    const result = detectEnvelope(imageData, { pixelsPerCm: 0.5 });
+
+    expect(result).not.toBeNull();
+    expect(result.polygonPixels.length).toBeGreaterThanOrEqual(3);
+
+    // Bounding box should roughly match the building rectangle
+    const xs = result.polygonPixels.map(p => p.x);
+    const ys = result.polygonPixels.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+    // Building spans x=[50,350), y=[50,250) → bbox should be close
+    expect(minX).toBeGreaterThanOrEqual(30);
+    expect(minX).toBeLessThanOrEqual(70);
+    expect(maxX).toBeGreaterThanOrEqual(330);
+    expect(maxX).toBeLessThanOrEqual(370);
+    expect(minY).toBeGreaterThanOrEqual(30);
+    expect(minY).toBeLessThanOrEqual(70);
+    expect(maxY).toBeGreaterThanOrEqual(230);
+    expect(maxY).toBeLessThanOrEqual(270);
+  });
+
+  it('returns wallThicknesses with edge data', () => {
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+    const result = detectEnvelope(imageData, { pixelsPerCm: 0.5 });
+
+    expect(result).not.toBeNull();
+    expect(result.wallThicknesses).toBeDefined();
+    expect(result.wallThicknesses.edges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns null for an all-white image', () => {
+    const w = 50, h = 50;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+    const result = detectEnvelope({ data, width: w, height: h }, { pixelsPerCm: 0.5 });
+    expect(result).toBeNull();
+  });
+
+  it('returns null for an all-black image', () => {
+    const w = 50, h = 50;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 4] = 0; data[i * 4 + 1] = 0; data[i * 4 + 2] = 0; data[i * 4 + 3] = 255;
+    }
+    const result = detectEnvelope({ data, width: w, height: h }, { pixelsPerCm: 0.5 });
+    expect(result).toBeNull();
+  });
+
+  it('detects an L-shaped building envelope', () => {
+    // Realistic L-shape: 500×500 image at ppc=0.5
+    // Rect1: x=[50,450), y=[50,250) → top bar 400×200 px = 8m × 4m
+    // Rect2: x=[50,250), y=[250,450) → left leg 200×200 px = 4m × 4m
+    const imgW = 500, imgH = 500;
+    const data = new Uint8ClampedArray(imgW * imgH * 4);
+    for (let i = 0; i < imgW * imgH; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+
+    function setPixel(x, y, gray) {
+      if (x < 0 || x >= imgW || y < 0 || y >= imgH) return;
+      const idx = (y * imgW + x) * 4;
+      data[idx] = gray; data[idx + 1] = gray; data[idx + 2] = gray;
+    }
+
+    const wallThick = 12;
+
+    function drawFilledRect(rx, ry, rw, rh) {
+      for (let y = ry; y < ry + rh; y++) {
+        for (let x = rx; x < rx + rw; x++) {
+          const inInterior =
+            x >= rx + wallThick && x < rx + rw - wallThick &&
+            y >= ry + wallThick && y < ry + rh - wallThick;
+          if (!inInterior) setPixel(x, y, 140);
+        }
+      }
+    }
+
+    drawFilledRect(50, 50, 400, 200);
+    drawFilledRect(50, 250, 200, 200);
+
+    // Clear the interior where the two rects connect
+    for (let y = 238; y < 262; y++) {
+      for (let x = 62; x < 238; x++) {
+        setPixel(x, y, 255);
+      }
+    }
+
+    const imageData = { data, width: imgW, height: imgH };
+    const result = detectEnvelope(imageData, { pixelsPerCm: 0.5 });
+
+    expect(result).not.toBeNull();
+    // L-shape should have at least 4 vertices (typically 6 for a clean L)
+    expect(result.polygonPixels.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('envelope bounding box contains a detected room inside the building', () => {
+    // 400×400 image, building spanning (50,50)-(350,350) with 12px walls
+    // Room interior: (62,62)-(338,338)
+    const imageData = makeBuildingImage(400, 400, { x: 50, y: 50, w: 300, h: 300 }, 12);
+
+    const envelope = detectEnvelope(imageData, { pixelsPerCm: 0.5 });
+    expect(envelope).not.toBeNull();
+
+    // Detect a room inside the building
+    const room = detectRoomAtPixel(imageData, 200, 200, { pixelsPerCm: 0.5, maxAreaCm2: 10_000_000 });
+    expect(room).not.toBeNull();
+
+    // Envelope bbox should contain the room bbox
+    const envXs = envelope.polygonPixels.map(p => p.x);
+    const envYs = envelope.polygonPixels.map(p => p.y);
+    const envMinX = Math.min(...envXs), envMaxX = Math.max(...envXs);
+    const envMinY = Math.min(...envYs), envMaxY = Math.max(...envYs);
+
+    const roomXs = room.polygonPixels.map(p => p.x);
+    const roomYs = room.polygonPixels.map(p => p.y);
+    const roomMinX = Math.min(...roomXs), roomMaxX = Math.max(...roomXs);
+    const roomMinY = Math.min(...roomYs), roomMaxY = Math.max(...roomYs);
+
+    expect(envMinX).toBeLessThanOrEqual(roomMinX);
+    expect(envMaxX).toBeGreaterThanOrEqual(roomMaxX);
+    expect(envMinY).toBeLessThanOrEqual(roomMinY);
+    expect(envMaxY).toBeGreaterThanOrEqual(roomMaxY);
   });
 });

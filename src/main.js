@@ -21,7 +21,7 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
-import { createRoomDetectionController } from "./room-detection-controller.js";
+import { createRoomDetectionController, detectAndStoreEnvelope } from "./room-detection-controller.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
@@ -1497,6 +1497,14 @@ function initBackgroundControls() {
       onComplete: (success, avgPixelsPerCm) => {
         if (success) {
           showCalibrationSuccess(avgPixelsPerCm);
+          detectAndStoreEnvelope({
+            getState: () => store.getState(),
+            commit: (label, next) => commitViaStore(label, next),
+            getCurrentFloor: (state) => {
+              const s = state || store.getState();
+              return s.floors?.find(f => f.id === s.selectedFloorId) || null;
+            }
+          }).catch(err => console.error("Envelope detection failed:", err));
         } else {
           hideCalibrationPanel();
         }
@@ -1561,6 +1569,14 @@ function initBackgroundControls() {
       onComplete: (success, avgPixelsPerCm) => {
         if (success) {
           showCalibrationSuccess(avgPixelsPerCm);
+          detectAndStoreEnvelope({
+            getState: () => store.getState(),
+            commit: (label, next) => commitViaStore(label, next),
+            getCurrentFloor: (state) => {
+              const s = state || store.getState();
+              return s.floors?.find(f => f.id === s.selectedFloorId) || null;
+            }
+          }).catch(err => console.error("Envelope detection failed:", err));
         } else {
           hideCalibrationPanel();
         }

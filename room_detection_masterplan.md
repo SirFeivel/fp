@@ -124,22 +124,94 @@ All 1113 tests pass (1110 original + 3 new):
 
 ---
 
-## Step 2: Detect floor envelope — outer boundary
+## Step 2b: Detect floor envelope — outer boundary ✅
+
+**Status:** Implemented — branch `envelope-detection`
+
+**Files:** `src/room-detection.js`, `src/room-detection-controller.js`, `src/main.js`, `src/background.js`, `src/room-detection.test.js`
 
 **Concept:** Before any room is detected, analyze the background image once to find the building's outer boundary. This is a floor-level property (`floor.layout.envelope`), computed from the calibrated background, that constrains all subsequent room detections.
 
-**What it captures:**
-- The outermost closed rectangular boundary of the building (the building outline)
-- The outer wall thickness, measured on the long straight edges of that boundary (most reliable measurement — long edges, no adjacent rooms, no doorways)
-
 **Why it matters:**
-- The outer walls are continuous — they run across multiple rooms (e.g., Trockenraum's top wall continues as Keller's top wall). This is a single wall, not two separate walls.
-- Detecting each room independently loses this information. Each room gets its own polygon edge at a slightly different position, creating gaps instead of shared walls.
+- Outer walls are continuous across multiple rooms (e.g., Trockenraum's top wall continues as Keller's top wall). Detecting rooms independently loses this — each room gets its own polygon edge at a slightly different position, creating gaps instead of shared walls.
 - With the envelope known upfront, any room edge that coincides with the envelope boundary is automatically identified as an outer wall with a known, consistent thickness.
 
-**Storage:** `floor.layout.envelope` — sibling to `floor.layout.background`.
+**Trigger:** Automatically after calibration completes — no user interaction needed. Fire-and-forget from both calibration `onComplete` callbacks in `main.js`.
 
-**To be detailed:** Detection algorithm, integration with room detection pipeline, tests.
+### Algorithm
+
+1. Build wall mask (same pipeline as room detection: auto-detect gray range → `buildGrayWallMask` → `filterSmallComponents` → `morphologicalOpen`; fallback to `imageToBinaryMask` with threshold sweep)
+2. `morphologicalClose` with radius `round(80 × ppc)` — seals gaps up to 160 cm, covering all standard doorways and double doors. Room detection uses [20, 40, 66] cm and picks the smallest that works (to preserve doors); envelope uses the largest because it must seal ALL openings.
+3. `floodFillFromBorder(closedMask, w, h)` — BFS from all image border pixels through open (0) pixels → `exteriorMask`
+4. Invert to building mask: `buildingMask[i] = (exteriorMask[i] === 0) ? 1 : 0`
+5. `fillInteriorHoles(buildingMask)` — fill text/annotation gaps within the building
+6. Sanity check: building must be 1–99% of image area (rejects all-white, all-black, and degenerate images)
+7. `traceContour` → `douglasPeucker(epsilon)` → `snapPolygonEdges` → envelope polygon
+8. `detectWallThickness(imageData, polygonPixels, w, h, ppc, { probeInward: true })` — probes inward (toward building center) because the envelope polygon traces the outer boundary
+
+### Implementation details
+
+**`floodFillFromBorder(mask, w, h)`** — new export in `room-detection.js`. BFS from all 4 image borders through open (mask=0) pixels. Returns `Uint8Array` exterior mask (1=reachable from border, 0=building/wall). Structurally similar to the BFS in `fillInteriorHoles` but semantically different: `fillInteriorHoles` identifies holes in a room fill, `floodFillFromBorder` identifies the exterior around a building.
+
+**`detectEnvelope(imageData, options)`** — new export in `room-detection.js`. Pure orchestrator that calls the pipeline functions above. Returns `{ polygonPixels, wallThicknesses }` or `null`.
+
+**`detectWallThickness` probe direction fix:** Added `probeInward` option (default `false`). When `true`, the perpendicular probe direction points toward the polygon centroid instead of away from it. Room polygons (inner boundary) probe outward into walls — correct. Envelope polygons (outer boundary) must probe inward to cross the wall body. Without this fix, the probe went into empty exterior space and measured only the thin edge line (~3 cm instead of ~30 cm). Backward-compatible: existing callers passing a bare `maxProbe` number still work via `typeof opts === "number"` guard.
+
+**`detectAndStoreEnvelope({ getState, commit, getCurrentFloor })`** — new standalone async export in `room-detection-controller.js`. Loads image via `loadImageData` (SVGs upscaled 4×), runs `detectEnvelope`, converts pixels to cm via `imagePxToCm`, rectifies polygon via `rectifyPolygon`, stores result in `floor.layout.envelope`, commits to state.
+
+**`loadImageData`** — changed from file-internal to exported (needed by `detectAndStoreEnvelope`).
+
+**Trigger wiring (`main.js`):** Both calibration `onComplete` callbacks call `detectAndStoreEnvelope(...).catch(...)` after `showCalibrationSuccess()`. Fire-and-forget — commits to state on its own.
+
+**Envelope clearing (`background.js`):** `delete floor.layout.envelope` in both `setBackground()` and `removeBackground()`. When background changes or is removed, the detected envelope is invalidated.
+
+### Critical fix during implementation
+
+**Close radius too small:** The initial plan specified `round(20 × ppc)` = 30 px at the reference floor plan's effective ppc (1.512). This only seals gaps up to 40 cm, but real doorways are 60–100 cm wide. The exterior flood fill leaked through unsealed doorways, producing a 38-vertex jagged polygon that traced around internal wall features. Fixed to `round(80 × ppc)` = 121 px, sealing gaps up to 160 cm.
+
+**Probe direction inverted:** `detectWallThickness` always probed away from the polygon centroid (outward). For rooms this is correct (walls are outside). For the envelope, walls are inside the outer boundary, so outward means probing into empty space. The probe measured only the thin 2px edge line at the boundary (~3.3 cm), not the full wall body. Fixed by adding `probeInward: true` option.
+
+### Storage
+
+```js
+floor.layout.envelope = {
+  polygonCm: [{x, y}, ...],     // Building outer boundary in floor-global cm (rectified)
+  wallThicknesses: {             // Same structure as detectWallThickness return
+    edges: [{ edgeIndex, thicknessPx, thicknessCm }],
+    medianPx, medianCm
+  }
+}
+```
+
+Optional. Missing `envelope` means detection hasn't run. Cleared when background/calibration changes. No state migration needed.
+
+### Verified results (Projekt 68 floor plan)
+
+| Metric | Value |
+|--------|-------|
+| Polygon vertices | 8 |
+| Median wall thickness | 29.8 cm |
+| Edges measured | 8 |
+
+8 vertices for an L-shaped building outline. 29.8 cm median outer wall thickness — consistent with real-world measurements (typical outer walls: 24–36 cm).
+
+### Tests
+
+All 1122 tests pass (1113 existing + 9 new):
+
+| # | Test | Assertion |
+|---|------|-----------|
+| 1 | `floodFillFromBorder`: wall ring | exterior=1 outside, interior=0 inside, wall=0 |
+| 2 | `floodFillFromBorder`: no walls | entire image is exterior |
+| 3 | `floodFillFromBorder`: all walls | nothing is exterior |
+| 4 | `detectEnvelope`: rectangular building (400×300 image) | polygon ≥ 3 vertices, bbox in range |
+| 5 | `detectEnvelope`: returns wallThicknesses | edges.length ≥ 1 |
+| 6 | `detectEnvelope`: all-white | returns null |
+| 7 | `detectEnvelope`: all-black | returns null |
+| 8 | `detectEnvelope`: L-shaped building (500×500 image) | polygon ≥ 4 vertices |
+| 9 | E2E: envelope bbox contains detected room | env min ≤ room min, env max ≥ room max |
+
+Test images use realistic sizes (400×300 to 500×500 at ppc=0.5) to survive the 80cm close radius without shape obliteration.
 
 ---
 
