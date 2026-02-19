@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { decode } from 'fast-png';
-import { detectRoomAtPixel } from './room-detection.js';
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents } from './room-detection.js';
+import { rectifyPolygon, FLOOR_PLAN_RULES } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
 const calibrated = JSON.parse(
@@ -77,5 +78,172 @@ describe('detectRoomAtPixel vs reference floor plan', () => {
     expect(Math.abs(detMaxX - refMaxX)).toBeLessThan(TOLERANCE_CM);
     expect(Math.abs(detMinY - refMinY)).toBeLessThan(TOLERANCE_CM);
     expect(Math.abs(detMaxY - refMaxY)).toBeLessThan(TOLERANCE_CM);
+  });
+});
+
+// ── Envelope post-processing E2E verification ──────────────────────────────
+// Acceptance criteria (per user):
+//   - Rectangular outer wall, roughly 10m x 8.5m, ~30cm wall thickness
+//   - 1 inner horizontal spanning wall, same length, ~24cm thickness
+//   - No phantom V spanning wall
+//   - No protrusion, no thickness anomalies
+
+const envelopeV5 = JSON.parse(
+  readFileSync('/Users/feivel/Downloads/envelope_v5.JSON', 'utf8')
+);
+
+describe('envelope post-processing pipeline', () => {
+  let cleaned;
+
+  function runPostProcessing() {
+    if (cleaned) return;
+    const rectified = envelopeV5.polygonCm;
+    const bumpThreshold = envelopeV5.wallThicknesses?.medianCm || 30;
+    cleaned = removePolygonMicroBumps(rectified, bumpThreshold);
+  }
+
+  it('produces a 4-vertex rectangle (~10m x 8.5m)', () => {
+    runPostProcessing();
+    expect(cleaned.length).toBe(4);
+
+    const xs = cleaned.map(p => p.x);
+    const ys = cleaned.map(p => p.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+
+    // Roughly 10m x 8.5m (allow ±1m tolerance for detection variance)
+    expect(width).toBeGreaterThan(900);
+    expect(width).toBeLessThan(1100);
+    expect(height).toBeGreaterThan(750);
+    expect(height).toBeLessThan(950);
+  });
+
+  it('removes the left-side protrusion (no x < 640)', () => {
+    runPostProcessing();
+    for (const p of cleaned) {
+      expect(p.x).toBeGreaterThanOrEqual(640);
+    }
+  });
+});
+
+// ── E2E wall thickness + spanning wall tests (300 DPI image) ────────────────
+// Uses higher-res PNG where walls are clearly visible to detection algorithms.
+
+const cal300 = JSON.parse(
+  readFileSync('/Users/feivel/Downloads/KG_300dpi_calibrated.json', 'utf8')
+);
+const bg300 = cal300.floors[0].layout.background;
+const ppc300 = bg300.scale.pixelsPerCm; // ~1.18
+
+const b64_300 = bg300.dataUrl.replace(/^data:image\/[^;]+;base64,/, '');
+const raw300 = decode(Buffer.from(b64_300, 'base64'));
+const img300 = { data: raw300.data, width: raw300.width, height: raw300.height };
+
+describe('wall thickness on 300dpi KG floor plan', () => {
+  let cleaned, cleanedPx;
+
+  function setup() {
+    if (cleaned) return;
+    cleaned = removePolygonMicroBumps(
+      envelopeV5.polygonCm,
+      envelopeV5.wallThicknesses?.medianCm || 30
+    );
+    cleanedPx = cleaned.map(p => ({
+      x: Math.round((p.x - (bg300.position?.x ?? 0)) * ppc300),
+      y: Math.round((p.y - (bg300.position?.y ?? 0)) * ppc300)
+    }));
+  }
+
+  it('polygon fits within 300dpi image', () => {
+    setup();
+    for (const p of cleanedPx) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThan(img300.width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThan(img300.height);
+    }
+  });
+
+  it('all edge thicknesses are in [5, 50] cm (no anomalies)', () => {
+    setup();
+    const wt = detectWallThickness(
+      img300, cleanedPx, img300.width, img300.height,
+      ppc300, { probeInward: true }
+    );
+    console.log('Wall thicknesses (300dpi):', JSON.stringify(wt, null, 2));
+    expect(wt.edges.length).toBeGreaterThanOrEqual(1);
+    for (const edge of wt.edges) {
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}: ${edge.thicknessCm}cm`).toBeGreaterThanOrEqual(5);
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}: ${edge.thicknessCm}cm`).toBeLessThanOrEqual(50);
+    }
+  });
+});
+
+describe('spanning wall detection on 300dpi KG floor plan', () => {
+  let wallMask, buildingMask;
+  const w = img300.width;
+  const h = img300.height;
+
+  function buildMasks() {
+    if (wallMask) return;
+
+    // Build wallMask from real image
+    const range = autoDetectWallRange(img300);
+    if (!range) throw new Error('autoDetectWallRange returned null');
+    wallMask = buildGrayWallMask(img300, range.low, range.high);
+    const minComponentArea = Math.max(16, Math.round(8 * ppc300) ** 2);
+    wallMask = filterSmallComponents(wallMask, w, h, minComponentArea);
+
+    // Build buildingMask from cleaned envelope polygon (rasterize rectangle)
+    const cleaned = removePolygonMicroBumps(
+      envelopeV5.polygonCm,
+      envelopeV5.wallThicknesses?.medianCm || 30
+    );
+    const cleanedPx = cleaned.map(p => ({
+      x: Math.round((p.x - (bg300.position?.x ?? 0)) * ppc300),
+      y: Math.round((p.y - (bg300.position?.y ?? 0)) * ppc300)
+    }));
+    const xs = cleanedPx.map(p => p.x);
+    const ys = cleanedPx.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    buildingMask = new Uint8Array(w * h);
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (x >= 0 && x < w && y >= 0 && y < h) {
+          buildingMask[y * w + x] = 1;
+        }
+      }
+    }
+  }
+
+  it('detects exactly 1 H spanning wall and 0 V spanning walls', () => {
+    buildMasks();
+    const walls = detectSpanningWalls(img300, wallMask, buildingMask, w, h, {
+      pixelsPerCm: ppc300,
+    });
+
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    const vWalls = walls.filter(w => w.orientation === 'V');
+
+    expect(vWalls.length, 'phantom V wall still detected').toBe(0);
+    expect(hWalls.length, 'expected exactly 1 H spanning wall').toBe(1);
+  });
+
+  it('H spanning wall has thickness ~24cm (in [15, 35] cm)', () => {
+    buildMasks();
+    const walls = detectSpanningWalls(img300, wallMask, buildingMask, w, h, {
+      pixelsPerCm: ppc300,
+    });
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    if (hWalls.length === 0) return; // previous test already fails
+
+    const thicknessCm = hWalls[0].thicknessPx / ppc300;
+    console.log(`H spanning wall thickness: ${thicknessCm.toFixed(1)} cm`);
+    expect(thicknessCm).toBeGreaterThan(15);
+    expect(thicknessCm).toBeLessThan(35);
   });
 });

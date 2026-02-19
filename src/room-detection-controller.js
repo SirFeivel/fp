@@ -7,7 +7,7 @@ import { svgEl } from "./geometry.js";
 import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls } from "./room-detection.js";
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
@@ -532,6 +532,17 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   // Rectify polygon: snap edges to standard angles
   const rectified = rectifyPolygon(polygonCm);
 
+  // Remove micro-bumps from external structures (retaining walls, stairs, etc.)
+  const bumpThreshold = result.wallThicknesses?.medianCm || 30;
+  const cleaned = removePolygonMicroBumps(rectified, bumpThreshold);
+
+  // Re-measure wall thickness on the cleaned polygon so edge indices match
+  const cleanedPx = cleaned.map(p => cmToImagePx(p.x, p.y, effectiveBg));
+  const wallThicknesses = detectWallThickness(
+    imageData, cleanedPx, imageData.width, imageData.height,
+    effectivePpc, { probeInward: true }
+  );
+
   // Detect structural spanning walls inside the envelope
   let spanningWalls = [];
   if (result.wallMask && result.buildingMask) {
@@ -555,8 +566,8 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   if (!nextFloor?.layout) return false;
 
   nextFloor.layout.envelope = {
-    polygonCm: rectified,
-    wallThicknesses: result.wallThicknesses,
+    polygonCm: cleaned,
+    wallThicknesses,
     spanningWalls,
   };
 

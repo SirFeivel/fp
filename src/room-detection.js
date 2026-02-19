@@ -979,29 +979,42 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
       perpY = -perpY;
     }
 
-    // Sample at 3 points along the edge (25%, 50%, 75%)
-    const samples = [];
-    for (const frac of [0.25, 0.5, 0.75]) {
+    // Sample at 7 points along the edge, evenly spaced.
+    // Cap probe distance to a reasonable wall thickness (60cm) to avoid
+    // crossing interior walls at junctions.
+    const maxWallProbe = Math.min(maxProbe, Math.round(60 * pixelsPerCm));
+    const raw = [];
+    for (let si = 1; si <= 7; si++) {
+      const frac = si / 8;
       const startX = A.x + tx * edgeLen * frac;
       const startY = A.y + ty * edgeLen * frac;
-      const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe);
+      const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxWallProbe);
       if (thickness >= 2) {
-        samples.push(thickness);
+        raw.push(thickness);
       }
     }
 
-    if (samples.length > 0) {
-      samples.sort((a, b) => a - b);
-      const medIdx = Math.floor(samples.length / 2);
-      const thicknessPx = samples.length % 2 === 1
-        ? samples[medIdx]
-        : (samples[medIdx - 1] + samples[medIdx]) / 2;
-      edges.push({
-        edgeIndex: i,
-        thicknessPx,
-        thicknessCm: thicknessPx / pixelsPerCm
-      });
-    }
+    if (raw.length < 2) continue;
+
+    // Filter: reject samples that are physically unreasonable for a wall.
+    // Walls are 5–60 cm thick. Samples outside this range come from
+    // junction crossings (too large) or polygon misalignment (too small).
+    const minWallPx = Math.max(2, Math.round(5 * pixelsPerCm));
+    const maxWallPx = Math.round(60 * pixelsPerCm);
+    const filtered = raw.filter(v => v >= minWallPx && v <= maxWallPx);
+
+    if (filtered.length < 2) continue;
+
+    filtered.sort((a, b) => a - b);
+    const medIdx = Math.floor(filtered.length / 2);
+    const thicknessPx = filtered.length % 2 === 1
+      ? filtered[medIdx]
+      : (filtered[medIdx - 1] + filtered[medIdx]) / 2;
+    edges.push({
+      edgeIndex: i,
+      thicknessPx,
+      thicknessCm: thicknessPx / pixelsPerCm
+    });
   }
 
   if (edges.length === 0) return empty;
@@ -1018,6 +1031,127 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
     medianPx,
     medianCm: medianPx / pixelsPerCm
   };
+}
+
+/**
+ * Remove rectangular micro-bumps from an axis-aligned polygon.
+ *
+ * After rectifyPolygon, the polygon may contain small rectangular notches
+ * caused by external structures (retaining walls, stairs) that are
+ * morphologically connected to the building. These bumps are shorter than
+ * the median wall thickness and are not real architectural features.
+ *
+ * A bump is 3 consecutive edges forming a U-shape:
+ *   leg1 → short outer wall → leg2
+ * where the outer wall length (bump depth) is < maxBumpDepthCm and the
+ * two legs are parallel (both H or both V) and go in opposite directions.
+ * Collapsing removes the two interior vertices and re-merges collinear vertices.
+ *
+ * @param {Array<{x: number, y: number}>} vertices - Rectified polygon vertices
+ * @param {number} maxBumpDepthCm - Maximum bump depth to remove (default 30)
+ * @returns {Array<{x: number, y: number}>} Cleaned polygon
+ */
+export function removePolygonMicroBumps(vertices, maxBumpDepthCm = 30) {
+  if (!vertices || vertices.length < 5) return vertices; // need at least 5 vertices for a bump
+
+  let pts = vertices.map(p => ({ x: p.x, y: p.y }));
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const n = pts.length;
+    if (n < 5) break;
+
+    for (let i = 0; i < n; i++) {
+      // Three consecutive edges: leg1 (prev→i), outer (i→next), leg2 (next→next2)
+      const iPrev = (i - 1 + n) % n;
+      const iNext = (i + 1) % n;
+      const iNext2 = (i + 2) % n;
+
+      const A = pts[iPrev]; // before bump
+      const B = pts[i];     // bump vertex 1 (start of outer wall)
+      const C = pts[iNext]; // bump vertex 2 (end of outer wall)
+      const D = pts[iNext2]; // after bump
+
+      // Edge B→C is the outer wall (should be short = bump depth)
+      const outerLen = Math.hypot(C.x - B.x, C.y - B.y);
+      if (outerLen >= maxBumpDepthCm || outerLen < 0.1) continue;
+
+      // Classify legs: A→B (leg1) and C→D (leg2)
+      const leg1IsH = Math.abs(A.y - B.y) < 0.5;
+      const leg1IsV = Math.abs(A.x - B.x) < 0.5;
+      const leg2IsH = Math.abs(C.y - D.y) < 0.5;
+      const leg2IsV = Math.abs(C.x - D.x) < 0.5;
+
+      // Both legs must be parallel (both H or both V)
+      if (leg1IsH && leg2IsH) {
+        // Legs are H, outer wall (B→C) should be V (perpendicular)
+        if (Math.abs(B.x - C.x) >= 0.5) continue;
+        // U-shape: legs go in opposite directions
+        const dir1 = B.x - A.x;
+        const dir2 = D.x - C.x;
+        if (dir1 * dir2 >= 0) continue;
+      } else if (leg1IsV && leg2IsV) {
+        // Legs are V, outer wall (B→C) should be H (perpendicular)
+        if (Math.abs(B.y - C.y) >= 0.5) continue;
+        // U-shape: legs go in opposite directions
+        const dir1 = B.y - A.y;
+        const dir2 = D.y - C.y;
+        if (dir1 * dir2 >= 0) continue;
+      } else {
+        continue;
+      }
+
+      // Collapse: remove B and C, snap D to align with A on the main wall axis.
+      if (leg1IsH) {
+        // Legs are H → main wall is V. Snap D's x to A's x (or vice versa).
+        // Pick the side with the longer adjacent main-wall edge.
+        // A's x comes from the main wall before the bump.
+        pts[iNext2] = { x: A.x, y: D.y };
+      } else {
+        // Legs are V → main wall is H. Snap D's y to A's y.
+        pts[iNext2] = { x: D.x, y: A.y };
+      }
+
+      // Remove B and C (higher index first)
+      if (iNext > i) {
+        pts.splice(iNext, 1);
+        pts.splice(i, 1);
+      } else {
+        pts.splice(i, 1);
+        pts.splice(iNext, 1);
+      }
+      changed = true;
+      break;
+    }
+  }
+
+  // Re-merge collinear vertices.
+  // Use a slightly larger tolerance than rectifyPolygon (1.0 cm vs 0.2 cm)
+  // because bump removal may combine vertices from slightly misaligned sides.
+  const COLLINEAR_TOL = 1.0;
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < pts.length && pts.length > 3; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length];
+      const b = pts[i];
+      const c = pts[(i + 1) % pts.length];
+
+      if (Math.abs(a.y - b.y) < COLLINEAR_TOL && Math.abs(b.y - c.y) < COLLINEAR_TOL) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+      if (Math.abs(a.x - b.x) < COLLINEAR_TOL && Math.abs(b.x - c.x) < COLLINEAR_TOL) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return pts;
 }
 
 export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
@@ -1378,13 +1512,17 @@ export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, opt
    * Validate a candidate band and measure its wall thickness.
    * Returns a wall object or null if rejected.
    *
-   * Criteria (from human visual inspection):
+   * Criteria:
    * (1) Band thickness in [minThicknessCm, maxThicknessCm]
    * (2) Average building width at band >= 100 cm
    * (3) Band is far enough from building edge (rejects outer wall inner edges)
-   * (4) Thickness consistent: ≥80% of perpendicular probes detect a real wall.
-   *     A phantom band (density from unrelated crossing walls) has many probe
-   *     positions with no detectable wall in the band direction.
+   * (4) Wall is continuous: no gap in the wall mask along the cross direction
+   *     larger than 2× the band thickness. Separate partition walls that happen
+   *     to align at the same row/column are rejected by this check.
+   * (5) Wall touches both outer walls: wall pixels exist within the band near
+   *     both building edges (within 2× band thickness margin).
+   * (6) Thickness consistent: ≥80% of perpendicular probes detect a real wall
+   *     with thickness in [minThicknessCm, maxThicknessCm].
    */
   function validateAndMeasureBand(band, orientation) {
     const bandHeight = band.end - band.start + 1;
@@ -1402,10 +1540,22 @@ export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, opt
     const distToBoundary = distanceToBuildingBoundary(band, orientation);
     if (distToBoundary < bandHeight) return null;
 
-    // (4) Thickness consistency: probe perpendicular to the wall at NUM_SAMPLES points.
-    // A real spanning wall is present at all sample positions; a phantom band
-    // (created by coincidental density from unrelated wall structures such as outer
-    // walls or crossing walls) will have many positions with no detectable wall.
+    // (4) Continuity: scan the cross direction within the band and find the
+    // largest gap where no wall pixels exist. A real spanning wall is continuous;
+    // aligned partition walls have room-sized gaps between them.
+    // Allow gaps up to 200cm for door openings (single, double, sliding doors).
+    // Room-sized gaps (>200cm) between separate partition walls are rejected.
+    const maxAllowedGap = Math.max(bandHeight * 2, Math.round(200 * ppc));
+    const { maxGap, wallFirst, wallLast } = measureContinuity(band, orientation);
+    if (maxGap > maxAllowedGap) return null;
+
+    // (5) Touches both outer walls: wall pixels must exist near both building edges.
+    const margin = bandHeight * 2;
+    const touchesStart = wallFirst <= band.avgBldgFirst + margin;
+    const touchesEnd = wallLast >= band.avgBldgLast - margin;
+    if (!touchesStart || !touchesEnd) return null;
+
+    // (6) Thickness consistency: probe perpendicular to the wall at NUM_SAMPLES points.
     const { thicknessPx, validCount } = measureBandThickness(band, orientation);
     if (validCount < Math.ceil(NUM_SAMPLES * 0.8)) return null;
 
@@ -1468,6 +1618,43 @@ export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, opt
   }
 
   /**
+   * Measure wall continuity along the cross direction of a band.
+   * Returns { maxGap, wallFirst, wallLast }:
+   *   maxGap:    largest run of cross-positions with no wall pixels in the band
+   *   wallFirst: first cross-position where wall pixels exist in the band
+   *   wallLast:  last cross-position where wall pixels exist in the band
+   */
+  function measureContinuity(band, orientation) {
+    const crossStart = Math.round(band.avgBldgFirst);
+    const crossEnd = Math.round(band.avgBldgLast);
+    let maxGap = 0, currentGap = 0;
+    let wallFirst = -1, wallLast = -1;
+
+    for (let c = crossStart; c <= crossEnd; c++) {
+      // Check if any row within the band has a wall pixel at this cross position
+      let hasWall = false;
+      for (let s = band.start; s <= band.end; s++) {
+        const idx = orientation === 'H'
+          ? s * w + c    // H band: s=row, c=column
+          : c * w + s;   // V band: s=column, c=row
+        if (wallMask[idx]) { hasWall = true; break; }
+      }
+
+      if (hasWall) {
+        if (wallFirst < 0) wallFirst = c;
+        wallLast = c;
+        maxGap = Math.max(maxGap, currentGap);
+        currentGap = 0;
+      } else {
+        currentGap++;
+      }
+    }
+    maxGap = Math.max(maxGap, currentGap);
+
+    return { maxGap, wallFirst, wallLast };
+  }
+
+  /**
    * Measure wall thickness at NUM_SAMPLES points along the band using RGBA probing.
    * Returns { thicknessPx: median of valid measurements, validCount: number of
    * positions where a real wall was detected }.
@@ -1499,8 +1686,11 @@ export function detectSpanningWalls(imageData, wallMask, buildingMask, w, h, opt
 
       const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe);
       if (thickness > 0) {
-        measurements.push(thickness);
-        validCount++;
+        const thicknessCm = thickness / ppc;
+        if (thicknessCm >= minThicknessCm && thicknessCm <= maxThicknessCm) {
+          measurements.push(thickness);
+          validCount++;
+        }
       }
     }
 

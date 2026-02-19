@@ -16,7 +16,8 @@ import {
   detectDoorGaps,
   detectRoomAtPixel,
   detectEnvelope,
-  detectSpanningWalls
+  detectSpanningWalls,
+  removePolygonMicroBumps
 } from './room-detection.js';
 
 // ---------------------------------------------------------------------------
@@ -1448,6 +1449,37 @@ describe('detectSpanningWalls', () => {
     expect(walls.length).toBe(0);
   });
 
+  it('rejects phantom V band where probes cross a perpendicular H wall', () => {
+    // Scenario: two short V partition walls at the same x, plus a full-span H wall.
+    // The V band at x=95 has density from the partitions, but perpendicular probes
+    // at most y-positions cross the thick H wall, returning huge thickness (> maxThicknessCm).
+    // After Fix 1, those out-of-bounds probes are not counted, so validCount drops
+    // below the 80% threshold and the phantom V band is rejected.
+    const { imageData, wallMask, buildingMask } = makeStandardBuilding();
+
+    // Full-span H wall at y=95 (crosses the V partition's x range)
+    addWallBand(imageData, wallMask, 20, 90, 179, 110);
+
+    // Two short V partition segments at x=95, not a full spanning wall:
+    // upper: y=30..60, lower: y=140..170
+    addWallBand(imageData, wallMask, 95, 30, 95 + WALL_THICK - 1, 60);
+    addWallBand(imageData, wallMask, 95, 140, 95 + WALL_THICK - 1, 170);
+
+    const walls = detectSpanningWalls(imageData, wallMask, buildingMask, IMG_W, IMG_H, {
+      pixelsPerCm: PPC,
+      minThicknessCm: 5,
+      maxThicknessCm: 50
+    });
+
+    // The H wall should be detected
+    const hWalls = walls.filter(w => w.orientation === 'H');
+    expect(hWalls.length).toBe(1);
+
+    // The phantom V band at x=95 should NOT be detected
+    const vWalls = walls.filter(w => w.orientation === 'V');
+    expect(vWalls.length).toBe(0);
+  });
+
   it('E2E: detectEnvelope + detectSpanningWalls pipeline', () => {
     // Larger image: 400×300, building at (50,50)-(350,250) with 12px walls + 1 H interior wall
     const imgW = 400, imgH = 300;
@@ -1517,5 +1549,98 @@ describe('detectSpanningWalls', () => {
       expect(wall.startPx.y).toBeGreaterThanOrEqual(envMinY);
       expect(wall.startPx.y).toBeLessThanOrEqual(envMaxY);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removePolygonMicroBumps
+// ---------------------------------------------------------------------------
+describe('removePolygonMicroBumps', () => {
+  it('returns input unchanged for null, empty, or small polygons', () => {
+    expect(removePolygonMicroBumps(null)).toBeNull();
+    expect(removePolygonMicroBumps([])).toEqual([]);
+    expect(removePolygonMicroBumps([{ x: 0, y: 0 }])).toEqual([{ x: 0, y: 0 }]);
+    // 4 vertices = no bump possible (need 5+)
+    const rect = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 0, y: 80 }];
+    expect(removePolygonMicroBumps(rect)).toEqual(rect);
+  });
+
+  it('removes a small rectangular bump on the left side', () => {
+    // Rectangle 647,992 → 1643,1845 with a 23cm-high bump on the left side.
+    // Mimics the real KG floor plan protrusion from "Bestehende Stützmauer".
+    // Bump outer wall is 23cm tall (V edge), legs are ~116cm long (H edges).
+    const poly = [
+      { x: 647, y: 992 },     // 0: top-left
+      { x: 1643, y: 992 },    // 1: top-right
+      { x: 1643, y: 1845 },   // 2: bottom-right
+      { x: 647, y: 1845 },    // 3: bottom-left
+      { x: 647, y: 1549 },    // 4: bump leg start
+      { x: 531, y: 1549 },    // 5: bump outer-bottom
+      { x: 531, y: 1526 },    // 6: bump outer-top (V edge: 23cm = short)
+      { x: 647, y: 1526 },    // 7: bump leg end
+    ];
+
+    const result = removePolygonMicroBumps(poly, 30);
+
+    // Should collapse to a clean rectangle with 4 vertices
+    expect(result.length).toBe(4);
+    // All x-coordinates should be ≥ 647 (bump at x=531 removed)
+    for (const p of result) {
+      expect(p.x).toBeGreaterThanOrEqual(647);
+    }
+  });
+
+  it('removes a small rectangular bump on the top side', () => {
+    // Rectangle with a 20cm-wide bump on top (legs are V, outer wall is H and short).
+    // Outer wall length = 20cm < 30cm threshold.
+    const poly = [
+      { x: 0, y: 0 },       // 0: top-left
+      { x: 400, y: 0 },     // 1: before bump
+      { x: 400, y: -100 },  // 2: bump leg up
+      { x: 420, y: -100 },  // 3: bump outer (H edge: 20cm = short)
+      { x: 420, y: 0 },     // 4: bump leg down
+      { x: 1000, y: 0 },    // 5: top-right
+      { x: 1000, y: 800 },  // 6: bottom-right
+      { x: 0, y: 800 },     // 7: bottom-left
+    ];
+
+    const result = removePolygonMicroBumps(poly, 30);
+
+    // Should collapse to a clean rectangle with 4 vertices
+    expect(result.length).toBe(4);
+    // All y-coordinates should be ≥ 0 (bump removed)
+    for (const p of result) {
+      expect(p.y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('does not remove bumps with outer wall larger than maxBumpDepthCm', () => {
+    // Same structure but outer wall is 50cm (> 30cm threshold)
+    const poly = [
+      { x: 647, y: 992 },
+      { x: 1643, y: 992 },
+      { x: 1643, y: 1845 },
+      { x: 647, y: 1845 },
+      { x: 647, y: 1549 },
+      { x: 531, y: 1549 },
+      { x: 531, y: 1499 },   // 50cm outer wall (1549 - 1499 = 50)
+      { x: 647, y: 1499 },
+    ];
+
+    const result = removePolygonMicroBumps(poly, 30);
+
+    // Bump should remain — 8 or 6 vertices (may merge some collinear)
+    expect(result.length).toBeGreaterThan(4);
+  });
+
+  it('does not modify a clean rectangle', () => {
+    const rect = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const result = removePolygonMicroBumps(rect, 30);
+    expect(result).toEqual(rect);
   });
 });
