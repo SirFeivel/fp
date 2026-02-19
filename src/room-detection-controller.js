@@ -10,7 +10,7 @@ import { getCurrentFloor, deepClone, uuid } from "./core.js";
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
-import { rectifyPolygon, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
+import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
 import { closestPointOnSegment } from "./polygon-draw.js";
 
 /** Scale factor for rasterizing SVG backgrounds before detection.
@@ -309,8 +309,12 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     const floor = getCurrentFloor(next);
     if (!floor) return;
 
-    // Rectify polygon: snap edges to standard angles, remove detection noise
-    const rectifiedGlobal = rectifyPolygon(_detectedPolygonCm);
+    // Rectify polygon: snap edges to discovered angles (from envelope) or standard angles
+    const envelope = floor?.layout?.envelope;
+    const rules = envelope?.validAngles
+      ? { ...FLOOR_PLAN_RULES, standardAngles: envelope.validAngles }
+      : FLOOR_PLAN_RULES;
+    const rectifiedGlobal = rectifyPolygon(_detectedPolygonCm, rules);
 
     // Compute bounding box for floorPosition (top-left corner)
     let minX = Infinity, minY = Infinity;
@@ -529,21 +533,8 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   // Convert pixel polygon to floor-global cm coordinates
   const polygonCm = result.polygonPixels.map(p => imagePxToCm(p.x, p.y, effectiveBg));
 
-  // Rectify polygon: snap edges to standard angles
-  const rectified = rectifyPolygon(polygonCm);
-
-  // Remove micro-bumps from external structures (retaining walls, stairs, etc.)
-  const bumpThreshold = result.wallThicknesses?.medianCm || 30;
-  const cleaned = removePolygonMicroBumps(rectified, bumpThreshold);
-
-  // Re-measure wall thickness on the cleaned polygon so edge indices match
-  const cleanedPx = cleaned.map(p => cmToImagePx(p.x, p.y, effectiveBg));
-  const wallThicknesses = detectWallThickness(
-    imageData, cleanedPx, imageData.width, imageData.height,
-    effectivePpc, { probeInward: true }
-  );
-
-  // Detect structural spanning walls inside the envelope
+  // Detect structural spanning walls inside the envelope (before rectification —
+  // detectSpanningWalls uses wallMask/buildingMask, not the rectified polygon)
   let spanningWalls = [];
   if (result.wallMask && result.buildingMask) {
     const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
@@ -560,6 +551,33 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     }));
   }
 
+  // Discover valid angles from the pre-rectification polygon and spanning walls.
+  // Use a higher minEdgeLengthCm than the default (5cm) because raw detection
+  // polygons have noise diagonals that can accumulate >5cm total. A real building
+  // direction needs at least 50cm of total edge length (≈ max wall thickness).
+  const validAngles = extractValidAngles(polygonCm, spanningWalls, {
+    minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
+  });
+
+  // Rectify polygon: snap edges to discovered angles
+  const rectifyRules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
+  const rectified = rectifyPolygon(polygonCm, rectifyRules);
+
+  // Remove micro-bumps from external structures (retaining walls, stairs, etc.)
+  const bumpThreshold = result.wallThicknesses?.medianCm || 30;
+  const bumped = removePolygonMicroBumps(rectified, bumpThreshold);
+
+  // Re-rectify: bump removal can leave residual notches where nearby V (or H)
+  // edges were separated by the bump.  A second pass merges those edges.
+  const cleaned = rectifyPolygon(bumped, rectifyRules);
+
+  // Re-measure wall thickness on the cleaned polygon so edge indices match
+  const cleanedPx = cleaned.map(p => cmToImagePx(p.x, p.y, effectiveBg));
+  const wallThicknesses = detectWallThickness(
+    imageData, cleanedPx, imageData.width, imageData.height,
+    effectivePpc, { probeInward: true }
+  );
+
   // Store in state
   const next = deepClone(getState());
   const nextFloor = getFloor(next);
@@ -569,6 +587,7 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     polygonCm: cleaned,
     wallThicknesses,
     spanningWalls,
+    validAngles,
   };
 
   commit("Detect floor envelope", next);

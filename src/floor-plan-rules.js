@@ -43,6 +43,73 @@ function round1(v) {
 }
 
 /**
+ * Extract the set of valid wall angles from a polygon and optional spanning walls.
+ *
+ * For each polygon edge and each spanning wall segment, computes the angle
+ * (nearest integer degree in [0, 360)), accumulates total length per angle,
+ * and keeps only angles whose total length meets the minimum threshold.
+ * Each surviving angle gets its complement (a + 180) % 360 added (walls are
+ * bidirectional). Falls back to FLOOR_PLAN_RULES.standardAngles when no
+ * angles survive filtering.
+ *
+ * @param {Array<{x: number, y: number}>} polygonCm - Polygon vertices (floor-global cm)
+ * @param {Array<{startCm: {x,y}, endCm: {x,y}}>} [spanningWalls=[]] - Spanning wall segments
+ * @param {{ minEdgeLengthCm?: number }} [options={}] - Override minimum edge length
+ * @returns {number[]} Sorted array of valid angles in [0, 360)
+ */
+export function extractValidAngles(polygonCm, spanningWalls = [], options = {}) {
+  const minLen = options.minEdgeLengthCm ?? FLOOR_PLAN_RULES.minEdgeLengthCm;
+
+  // Accumulate total edge length per integer angle
+  const lengthByAngle = new Map();
+
+  function addSegment(ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) return; // degenerate
+    const angleDeg = Math.round(((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360) % 360;
+    lengthByAngle.set(angleDeg, (lengthByAngle.get(angleDeg) || 0) + len);
+  }
+
+  // Polygon edges
+  if (polygonCm && polygonCm.length >= 3) {
+    for (let i = 0; i < polygonCm.length; i++) {
+      const a = polygonCm[i];
+      const b = polygonCm[(i + 1) % polygonCm.length];
+      addSegment(a.x, a.y, b.x, b.y);
+    }
+  }
+
+  // Spanning walls
+  for (const wall of spanningWalls) {
+    if (wall.startCm && wall.endCm) {
+      addSegment(wall.startCm.x, wall.startCm.y, wall.endCm.x, wall.endCm.y);
+    }
+  }
+
+  // Filter: keep angles with total length >= minLen
+  const surviving = new Set();
+  for (const [angle, totalLen] of lengthByAngle) {
+    if (totalLen >= minLen) {
+      surviving.add(angle);
+    }
+  }
+
+  // Add complements: walls are bidirectional
+  for (const angle of [...surviving]) {
+    surviving.add((angle + 180) % 360);
+  }
+
+  // Fallback
+  if (surviving.size === 0) {
+    return [...FLOOR_PLAN_RULES.standardAngles];
+  }
+
+  return [...surviving].sort((a, b) => a - b);
+}
+
+/**
  * Snap a detected polygon to axis-aligned edges and remove noise.
  *
  * Algorithm:
@@ -95,6 +162,77 @@ export function rectifyPolygon(vertices, rules = FLOOR_PLAN_RULES) {
 
     edges.push({ idx: i, type, axisValue, len });
   }
+
+  // Step 1b: Merge nearby axis values for consecutive same-type edge runs.
+  // When multiple V edges at similar x (or H edges at similar y) appear
+  // consecutively — possibly separated by short diagonal edges — they
+  // represent the same wall line with detection noise. Merge their axis
+  // values to a length-weighted average and reclassify sandwiched diagonals.
+  // Only consecutive runs are merged; edges separated by long edges of the
+  // other type (like in an L-shaped step) are preserved.
+  const mergeTol = rules.alignmentToleranceCm;
+
+  function mergeAxisRuns(edgeType) {
+    // Find a starting edge that breaks any potential run (other type or long diagonal)
+    let anchor = -1;
+    for (let i = 0; i < n; i++) {
+      const e = edges[i];
+      if (e.type !== edgeType && (e.type !== null || e.len >= mergeTol * 3)) {
+        anchor = i;
+        break;
+      }
+    }
+    if (anchor === -1) return; // all edges are same type — no runs to merge
+
+    // Walk from anchor+1, collecting runs of {edgeType edges + short diagonals}
+    let run = [];
+    for (let offset = 1; offset <= n; offset++) {
+      const i = (anchor + offset) % n;
+      const e = edges[i];
+      const inRun = e.type === edgeType || (e.type === null && e.len < mergeTol * 3);
+
+      if (inRun) {
+        run.push(i);
+      }
+
+      if (!inRun || offset === n) {
+        // Process completed run
+        if (run.length >= 2) {
+          const typed = run.filter(j => edges[j].type === edgeType);
+          if (typed.length >= 2) {
+            const vals = typed.map(j => edges[j].axisValue);
+            if (Math.max(...vals) - Math.min(...vals) <= mergeTol) {
+              // Merge: weighted average of axis values
+              let sumWV = 0, sumW = 0;
+              for (const j of typed) {
+                sumWV += edges[j].axisValue * edges[j].len;
+                sumW += edges[j].len;
+              }
+              const merged = sumWV / sumW;
+              for (const j of typed) edges[j].axisValue = merged;
+
+              // Reclassify short diagonals in the run
+              for (const j of run) {
+                if (edges[j].type !== null) continue;
+                const a = vertices[j];
+                const b = vertices[(j + 1) % n];
+                if (edgeType === "V" && Math.abs(b.x - a.x) <= mergeTol) {
+                  edges[j].type = "V";
+                  edges[j].axisValue = merged;
+                } else if (edgeType === "H" && Math.abs(b.y - a.y) <= mergeTol) {
+                  edges[j].type = "H";
+                  edges[j].axisValue = merged;
+                }
+              }
+            }
+          }
+        }
+        run = [];
+      }
+    }
+  }
+  mergeAxisRuns("V");
+  mergeAxisRuns("H");
 
   // Step 2: Remove noise edges — short AND diagonal (not snappable).
   // Short axis-aligned edges (e.g. a 4cm vertical step) are real features.

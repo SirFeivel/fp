@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FLOOR_PLAN_RULES, rectifyPolygon, expandPolygonOutward, alignToExistingRooms } from './floor-plan-rules.js';
+import { FLOOR_PLAN_RULES, extractValidAngles, rectifyPolygon, expandPolygonOutward, alignToExistingRooms } from './floor-plan-rules.js';
 
 describe('FLOOR_PLAN_RULES config', () => {
   it('has expected top-level keys', () => {
@@ -46,6 +46,95 @@ function allAxisAligned(verts) {
   }
   return true;
 }
+
+// ── extractValidAngles ─────────────────────────────────────────────
+
+describe('extractValidAngles', () => {
+  it('returns [0, 90, 180, 270] for an axis-aligned rectangle', () => {
+    const rect = [
+      { x: 0, y: 0 }, { x: 300, y: 0 },
+      { x: 300, y: 200 }, { x: 0, y: 200 },
+    ];
+    expect(extractValidAngles(rect)).toEqual([0, 90, 180, 270]);
+  });
+
+  it('returns [45, 135, 225, 315] for a 45°-rotated square', () => {
+    // Diamond shape: edges at 315°, 225°, 135°, 45°
+    const s = 100;
+    const diamond = [
+      { x: s, y: 0 },   // top
+      { x: 2 * s, y: s }, // right
+      { x: s, y: 2 * s }, // bottom
+      { x: 0, y: s },   // left
+    ];
+    expect(extractValidAngles(diamond)).toEqual([45, 135, 225, 315]);
+  });
+
+  it('returns [0, 90, 180, 270] for an L-shaped polygon', () => {
+    const lShape = [
+      { x: 0, y: 0 }, { x: 300, y: 0 },
+      { x: 300, y: 150 }, { x: 400, y: 150 },
+      { x: 400, y: 400 }, { x: 0, y: 400 },
+    ];
+    expect(extractValidAngles(lShape)).toEqual([0, 90, 180, 270]);
+  });
+
+  it('filters out short diagonal noise edges', () => {
+    // Rectangle with a tiny 3cm diagonal noise edge at one corner
+    const poly = [
+      { x: 0, y: 0 }, { x: 300, y: 0 },
+      { x: 300, y: 200 }, { x: 0, y: 200 },
+      { x: 0, y: 3 }, { x: 3, y: 0 },  // 4.2cm diagonal noise
+    ];
+    const angles = extractValidAngles(poly);
+    // The diagonal edge (≈4.2cm) is below minEdgeLengthCm (5), so it's filtered out
+    // Only orthogonal angles survive
+    expect(angles).toEqual([0, 90, 180, 270]);
+  });
+
+  it('returns FLOOR_PLAN_RULES.standardAngles for empty/degenerate polygon', () => {
+    expect(extractValidAngles(null)).toEqual([...FLOOR_PLAN_RULES.standardAngles]);
+    expect(extractValidAngles([])).toEqual([...FLOOR_PLAN_RULES.standardAngles]);
+    expect(extractValidAngles([{ x: 0, y: 0 }])).toEqual([...FLOOR_PLAN_RULES.standardAngles]);
+    expect(extractValidAngles([{ x: 0, y: 0 }, { x: 1, y: 0 }])).toEqual([...FLOOR_PLAN_RULES.standardAngles]);
+  });
+
+  it('spanning walls contribute angles', () => {
+    // Small polygon with only vertical edges (short horizontals below threshold)
+    const thinVertical = [
+      { x: 0, y: 0 }, { x: 2, y: 0 },
+      { x: 2, y: 200 }, { x: 0, y: 200 },
+    ];
+    // Without spanning walls: only 90°/270° survive (horizontals are 2cm, below minEdgeLengthCm=5)
+    const withoutWalls = extractValidAngles(thinVertical);
+    expect(withoutWalls).toContain(90);
+    expect(withoutWalls).toContain(270);
+
+    // Add a horizontal spanning wall
+    const spanningWalls = [{
+      startCm: { x: 0, y: 100 },
+      endCm: { x: 500, y: 100 },
+    }];
+    const withWalls = extractValidAngles(thinVertical, spanningWalls);
+    expect(withWalls).toContain(0);
+    expect(withWalls).toContain(180);
+    expect(withWalls).toContain(90);
+    expect(withWalls).toContain(270);
+  });
+
+  it('complements are always present (every angle has its +180° pair)', () => {
+    // Triangle with edges at 0°, ~120°, ~240° — all long enough
+    const triangle = [
+      { x: 0, y: 0 }, { x: 200, y: 0 },
+      { x: 100, y: 173.2 },  // equilateral-ish
+    ];
+    const angles = extractValidAngles(triangle);
+    for (const a of angles) {
+      const complement = (a + 180) % 360;
+      expect(angles, `angle ${a} missing complement ${complement}`).toContain(complement);
+    }
+  });
+});
 
 // ── rectifyPolygon ─────────────────────────────────────────────────
 

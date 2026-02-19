@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { decode } from 'fast-png';
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents } from './room-detection.js';
-import { rectifyPolygon, FLOOR_PLAN_RULES } from './floor-plan-rules.js';
+import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
 const calibrated = JSON.parse(
@@ -245,5 +245,177 @@ describe('spanning wall detection on 300dpi KG floor plan', () => {
     console.log(`H spanning wall thickness: ${thicknessCm.toFixed(1)} cm`);
     expect(thicknessCm).toBeGreaterThan(15);
     expect(thicknessCm).toBeLessThan(35);
+  });
+});
+
+// ── Step 4 regression: new pipeline must produce identical output to old ─────
+// The Step 4 reorder (spanning walls before rectification + discovered angles)
+// must NOT change the envelope output for orthogonal buildings. This test runs
+// both the OLD code path (hardcoded FLOOR_PLAN_RULES.standardAngles) and the
+// NEW code path (discovered angles) on the same raw detection result, and
+// asserts every output field is identical.
+
+describe('Step 4 pipeline reorder produces identical output (300dpi KG)', () => {
+  let oldResult, newResult;
+
+  function runBothPipelines() {
+    if (oldResult) return;
+
+    const envResult = detectEnvelope(img300, { pixelsPerCm: ppc300 });
+    expect(envResult).not.toBeNull();
+
+    // Convert pixel polygon to cm (shared input)
+    const polygonCm = envResult.polygonPixels.map(p => ({
+      x: p.x / ppc300 + (bg300.position?.x ?? 0),
+      y: p.y / ppc300 + (bg300.position?.y ?? 0),
+    }));
+
+    // Spanning walls (shared — detection doesn't depend on rectification order)
+    let spanningWalls = [];
+    if (envResult.wallMask && envResult.buildingMask) {
+      const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+      const rawWalls = detectSpanningWalls(
+        img300, envResult.wallMask, envResult.buildingMask,
+        img300.width, img300.height,
+        { pixelsPerCm: ppc300, minThicknessCm: minCm, maxThicknessCm: maxCm }
+      );
+      spanningWalls = rawWalls.map(wall => ({
+        orientation: wall.orientation,
+        startCm: {
+          x: wall.startPx.x / ppc300 + (bg300.position?.x ?? 0),
+          y: wall.startPx.y / ppc300 + (bg300.position?.y ?? 0),
+        },
+        endCm: {
+          x: wall.endPx.x / ppc300 + (bg300.position?.x ?? 0),
+          y: wall.endPx.y / ppc300 + (bg300.position?.y ?? 0),
+        },
+        thicknessCm: Math.round(wall.thicknessPx / ppc300 * 10) / 10,
+      }));
+    }
+
+    const bumpThreshold = envResult.wallThicknesses?.medianCm || 30;
+
+    // ── OLD pipeline: hardcoded angles (pre-Step-4 behavior) ──
+    const oldRectified = rectifyPolygon(polygonCm); // uses FLOOR_PLAN_RULES default
+    const oldBumped = removePolygonMicroBumps(oldRectified, bumpThreshold);
+    const oldCleaned = rectifyPolygon(oldBumped); // 2nd pass: merge residual notches
+    const oldCleanedPx = oldCleaned.map(p => ({
+      x: Math.round((p.x - (bg300.position?.x ?? 0)) * ppc300),
+      y: Math.round((p.y - (bg300.position?.y ?? 0)) * ppc300),
+    }));
+    const oldWallThicknesses = detectWallThickness(
+      img300, oldCleanedPx, img300.width, img300.height,
+      ppc300, { probeInward: true }
+    );
+    oldResult = { polygonCm: oldCleaned, wallThicknesses: oldWallThicknesses, spanningWalls };
+
+    // ── NEW pipeline: discovered angles (Step 4 behavior) ──
+    const validAngles = extractValidAngles(polygonCm, spanningWalls, {
+      minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
+    });
+    const newRectifyRules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
+    const newRectified = rectifyPolygon(polygonCm, newRectifyRules);
+    const newBumped = removePolygonMicroBumps(newRectified, bumpThreshold);
+    const newCleaned = rectifyPolygon(newBumped, newRectifyRules); // 2nd pass
+    const newCleanedPx = newCleaned.map(p => ({
+      x: Math.round((p.x - (bg300.position?.x ?? 0)) * ppc300),
+      y: Math.round((p.y - (bg300.position?.y ?? 0)) * ppc300),
+    }));
+    const newWallThicknesses = detectWallThickness(
+      img300, newCleanedPx, img300.width, img300.height,
+      ppc300, { probeInward: true }
+    );
+    newResult = { polygonCm: newCleaned, wallThicknesses: newWallThicknesses, spanningWalls, validAngles };
+  }
+
+  // ── Discovered angles are correct ─────────────────────────────────────
+
+  it('discovered angles equal the hardcoded standard angles', () => {
+    runBothPipelines();
+    expect(newResult.validAngles).toEqual([...FLOOR_PLAN_RULES.standardAngles]);
+  });
+
+  // ── Polygon is identical ──────────────────────────────────────────────
+
+  it('polygon vertex count is identical', () => {
+    runBothPipelines();
+    expect(newResult.polygonCm.length).toBe(oldResult.polygonCm.length);
+  });
+
+  it('every polygon vertex is identical', () => {
+    runBothPipelines();
+    for (let i = 0; i < oldResult.polygonCm.length; i++) {
+      expect(newResult.polygonCm[i].x, `vertex ${i} x`).toBe(oldResult.polygonCm[i].x);
+      expect(newResult.polygonCm[i].y, `vertex ${i} y`).toBe(oldResult.polygonCm[i].y);
+    }
+  });
+
+  // ── Acceptance criteria: 4-vertex rectangle ───────────────────────────
+
+  it('produces a 4-vertex rectangle (acceptance criteria)', () => {
+    runBothPipelines();
+    expect(oldResult.polygonCm.length, 'expected 4-vertex rectangle').toBe(4);
+  });
+
+  // ── Wall thicknesses are identical ────────────────────────────────────
+
+  it('wall thickness edge count is identical', () => {
+    runBothPipelines();
+    expect(newResult.wallThicknesses.edges.length).toBe(oldResult.wallThicknesses.edges.length);
+  });
+
+  it('per-edge wall thicknesses are identical', () => {
+    runBothPipelines();
+    for (let i = 0; i < oldResult.wallThicknesses.edges.length; i++) {
+      const got = newResult.wallThicknesses.edges[i];
+      const ref = oldResult.wallThicknesses.edges[i];
+      expect(got.edgeIndex, `edge order at ${i}`).toBe(ref.edgeIndex);
+      expect(got.thicknessPx, `edge ${got.edgeIndex} thicknessPx`).toBe(ref.thicknessPx);
+      expect(got.thicknessCm, `edge ${got.edgeIndex} thicknessCm`).toBe(ref.thicknessCm);
+    }
+  });
+
+  it('median wall thickness is identical', () => {
+    runBothPipelines();
+    expect(newResult.wallThicknesses.medianPx).toBe(oldResult.wallThicknesses.medianPx);
+    expect(newResult.wallThicknesses.medianCm).toBe(oldResult.wallThicknesses.medianCm);
+  });
+
+  // ── Spanning walls are identical (same input, just reordered) ─────────
+
+  it('spanning walls are identical (1 H, 0 V)', () => {
+    runBothPipelines();
+    expect(newResult.spanningWalls).toEqual(oldResult.spanningWalls);
+    expect(newResult.spanningWalls.filter(w => w.orientation === 'H').length).toBe(1);
+    expect(newResult.spanningWalls.filter(w => w.orientation === 'V').length).toBe(0);
+  });
+
+  // ── Known-good structural assertions (from pre-Step-4 verified data) ──
+
+  it('polygon is ~10m x 8.5m', () => {
+    runBothPipelines();
+    const xs = oldResult.polygonCm.map(p => p.x);
+    const ys = oldResult.polygonCm.map(p => p.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+    expect(width).toBeGreaterThan(900);
+    expect(width).toBeLessThan(1100);
+    expect(height).toBeGreaterThan(750);
+    expect(height).toBeLessThan(950);
+  });
+
+  it('all wall thicknesses in [5, 50] cm', () => {
+    runBothPipelines();
+    for (const edge of oldResult.wallThicknesses.edges) {
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}`).toBeGreaterThanOrEqual(5);
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}`).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('H spanning wall thickness ~25 cm (in [15, 35] cm)', () => {
+    runBothPipelines();
+    const hWall = oldResult.spanningWalls.find(w => w.orientation === 'H');
+    expect(hWall.thicknessCm).toBeGreaterThan(15);
+    expect(hWall.thicknessCm).toBeLessThan(35);
   });
 });
