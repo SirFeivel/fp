@@ -69,38 +69,58 @@ All 1110 tests pass (1103 existing + 7 new).
 
 ---
 
-## Step 2: Improve `detectWallThickness` — center-to-center, per-edge
+## Step 2a: Improve `detectWallThickness` — RGBA color-aware, per-edge ✅
 
-**File:** `src/room-detection.js` — replace existing `detectWallThickness` (line 777)
+**Status:** Implemented — branch `wall-optimisation`, commit `3b4c296`
 
-**Problem:** Current method counts all consecutive wall pixels in the binary mask. This includes anti-aliasing fringes and non-wall colored elements (red outlines, insulation markers), inflating measurements. It also returns a single median value for the entire room — the envelope needs per-edge thickness to distinguish outer walls (30 cm) from inner walls (24 cm).
+**Files:** `src/room-detection.js`, `src/room-detection-controller.js`, `src/room-detection.test.js`
 
-**New approach:** Measure from the center of the inner edge line to the center of the first outer edge line, using only black/dark pixels (ignoring red, pink, and other non-wall colors). Return per-edge data, not a single number.
+**Problem:** The original `detectWallThickness` used a binary mask — every dark pixel counted as "wall". This lost color information: red annotations, pink markers, and anti-aliasing fringes inflated measurements. It also returned a single median for the entire room, making it impossible to distinguish outer walls (30 cm) from inner walls (24 cm).
 
-Algorithm:
-1. For each polygon edge, probe outward along the perpendicular from the edge midpoint (same as current).
-2. At each probe pixel, read the **raw RGBA** values from the imageData (not the binary mask).
-3. Classify pixels as **wall-edge** (dark/black only: gray < threshold AND not red/pink), **fill** (gray wall fill), or **background** (white/light).
-   - Wall-edge: `gray < 80` and `r - g < 40` and `r - b < 40` (excludes red `#ff0000` and pink `#ffa8a8`)
-   - Fill: `gray >= 80 && gray < 200` and not red/pink
-   - Background: `gray >= 200`
-4. Walking outward from the polygon edge, find:
-   - **Inner edge line**: first contiguous run of wall-edge pixels. Record its center position.
-   - Skip through any fill pixels.
-   - **Outer edge line**: next contiguous run of wall-edge pixels. Record its center position.
-5. Wall thickness = distance between inner edge center and outer edge center (in pixels, then ÷ ppc for cm).
-6. Sample at 3 points per edge (25%, 50%, 75%), take median for that edge.
+### Implementation details
 
-**Return shape change:** Instead of returning a single `wallThicknessPx` number, return an array of per-edge measurements: `[{ edgeIndex, thicknessCm, thicknessPx }]`. The overall median is still available for backward compatibility but per-edge data is the primary output.
+**`classifyWallPixel(r, g, b)`** — private helper. Three-way RGBA pixel classification:
+- `'edge'`: gray < 80 AND neutral hue (r-g < 40, r-b < 40) — black/dark wall-edge lines
+- `'fill'`: gray ∈ [80, 200) AND neutral; also dark pixels with red/pink tint
+- `'background'`: gray ≥ 200; also mid-gray with red/pink tint
+- Key insight: red markers (r-g=255) and pink markers (r-g≈88) have r-g ≥ 40 → excluded from edge classification
 
-**Reference data (floorplan_KG.svg, Trockenraum room):**
+**`probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe)`** — private helper. Walks outward from a polygon edge point, classifying each pixel. Tracks the full contiguous wall band (edge + fill pixels), with a 2px background gap tolerance for anti-aliasing. If ≥2 distinct edge runs found within the band, returns center-to-center distance. Otherwise returns full band width.
 
-| Wall | SVG annotation | Expected result |
-|------|---------------|-----------------|
-| Top (outer wall, 30cm) | 30 cm | ~30 cm |
-| Right (inner wall → Keller, 24cm) | 24 cm | ~24 cm |
+**Critical fix during implementation:** The original plan's state machine (`seekInner → seekOuter`) required edge pixels first. Real floor plans (gray-fill walls) often start with fill pixels directly at the polygon boundary, not edge pixels. The probe was rewritten to track the entire wall band regardless of whether it starts with edge or fill.
 
-**Test:** Run against floorplan_KG.svg at 4x resolution. Verify per-edge: outer wall ≤ 2 cm from 30 cm, inner wall ≤ 2 cm from 24 cm. Verify different edges return different values (not one median for all).
+**`detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm, maxProbe=200)`** — rewritten export:
+- New signature: accepts `imageData` (RGBA) instead of binary `mask`, plus `pixelsPerCm` for px→cm conversion
+- New return: `{ edges: [{edgeIndex, thicknessPx, thicknessCm}], medianPx, medianCm }` instead of single scalar
+- Per-edge: 3 samples at 25%/50%/75% along each edge, median of samples
+- Overall median from all per-edge medians
+
+**Controller wiring (`room-detection-controller.js`):**
+- `_detectedWallThicknesses` state variable stored alongside polygon and door gaps
+- In `confirmDetection`: matches raw polygon edge midpoints to rectified edges using `closestPointOnSegment` (from `polygon-draw.js`), applies per-edge thickness to walls within `FLOOR_PLAN_RULES.wallThickness` bounds [5, 50] cm
+
+### Verified results (Projekt 67 floor plan)
+
+| Edge | Thickness (cm) | Result |
+|------|---------------|--------|
+| 0 | 31 | SET ✓ |
+| 1 | 26 | SET ✓ |
+| 2 | 52 | SKIPPED (> 50 cm max) |
+| 3 | 52 | SKIPPED (> 50 cm max) |
+| 4 | 26 | SET ✓ |
+| 5 | 32 | SET ✓ |
+
+Edges 2–3 measure through complex geometry (corner/double wall), correctly filtered by bounds check.
+
+### Tests
+
+All 1113 tests pass (1110 original + 3 new):
+- Rectangular room with edge+fill wall ring: median ∈ [6.5, 12], 4 edges
+- Red pixels don't inflate measurement
+- Per-edge measurements distinguishable (different wall thicknesses)
+- `detectRoomAtPixel` returns `wallThicknesses` with edges/medianPx/medianCm
+- Fewer than 3 vertices → empty result
+- No wall pixels → empty result
 
 ---
 
