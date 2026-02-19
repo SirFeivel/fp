@@ -759,31 +759,148 @@ function detectDoorGapsAlongEdges(mask, polygonPixels, w, h, options = {}) {
  * @param {number} seedX - X coordinate of seed pixel (inside room)
  * @param {number} seedY - Y coordinate of seed pixel (inside room)
  * @param {{pixelsPerCm?: number, maxAreaCm2?: number}} options
- * @returns {{ polygonPixels: Array<{x,y}>, doorGapsPx: Array, pixelsPerCm: number, wallThicknessPx: number } | null}
+ * @returns {{ polygonPixels: Array<{x,y}>, doorGapsPx: Array, pixelsPerCm: number, wallThicknesses: {edges: Array, medianPx: number, medianCm: number} } | null}
  */
 
 /**
- * Detect wall thickness by probing outward from polygon edges.
- * For each edge, probe perpendicular (away from room interior) and count
- * consecutive wall pixels. Returns the median of all edge measurements.
+ * Classify an RGBA pixel as 'edge' (dark wall line), 'fill' (wall interior),
+ * or 'background' (light/white or colored annotation).
  *
- * @param {Uint8Array} mask - Binary wall mask (1=wall, 0=open)
+ * - edge: gray < 80, neutral hue (r-g < 40 AND r-b < 40)
+ * - fill: gray ∈ [80, 200), neutral hue; also dark pixels with red/pink tint
+ * - background: gray >= 200; also mid-gray with red/pink tint
+ *
+ * @param {number} r - Red channel (0-255)
+ * @param {number} g - Green channel (0-255)
+ * @param {number} b - Blue channel (0-255)
+ * @returns {'edge' | 'fill' | 'background'}
+ */
+function classifyWallPixel(r, g, b) {
+  const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+  const isNeutral = (r - g) < 40 && (r - b) < 40;
+
+  if (gray < 80) {
+    return isNeutral ? "edge" : "fill";
+  }
+  if (gray < 200) {
+    return isNeutral ? "fill" : "background";
+  }
+  return "background";
+}
+
+/**
+ * Probe outward from a start point along a perpendicular direction,
+ * using RGBA pixel classification to find inner and outer edge lines.
+ * Returns center-to-center thickness in pixels.
+ *
+ * State machine: seekInner → seekOuter → done
+ * - seekInner: find first contiguous run of 'edge' pixels
+ * - seekOuter: skip 'fill' pixels, find next run of 'edge' pixels
+ * - Fallback: if background hit during seekOuter, return inner edge width
+ *
+ * @param {Uint8ClampedArray} data - RGBA pixel data
+ * @param {number} startX - Start X coordinate
+ * @param {number} startY - Start Y coordinate
+ * @param {number} perpX - Perpendicular direction X (unit vector)
+ * @param {number} perpY - Perpendicular direction Y (unit vector)
+ * @param {number} w - Image width
+ * @param {number} h - Image height
+ * @param {number} maxProbe - Maximum probe depth in pixels
+ * @returns {number} Wall thickness in pixels (0 if no edge found)
+ */
+function probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe) {
+  // Phase 1: scan outward, classify every pixel, find the wall band.
+  // The wall band is the contiguous region of edge+fill pixels.
+  // We allow a small gap of background pixels (≤2) within the band to handle
+  // anti-aliasing at edge line boundaries.
+  let wallStart = -1, wallEnd = -1;
+  const edgeRuns = []; // [{start, end}] — contiguous runs of 'edge' pixels within the wall
+  let currentEdgeStart = -1;
+  let bgGap = 0; // consecutive background pixels inside wall band
+
+  for (let d = 1; d <= maxProbe; d++) {
+    const px = Math.round(startX + perpX * d);
+    const py = Math.round(startY + perpY * d);
+    if (px < 0 || px >= w || py < 0 || py >= h) break;
+
+    const idx = (py * w + px) * 4;
+    const cls = classifyWallPixel(data[idx], data[idx + 1], data[idx + 2]);
+
+    if (cls === "edge" || cls === "fill") {
+      if (wallStart < 0) wallStart = d;
+      wallEnd = d;
+      bgGap = 0;
+
+      if (cls === "edge") {
+        if (currentEdgeStart < 0) currentEdgeStart = d;
+      } else {
+        // fill pixel — end any current edge run
+        if (currentEdgeStart >= 0) {
+          edgeRuns.push({ start: currentEdgeStart, end: d - 1 });
+          currentEdgeStart = -1;
+        }
+      }
+    } else {
+      // background pixel
+      if (currentEdgeStart >= 0) {
+        edgeRuns.push({ start: currentEdgeStart, end: d - 1 });
+        currentEdgeStart = -1;
+      }
+      if (wallStart >= 0) {
+        bgGap++;
+        if (bgGap > 2) break; // end of wall band
+      }
+      // else: still in gap between room interior and wall, keep scanning
+    }
+  }
+
+  // Close any open edge run
+  if (currentEdgeStart >= 0) {
+    edgeRuns.push({ start: currentEdgeStart, end: wallEnd });
+  }
+
+  if (wallStart < 0) return 0;
+
+  // Phase 2: compute thickness.
+  // If we found ≥2 edge runs, use center-to-center of first and last.
+  // Otherwise, use the full wall band width.
+  if (edgeRuns.length >= 2) {
+    const first = edgeRuns[0];
+    const last = edgeRuns[edgeRuns.length - 1];
+    const innerCenter = (first.start + first.end) / 2;
+    const outerCenter = (last.start + last.end) / 2;
+    return outerCenter - innerCenter;
+  }
+
+  // Single edge run or no edge runs: use full wall band
+  return wallEnd - wallStart + 1;
+}
+
+/**
+ * Detect wall thickness by probing outward from polygon edges using RGBA
+ * pixel classification. Returns per-edge measurements and overall median.
+ *
+ * @param {ImageData} imageData - Raw RGBA image data
  * @param {Array<{x: number, y: number}>} polygonPixels - Detected polygon vertices
  * @param {number} w - Image width
  * @param {number} h - Image height
+ * @param {number} pixelsPerCm - Scale factor for px→cm conversion
  * @param {number} [maxProbe=200] - Maximum probe depth in pixels
- * @returns {number} Median wall thickness in pixels (0 if undetermined)
+ * @returns {{ edges: Array<{edgeIndex: number, thicknessPx: number, thicknessCm: number}>, medianPx: number, medianCm: number }}
  */
-export function detectWallThickness(mask, polygonPixels, w, h, maxProbe = 200) {
+export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm = 1, maxProbe = 200) {
+  const empty = { edges: [], medianPx: 0, medianCm: 0 };
   const n = polygonPixels.length;
-  if (n < 3) return 0;
+  if (n < 3) return empty;
+
+  const data = imageData.data;
 
   // Compute polygon centroid to determine "outward" direction
   let cx = 0, cy = 0;
   for (const p of polygonPixels) { cx += p.x; cy += p.y; }
   cx /= n; cy /= n;
 
-  const measurements = [];
+  const edges = [];
 
   for (let i = 0; i < n; i++) {
     const A = polygonPixels[i];
@@ -806,41 +923,45 @@ export function detectWallThickness(mask, polygonPixels, w, h, maxProbe = 200) {
       perpY = -perpY;
     }
 
-    // Sample at 3 points along the edge (25%, 50%, 75%) to get multiple measurements
+    // Sample at 3 points along the edge (25%, 50%, 75%)
+    const samples = [];
     for (const frac of [0.25, 0.5, 0.75]) {
       const startX = A.x + tx * edgeLen * frac;
       const startY = A.y + ty * edgeLen * frac;
-
-      let wallCount = 0;
-      let started = false;
-      for (let d = 1; d <= maxProbe; d++) {
-        const px = Math.round(startX + perpX * d);
-        const py = Math.round(startY + perpY * d);
-        if (px < 0 || px >= w || py < 0 || py >= h) break;
-
-        if (mask[py * w + px] === 1) {
-          started = true;
-          wallCount++;
-        } else if (started) {
-          break; // Hit open space after wall → end of wall
-        }
-        // Skip initial open pixels (gap between room interior and wall)
+      const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe);
+      if (thickness >= 2) {
+        samples.push(thickness);
       }
+    }
 
-      if (wallCount >= 2) {
-        measurements.push(wallCount);
-      }
+    if (samples.length > 0) {
+      samples.sort((a, b) => a - b);
+      const medIdx = Math.floor(samples.length / 2);
+      const thicknessPx = samples.length % 2 === 1
+        ? samples[medIdx]
+        : (samples[medIdx - 1] + samples[medIdx]) / 2;
+      edges.push({
+        edgeIndex: i,
+        thicknessPx,
+        thicknessCm: thicknessPx / pixelsPerCm
+      });
     }
   }
 
-  if (measurements.length === 0) return 0;
+  if (edges.length === 0) return empty;
 
-  // Return median (robust to outliers at doorways and corners)
-  measurements.sort((a, b) => a - b);
-  const mid = Math.floor(measurements.length / 2);
-  return measurements.length % 2 === 1
-    ? measurements[mid]
-    : Math.round((measurements[mid - 1] + measurements[mid]) / 2);
+  // Overall median from per-edge medians
+  const allPx = edges.map(e => e.thicknessPx).sort((a, b) => a - b);
+  const mid = Math.floor(allPx.length / 2);
+  const medianPx = allPx.length % 2 === 1
+    ? allPx[mid]
+    : (allPx[mid - 1] + allPx[mid]) / 2;
+
+  return {
+    edges,
+    medianPx,
+    medianCm: medianPx / pixelsPerCm
+  };
 }
 
 export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
@@ -924,8 +1045,8 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
   const polygonPixels = snapPolygonEdges(rawPolygon);
   if (polygonPixels.length < 3) return null;
 
-  // Detect wall thickness from the mask by probing outward from polygon edges
-  const wallThicknessPx = detectWallThickness(bestProcessedMask, polygonPixels, w, h);
+  // Detect wall thickness from RGBA image by probing outward from polygon edges
+  const wallThicknesses = detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm);
 
   // Scan along each polygon edge in the opened wall mask for runs of missing
   // gray fill — these are the real door/opening gaps.
@@ -940,5 +1061,5 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
     { minGapPx, maxGapPx, searchDepthPx, maxDashPx }
   );
 
-  return { polygonPixels, doorGapsPx, pixelsPerCm, wallThicknessPx };
+  return { polygonPixels, doorGapsPx, pixelsPerCm, wallThicknesses };
 }

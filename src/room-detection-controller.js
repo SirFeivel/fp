@@ -10,7 +10,8 @@ import { getCurrentFloor, deepClone, uuid } from "./core.js";
 import { detectRoomAtPixel } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
-import { rectifyPolygon, alignToExistingRooms } from "./floor-plan-rules.js";
+import { rectifyPolygon, alignToExistingRooms, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
+import { closestPointOnSegment } from "./polygon-draw.js";
 
 /** Scale factor for rasterizing SVG backgrounds before detection.
  *  SVGs at native 96 DPI give ppc ≈ 0.38 (each pixel = ~2.6 cm).
@@ -64,6 +65,7 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
   // Stored detection result (for confirm)
   let _detectedPolygonCm = null; // [{x, y}] in floor-global cm
   let _detectedDoorGapsCm = null; // [{midpointCm: {x,y}}]
+  let _detectedWallThicknesses = null; // {edges: [{edgeIndex, thicknessPx, thicknessCm}], medianPx, medianCm}
 
   // SVG preview group
   let _previewGroup = null;
@@ -185,6 +187,7 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     _state = "idle";
     _detectedPolygonCm = null;
     _detectedDoorGapsCm = null;
+    _detectedWallThicknesses = null;
 
     const svg = getSvg();
     if (svg) {
@@ -200,10 +203,11 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     hideError();
   }
 
-  function enterPreview(polygonCm, doorGapsCm) {
+  function enterPreview(polygonCm, doorGapsCm, wallThicknesses) {
     _state = "preview";
     _detectedPolygonCm = polygonCm;
     _detectedDoorGapsCm = doorGapsCm;
+    _detectedWallThicknesses = wallThicknesses || null;
 
     // Stop listening for clicks (we're in preview mode, waiting for Confirm/Cancel)
     const svg = getSvg();
@@ -286,7 +290,7 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
         gapWidthCm: Math.max(g.spanPx?.x ?? 0, g.spanPx?.y ?? 0) / effectivePpc
       }));
 
-      enterPreview(polygonCm, doorGapsCm);
+      enterPreview(polygonCm, doorGapsCm, result.wallThicknesses);
     } catch (err) {
       console.error("Room detection failed:", err);
       _state = "waitingForClick";
@@ -344,8 +348,40 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     syncFloorWalls(floor);
     mergeCollinearWalls(floor);
 
-    // Insert each detected door gap as a wall doorway
+    // Apply per-edge wall thickness from detection.
+    // Edge indices from detection correspond to the pre-rectification polygon,
+    // so we match by geometric proximity (raw edge midpoint → closest rectified edge).
     const n = rectifiedGlobal.length;
+    if (_detectedWallThicknesses?.edges) {
+      const rawPoly = _detectedPolygonCm;
+      const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+      for (const edgeMeas of _detectedWallThicknesses.edges) {
+        if (edgeMeas.thicknessCm < minCm || edgeMeas.thicknessCm > maxCm) continue;
+
+        // Midpoint of the raw (pre-rectification) polygon edge
+        const rawA = rawPoly[edgeMeas.edgeIndex];
+        const rawB = rawPoly[(edgeMeas.edgeIndex + 1) % rawPoly.length];
+        const mid = { x: (rawA.x + rawB.x) / 2, y: (rawA.y + rawB.y) / 2 };
+
+        // Find the closest rectified edge
+        let bestEdge = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < n; i++) {
+          const cp = closestPointOnSegment(mid, rectifiedGlobal[i], rectifiedGlobal[(i + 1) % n]);
+          if (!cp) continue;
+          const dist = Math.hypot(cp.x - mid.x, cp.y - mid.y);
+          if (dist < bestDist) { bestDist = dist; bestEdge = i; }
+        }
+
+        if (bestEdge < 0) continue;
+        const wall = getWallForEdge(floor, room.id, bestEdge);
+        if (wall) {
+          wall.thicknessCm = Math.round(edgeMeas.thicknessCm);
+        }
+      }
+    }
+
+    // Insert each detected door gap as a wall doorway
     for (const gap of (_detectedDoorGapsCm || [])) {
       const { midpointCm, gapWidthCm } = gap;
 

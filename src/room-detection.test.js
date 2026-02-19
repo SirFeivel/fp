@@ -420,17 +420,71 @@ describe('snapPolygonEdges', () => {
 // detectWallThickness
 // ---------------------------------------------------------------------------
 describe('detectWallThickness', () => {
-  it('detects wall thickness of a rectangular room with known wall width', () => {
-    const w = 60, h = 60;
-    const mask = new Uint8Array(w * h);
+  /** Build RGBA imageData with a wall ring: black edge lines + gray fill.
+   *  Walls are drawn as horizontal/vertical bands. Each wall has:
+   *    2px outer edge line | (thickness-4)px gray fill | 2px inner edge line
+   *  wallDef = { outerMin, innerMin, innerMax, outerMax } for each axis. */
+  function makeWallRingImage(w, h, outerMin, innerMin, innerMax, outerMax) {
+    const data = new Uint8ClampedArray(w * h * 4);
+    // Fill white
+    for (let i = 0; i < w * h * 4; i += 4) {
+      data[i] = 255; data[i + 1] = 255; data[i + 2] = 255; data[i + 3] = 255;
+    }
 
-    // Draw a room: 10px-thick wall ring between (5,5) and (55,55)
-    for (let y = 5; y < 55; y++) {
-      for (let x = 5; x < 55; x++) {
-        const isWall = y < 15 || y >= 45 || x < 15 || x >= 45;
-        if (isWall) mask[y * w + x] = 1;
+    function set(x, y, r, g, b) {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const idx = (y * w + x) * 4;
+      data[idx] = r; data[idx + 1] = g; data[idx + 2] = b;
+    }
+
+    // Top wall: y from outerMin to innerMin-1
+    for (let y = outerMin; y < innerMin; y++) {
+      for (let x = outerMin; x < outerMax; x++) {
+        if (y < outerMin + 2 || y >= innerMin - 2) {
+          set(x, y, 30, 30, 30); // edge line
+        } else {
+          set(x, y, 128, 128, 128); // fill
+        }
       }
     }
+    // Bottom wall: y from innerMax to outerMax-1
+    for (let y = innerMax; y < outerMax; y++) {
+      for (let x = outerMin; x < outerMax; x++) {
+        if (y < innerMax + 2 || y >= outerMax - 2) {
+          set(x, y, 30, 30, 30);
+        } else {
+          set(x, y, 128, 128, 128);
+        }
+      }
+    }
+    // Left wall: x from outerMin to innerMin-1
+    for (let y = innerMin; y < innerMax; y++) {
+      for (let x = outerMin; x < innerMin; x++) {
+        if (x < outerMin + 2 || x >= innerMin - 2) {
+          set(x, y, 30, 30, 30);
+        } else {
+          set(x, y, 128, 128, 128);
+        }
+      }
+    }
+    // Right wall: x from innerMax to outerMax-1
+    for (let y = innerMin; y < innerMax; y++) {
+      for (let x = innerMax; x < outerMax; x++) {
+        if (x < innerMax + 2 || x >= outerMax - 2) {
+          set(x, y, 30, 30, 30);
+        } else {
+          set(x, y, 128, 128, 128);
+        }
+      }
+    }
+
+    return { data, width: w, height: h };
+  }
+
+  it('detects wall thickness of a rectangular room with known wall width', () => {
+    const w = 60, h = 60;
+    // Wall ring: outer (5,5)→(55,55), inner (15,15)→(45,45) → 10px wall thickness
+    const imageData = makeWallRingImage(w, h, 5, 15, 45, 55);
 
     // Polygon is the inner face of the wall
     const polygon = [
@@ -440,27 +494,127 @@ describe('detectWallThickness', () => {
       { x: 15, y: 45 },
     ];
 
-    const thickness = detectWallThickness(mask, polygon, w, h);
-    // Wall is 10px thick on all sides
-    expect(thickness).toBeGreaterThanOrEqual(8);
-    expect(thickness).toBeLessThanOrEqual(12);
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    expect(result.edges.length).toBe(4);
+    // Center-to-center on a 10px wall: expect ~8 (±1.5 for corner effects)
+    expect(result.medianPx).toBeGreaterThanOrEqual(6.5);
+    expect(result.medianPx).toBeLessThanOrEqual(12);
   });
 
-  it('returns 0 for fewer than 3 vertices', () => {
-    const mask = new Uint8Array(100);
-    expect(detectWallThickness(mask, [{ x: 0, y: 0 }], 10, 10)).toBe(0);
+  it('returns empty for fewer than 3 vertices', () => {
+    const imageData = { data: new Uint8ClampedArray(10 * 10 * 4), width: 10, height: 10 };
+    const result = detectWallThickness(imageData, [{ x: 0, y: 0 }], 10, 10, 1);
+    expect(result.edges.length).toBe(0);
+    expect(result.medianPx).toBe(0);
   });
 
-  it('returns 0 when no wall pixels are found outward', () => {
+  it('returns zero when no wall pixels are found outward', () => {
     const w = 30, h = 30;
-    const mask = new Uint8Array(w * h); // All open
+    // All white — no walls
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+    const imageData = { data, width: w, height: h };
     const polygon = [
       { x: 10, y: 10 },
       { x: 20, y: 10 },
       { x: 20, y: 20 },
       { x: 10, y: 20 },
     ];
-    expect(detectWallThickness(mask, polygon, w, h)).toBe(0);
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    expect(result.edges.length).toBe(0);
+    expect(result.medianPx).toBe(0);
+  });
+
+  it('ignores red/pink pixels when measuring wall thickness', () => {
+    const w = 60, h = 60;
+    // Wall ring: outer (5,5)→(55,55), inner (15,15)→(45,45) → 10px wall
+    const imageData = makeWallRingImage(w, h, 5, 15, 45, 55);
+
+    // Get baseline measurement without red pixels
+    const polygon = [
+      { x: 15, y: 15 },
+      { x: 45, y: 15 },
+      { x: 45, y: 45 },
+      { x: 15, y: 45 },
+    ];
+    const baseline = detectWallThickness(imageData, polygon, w, h, 1);
+
+    // Now add red pixels (255,0,0) replacing the outer edge line on the top side
+    // Overwrite the outer edge at y=5..6 with red
+    for (let y = 5; y <= 6; y++) {
+      for (let x = 5; x < 55; x++) {
+        const idx = (y * w + x) * 4;
+        imageData.data[idx] = 255;     // R
+        imageData.data[idx + 1] = 0;   // G
+        imageData.data[idx + 2] = 0;   // B
+      }
+    }
+
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    // Red pixels replacing the outer edge should NOT inflate the measurement.
+    // The top edge may measure differently but the median should not exceed baseline.
+    expect(result.medianPx).toBeLessThanOrEqual(baseline.medianPx + 1);
+    // And the result should still be reasonable (not inflated by treating red as edge)
+    expect(result.medianPx).toBeLessThanOrEqual(12);
+  });
+
+  it('returns per-edge measurements that can differ', () => {
+    const w = 80, h = 80;
+    // Build image manually: top/bottom walls 10px thick, left/right walls 20px thick
+    const data = new Uint8ClampedArray(w * h * 4);
+    // Fill white
+    for (let i = 0; i < w * h; i++) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+    }
+
+    // Room interior: x=[25..55), y=[15..65) (30×50 room)
+    // Top wall: y=[5..15), x=[5..75) → 10px thick
+    // Bottom wall: y=[65..75), x=[5..75) → 10px thick
+    // Left wall: x=[5..25), y=[5..75) → 20px thick
+    // Right wall: x=[55..75), y=[5..75) → 20px thick
+
+    function setPixel(x, y, r, g, b) {
+      const idx = (y * w + x) * 4;
+      data[idx] = r; data[idx + 1] = g; data[idx + 2] = b;
+    }
+
+    for (let y = 5; y < 75; y++) {
+      for (let x = 5; x < 75; x++) {
+        const inRoom = x >= 25 && x < 55 && y >= 15 && y < 65;
+        if (inRoom) continue;
+        // Check if at edge boundary (2px edge lines)
+        const atOuterEdge = x < 7 || x >= 73 || y < 7 || y >= 73;
+        const atInnerEdge =
+          (Math.abs(x - 25) < 2 || Math.abs(x - 54) < 2) && y >= 5 && y < 75 ||
+          (Math.abs(y - 15) < 2 || Math.abs(y - 64) < 2) && x >= 5 && x < 75;
+        if (atOuterEdge || atInnerEdge) {
+          setPixel(x, y, 30, 30, 30); // edge
+        } else {
+          setPixel(x, y, 128, 128, 128); // fill
+        }
+      }
+    }
+
+    const imageData = { data, width: w, height: h };
+    const polygon = [
+      { x: 25, y: 15 },
+      { x: 55, y: 15 },
+      { x: 55, y: 65 },
+      { x: 25, y: 65 },
+    ];
+
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    expect(result.edges.length).toBe(4);
+
+    // Group edges: top (edge 0), right (edge 1), bottom (edge 2), left (edge 3)
+    const thicknesses = result.edges.map(e => e.thicknessPx);
+    // Top/bottom should be ~10, left/right should be ~20
+    // At least verify they are distinguishable (not all the same)
+    const minT = Math.min(...thicknesses);
+    const maxT = Math.max(...thicknesses);
+    expect(maxT).toBeGreaterThan(minT * 1.3); // at least 30% difference
   });
 });
 
@@ -623,6 +777,16 @@ describe('detectRoomAtPixel', () => {
     // Room interior ~64×64=4096 px². maxAreaCm2=1 → maxPixels=1*0.05²=0.0025 → rounds to 0, min=1.
     const result = detectRoomAtPixel(imageData, 40, 40, { pixelsPerCm: 0.05, maxAreaCm2: 1 });
     expect(result).toBeNull();
+  });
+
+  it('returns wallThicknesses with per-edge data', () => {
+    const imageData = makeRoomImage();
+    const result = detectRoomAtPixel(imageData, 40, 40, OPT);
+    expect(result).not.toBeNull();
+    expect(result.wallThicknesses).toBeDefined();
+    expect(result.wallThicknesses.edges.length).toBeGreaterThanOrEqual(1);
+    expect(result.wallThicknesses.medianPx).toBeGreaterThan(0);
+    expect(result.wallThicknesses.medianCm).toBeGreaterThan(0);
   });
 
   it('detects a gray-walled room (white interior, gray-160 fill, black edges)', () => {
