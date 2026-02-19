@@ -1011,6 +1011,99 @@ describe('computeFloorWallGeometry', () => {
     expect(computeFloorWallGeometry(null).size).toBe(0);
     expect(computeFloorWallGeometry({ walls: [] }).size).toBe(0);
   });
+
+  // ── Collinear wall fix ──────────────────────────────────────────────
+  // A polygon with two consecutive co-linear edges (same direction) must
+  // give extEnd=0 at their shared vertex, not the thickness fallback.
+  it('collinear consecutive edges get zero extension at their shared vertex', () => {
+    // 5-vertex room: standard rectangle but left wall split into two segments
+    // at y=10 → edges 3 and 4 are both vertical (0,-1) at x=0.
+    const room = {
+      id: 'r-coll',
+      name: 'r-coll',
+      floorPosition: { x: 0, y: 0 },
+      widthCm: 400,
+      heightCm: 300,
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 300 },
+        { x: 0, y: 300 },
+        { x: 0, y: 10 },
+      ],
+      tile: { widthCm: 60, heightCm: 60, shape: 'rect' },
+      grout: { widthCm: 0.2, colorHex: '#cccccc' },
+      pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl', xCm: 0, yCm: 0 } },
+      exclusions: [],
+    };
+    const floor = makeFloor([room]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const w3 = getWallForEdge(floor, 'r-coll', 3); // (0,300)→(0,10), dir (0,-1)
+    const w4 = getWallForEdge(floor, 'r-coll', 4); // (0,10)→(0,0),  dir (0,-1)
+    const d3 = wg.get(w3.id);
+    const d4 = wg.get(w4.id);
+
+    // At the collinear junction: edge 3 extEnd and edge 4 extStart must be 0
+    expect(d3.extEnd).toBe(0);
+    expect(d4.extStart).toBe(0);
+
+    // Standard right-angle corners at the other ends must still be ~12
+    expect(d3.extStart).toBeCloseTo(DEFAULT_WALL_THICKNESS_CM, 1);
+    expect(d4.extEnd).toBeCloseTo(DEFAULT_WALL_THICKNESS_CM, 1);
+  });
+
+  // ── Reflex-vertex corner fill ───────────────────────────────────────
+  // An L-shaped room has a reflex vertex where adjacent outer faces leave an
+  // open triangle. computeFloorWallGeometry must record endCornerFill there.
+  it('records endCornerFill at reflex vertex and not at concave corners', () => {
+    // L-shape: large rectangle minus bottom-right notch
+    // V = (0,0)→(400,0)→(400,200)→(200,200)→(200,300)→(0,300)
+    const room = {
+      id: 'r-lshape',
+      name: 'r-lshape',
+      floorPosition: { x: 0, y: 0 },
+      widthCm: 400,
+      heightCm: 300,
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 200 },
+        { x: 200, y: 200 },
+        { x: 200, y: 300 },
+        { x: 0, y: 300 },
+      ],
+      tile: { widthCm: 60, heightCm: 60, shape: 'rect' },
+      grout: { widthCm: 0.2, colorHex: '#cccccc' },
+      pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl', xCm: 0, yCm: 0 } },
+      exclusions: [],
+    };
+    const floor = makeFloor([room]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const thick = DEFAULT_WALL_THICKNESS_CM;
+
+    // Edge 2: (400,200)→(200,200), the notch top — reflex end at V[3]=(200,200)
+    const w2 = getWallForEdge(floor, 'r-lshape', 2);
+    const d2 = wg.get(w2.id);
+    expect(d2.extEnd).toBe(0);
+    expect(d2.endCornerFill).not.toBeNull();
+    // p3 = inner vertex = V[3] = (200,200) (in floor-global coords for this room)
+    expect(d2.endCornerFill.p3.x).toBeCloseTo(200, 1);
+    expect(d2.endCornerFill.p3.y).toBeCloseTo(200, 1);
+    // p1 = edge 2 outer end (normal (0,+1) → outer at y=200+12=212)
+    expect(d2.endCornerFill.p1.y).toBeCloseTo(200 + thick, 1);
+    // p2 = edge 3 outer start (normal (+1,0) → outer at x=200+12=212)
+    expect(d2.endCornerFill.p2.x).toBeCloseTo(200 + thick, 1);
+
+    // Concave corners (edges 0,1,3,4,5) must NOT have endCornerFill
+    for (const idx of [0, 1, 3, 4, 5]) {
+      const w = getWallForEdge(floor, 'r-lshape', idx);
+      expect(wg.get(w.id).endCornerFill).toBeFalsy();
+    }
+  });
 });
 
 // ── getDoorwaysInEdgeSpace ───────────────────────────────────────────

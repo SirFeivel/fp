@@ -529,7 +529,11 @@ export function computeWallExtensions(floor, roomId) {
         const dotAB = dA.x * dB.x + dA.y * dB.y;
         const tB = windingSign * (thick * dotAB - thickPrev) / crossAB;
         extStart = Math.max(0, Math.min(-tB, Math.max(thickPrev, thick) * 3));
+      } else if (dA.x * dB.x + dA.y * dB.y > 0) {
+        // Parallel, same direction (co-linear continuation): walls just continue each other
+        extStart = 0;
       }
+      // else: parallel, opposite direction (hairpin) → keep fallback thickPrev
     }
 
     if (guestSharedEdges.has(next)) {
@@ -541,7 +545,11 @@ export function computeWallExtensions(floor, roomId) {
         const dotBC = dB.x * dC.x + dB.y * dC.y;
         const t = windingSign * (thickNext - thick * dotBC) / crossBC;
         extEnd = Math.max(0, Math.min(t, Math.max(thickNext, thick) * 3));
+      } else if (dB.x * dC.x + dB.y * dC.y > 0) {
+        // Parallel, same direction (co-linear continuation): walls just continue each other
+        extEnd = 0;
       }
+      // else: parallel, opposite direction (hairpin) → keep fallback thickNext
     }
 
     result.set(i, { extStart, extEnd });
@@ -957,6 +965,36 @@ export function computeFloorWallGeometry(floor) {
       totalLength,
       extDoorways,
     });
+  }
+
+  // Second pass: detect reflex-vertex corner gaps and record fill triangles.
+  // A gap exists when two adjacent walls' outer faces don't meet
+  // (outerEndPt_A ≠ outerStartPt_B). This happens at reflex vertices where the
+  // extension formula correctly returns 0 but leaves the outer corner open.
+  const edgeLookup = new Map(); // "roomId:edgeIndex" → descriptor
+  for (const desc of result.values()) {
+    const re = desc.wall.roomEdge;
+    if (re) edgeLookup.set(`${re.roomId}:${re.edgeIndex}`, desc);
+  }
+
+  for (const desc of result.values()) {
+    const re = desc.wall.roomEdge;
+    if (!re) continue;
+    const room = (floor.rooms || []).find(r => r.id === re.roomId);
+    if (!room?.polygonVertices?.length) continue;
+    const nextIdx = (re.edgeIndex + 1) % room.polygonVertices.length;
+    const nextDesc = edgeLookup.get(`${re.roomId}:${nextIdx}`);
+    if (!nextDesc) continue;
+    const dx = nextDesc.outerStartPt.x - desc.outerEndPt.x;
+    const dy = nextDesc.outerStartPt.y - desc.outerEndPt.y;
+    if (dx * dx + dy * dy > 0.01) { // gap > 0.1 cm
+      desc.endCornerFill = {
+        p1: desc.outerEndPt,       // outer face end of this wall
+        p2: nextDesc.outerStartPt, // outer face start of next wall
+        p3: desc.extEndPt,         // shared inner vertex
+        h: desc.wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM,
+      };
+    }
   }
 
   return result;

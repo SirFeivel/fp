@@ -146,11 +146,22 @@ function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, d
   faceShape.lineTo(0, hA);
   faceShape.closePath();
 
-  for (const dw of doorways) {
+  // Pre-compute clamped doorway heights so hole and reveals stay within face
+  const clampedDoorways = doorways.map(dw => {
     const off = dw.offsetCm;
     const w = dw.widthCm;
     const elev = dw.elevationCm || 0;
-    const h = dw.heightCm;
+    const tMid = edgeLen > 0 ? (off + w / 2) / edgeLen : 0;
+    const wallHere = hA + (hB - hA) * tMid;
+    const h = Math.min(dw.heightCm, wallHere - elev);
+    return { ...dw, _clampedH: h, _elev: elev };
+  }).filter(dw => dw._clampedH > 0);
+
+  for (const dw of clampedDoorways) {
+    const off = dw.offsetCm;
+    const w = dw.widthCm;
+    const elev = dw._elev;
+    const h = dw._clampedH;
     const hole = new THREE.Path();
     hole.moveTo(off, elev);
     hole.lineTo(off + w, elev);
@@ -193,8 +204,8 @@ function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, d
   );
 
   // Bottom face — split around ground-level doorways
-  const groundDw = doorways
-    .filter(dw => (dw.elevationCm || 0) < 0.1)
+  const groundDw = clampedDoorways
+    .filter(dw => dw._elev < 0.1)
     .sort((a, b) => a.offsetCm - b.offsetCm);
 
   let cursor = 0;
@@ -226,11 +237,11 @@ function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, d
   );
 
   // Doorway reveals — connect inner to outer at each opening
-  for (const dw of doorways) {
+  for (const dw of clampedDoorways) {
     const off = dw.offsetCm;
     const w = dw.widthCm;
-    const elev = dw.elevationCm || 0;
-    const h = dw.heightCm;
+    const elev = dw._elev;
+    const h = dw._clampedH;
 
     // Left reveal
     addQuad(
@@ -462,7 +473,7 @@ function renderSurface3D(opts) {
  * @param {{ canvas: HTMLCanvasElement, onWallDoubleClick: Function, onHoverChange: Function, onRoomSelect: Function }} opts
  */
 // Export pure helper functions for unit testing
-export { parseTilePathD, parseHexColor, createWallMapper, createFloorMapper, exclusionToShape };
+export { parseTilePathD, parseHexColor, createWallMapper, createFloorMapper, exclusionToShape, buildWallGeo };
 
 export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDoubleClick, onHoverChange, onRoomSelect, onSurfaceSelect }) {
   let renderer, camera, controls, scene;
@@ -586,7 +597,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     const currentIds = rooms.map(r => r.id).sort().join(",");
     if (currentIds !== lastFloorRoomIds) {
       lastFloorRoomIds = currentIds;
-      frameCameraOnFloor(rooms);
+      frameCameraOnFloor(rooms, walls || []);
     }
   }
 
@@ -685,10 +696,7 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       wallDesc.edgeLength, wallDesc.doorways
     );
 
-    const hasTiles = wallDesc.surfaces.some(s => s.tiles?.length > 0);
-    const baseColor = hasTiles
-      ? parseHexColor(wallDesc.surfaces[0]?.groutColor || "#ffffff")
-      : new THREE.Color(wallColor);
+    const baseColor = new THREE.Color(wallColor);
 
     const wallMat = new THREE.MeshLambertMaterial({
       color: baseColor,
@@ -705,9 +713,37 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
     scene.add(wallMesh);
     wallMeshes.push(wallMesh);
 
-    const edgesGeo = new THREE.EdgesGeometry(geo);
+    const edgesGeo = new THREE.EdgesGeometry(geo, 30);
     const linesMat = new THREE.LineBasicMaterial({ color: edgeColor });
     scene.add(new THREE.LineSegments(edgesGeo, linesMat));
+
+    // Corner fill for reflex vertices: closes the open outer-corner gap where
+    // two adjacent walls' outer faces don't meet (extEnd = extStart = 0).
+    // Renders the missing top triangle and outer-side quad only; the two
+    // inner-side faces are already covered by the adjacent walls' end caps.
+    if (wallDesc.endCornerFill) {
+      const { p1, p2, p3, h } = wallDesc.endCornerFill;
+      const fillPositions = new Float32Array([
+        p1.x, 0, p1.y,  // 0: p1 floor
+        p2.x, 0, p2.y,  // 1: p2 floor
+        p3.x, 0, p3.y,  // 2: p3 floor (inner vertex)
+        p1.x, h, p1.y,  // 3: p1 ceiling
+        p2.x, h, p2.y,  // 4: p2 ceiling
+        p3.x, h, p3.y,  // 5: p3 ceiling
+      ]);
+      const fillIdx = [
+        3, 5, 4,       // top triangle
+        0, 1, 4,  0, 4, 3,  // outer side (p1–p2)
+      ];
+      const fillGeo = new THREE.BufferGeometry();
+      fillGeo.setAttribute('position', new THREE.BufferAttribute(fillPositions, 3));
+      fillGeo.setIndex(fillIdx);
+      fillGeo.computeVertexNormals();
+      scene.add(new THREE.Mesh(fillGeo, new THREE.MeshLambertMaterial({
+        color: baseColor, side: THREE.DoubleSide,
+      })));
+      scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(fillGeo, 30), linesMat));
+    }
 
     // Render tiles for each surface
     for (const surf of wallDesc.surfaces) {
@@ -801,9 +837,8 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
   }
 
   // --- Camera framing for entire floor ---
-  function frameCameraOnFloor(rooms) {
+  function frameCameraOnFloor(rooms, walls = []) {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    let maxWallH = 0;
 
     for (const roomDesc of rooms) {
       const pos = roomDesc.floorPosition || { x: 0, y: 0 };
@@ -817,12 +852,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         if (wz < minZ) minZ = wz;
         if (wz > maxZ) maxZ = wz;
       }
-      // Find max wall height from wallData
-      let wh = DEFAULT_WALL_HEIGHT_CM;
-      for (const wd of (roomDesc.wallData || [])) {
-        wh = Math.max(wh, wd.hStart ?? DEFAULT_WALL_HEIGHT_CM, wd.hEnd ?? DEFAULT_WALL_HEIGHT_CM);
-      }
-      if (wh > maxWallH) maxWallH = wh;
+    }
+
+    let maxWallH = DEFAULT_WALL_HEIGHT_CM;
+    for (const wd of walls) {
+      maxWallH = Math.max(maxWallH, wd.hStart ?? DEFAULT_WALL_HEIGHT_CM, wd.hEnd ?? DEFAULT_WALL_HEIGHT_CM);
     }
 
     if (minX === Infinity) return; // no rooms

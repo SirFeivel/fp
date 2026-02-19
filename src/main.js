@@ -513,61 +513,10 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       const fromFrac = wallDesc.totalLength > 0 ? (surfFromCm + wallDesc.extStart) / wallDesc.totalLength : 0;
       const toFrac = wallDesc.totalLength > 0 ? (surfToCm + wallDesc.extStart) / wallDesc.totalLength : 1;
 
-      // Compute skirting segments for this surface
-      let skirtingSegments = [];
-      let skirtingHeight = 0;
-      if (room && room.skirting?.enabled && region.skirtingOffset > 0) {
-        const allSegments = computeSkirtingSegments(room, false, floor);
-        const poly = roomPolygon(room);
-        const edgeIndex = surface.edgeIndex;
-
-        if (poly && poly[0] && poly[0][0] && edgeIndex != null) {
-          const verts = poly[0][0];
-          if (edgeIndex < verts.length) {
-            const v1 = verts[edgeIndex];
-            const v2 = verts[(edgeIndex + 1) % verts.length];
-            const edgeDx = v2[0] - v1[0];
-            const edgeDy = v2[1] - v1[1];
-            const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-
-            if (edgeLen > 0.01) {
-              skirtingHeight = room.skirting.heightCm || 6;
-
-              for (const seg of allSegments) {
-                const [p1x, p1y] = seg.p1;
-                const [p2x, p2y] = seg.p2;
-
-                // Check if segment is on this edge
-                const p1Dx = p1x - v1[0];
-                const p1Dy = p1y - v1[1];
-                const p2Dx = p2x - v1[0];
-                const p2Dy = p2y - v1[1];
-
-                const cross1 = Math.abs(edgeDx * p1Dy - edgeDy * p1Dx);
-                const cross2 = Math.abs(edgeDx * p2Dy - edgeDy * p2Dx);
-                const EPSILON = 1e-6;
-
-                if (cross1 < EPSILON * edgeLen && cross2 < EPSILON * edgeLen) {
-                  const t1 = (p1Dx * edgeDx + p1Dy * edgeDy) / (edgeLen * edgeLen);
-                  const t2 = (p2Dx * edgeDx + p2Dy * edgeDy) / (edgeLen * edgeLen);
-
-                  const x1 = t1 * edgeLen - surfFromCm;
-                  const x2 = t2 * edgeLen - surfFromCm;
-
-                  if ((x1 >= -0.1 && x1 <= region.widthCm + 0.1) ||
-                      (x2 >= -0.1 && x2 <= region.widthCm + 0.1)) {
-                    skirtingSegments.push({
-                      x1,
-                      x2,
-                      excluded: seg.excluded || false
-                    });
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      // Use skirting segments already computed by wallSurfaceToTileableRegion
+      // (includes excluded segments so 3D can render them in their distinct colour)
+      const skirtingSegments = region.skirtingSegments || [];
+      const skirtingHeight = region.skirtingConfig?.heightCm ?? 6;
 
       return {
         roomId: surface.roomId,
@@ -599,6 +548,7 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       thicknessCm: thick,
       doorways: wallDesc.extDoorways,
       roomEdge: wall.roomEdge,
+      endCornerFill: wallDesc.endCornerFill ?? null,
       surfaces,
     };
   }).filter(Boolean);
