@@ -63,7 +63,21 @@ State contains:
 
 ## Rulebook
 
-These rules are mandatory. When in doubt, question yourself before presenting code.
+**MANDATORY. BLOCKING. NON-NEGOTIABLE.** Every rule in this section applies at all times — during planning, execution, review, after context compression, in new sessions, and in every mode. No rule may be skipped, downgraded, or worked around. A violation means stopping immediately, reverting, and fixing before continuing. If you are unsure whether an action violates a rule: it does. Ask the user.
+
+### Change Protocol (BLOCKING — governs all code modifications)
+
+**One change at a time.** Never batch multiple logical changes into a single pass. Each change is: one edit (or a small cohesive group of edits to one function/behavior) → run tests → verify → only then proceed.
+
+**Test after every change.** Run `npm run test` after every edit to a source file. If tests fail, fix the failure before making the next change. Do not accumulate edits and test at the end. Do not present code with failing tests.
+
+**Load real data when provided.** If the user provides a state file, load and inspect it before writing any code. Understand the actual problem from actual data first. Do not reason about fixes in the abstract when concrete data is available.
+
+**Plans are hypotheses, not scripts.** A confirmed plan is a direction, not a checklist to execute blindly. Each step must be validated against reality (tests, real data, blast radius analysis). If a step produces unexpected results, stop and reassess — do not push through to the next step.
+
+**Trace consequences before editing.** Before modifying a shared function, identify every caller. Predict which tests will break and why. Write down the expected wall counts / outcomes. If you cannot predict the consequences, you do not understand the change well enough to make it.
+
+**Never present unverified results.** Before reporting a task as complete: all tests pass, real-world data (if provided) produces correct results, and the specific success criteria from the plan are confirmed with exact values. "Should work" is not verification.
 
 ### Architecture Rules
 

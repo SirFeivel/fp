@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/feivel/WebstormProjects/fp && npx vitest run --reporter=json 2>/dev/null | node -e \"const d=require('fs').readFileSync('/dev/stdin','utf8'); try { const r=JSON.parse(d); if(r.numFailedTests>0){console.error('BLOCKED: '+r.numFailedTests+' test(s) failing. Fix before completing.'); process.exit(2);} else {console.log(r.numPassedTests+' tests passed.');} } catch(e) { console.error('BLOCKED: Could not parse test results.'); process.exit(2); }\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
