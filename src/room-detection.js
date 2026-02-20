@@ -928,6 +928,7 @@ export function preprocessForRoomDetection(imageData, options = {}) {
 
   const { data, width: w, height: h } = imageData;
   const total = w * h;
+  let hWalls = null, vWalls = null;
 
   // Without envelope data, fall back to color-only removal
   if (!envelopePolygonPx || envelopePolygonPx.length < 3) {
@@ -953,8 +954,7 @@ export function preprocessForRoomDetection(imageData, options = {}) {
         data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
       }
     }
-    return;
-  }
+  } else {
 
   // ── Phase 1: Bleach exterior ──────────────────────────────────────────────
   // Everything outside the envelope polygon → white. Use an inward margin
@@ -985,8 +985,8 @@ export function preprocessForRoomDetection(imageData, options = {}) {
   const thickRadius = Math.max(1, Math.round(1.5 * pixelsPerCm));
   const longRadius = Math.max(2, Math.round(3 * pixelsPerCm));
 
-  const hWalls = morphologicalOpenRect(darkMask, w, h, longRadius, thickRadius);
-  const vWalls = morphologicalOpenRect(darkMask, w, h, thickRadius, longRadius);
+  hWalls = morphologicalOpenRect(darkMask, w, h, longRadius, thickRadius);
+  vWalls = morphologicalOpenRect(darkMask, w, h, thickRadius, longRadius);
 
   const wallFeatures = new Uint8Array(total);
   for (let i = 0; i < total; i++) wallFeatures[i] = hWalls[i] | vWalls[i];
@@ -1022,6 +1022,31 @@ export function preprocessForRoomDetection(imageData, options = {}) {
       data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
     }
   }
+
+  } // end else (envelope path)
+
+  // ── Final: Greyscale + Normalize ───────────────────────────────────────────
+  // Flatten alpha onto white, convert to greyscale (BT.709), normalize contrast.
+  let gMin = 255, gMax = 0;
+  const grayVals = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const a = data[i * 4 + 3] / 255;
+    const r = data[i * 4] * a + 255 * (1 - a);
+    const g = data[i * 4 + 1] * a + 255 * (1 - a);
+    const b = data[i * 4 + 2] * a + 255 * (1 - a);
+    const gray = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    grayVals[i] = gray;
+    if (gray < gMin) gMin = gray;
+    if (gray > gMax) gMax = gray;
+  }
+  const gRange = gMax - gMin;
+  for (let i = 0; i < total; i++) {
+    const v = gRange > 0 ? Math.round(255 * (grayVals[i] - gMin) / gRange) : grayVals[i];
+    data[i * 4] = v; data[i * 4 + 1] = v;
+    data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
+  }
+
+  return hWalls && vWalls ? { hWalls, vWalls } : undefined;
 }
 
 /**
@@ -1638,6 +1663,7 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
  * @param {{ pixelsPerCm?: number }} options
  * @returns {{ polygonPixels: Array<{x,y}>, wallThicknesses: object } | null}
  */
+
 export function detectEnvelope(imageData, options = {}) {
   const { pixelsPerCm = 1, preprocessed = false, envelopeBboxPx = null } = options;
   const w = imageData.width;

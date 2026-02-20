@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'fs';
 import { decode, encode } from 'fast-png';
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection } from './room-detection.js';
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection, morphologicalClose, floodFillFromBorder, fillInteriorHoles, traceContour } from './room-detection.js';
 import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
@@ -674,7 +674,6 @@ describe('Step 6 real-world: EG floor plan (messy vs clean)', () => {
     });
 
     // Step 3: Detect envelope on preprocessed image
-    // Pass raw envelope bbox to help exclude external annotations
     const rawPoly = envRaw.polygonPixels;
     const envelopeBboxPx = {
       minX: Math.min(...rawPoly.map(p => p.x)),
@@ -1029,5 +1028,121 @@ describe('Step 6 E2E: preprocessed messy vs clean reference (pixel accuracy)', (
     const png = encode({ width: imgPre.width, height: imgPre.height, data: outData, channels: 4, depth: 8 });
     writeFileSync('/tmp/preprocessed_EG.png', Buffer.from(png));
     console.log('Saved preprocessed image to /tmp/preprocessed_EG.png');
+
+    // Step 00: Greyscale + Normalize
+    const totalPx = imgPre.width * imgPre.height;
+    const grayData = new Uint8Array(totalPx * 4);
+
+    // 1. Flatten alpha onto white, then convert to greyscale
+    let gMin = 255, gMax = 0;
+    const grayVals = new Uint8Array(totalPx);
+    for (let i = 0; i < totalPx; i++) {
+      const a = imgPre.data[i * 4 + 3] / 255;
+      const r = imgPre.data[i * 4] * a + 255 * (1 - a);
+      const g = imgPre.data[i * 4 + 1] * a + 255 * (1 - a);
+      const b = imgPre.data[i * 4 + 2] * a + 255 * (1 - a);
+      const gray = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+      grayVals[i] = gray;
+      if (gray < gMin) gMin = gray;
+      if (gray > gMax) gMax = gray;
+    }
+
+    // 2. Normalize contrast (stretch min→0, max→255)
+    const gRange = gMax - gMin || 1;
+    for (let i = 0; i < totalPx; i++) {
+      const normalized = Math.round(255 * (grayVals[i] - gMin) / gRange);
+      grayData[i * 4] = normalized;
+      grayData[i * 4 + 1] = normalized;
+      grayData[i * 4 + 2] = normalized;
+      grayData[i * 4 + 3] = 255;
+    }
+
+    const grayPng = encode({ width: imgPre.width, height: imgPre.height, data: grayData, channels: 4, depth: 8 });
+    writeFileSync('/tmp/preprocessed_greyscale.png', Buffer.from(grayPng));
+    console.log(`Saved greyscale normalized image to /tmp/preprocessed_greyscale.png (min=${gMin}, max=${gMax})`);
+  });
+});
+
+describe('Envelope diagnostic: intermediate masks on preprocessed EG', () => {
+  function saveMask(mask, w, h, path) {
+    const out = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const v = mask[i] ? 0 : 255;
+      out[i * 4] = v; out[i * 4 + 1] = v; out[i * 4 + 2] = v; out[i * 4 + 3] = 255;
+    }
+    writeFileSync(path, Buffer.from(encode({ width: w, height: h, data: out, channels: 4, depth: 8 })));
+    console.log(`Saved ${path}`);
+  }
+
+  it('dumps each detectEnvelope step on preprocessed EG', { timeout: 30000 }, () => {
+    // Two-pass: first get rough envelope from raw, then preprocess with it
+    const envRaw = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    expect(envRaw).not.toBeNull();
+    console.log(`Raw envelope ${envRaw.polygonPixels.length} verts:`);
+    envRaw.polygonPixels.forEach((v, i) => console.log(`  v${i}: (${v.x}, ${v.y}) = (${(v.x/ppcEG).toFixed(0)}cm, ${(v.y/ppcEG).toFixed(0)}cm)`));
+
+    const data2 = new Uint8ClampedArray(imgMessy.data);
+    const img = { data: data2, width: imgMessy.width, height: imgMessy.height };
+
+    const spanWalls = detectSpanningWalls(imgMessy, envRaw.polygonPixels, { pixelsPerCm: ppcEG });
+    const spanPx = (spanWalls || []).map(w => ({
+      startPx: w.startPx || { x: Math.round(w.startCm.x * ppcEG), y: Math.round(w.startCm.y * ppcEG) },
+      endPx: w.endPx || { x: Math.round(w.endCm.x * ppcEG), y: Math.round(w.endCm.y * ppcEG) },
+      thicknessPx: w.thicknessPx || Math.round((w.thicknessCm || 25) * ppcEG),
+    }));
+
+    preprocessForRoomDetection(img, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: envRaw.polygonPixels,
+      envelopeWallThicknesses: envRaw.wallThicknesses,
+      spanningWallsPx: spanPx,
+    });
+
+    // Save the preprocessed image for reference
+    const prePng = encode({ width: img.width, height: img.height, data: new Uint8Array(img.data), channels: 4, depth: 8 });
+    writeFileSync('/tmp/env_00_preprocessed.png', Buffer.from(prePng));
+    console.log('Saved /tmp/env_00_preprocessed.png');
+
+    const w = img.width, h = img.height, total = w * h;
+
+    // Step 1: autoDetectWallRange + buildGrayWallMask
+    const range = autoDetectWallRange(img);
+    console.log(`range: low=${range?.low}, high=${range?.high}`);
+    const wallMaskRaw = buildGrayWallMask(img, range.low, range.high);
+    saveMask(wallMaskRaw, w, h, '/tmp/env_01_wallmask_raw.png');
+
+    // Step 2: filterSmallComponents
+    const minComponentArea = Math.max(16, Math.round(8 * ppcEG) ** 2);
+    const wallMaskFiltered = filterSmallComponents(wallMaskRaw, w, h, minComponentArea);
+    saveMask(wallMaskFiltered, w, h, '/tmp/env_02_wallmask_filtered.png');
+
+    // morphologicalOpen is not exported — skip for diagnostic (small noise cleanup only)
+    console.log(`openRadius skipped (not exported), minComponentArea=${minComponentArea}`);
+
+    // Step 4: morphologicalClose
+    const closeRadius = Math.max(3, Math.min(300, Math.round(80 * ppcEG)));
+    console.log(`closeRadius=${closeRadius}`);
+    const closedMask = morphologicalClose(wallMaskFiltered, w, h, closeRadius);
+    saveMask(closedMask, w, h, '/tmp/env_03_closed.png');
+
+    // Step 5: floodFillFromBorder
+    const exteriorMask = floodFillFromBorder(closedMask, w, h);
+    saveMask(exteriorMask, w, h, '/tmp/env_04_exterior.png');
+
+    // Step 6: building mask
+    const buildingMask = new Uint8Array(total);
+    for (let i = 0; i < total; i++) buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+    fillInteriorHoles(buildingMask, w, h);
+    saveMask(buildingMask, w, h, '/tmp/env_05_building.png');
+
+    let buildingArea = 0;
+    for (let i = 0; i < total; i++) buildingArea += buildingMask[i];
+    console.log(`buildingArea: ${buildingArea} (${(buildingArea/total*100).toFixed(2)}%)`);
+
+    // Step 7: contour
+    const contour = traceContour(buildingMask, w, h);
+    console.log(`contour: ${contour.length} pts`);
+
+    expect(buildingArea).toBeGreaterThan(0);
   });
 });

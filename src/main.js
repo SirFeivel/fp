@@ -21,7 +21,9 @@ import { getViewport } from "./viewport.js";
 import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./export.js";
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
-import { createRoomDetectionController, detectAndStoreEnvelope } from "./room-detection-controller.js";
+import { createRoomDetectionController, detectAndStoreEnvelope, loadImageData } from "./room-detection-controller.js";
+import { preprocessForRoomDetection, detectEnvelope, detectSpanningWalls } from "./room-detection.js";
+import { snapToWallType } from "./floor-plan-rules.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
 import { createThreeViewController } from "./three-view.js";
@@ -2619,6 +2621,319 @@ function updateAllTranslations() {
       const btn = document.getElementById("btnEnvelopeExport");
       btn.textContent = "Copied!";
       setTimeout(() => { btn.textContent = "Export Envelope"; }, 2000);
+    });
+
+    document.getElementById("btnShowPreprocessed")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btnShowPreprocessed");
+      const state = store.getState();
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      const bg = floor?.layout?.background;
+      const envelope = floor?.layout?.envelope;
+
+      if (!bg?.dataUrl || !bg?.scale?.pixelsPerCm) {
+        alert("No calibrated background image on current floor.");
+        return;
+      }
+      if (!envelope?.polygonCm) {
+        alert("No envelope detected. Create envelope first.");
+        return;
+      }
+
+      btn.textContent = "Processing...";
+      btn.disabled = true;
+
+      try {
+        const { imageData, scaleFactor } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+        const ppc = bg.scale.pixelsPerCm * scaleFactor;
+
+        // Convert envelope to pixel coordinates
+        const envelopePolygonPx = envelope.polygonCm.map(p => ({
+          x: Math.round(p.x * ppc),
+          y: Math.round(p.y * ppc),
+        }));
+        const spanningWallsPx = (envelope.spanningWalls || []).map(w => ({
+          startPx: { x: Math.round(w.startCm.x * ppc), y: Math.round(w.startCm.y * ppc) },
+          endPx: { x: Math.round(w.endCm.x * ppc), y: Math.round(w.endCm.y * ppc) },
+          thicknessPx: Math.round(w.thicknessCm * ppc),
+        }));
+
+        preprocessForRoomDetection(imageData, {
+          pixelsPerCm: ppc,
+          envelopePolygonPx,
+          envelopeWallThicknesses: envelope.wallThicknesses,
+          spanningWallsPx,
+        });
+
+        // Convert to blob URL and open in new tab (data URLs are too large)
+        const canvas = document.createElement("canvas");
+        canvas.width = imageData.width;
+        canvas.height = imageData.height;
+        const ctx = canvas.getContext("2d");
+        ctx.putImageData(imageData, 0, 0);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+
+        btn.textContent = "Done!";
+      } catch (err) {
+        console.error("Show preprocessed failed:", err);
+        btn.textContent = "Error";
+      }
+      setTimeout(() => { btn.textContent = "Show Preprocessed"; btn.disabled = false; }, 2000);
+    });
+
+    document.getElementById("btnShowEnvelope")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btnShowEnvelope");
+      const state = store.getState();
+      const floor = state.floors?.find(f => f.id === state.selectedFloorId);
+      const bg = floor?.layout?.background;
+      const envelope = floor?.layout?.envelope;
+
+      if (!bg?.dataUrl || !bg?.scale?.pixelsPerCm) {
+        alert("No calibrated background image on current floor.");
+        return;
+      }
+
+      btn.textContent = "Detecting...";
+      btn.disabled = true;
+
+      try {
+        const { imageData, scaleFactor } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+        const ppc = bg.scale.pixelsPerCm * scaleFactor;
+        const w = imageData.width, h = imageData.height;
+
+        // Helper: draw polygon edges + vertex dots on pixel data
+        const drawPoly = (data, poly, edgeR, edgeG, edgeB, vertR, vertG, vertB, thick = 1) => {
+          for (let ei = 0; ei < poly.length; ei++) {
+            const a = poly[ei], b = poly[(ei + 1) % poly.length];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const steps = Math.max(Math.abs(dx), Math.abs(dy));
+            for (let s = 0; s <= steps; s++) {
+              const px = Math.round(a.x + dx * s / steps);
+              const py = Math.round(a.y + dy * s / steps);
+              for (let oy = -thick; oy <= thick; oy++) {
+                for (let ox = -thick; ox <= thick; ox++) {
+                  const fx = px + ox, fy = py + oy;
+                  if (fx >= 0 && fx < w && fy >= 0 && fy < h) {
+                    const idx = (fy * w + fx) * 4;
+                    data[idx] = edgeR; data[idx + 1] = edgeG; data[idx + 2] = edgeB; data[idx + 3] = 255;
+                  }
+                }
+              }
+            }
+          }
+          const vr = thick + 1;
+          for (const v of poly) {
+            for (let oy = -vr; oy <= vr; oy++) {
+              for (let ox = -vr; ox <= vr; ox++) {
+                const fx = Math.round(v.x) + ox, fy = Math.round(v.y) + oy;
+                if (fx >= 0 && fx < w && fy >= 0 && fy < h) {
+                  const idx = (fy * w + fx) * 4;
+                  data[idx] = vertR; data[idx + 1] = vertG; data[idx + 2] = vertB; data[idx + 3] = 255;
+                }
+              }
+            }
+          }
+        };
+
+        // 1) Detect envelope on raw image
+        const envRaw = detectEnvelope(imageData, { pixelsPerCm: ppc });
+        if (!envRaw || !envRaw.polygonPixels || envRaw.polygonPixels.length < 3) {
+          alert("Envelope detection failed on raw image.");
+          btn.textContent = "Show Envelope";
+          btn.disabled = false;
+          return;
+        }
+
+        // 2) Preprocess, then detect envelope on preprocessed image
+        const preData = new Uint8ClampedArray(imageData.data);
+        const imgPre = { data: preData, width: w, height: h };
+
+        const envelopePolygonPx = envRaw.polygonPixels;
+        const envThick = envelope?.wallThicknesses || null;
+        const spanningWallsPx = (envelope?.spanningWalls || []).map(sw => ({
+          startPx: { x: Math.round(sw.startCm.x * ppc), y: Math.round(sw.startCm.y * ppc) },
+          endPx: { x: Math.round(sw.endCm.x * ppc), y: Math.round(sw.endCm.y * ppc) },
+          thicknessPx: Math.round(sw.thicknessCm * ppc),
+        }));
+
+        preprocessForRoomDetection(imgPre, {
+          pixelsPerCm: ppc,
+          envelopePolygonPx,
+          envelopeWallThicknesses: envThick,
+          spanningWallsPx,
+        });
+
+        const rawPoly = envRaw.polygonPixels;
+        const envelopeBboxPx = {
+          minX: Math.min(...rawPoly.map(p => p.x)),
+          minY: Math.min(...rawPoly.map(p => p.y)),
+          maxX: Math.max(...rawPoly.map(p => p.x)),
+          maxY: Math.max(...rawPoly.map(p => p.y)),
+        };
+        const envPre = detectEnvelope(imgPre, { pixelsPerCm: ppc, preprocessed: true, envelopeBboxPx });
+        console.log('[Show Envelope] 2nd pass result:', envPre ? `${envPre.polygonPixels.length} verts` : 'null');
+
+        // Detect spanning walls from both passes
+        const { minCm, maxCm } = { minCm: 5, maxCm: 60 }; // FLOOR_PLAN_RULES wall thickness bounds
+        const rawSpanningWalls = (envRaw.wallMask && envRaw.buildingMask)
+          ? detectSpanningWalls(imageData, envRaw.wallMask, envRaw.buildingMask, w, h, { pixelsPerCm: ppc, minThicknessCm: minCm, maxThicknessCm: maxCm })
+          : [];
+        const preSpanningWalls = (envPre?.wallMask && envPre?.buildingMask)
+          ? detectSpanningWalls(imgPre, envPre.wallMask, envPre.buildingMask, w, h, { pixelsPerCm: ppc, minThicknessCm: minCm, maxThicknessCm: maxCm })
+          : [];
+        console.log(`[Show Envelope] spanning walls: raw=${rawSpanningWalls.length}, pre=${preSpanningWalls.length}`);
+
+        // Put preprocessed image on canvas, then draw overlays with canvas 2D API
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(imgPre.data), w, h), 0, 0);
+
+        // Use 2nd pass (preprocessed) as the final result; fall back to 1st pass
+        const finalEnv = (envPre && envPre.polygonPixels && envPre.polygonPixels.length >= 3) ? envPre : envRaw;
+        const finalSpanning = preSpanningWalls.length > 0 ? preSpanningWalls : rawSpanningWalls;
+        const wallDefaults = floor?.layout?.wallDefaults?.types || null;
+        const fontSize = Math.max(12, Math.round(10 * ppc));
+
+        // Color map by wall type classification
+        const typeColors = {
+          outer:      { fill: 'rgba(160, 0, 200, 0.35)', stroke: 'rgb(160, 0, 200)' },   // purple
+          structural: { fill: 'rgba(0, 180, 0, 0.35)',    stroke: 'rgb(0, 180, 0)' },     // green
+          partition:  { fill: 'rgba(230, 200, 0, 0.35)',   stroke: 'rgb(230, 200, 0)' },   // yellow
+        };
+        const defaultColor = { fill: 'rgba(150, 150, 150, 0.35)', stroke: 'rgb(150, 150, 150)' };
+
+        const getColor = (thicknessCm) => {
+          const { typeId } = snapToWallType(thicknessCm, wallDefaults);
+          return typeColors[typeId] || defaultColor;
+        };
+
+        const makeLabel = (thicknessCm) => {
+          const { snappedCm, typeId } = snapToWallType(thicknessCm, wallDefaults);
+          return `${Math.round(thicknessCm)}cm → ${typeId || '?'} (${snappedCm}cm)`;
+        };
+
+        // ── Draw outer walls (full thickness, color-coded) ────────────────
+        const poly = finalEnv.polygonPixels;
+        const edges = finalEnv.wallThicknesses?.edges || [];
+        console.log('[Show Envelope] drawing:', poly.length, 'verts,', edges.length, 'edge measurements,', finalSpanning.length, 'spanning walls, wallDefaults:', wallDefaults);
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length];
+          const edgeMeas = edges.find(e => e.edgeIndex === i);
+          const thickPx = edgeMeas ? edgeMeas.thicknessPx : (finalEnv.wallThicknesses?.medianPx || 10);
+          const thickCm = edgeMeas ? edgeMeas.thicknessCm : (finalEnv.wallThicknesses?.medianCm || 10);
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) continue;
+          const nx = -dy / len, ny = dx / len;
+          const color = getColor(thickCm);
+          ctx.fillStyle = color.fill;
+          ctx.strokeStyle = color.stroke;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.lineTo(b.x + nx * thickPx, b.y + ny * thickPx);
+          ctx.lineTo(a.x + nx * thickPx, a.y + ny * thickPx);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // ── Draw spanning walls (full thickness, color-coded) ─────────────
+        for (const sw of finalSpanning) {
+          const { startPx, endPx, thicknessPx } = sw;
+          const thickCm = thicknessPx / ppc;
+          const dx = endPx.x - startPx.x, dy = endPx.y - startPx.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) continue;
+          const nx = -dy / len, ny = dx / len;
+          const halfThick = thicknessPx / 2;
+          const color = getColor(thickCm);
+          ctx.fillStyle = color.fill;
+          ctx.strokeStyle = color.stroke;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(startPx.x + nx * halfThick, startPx.y + ny * halfThick);
+          ctx.lineTo(endPx.x + nx * halfThick, endPx.y + ny * halfThick);
+          ctx.lineTo(endPx.x - nx * halfThick, endPx.y - ny * halfThick);
+          ctx.lineTo(startPx.x - nx * halfThick, startPx.y - ny * halfThick);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // ── Labels on outer walls ─────────────────────────────────────────
+        ctx.font = `bold ${fontSize}px monospace`;
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length];
+          const edgeMeas = edges.find(e => e.edgeIndex === i);
+          if (!edgeMeas) continue;
+          const midX = (a.x + b.x) / 2;
+          const midY = (a.y + b.y) / 2;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) continue;
+          const nx = -dy / len, ny = dx / len;
+          const label = makeLabel(edgeMeas.thicknessCm);
+          const color = getColor(edgeMeas.thicknessCm);
+          const labelX = midX + nx * (edgeMeas.thicknessPx + fontSize);
+          const labelY = midY + ny * (edgeMeas.thicknessPx + fontSize);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          const metrics = ctx.measureText(label);
+          ctx.fillRect(labelX - 2, labelY - fontSize / 2 - 2, metrics.width + 4, fontSize + 4);
+          ctx.fillStyle = color.stroke;
+          ctx.fillText(label, labelX, labelY);
+        }
+
+        // ── Labels on spanning walls ──────────────────────────────────────
+        for (const sw of finalSpanning) {
+          const { startPx, endPx, thicknessPx } = sw;
+          const thickCm = thicknessPx / ppc;
+          const dx = endPx.x - startPx.x, dy = endPx.y - startPx.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) continue;
+          const nx = -dy / len, ny = dx / len;
+          const halfThick = thicknessPx / 2;
+          const label = makeLabel(thickCm);
+          const color = getColor(thickCm);
+          const midX = (startPx.x + endPx.x) / 2;
+          const midY = (startPx.y + endPx.y) / 2;
+          const lx = midX + nx * (halfThick + fontSize);
+          const ly = midY + ny * (halfThick + fontSize);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          const metrics = ctx.measureText(label);
+          ctx.fillRect(lx - 2, ly - fontSize / 2 - 2, metrics.width + 4, fontSize + 4);
+          ctx.fillStyle = color.stroke;
+          ctx.fillText(label, lx, ly);
+        }
+
+        // ── Vertex dots ───────────────────────────────────────────────────
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        for (const v of poly) {
+          ctx.beginPath();
+          ctx.arc(v.x, v.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+
+        const rawV = envRaw.polygonPixels.length;
+        const preV = envPre ? envPre.polygonPixels.length : 0;
+        btn.textContent = `Raw: ${rawV}v / Pre: ${preV}v`;
+      } catch (err) {
+        console.error("Show envelope failed:", err);
+        btn.textContent = "Error";
+      }
+      setTimeout(() => { btn.textContent = "Show Envelope"; btn.disabled = false; }, 3000);
     });
 
     document.getElementById("menuReset")?.addEventListener("click", async () => {

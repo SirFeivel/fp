@@ -1,4 +1,3 @@
-# Plan: Wall Detection Improvements
 
 ## Status
 
@@ -720,73 +719,90 @@ All 1187 tests pass (1167 existing + 20 new):
 
 ---
 
-## Step 6: Image preprocessing — remove annotation noise without breaking the envelope ✅
+## Step 6: Image preprocessing — structure-aware wall extraction ✅
 
-**Status:** Implemented — branch `image-preprocessing-noise-removal`
+**Status:** Implemented — branch `room-envelope-matching`
 
 **Files:**
-- `src/room-detection.js` — `preprocessForRoomDetection` (exported) + `buildWallProtectionMask` (internal)
+- `src/room-detection.js` — `preprocessForRoomDetection` (exported), `buildWallProtectionMask`, `buildInsideEnvelopeMask`, `morphologicalOpenRect`, `dilate2DRect` (internal)
 - `src/room-detection-controller.js` — calls preprocessing in `handleSvgClick` before `detectRoomAtPixel`
+- `index.html` + `src/main.js` — "Show Preprocessed" debug button
 
-**Problem:** Colored annotations (red/blue dimension text, markers, door arcs) are captured by `buildGrayWallMask`'s secondary classification (`gray ∈ [10, lowThresh)`, `sat > 0.3`, `maxC > 40` → wall) because they share the same luminance/saturation signature as colored wall fills. This creates false wall regions that block flood fill and corrupt room boundaries.
+**Problem:** The original color-only approach (sat > 0.3) missed ALL non-colored dark noise: black door swing arcs, text labels, stair lines, furniture symbols. These corrupt room detection — FLUR gets 26 vertices with diagonal edges, TRH is too small, HEIZRAUM leaks into the stairway.
+
+**Root insight:** Color is irrelevant. Only **wall structure** matters: thick, straight, axis-aligned features at known thicknesses. The fix uses envelope priors (polygon boundary, valid angles, wall types) and works iteratively: outer walls → inner walls → clear space.
 
 **Key constraint:** Envelope (Steps 2–5) is detected first from the unfiltered image. Preprocessing runs after, only for room detection.
 
 ### Algorithm: `preprocessForRoomDetection(imageData, options)` — modifies in-place
 
-1. **Build wall protection mask** (if envelope data provided):
-   - Compute envelope polygon centroid
-   - For each edge: walk at 1px steps, fill inward by `thicknessPx + 2cm margin`
-   - For each spanning wall: fill band of `thicknessPx + margin` on both sides
-   - Protected pixels are immune from removal
+**With envelope data — three-phase structural approach:**
 
-2. **Build colored pixel mask**: For each pixel where `gray ∈ [10, 200)`, `sat > 0.3`, `maxC > 40` → mark as colored (1)
+**Phase 1 — Bleach exterior:**
+- Build inside-envelope mask via ray-casting point-in-polygon (`buildInsideEnvelopeMask`)
+- Inward margin of ~2cm protects envelope wall edge lines
+- Everything outside the envelope polygon → white
+- Removes: exterior insulation hatching, dimension text, site boundaries, margin noise
 
-3. **Morphological open** the colored mask:
-   - `erosionRadiusPx = max(2, round(FLOOR_PLAN_RULES.wallThickness.minCm / 3 * pixelsPerCm))`
-   - minCm=5 → radius ≈ 1.67cm → removes features thinner than ~3.3cm
-   - All text, dimension lines, door arcs (< 3cm) → removed
-   - All wall fills (≥ 5cm) → survive
+**Phase 2 — Directional morphological opening:**
+- Auto-detect dark pixel threshold via `autoDetectWallRange`
+- Build dark pixel mask inside envelope (gray < highThresh)
+- Close small aliasing gaps: `morphologicalClose(darkMask, closeRadius)` where `closeRadius = max(2, round(2 * ppc))`
+- Horizontal wall detector: `morphologicalOpenRect(sealedMask, longRadius, thickRadius)` — preserves horizontal dark bands that are thick enough AND long enough
+- Vertical wall detector: `morphologicalOpenRect(sealedMask, thickRadius, longRadius)` — same, transposed
+- Union: a pixel survives if it passes EITHER the H-wall or V-wall test
+- Parameters at ppc≈1.18: `thickRadius=2` (features need ≥5px ≈ 4.2cm perpendicular), `longRadius=4` (features need ≥9px ≈ 7.6cm parallel)
 
-4. **Bleach** thin unprotected colored pixels to white (255, 255, 255, 255)
+**Phase 3 — Bleach interior noise:**
+- Build wall protection mask (envelope edges + spanning walls)
+- Dark pixels inside envelope NOT in (directional opening result ∪ protection mask) → white
+- Removes: door arcs, text labels, furniture, stair hatching, colored annotations — regardless of color
+
+**Without envelope data — color-based fallback:**
+- Falls back to the legacy `preprocessColorOnly` (morphological opening on colored pixels only)
+- Used when no envelope has been detected yet
 
 ### Safety analysis
 
-| Feature | Width | Survives opening? |
-|---------|-------|--------------------|
-| Text character ~3mm | No → removed |
-| Dimension line ~0.5mm | No → removed |
-| Door swing arc ~0.5mm | No → removed |
-| Colored marker 2cm | No → removed |
-| Min wall fill 5cm | Yes (5-3.3=1.7cm) |
-| Partition wall 11.5cm | Yes (11.5-3.3=8.2cm) |
-| Outer wall 30cm | Yes + protected by mask |
+| Feature | Width | Thick enough? | Long enough? | Removed? |
+|---------|-------|---------------|-------------|----------|
+| Text stroke ~3mm | 1-3px | No (< 5px) | No | Yes |
+| Dimension line ~0.5mm | 1px | No | No | Yes |
+| Door swing arc ~1mm | 1-2px | No | Curved, not axis-aligned | Yes |
+| Colored marker 2cm | ~2px | No | No | Yes |
+| Stair hatching ~1mm | 1-2px | No | No | Yes |
+| Furniture lines ~1mm | 1-3px | No | Mixed angles | Yes |
+| Partition wall 11.5cm | 14px | Yes (14 > 5) | Yes (long) | No — preserved |
+| Structural wall 24cm | 28px | Yes | Yes | No — preserved |
+| Outer wall 30cm | 35px | Yes + protected | Yes | No — preserved |
 
 ### Integration
 
 In `handleSvgClick` (controller), between `loadImageData` and `detectRoomAtPixel`:
-- Convert `envelope.polygonCm` to pixel space via `cmToImagePx`
+- Convert `envelope.polygonCm` to pixel space
 - Convert spanning walls to pixel space
 - Call `preprocessForRoomDetection(imageData, { pixelsPerCm, envelopePolygonPx, envelopeWallThicknesses, spanningWallsPx })`
 - Pass preprocessed imageData to `detectRoomAtPixel`
 
+**Debug button** "Show Preprocessed" in debug panel:
+- Loads background image, clones imageData
+- Runs `preprocessForRoomDetection` with envelope data from current floor
+- Opens result in new browser tab for visual inspection
+
 Envelope detection (`detectAndStoreEnvelope`) is NOT affected — uses unfiltered image.
 
-### What already works (not modified):
-- Black text (gray < 10) → not in wall mask
-- `filterSmallComponents` removes small disconnected components
-- Morphological open removes thin black features
-- `fillInteriorHoles` fills text inside rooms
+### New internal functions
 
-### What this step handles:
-- Colored annotations captured by secondary classification → removed via morphological opening
-- Envelope wall regions → protected by spatial mask
+- `dilate2DRect(mask, w, h, radiusH, radiusV)` — separable 2D dilation with rectangular kernel
+- `morphologicalOpenRect(mask, w, h, radiusH, radiusV)` — erosion then dilation with rectangular kernel
+- `buildInsideEnvelopeMask(w, h, envelopePx, marginPx)` — ray-casting point-in-polygon pixel mask
 
 ### Verified results
 
-- **KG regression**: Clean vs preprocessed room detection produce identical bounding boxes (0cm difference)
-- **Synthetic noise**: 340/340 injected red annotation pixels bleached to white; room detection matches clean result exactly
-- All 1197 tests pass (1187 existing + 8 unit + 2 E2E)
+- **KG regression**: Clean vs preprocessed room detection produce identical bounding boxes (color-only fallback path)
+- **Synthetic noise**: 340/340 injected red annotation pixels bleached; room detection matches clean
+- **EG messy image with envelope**: 75%+ dark pixel reduction in envelope bbox, wall density preserved above 70% of raw within own envelope polygon
+- All 1204 tests pass
 
 ### Tests
 
@@ -798,11 +814,17 @@ Envelope detection (`detectAndStoreEnvelope`) is NOT affected — uses unfiltere
 5. Black lines (gray < 10) untouched
 6. Gray wall fill (low saturation) untouched
 7. Mid-tone colored: thin bleached, thick preserved
-8. Works without envelope data (null protection)
+8. Works without envelope data (null protection → color-only fallback)
 
-**E2E tests** (`src/room-detection.verify.test.js`, 2 tests):
+**E2E tests** (`src/room-detection.verify.test.js`):
 9. KG preprocessing regression — identical bounding boxes
 10. Synthetic red annotation injection + bleaching + room detection match
+11. EG messy/clean colored pixel removal (64.2%)
+12. EG envelope detection matches on preprocessed messy vs clean
+13. EG non-red annotation removal (>80%)
+14. EG wall mask similarity comparison
+15. Wall density inside own envelope: preprocessing removes noise, preserves walls (>70% wall density preserved)
+16. Dark pixel noise reduction: >50% dark pixel removal in envelope bbox
 
 ---
 

@@ -1322,6 +1322,31 @@ describe('detectEnvelope', () => {
     expect(envMinY).toBeLessThanOrEqual(roomMinY);
     expect(envMaxY).toBeGreaterThanOrEqual(roomMaxY);
   });
+
+  it('2nd pass with envelopeBboxPx applies stricter open and produces valid result', () => {
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+    const ppc = 0.5;
+
+    // 1st pass — get raw envelope
+    const envRaw = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(envRaw).not.toBeNull();
+
+    // Build bbox from 1st pass polygon
+    const rawPoly = envRaw.polygonPixels;
+    const envelopeBboxPx = {
+      minX: Math.min(...rawPoly.map(p => p.x)),
+      minY: Math.min(...rawPoly.map(p => p.y)),
+      maxX: Math.max(...rawPoly.map(p => p.x)),
+      maxY: Math.max(...rawPoly.map(p => p.y)),
+    };
+
+    // 2nd pass — should succeed with envelopeBboxPx
+    const envPre = detectEnvelope(imageData, { pixelsPerCm: ppc, preprocessed: true, envelopeBboxPx });
+    expect(envPre).not.toBeNull();
+    expect(envPre.polygonPixels.length).toBeGreaterThanOrEqual(3);
+    expect(envPre.wallMask).toBeInstanceOf(Uint8Array);
+    expect(envPre.buildingMask).toBeInstanceOf(Uint8Array);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1815,12 +1840,12 @@ describe('preprocessForRoomDetection', () => {
 
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Red pixels should be bleached to white
+    // Red pixels should be bleached to white (greyscale 255)
     for (let x = 0; x < 50; x++) {
       const i = 25 * 50 + x;
-      expect(img.data[i * 4]).toBe(255);     // R
-      expect(img.data[i * 4 + 1]).toBe(255); // G
-      expect(img.data[i * 4 + 2]).toBe(255); // B
+      expect(img.data[i * 4]).toBe(255);
+      expect(img.data[i * 4 + 1]).toBe(255);
+      expect(img.data[i * 4 + 2]).toBe(255);
     }
   });
 
@@ -1830,28 +1855,18 @@ describe('preprocessForRoomDetection', () => {
       (y >= 15 && y < 35) ? [0, 0, 200, 255] : [255, 255, 255, 255]
     );
 
-    // Save original blue pixel values
-    const originalBlue = [];
-    for (let y = 15; y < 35; y++) {
-      for (let x = 0; x < 50; x++) {
-        const i = y * 50 + x;
-        originalBlue.push([img.data[i * 4], img.data[i * 4 + 1], img.data[i * 4 + 2]]);
-      }
-    }
-
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Blue pixels should be preserved (survived morphological opening)
-    let idx = 0;
-    for (let y = 15; y < 35; y++) {
-      for (let x = 0; x < 50; x++) {
-        const i = y * 50 + x;
-        expect(img.data[i * 4]).toBe(originalBlue[idx][0]);
-        expect(img.data[i * 4 + 1]).toBe(originalBlue[idx][1]);
-        expect(img.data[i * 4 + 2]).toBe(originalBlue[idx][2]);
-        idx++;
-      }
-    }
+    // Blue block should be preserved as dark greyscale (not bleached to white)
+    const centerIdx = 25 * 50 + 25; // center of blue block
+    expect(img.data[centerIdx * 4]).toBeLessThan(100); // dark
+    // R === G === B (greyscale)
+    expect(img.data[centerIdx * 4]).toBe(img.data[centerIdx * 4 + 1]);
+    expect(img.data[centerIdx * 4]).toBe(img.data[centerIdx * 4 + 2]);
+
+    // White area should be white
+    const whiteIdx = 5 * 50 + 25;
+    expect(img.data[whiteIdx * 4]).toBe(255);
   });
 
   it('protects thin red pixels inside envelope wall region', () => {
@@ -1860,18 +1875,14 @@ describe('preprocessForRoomDetection', () => {
       (y === 10 || y === 11) ? [255, 0, 0, 255] : [255, 255, 255, 255]
     );
 
-    // Envelope polygon: rectangle covering top portion (y=0..20)
-    // Wall on top edge (y=0) with thickness covering down to y=15
     const envelopePx = [
       { x: 0, y: 0 }, { x: 99, y: 0 },
       { x: 99, y: 99 }, { x: 0, y: 99 },
     ];
     const wallThicknesses = {
       edges: [
-        { thicknessPx: 15 }, // top edge: wall extends 15px inward (y=0..15)
-        { thicknessPx: 15 }, // right edge
-        { thicknessPx: 15 }, // bottom edge
-        { thicknessPx: 15 }, // left edge
+        { thicknessPx: 15 }, { thicknessPx: 15 },
+        { thicknessPx: 15 }, { thicknessPx: 15 },
       ],
       medianPx: 15,
     };
@@ -1882,17 +1893,16 @@ describe('preprocessForRoomDetection', () => {
       envelopeWallThicknesses: wallThicknesses,
     });
 
-    // Red pixels at y=10,11 are inside the protection zone (top edge wall extends to y=15+margin)
-    // They should be preserved
+    // Red pixels at y=10 are inside protection zone — preserved as non-white greyscale
+    // Red (255,0,0) → greyscale ≈ 54, which after normalize becomes dark
     for (let x = 5; x < 95; x++) {
       const i = 10 * 100 + x;
-      expect(img.data[i * 4]).toBe(255);     // R
-      expect(img.data[i * 4 + 1]).toBe(0);   // G stays 0 (preserved)
-      expect(img.data[i * 4 + 2]).toBe(0);   // B stays 0 (preserved)
+      expect(img.data[i * 4]).toBeLessThan(255); // not bleached
+      expect(img.data[i * 4]).toBe(img.data[i * 4 + 1]); // greyscale
     }
   });
 
-  it('is a no-op for grayscale-only images', () => {
+  it('preserves relative brightness for grayscale-only images', () => {
     // All gray wall fills + white room + black edges — no colored pixels
     const img = makeRgbaImageData(50, 50, (x, y) => {
       if (y < 5) return [0, 0, 0, 255];       // black edge
@@ -1900,14 +1910,19 @@ describe('preprocessForRoomDetection', () => {
       return [255, 255, 255, 255];              // white room
     });
 
-    const dataCopy = new Uint8ClampedArray(img.data);
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Image should be completely unchanged
-    expect(img.data).toEqual(dataCopy);
+    // After greyscale + normalize: black→0, white→255, gray in between
+    const blackIdx = 2 * 50 + 25;
+    const grayIdx = 10 * 50 + 25;
+    const whiteIdx = 30 * 50 + 25;
+    expect(img.data[blackIdx * 4]).toBe(0);
+    expect(img.data[whiteIdx * 4]).toBe(255);
+    expect(img.data[grayIdx * 4]).toBeGreaterThan(0);
+    expect(img.data[grayIdx * 4]).toBeLessThan(255);
   });
 
-  it('does not touch black lines (gray < 10)', () => {
+  it('preserves black lines as dark greyscale', () => {
     // Black lines + some red annotations
     const img = makeRgbaImageData(50, 50, (x, y) => {
       if (y < 3) return [5, 5, 5, 255];        // near-black lines
@@ -1917,18 +1932,15 @@ describe('preprocessForRoomDetection', () => {
 
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Black lines at y=0,1,2 should be untouched
+    // Black lines should be the darkest pixels (normalized to 0)
     for (let x = 0; x < 50; x++) {
-      for (let y = 0; y < 3; y++) {
-        const i = y * 50 + x;
-        expect(img.data[i * 4]).toBe(5);
-        expect(img.data[i * 4 + 1]).toBe(5);
-        expect(img.data[i * 4 + 2]).toBe(5);
-      }
+      const i = 0 * 50 + x;
+      expect(img.data[i * 4]).toBe(0); // normalized darkest → 0
+      expect(img.data[i * 4]).toBe(img.data[i * 4 + 1]); // greyscale
     }
   });
 
-  it('does not touch neutral gray wall fill', () => {
+  it('preserves neutral gray wall fill as mid-tone greyscale', () => {
     // Gray wall fill (sat ≈ 0) mixed with red annotations
     const img = makeRgbaImageData(50, 50, (x, y) => {
       if (y < 20) return [150, 150, 150, 255]; // gray wall fill
@@ -1938,41 +1950,32 @@ describe('preprocessForRoomDetection', () => {
 
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Gray wall fill should be untouched
-    for (let x = 0; x < 50; x++) {
-      const i = 10 * 50 + x; // y=10, middle of gray fill
-      expect(img.data[i * 4]).toBe(150);
-      expect(img.data[i * 4 + 1]).toBe(150);
-      expect(img.data[i * 4 + 2]).toBe(150);
-    }
+    // Gray wall fill is preserved (not bleached), darker than white after normalize
+    const grayIdx = 10 * 50 + 25;
+    const whiteIdx = 30 * 50 + 25;
+    expect(img.data[grayIdx * 4]).toBeLessThan(img.data[whiteIdx * 4]);
+    expect(img.data[grayIdx * 4]).toBe(img.data[grayIdx * 4 + 1]); // greyscale
   });
 
   it('bleaches thin mid-tone colored annotation but preserves thick one', () => {
-    // Mid-tone green: gray ≈ 150 * 0.587 = 88 + ... → gray ≈ 105
-    // sat > 0.3 (pure green sat=1.0), maxC=150 > 40 → colored mask
     const midGreen = [0, 150, 0, 255]; // gray ≈ 88, sat=1.0
 
     const img = makeRgbaImageData(60, 60, (x, y) => {
-      // Thin green line at y=10 (1px) → should be removed
-      if (y === 10) return midGreen;
-      // Thick green block at y=30..49 (20px) → should survive
-      if (y >= 30 && y < 50) return midGreen;
+      if (y === 10) return midGreen;           // thin → removed
+      if (y >= 30 && y < 50) return midGreen;  // thick → survives
       return [255, 255, 255, 255];
     });
 
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Thin green line at y=10 should be bleached
+    // Thin green line at y=10 should be bleached to white
     const thinIdx = 10 * 60 + 30;
     expect(img.data[thinIdx * 4]).toBe(255);
-    expect(img.data[thinIdx * 4 + 1]).toBe(255);
-    expect(img.data[thinIdx * 4 + 2]).toBe(255);
 
-    // Thick green block center at y=40 should be preserved
+    // Thick green block center at y=40 should be dark greyscale
     const thickIdx = 40 * 60 + 30;
-    expect(img.data[thickIdx * 4]).toBe(0);
-    expect(img.data[thickIdx * 4 + 1]).toBe(150);
-    expect(img.data[thickIdx * 4 + 2]).toBe(0);
+    expect(img.data[thickIdx * 4]).toBeLessThan(100);
+    expect(img.data[thickIdx * 4]).toBe(img.data[thickIdx * 4 + 1]); // greyscale
   });
 
   it('works without envelope data (null protection)', () => {
@@ -1983,10 +1986,50 @@ describe('preprocessForRoomDetection', () => {
 
     preprocessForRoomDetection(img, { pixelsPerCm: ppc });
 
-    // Thin blue line should still be bleached (no protection doesn't mean keep everything)
+    // Thin blue line should be bleached to white greyscale
     const i = 20 * 50 + 25;
     expect(img.data[i * 4]).toBe(255);
-    expect(img.data[i * 4 + 1]).toBe(255);
-    expect(img.data[i * 4 + 2]).toBe(255);
+    expect(img.data[i * 4]).toBe(img.data[i * 4 + 1]); // greyscale
+  });
+
+  it('returns { hWalls, vWalls } when envelope is provided', () => {
+    // Create image with a thick dark horizontal band (wall-like)
+    const img = makeRgbaImageData(100, 100, (x, y) =>
+      (y >= 40 && y < 60) ? [30, 30, 30, 255] : [255, 255, 255, 255]
+    );
+    const envelopePx = [
+      { x: 0, y: 0 }, { x: 99, y: 0 },
+      { x: 99, y: 99 }, { x: 0, y: 99 },
+    ];
+    const wallThicknesses = {
+      edges: [
+        { thicknessPx: 20 }, { thicknessPx: 20 },
+        { thicknessPx: 20 }, { thicknessPx: 20 },
+      ],
+      medianPx: 20,
+    };
+
+    const result = preprocessForRoomDetection(img, {
+      pixelsPerCm: ppc,
+      envelopePolygonPx: envelopePx,
+      envelopeWallThicknesses: wallThicknesses,
+    });
+
+    expect(result).toBeDefined();
+    expect(result.hWalls).toBeInstanceOf(Uint8Array);
+    expect(result.vWalls).toBeInstanceOf(Uint8Array);
+    expect(result.hWalls.length).toBe(100 * 100);
+    expect(result.vWalls.length).toBe(100 * 100);
+
+    // hWalls should have some wall pixels from the horizontal band
+    let hCount = 0;
+    for (let i = 0; i < result.hWalls.length; i++) hCount += result.hWalls[i];
+    expect(hCount).toBeGreaterThan(0);
+  });
+
+  it('returns undefined without envelope data', () => {
+    const img = makeRgbaImageData(50, 50, () => [200, 200, 200, 255]);
+    const result = preprocessForRoomDetection(img, { pixelsPerCm: ppc });
+    expect(result).toBeUndefined();
   });
 });
