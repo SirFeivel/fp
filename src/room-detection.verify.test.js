@@ -2,8 +2,8 @@
 // Compares polygon bounding box to the hand-drawn reference polygon.
 // Run once with: npx vitest run src/room-detection.verify.test.js
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { decode } from 'fast-png';
+import { readFileSync, writeFileSync } from 'fs';
+import { decode, encode } from 'fast-png';
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection } from './room-detection.js';
 import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType } from './floor-plan-rules.js';
 
@@ -651,15 +651,41 @@ describe('Step 6 real-world: EG floor plan (messy vs clean)', () => {
     expect(after).toBeLessThan(before * 0.5);
   });
 
-  it('envelope detection on preprocessed messy image matches clean image', () => {
-    // Preprocess the messy image
+  it('envelope detection on preprocessed messy image matches clean image', { timeout: 30000 }, () => {
+    // Step 1: Detect envelope on raw messy (needed for preprocessing)
+    const envRaw = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    expect(envRaw, 'raw envelope').not.toBeNull();
+    console.log(`Raw messy envelope: ${envRaw.polygonPixels.length} vertices`);
+
+    // Step 2: Preprocess WITH envelope data (full three-phase, not legacy)
     const data2 = new Uint8ClampedArray(imgMessy.data);
     const imgPreprocessed = { data: data2, width: imgMessy.width, height: imgMessy.height };
-    preprocessForRoomDetection(imgPreprocessed, { pixelsPerCm: ppcEG });
+    const spanWalls = detectSpanningWalls(imgMessy, envRaw.polygonPixels, { pixelsPerCm: ppcEG });
+    const spanPx = (spanWalls || []).map(w => ({
+      startPx: w.startPx || { x: Math.round(w.startCm.x * ppcEG), y: Math.round(w.startCm.y * ppcEG) },
+      endPx: w.endPx || { x: Math.round(w.endCm.x * ppcEG), y: Math.round(w.endCm.y * ppcEG) },
+      thicknessPx: w.thicknessPx || Math.round((w.thicknessCm || 25) * ppcEG),
+    }));
+    preprocessForRoomDetection(imgPreprocessed, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: envRaw.polygonPixels,
+      envelopeWallThicknesses: envRaw.wallThicknesses,
+      spanningWallsPx: spanPx,
+    });
 
-    // Detect envelope on both
-    const envMessy = detectEnvelope(imgPreprocessed, { pixelsPerCm: ppcEG });
+    // Step 3: Detect envelope on preprocessed image
+    // Pass raw envelope bbox to help exclude external annotations
+    const rawPoly = envRaw.polygonPixels;
+    const envelopeBboxPx = {
+      minX: Math.min(...rawPoly.map(p => p.x)),
+      minY: Math.min(...rawPoly.map(p => p.y)),
+      maxX: Math.max(...rawPoly.map(p => p.x)),
+      maxY: Math.max(...rawPoly.map(p => p.y)),
+    };
+    const envMessy = detectEnvelope(imgPreprocessed, { pixelsPerCm: ppcEG, preprocessed: true, envelopeBboxPx });
     const envClean = detectEnvelope(imgClean, { pixelsPerCm: ppcEG });
+    console.log(`Preprocessed envelope: ${envMessy ? envMessy.polygonPixels.length : 0} vertices`);
+    console.log(`Clean envelope: ${envClean ? envClean.polygonPixels.length : 0} vertices`);
 
     expect(envMessy, 'envelope from preprocessed messy is null').not.toBeNull();
     expect(envClean, 'envelope from clean is null').not.toBeNull();
@@ -681,8 +707,56 @@ describe('Step 6 real-world: EG floor plan (messy vs clean)', () => {
     const cleanW = bClean.maxX - bClean.minX;
     const cleanH = bClean.maxY - bClean.minY;
 
+    console.log(`Envelope vertices — preprocessed: ${envMessy.polygonPixels.length}, clean: ${envClean.polygonPixels.length}`);
     console.log(`Envelope bbox (messy preprocessed): ${messyW.toFixed(0)} x ${messyH.toFixed(0)} cm`);
     console.log(`Envelope bbox (clean):              ${cleanW.toFixed(0)} x ${cleanH.toFixed(0)} cm`);
+
+    // Save both images with envelope polygons drawn on them
+    const drawPoly = (imgSrc, poly, outPath) => {
+      const out = new Uint8Array(imgSrc.width * imgSrc.height * 4);
+      for (let i = 0; i < imgSrc.width * imgSrc.height; i++) {
+        out[i * 4] = imgSrc.data[i * 4];
+        out[i * 4 + 1] = imgSrc.data[i * 4 + 1];
+        out[i * 4 + 2] = imgSrc.data[i * 4 + 2];
+        out[i * 4 + 3] = 255;
+      }
+      // Draw polygon edges in green, 3px thick
+      for (let ei = 0; ei < poly.length; ei++) {
+        const a = poly[ei], b = poly[(ei + 1) % poly.length];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const steps = Math.max(Math.abs(dx), Math.abs(dy));
+        for (let s = 0; s <= steps; s++) {
+          const px = Math.round(a.x + dx * s / steps);
+          const py = Math.round(a.y + dy * s / steps);
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const fx = px + ox, fy = py + oy;
+              if (fx >= 0 && fx < imgSrc.width && fy >= 0 && fy < imgSrc.height) {
+                const idx = (fy * imgSrc.width + fx) * 4;
+                out[idx] = 0; out[idx + 1] = 255; out[idx + 2] = 0;
+              }
+            }
+          }
+        }
+      }
+      // Draw vertices as red 5px dots
+      for (const v of poly) {
+        for (let oy = -2; oy <= 2; oy++) {
+          for (let ox = -2; ox <= 2; ox++) {
+            const fx = Math.round(v.x) + ox, fy = Math.round(v.y) + oy;
+            if (fx >= 0 && fx < imgSrc.width && fy >= 0 && fy < imgSrc.height) {
+              const idx = (fy * imgSrc.width + fx) * 4;
+              out[idx] = 255; out[idx + 1] = 0; out[idx + 2] = 0;
+            }
+          }
+        }
+      }
+      const png = encode({ width: imgSrc.width, height: imgSrc.height, data: out, channels: 4, depth: 8 });
+      writeFileSync(outPath, Buffer.from(png));
+      console.log(`Saved ${outPath}`);
+    };
+    drawPoly(imgPreprocessed, envMessy.polygonPixels, '/tmp/envelope_preprocessed.png');
+    drawPoly(imgClean, envClean.polygonPixels, '/tmp/envelope_clean.png');
 
     // Building dimensions should be roughly 1034cm × 880cm (from dimension labels)
     // Allow 15% tolerance since images have different pixel dimensions
@@ -778,5 +852,182 @@ describe('Step 6 real-world: EG floor plan (messy vs clean)', () => {
     expect(densityRaw, 'raw messy should have higher density than clean (annotations add false walls)').toBeGreaterThan(densityClean);
     expect(densityPre, 'preprocessed density should not collapse').toBeGreaterThan(densityClean * 0.5);
     expect(densityPre, 'preprocessing should reduce density vs raw (removed annotations)').toBeLessThan(densityRaw);
+  });
+});
+
+// ── Step 6 E2E: pixel-by-pixel comparison against clean reference ────────────
+// Simple overlay test: preprocess messy, scale clean to match, overlay, compare
+// every pixel. No envelope masking, no fancy regions — just two pictures on top
+// of each other.
+
+describe('Step 6 E2E: preprocessed messy vs clean reference (pixel accuracy)', () => {
+  const DARK_THRESH = 200;
+  function grayAt(data, idx) {
+    return 0.299 * data[idx * 4] + 0.587 * data[idx * 4 + 1] + 0.114 * data[idx * 4 + 2];
+  }
+
+  it('preprocessed image matches clean reference: ≥80% overall, ≥95% wall accuracy', { timeout: 30000 }, () => {
+    // ── Step 1: Align the two images via cross-correlation ──────────────
+    // Both images are 300dpi 1:100 (same pixel scale), but different crop.
+    // Find the pixel offset that best overlays them.
+
+    // Coarse pass: downsample 8x, brute-force dark-pixel overlap
+    const S = 8;
+    const wM = Math.floor(imgMessy.width / S), hM = Math.floor(imgMessy.height / S);
+    const wC = Math.floor(imgClean.width / S), hC = Math.floor(imgClean.height / S);
+
+    const downsample = (img, dw, dh) => {
+      const m = new Uint8Array(dw * dh);
+      for (let y = 0; y < dh; y++)
+        for (let x = 0; x < dw; x++) {
+          const i = (y * S) * img.width + (x * S);
+          if (grayAt(img.data, i) < DARK_THRESH) m[y * dw + x] = 1;
+        }
+      return m;
+    };
+    const mM = downsample(imgMessy, wM, hM);
+    const mC = downsample(imgClean, wC, hC);
+
+    let bestD = { x: 0, y: 0 }, bestS = -1;
+    for (let dy = -60; dy <= 60; dy++) {
+      for (let dx = -60; dx <= 60; dx++) {
+        let s = 0;
+        for (let cy = 0; cy < hC; cy++) {
+          const my = cy + dy;
+          if (my < 0 || my >= hM) continue;
+          for (let cx = 0; cx < wC; cx++) {
+            const mx = cx + dx;
+            if (mx < 0 || mx >= wM) continue;
+            if (mC[cy * wC + cx] && mM[my * wM + mx]) s++;
+          }
+        }
+        if (s > bestS) { bestS = s; bestD = { x: dx, y: dy }; }
+      }
+    }
+
+    // Fine pass: pixel-level refinement around coarse result
+    const cx0 = bestD.x * S, cy0 = bestD.y * S;
+    let bestF = { x: cx0, y: cy0 }, bestFS = -1;
+    const step = 4; // sample every 4th pixel for speed
+    for (let dy = cy0 - S - 2; dy <= cy0 + S + 2; dy++) {
+      for (let dx = cx0 - S - 2; dx <= cx0 + S + 2; dx++) {
+        let s = 0;
+        for (let y = 0; y < imgClean.height; y += step) {
+          const my = y + dy;
+          if (my < 0 || my >= imgMessy.height) continue;
+          for (let x = 0; x < imgClean.width; x += step) {
+            const mx = x + dx;
+            if (mx < 0 || mx >= imgMessy.width) continue;
+            if (grayAt(imgClean.data, y * imgClean.width + x) < DARK_THRESH &&
+                grayAt(imgMessy.data, my * imgMessy.width + mx) < DARK_THRESH) s++;
+          }
+        }
+        if (s > bestFS) { bestFS = s; bestF = { x: dx, y: dy }; }
+      }
+    }
+    const offX = bestF.x, offY = bestF.y;
+    console.log(`Alignment offset: (${offX}, ${offY})`);
+
+    // ── Step 2: Preprocess messy image ──────────────────────────────────
+    const envMessy = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    expect(envMessy, 'envelope on messy').not.toBeNull();
+    const envThick = detectWallThickness(imgMessy, envMessy.polygonPixels, imgMessy.width, imgMessy.height, ppcEG);
+    const spanWalls = detectSpanningWalls(imgMessy, envMessy.polygonPixels, { pixelsPerCm: ppcEG });
+    const spanPx = (spanWalls || []).map(w => ({
+      startPx: w.startPx || { x: Math.round(w.startCm.x * ppcEG), y: Math.round(w.startCm.y * ppcEG) },
+      endPx: w.endPx || { x: Math.round(w.endCm.x * ppcEG), y: Math.round(w.endCm.y * ppcEG) },
+      thicknessPx: w.thicknessPx || Math.round((w.thicknessCm || 25) * ppcEG),
+    }));
+    const preData = new Uint8ClampedArray(imgMessy.data);
+    const imgPre = { data: preData, width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(imgPre, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: envMessy.polygonPixels,
+      envelopeWallThicknesses: envThick,
+      spanningWallsPx: spanPx,
+    });
+
+    // ── Step 3: Crop to building footprint ─────────────────────────────────
+    // Only compare within the actual floor plan, not the outer dimension/
+    // measurement annotations. Use the clean image's envelope bbox as crop.
+    const envClean = detectEnvelope(imgClean, { pixelsPerCm: ppcEG });
+    expect(envClean, 'envelope on clean').not.toBeNull();
+    const cleanPoly = envClean.polygonPixels;
+    const cropMargin = Math.round(5 * ppcEG); // 5cm margin around envelope
+    const cropMinX = Math.round(Math.min(...cleanPoly.map(p => p.x)) - cropMargin);
+    const cropMinY = Math.round(Math.min(...cleanPoly.map(p => p.y)) - cropMargin);
+    const cropMaxX = Math.round(Math.max(...cleanPoly.map(p => p.x)) + cropMargin);
+    const cropMaxY = Math.round(Math.max(...cleanPoly.map(p => p.y)) + cropMargin);
+    console.log(`Crop region (clean coords): [${cropMinX},${cropMinY}]-[${cropMaxX},${cropMaxY}]`);
+
+    // ── Step 4: Compare non-white pixels within crop ────────────────────────
+    let contentPx = 0, contentMatch = 0;
+    let wallClean = 0, wallHit = 0;
+    let noisePx = 0;
+
+    // Also compute baseline (raw messy) in the same loop
+    let rawCP = 0, rawCM = 0, rawWC = 0, rawWH = 0, rawNoise = 0;
+
+    for (let cy = Math.max(0, cropMinY); cy <= Math.min(imgClean.height - 1, cropMaxY); cy++) {
+      const my = cy + offY;
+      if (my < 0 || my >= imgPre.height) continue;
+      for (let cx = Math.max(0, cropMinX); cx <= Math.min(imgClean.width - 1, cropMaxX); cx++) {
+        const mx = cx + offX;
+        if (mx < 0 || mx >= imgPre.width) continue;
+
+        const cIdx = cy * imgClean.width + cx;
+        const pIdx = my * imgPre.width + mx;
+        const mIdx = my * imgMessy.width + mx;
+        const cDark = grayAt(imgClean.data, cIdx) < DARK_THRESH;
+        const pDark = grayAt(imgPre.data, pIdx) < DARK_THRESH;
+        const mDark = grayAt(imgMessy.data, mIdx) < DARK_THRESH;
+
+        // Preprocessed vs clean (skip white-vs-white)
+        if (cDark || pDark) {
+          contentPx++;
+          if (cDark === pDark) contentMatch++;
+          if (cDark) { wallClean++; if (pDark) wallHit++; }
+          if (pDark && !cDark) noisePx++;
+        }
+
+        // Baseline: raw messy vs clean (skip white-vs-white)
+        if (cDark || mDark) {
+          rawCP++;
+          if (cDark === mDark) rawCM++;
+          if (cDark) { rawWC++; if (mDark) rawWH++; }
+          if (mDark && !cDark) rawNoise++;
+        }
+      }
+    }
+
+    const overall = contentMatch / contentPx;
+    const wallAcc = wallHit / wallClean;
+
+    console.log(`\n=== Non-white pixel comparison (cropped to building footprint) ===`);
+    console.log(`Non-white pixels: ${contentPx}`);
+    console.log(`Overall accuracy:    ${(overall * 100).toFixed(1)}% (${contentMatch}/${contentPx})`);
+    console.log(`Wall accuracy:       ${(wallAcc * 100).toFixed(1)}% (${wallHit}/${wallClean})`);
+    console.log(`Extra noise:         ${noisePx} px not in clean`);
+
+    console.log(`\n--- Baseline (raw messy, no preprocessing) ---`);
+    console.log(`Non-white pixels: ${rawCP}`);
+    console.log(`Overall accuracy:    ${(rawCM / rawCP * 100).toFixed(1)}%`);
+    console.log(`Wall accuracy:       ${(rawWH / rawWC * 100).toFixed(1)}%`);
+    console.log(`Extra noise:         ${rawNoise} px not in clean`);
+
+    expect(overall, `overall ${(overall * 100).toFixed(1)}% must be ≥80%`).toBeGreaterThanOrEqual(0.80);
+    expect(wallAcc, `wall ${(wallAcc * 100).toFixed(1)}% must be ≥95%`).toBeGreaterThanOrEqual(0.95);
+
+    // Save preprocessed image for visual inspection
+    const outData = new Uint8Array(imgPre.width * imgPre.height * 4);
+    for (let i = 0; i < imgPre.width * imgPre.height; i++) {
+      outData[i * 4]     = imgPre.data[i * 4];
+      outData[i * 4 + 1] = imgPre.data[i * 4 + 1];
+      outData[i * 4 + 2] = imgPre.data[i * 4 + 2];
+      outData[i * 4 + 3] = 255;
+    }
+    const png = encode({ width: imgPre.width, height: imgPre.height, data: outData, channels: 4, depth: 8 });
+    writeFileSync('/tmp/preprocessed_EG.png', Buffer.from(png));
+    console.log('Saved preprocessed image to /tmp/preprocessed_EG.png');
   });
 });

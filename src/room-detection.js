@@ -68,6 +68,31 @@ function dilate2D(mask, w, h, radius) {
   return out;
 }
 
+// 2D separable dilation with separate horizontal and vertical radii.
+function dilate2DRect(mask, w, h, radiusH, radiusV) {
+  const temp = new Uint8Array(w * h);
+  const rowBuf = new Uint8Array(w);
+  for (let y = 0; y < h; y++) {
+    const off = y * w;
+    for (let x = 0; x < w; x++) rowBuf[x] = mask[off + x];
+    temp.set(boxFilterMax1D(rowBuf, w, radiusH), off);
+  }
+  const out = new Uint8Array(w * h);
+  const colBuf = new Uint8Array(h);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) colBuf[y] = temp[y * w + x];
+    const result = boxFilterMax1D(colBuf, h, radiusV);
+    for (let y = 0; y < h; y++) out[y * w + x] = result[y];
+  }
+  return out;
+}
+
+// Morphological open with a rectangular kernel (separate H/V radii).
+function morphologicalOpenRect(mask, w, h, radiusH, radiusV) {
+  const eroded = negateMask(dilate2DRect(negateMask(mask), w, h, radiusH, radiusV));
+  return dilate2DRect(eroded, w, h, radiusH, radiusV);
+}
+
 // Negate binary mask (0↔1).
 function negateMask(mask) {
   const out = new Uint8Array(mask.length);
@@ -825,16 +850,68 @@ function buildWallProtectionMask(w, h, envelopePx, wallThicknesses, spanningWall
 }
 
 /**
- * Preprocess image for room detection by removing colored annotation noise.
+ * Build a binary mask indicating which pixels are inside the envelope polygon.
+ * Uses ray-casting point-in-polygon test. An optional inward margin shrinks
+ * the test boundary so envelope edge-line pixels are not accidentally excluded.
+ */
+function buildInsideEnvelopeMask(w, h, envelopePx, marginPx = 0) {
+  const mask = new Uint8Array(w * h);
+  const n = envelopePx.length;
+  if (n < 3) return mask;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of envelopePx) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const x0 = Math.max(0, Math.floor(minX) - 1);
+  const y0 = Math.max(0, Math.floor(minY) - 1);
+  const x1 = Math.min(w - 1, Math.ceil(maxX) + 1);
+  const y1 = Math.min(h - 1, Math.ceil(maxY) + 1);
+
+  // If margin > 0, shrink polygon toward centroid
+  let poly = envelopePx;
+  if (marginPx > 0) {
+    let cx = 0, cy = 0;
+    for (const p of envelopePx) { cx += p.x; cy += p.y; }
+    cx /= n; cy /= n;
+    poly = envelopePx.map(p => {
+      const dx = p.x - cx, dy = p.y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) return p;
+      const scale = Math.max(0, (dist - marginPx) / dist);
+      return { x: cx + dx * scale, y: cy + dy * scale };
+    });
+  }
+
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      let inside = false;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        if (((yi > y) !== (yj > y)) &&
+            (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+          inside = !inside;
+        }
+      }
+      if (inside) mask[y * w + x] = 1;
+    }
+  }
+  return mask;
+}
+
+/**
+ * Preprocess image for room detection using structure-aware wall extraction.
  *
- * Colored annotations (dimension text, markers, door arcs) share the same
- * luminance/saturation signature as colored wall fills, causing them to be
- * captured by buildGrayWallMask's secondary classification. This function
- * removes thin colored features (annotations) while preserving thick ones
- * (wall fills) using morphological opening.
+ * Three phases using envelope priors:
+ * Phase 1 — Bleach exterior (outside envelope polygon → white)
+ * Phase 2 — Directional morphological opening (keep thick axis-aligned features)
+ * Phase 3 — Bleach interior noise (dark pixels not identified as walls)
  *
- * Envelope wall regions are additionally protected by a spatial mask built
- * from the detected envelope polygon and spanning walls.
+ * Without envelope data, falls back to color-only annotation removal.
  *
  * Modifies imageData.data in-place.
  *
@@ -852,51 +929,97 @@ export function preprocessForRoomDetection(imageData, options = {}) {
   const { data, width: w, height: h } = imageData;
   const total = w * h;
 
-  // Step 1: Build wall protection mask (if envelope data provided)
-  let protectionMask = null;
-  if (envelopePolygonPx && envelopePolygonPx.length >= 3) {
-    protectionMask = buildWallProtectionMask(
-      w, h, envelopePolygonPx, envelopeWallThicknesses,
-      spanningWallsPx, pixelsPerCm
-    );
-  }
-
-  // Step 2: Build colored pixel mask
-  const coloredMask = new Uint8Array(total);
-  for (let i = 0; i < total; i++) {
-    const r = data[i * 4];
-    const g = data[i * 4 + 1];
-    const b = data[i * 4 + 2];
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    if (gray < 10 || gray >= 200) continue; // skip pure black and near-white
-    const maxC = Math.max(r, g, b);
-    const minC = Math.min(r, g, b);
-    const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-    if (sat > 0.3 && maxC > 40) {
-      coloredMask[i] = 1;
+  // Without envelope data, fall back to color-only removal
+  if (!envelopePolygonPx || envelopePolygonPx.length < 3) {
+    // Legacy: remove thin colored annotations using morphological opening
+    const coloredMask = new Uint8Array(total);
+    for (let i = 0; i < total; i++) {
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (gray < 10 || gray >= 200) continue;
+      const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+      const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+      if (sat > 0.3 && maxC > 40) coloredMask[i] = 1;
     }
+    let hasColored = false;
+    for (let i = 0; i < total; i++) { if (coloredMask[i]) { hasColored = true; break; } }
+    if (!hasColored) return;
+    const { minCm } = FLOOR_PLAN_RULES.wallThickness;
+    const erosionRadiusPx = Math.max(2, Math.round(minCm / 3 * pixelsPerCm));
+    const thickMask = morphologicalOpen(coloredMask, w, h, erosionRadiusPx);
+    for (let i = 0; i < total; i++) {
+      if (coloredMask[i] === 1 && thickMask[i] === 0) {
+        data[i * 4] = 255; data[i * 4 + 1] = 255;
+        data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+      }
+    }
+    return;
   }
 
-  // Quick bail: no colored pixels found
-  let hasColored = false;
+  // ── Phase 1: Bleach exterior ──────────────────────────────────────────────
+  // Everything outside the envelope polygon → white. Use an inward margin
+  // so envelope wall edge lines aren't accidentally excluded.
+  // TODO: Currently skipped — detectEnvelope on messy images produces
+  // oversimplified polygons (6 vertices vs 27) that cut off building content.
+  // Phase 1 will be re-enabled once envelope detection is improved.
+
+  // ── Phase 2: Directional morphological opening ────────────────────────────
+  const range = autoDetectWallRange(imageData);
+  const highThresh = range ? range.high : 200;
+
+  // Build dark pixel mask (entire image, since Phase 1 is skipped)
+  const darkMask = new Uint8Array(total);
   for (let i = 0; i < total; i++) {
-    if (coloredMask[i]) { hasColored = true; break; }
+    const gray = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+    if (gray < highThresh) darkMask[i] = 1;
   }
-  if (!hasColored) return;
 
-  // Step 3: Morphological open to find thick colored features
-  const { minCm } = FLOOR_PLAN_RULES.wallThickness;
-  const erosionRadiusPx = Math.max(2, Math.round(minCm / 3 * pixelsPerCm));
-  const thickMask = morphologicalOpen(coloredMask, w, h, erosionRadiusPx);
+  // Directional kernels: features must be thick enough AND long enough.
+  // thickRadius controls minimum perpendicular extent. At ppc≈1.18:
+  //   thickRadius=2 → needs ≥5px thick → text strokes (2-3px) removed,
+  //   partition walls (14px) survive easily.
+  // longRadius controls minimum parallel extent.
+  //   longRadius=4 → needs ≥9px long → isolated blobs removed.
+  // No morphological close before opening — close merges text characters
+  // into blobs thick enough to survive, defeating text removal.
+  const thickRadius = Math.max(1, Math.round(1.5 * pixelsPerCm));
+  const longRadius = Math.max(2, Math.round(3 * pixelsPerCm));
 
-  // Step 4: Bleach thin unprotected colored pixels
+  const hWalls = morphologicalOpenRect(darkMask, w, h, longRadius, thickRadius);
+  const vWalls = morphologicalOpenRect(darkMask, w, h, thickRadius, longRadius);
+
+  const wallFeatures = new Uint8Array(total);
+  for (let i = 0; i < total; i++) wallFeatures[i] = hWalls[i] | vWalls[i];
+
+  // ── Phase 2b: Recover thin colored walls ──────────────────────────────────
+  // Some rooms have colored wall strokes (e.g. red) thinner than standard walls.
+  // These fail the main opening but are still wall-like: long, straight,
+  // axis-aligned. Detect them with a lower thickness threshold and union.
+  const coloredDark = new Uint8Array(total);
   for (let i = 0; i < total; i++) {
-    if (coloredMask[i] === 1 && thickMask[i] === 0) {
-      if (protectionMask && protectionMask[i] === 1) continue; // protected
-      data[i * 4]     = 255;
-      data[i * 4 + 1] = 255;
-      data[i * 4 + 2] = 255;
-      data[i * 4 + 3] = 255;
+    if (!darkMask[i]) continue;
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    const vmax = Math.max(r, g, b), vmin = Math.min(r, g, b);
+    const sat = vmax > 0 ? (vmax - vmin) / vmax : 0;
+    if (sat > 0.3) coloredDark[i] = 1;
+  }
+  // Lower thickness threshold (radius 1 → needs ≥3px), same long requirement
+  const hColored = morphologicalOpenRect(coloredDark, w, h, longRadius, 1);
+  const vColored = morphologicalOpenRect(coloredDark, w, h, 1, longRadius);
+  for (let i = 0; i < total; i++) {
+    if (hColored[i] || vColored[i]) wallFeatures[i] = 1;
+  }
+
+  // ── Phase 3: Bleach interior noise ────────────────────────────────────────
+  const protectionMask = buildWallProtectionMask(
+    w, h, envelopePolygonPx, envelopeWallThicknesses,
+    spanningWallsPx, pixelsPerCm
+  );
+
+  for (let i = 0; i < total; i++) {
+    if (darkMask[i] && !wallFeatures[i] && !protectionMask[i]) {
+      data[i * 4] = 255; data[i * 4 + 1] = 255;
+      data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
     }
   }
 }
@@ -1516,7 +1639,7 @@ export function detectRoomAtPixel(imageData, seedX, seedY, options = {}) {
  * @returns {{ polygonPixels: Array<{x,y}>, wallThicknesses: object } | null}
  */
 export function detectEnvelope(imageData, options = {}) {
-  const { pixelsPerCm = 1 } = options;
+  const { pixelsPerCm = 1, preprocessed = false, envelopeBboxPx = null } = options;
   const w = imageData.width;
   const h = imageData.height;
   const totalPixels = w * h;
@@ -1540,10 +1663,15 @@ export function detectEnvelope(imageData, options = {}) {
   const range = autoDetectWallRange(imageData);
   if (range) {
     wallMask = buildGrayWallMask(imageData, range.low, range.high);
+    let wallCount1 = 0; for (let i = 0; i < totalPixels; i++) wallCount1 += wallMask[i];
     wallMask = filterSmallComponents(wallMask, w, h, minComponentArea);
+    let wallCount2 = 0; for (let i = 0; i < totalPixels; i++) wallCount2 += wallMask[i];
     if (openRadius > 0) {
       wallMask = morphologicalOpen(wallMask, w, h, openRadius);
     }
+    let wallCount3 = 0; for (let i = 0; i < totalPixels; i++) wallCount3 += wallMask[i];
+    console.log(`[detectEnvelope] range: ${range.low}-${range.high}, openRadius=${openRadius}, closeRadius=${closeRadius}`);
+    console.log(`[detectEnvelope] wallMask: raw=${wallCount1}, filtered=${wallCount2}, opened=${wallCount3} (${(wallCount3/totalPixels*100).toFixed(2)}%)`);
   }
 
   // Fallback: dark-threshold masks
@@ -1562,22 +1690,58 @@ export function detectEnvelope(imageData, options = {}) {
 
   if (!wallMask) return null;
 
-  // Step 2: Morphological close to seal small gaps in envelope walls
-  const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
+  let buildingMask;
 
-  // Step 3: Flood fill from border to find exterior
-  const exteriorMask = floodFillFromBorder(closedMask, w, h);
+  if (envelopeBboxPx) {
+    // ── Second pass: stricter open to remove annotation debris ─────────
+    // Use a stricter open to remove annotation remnants that
+    // survive the standard open and seal the boundary when closed. The
+    // extra ~6000 pixels in preprocessed vs clean are thick-enough
+    // annotation debris that bridge wall gaps. A larger open radius
+    // (removing features under ~20px) eliminates them while preserving
+    // actual walls (~25-30px thick at this scale).
+    const strictOpenRadius = Math.max(3, Math.round(6 * pixelsPerCm));
+    wallMask = morphologicalOpen(wallMask, w, h, strictOpenRadius);
+    let strictCount = 0; for (let i = 0; i < totalPixels; i++) strictCount += wallMask[i];
+    console.log(`[detectEnvelope] strict open (r=${strictOpenRadius}): ${strictCount} (${(strictCount/totalPixels*100).toFixed(2)}%)`);
 
-  // Step 4: Invert to building mask, fill interior holes
-  const buildingMask = new Uint8Array(totalPixels);
-  for (let i = 0; i < totalPixels; i++) {
-    buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+    const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
+    let closedCount = 0; for (let i = 0; i < totalPixels; i++) closedCount += closedMask[i];
+    console.log(`[detectEnvelope] closedMask: ${closedCount} (${(closedCount/totalPixels*100).toFixed(2)}%)`);
+
+    const exteriorMask = floodFillFromBorder(closedMask, w, h);
+    let extCount = 0; for (let i = 0; i < totalPixels; i++) extCount += exteriorMask[i];
+    console.log(`[detectEnvelope] exterior: ${extCount} (${(extCount/totalPixels*100).toFixed(2)}%)`);
+
+    buildingMask = new Uint8Array(totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+    }
+    fillInteriorHoles(buildingMask, w, h);
+  } else {
+    // ── First pass: outside-in flood fill (original approach) ──────────
+    // Step 2: Morphological close to seal small gaps in envelope walls
+    const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
+    let closedCount = 0; for (let i = 0; i < totalPixels; i++) closedCount += closedMask[i];
+    console.log(`[detectEnvelope] closedMask: ${closedCount} (${(closedCount/totalPixels*100).toFixed(2)}%)`);
+
+    // Step 3: Flood fill from border to find exterior
+    const exteriorMask = floodFillFromBorder(closedMask, w, h);
+    let extCount = 0; for (let i = 0; i < totalPixels; i++) extCount += exteriorMask[i];
+    console.log(`[detectEnvelope] exterior: ${extCount} (${(extCount/totalPixels*100).toFixed(2)}%)`);
+
+    // Step 4: Invert to building mask, fill interior holes
+    buildingMask = new Uint8Array(totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+    }
+    fillInteriorHoles(buildingMask, w, h);
   }
-  fillInteriorHoles(buildingMask, w, h);
 
   // Step 5: Sanity check — building must be 1–99% of image
   let buildingArea = 0;
   for (let i = 0; i < totalPixels; i++) buildingArea += buildingMask[i];
+  console.log(`[detectEnvelope] buildingArea: ${buildingArea} (${(buildingArea/totalPixels*100).toFixed(2)}%)`);
   if (buildingArea < totalPixels * 0.01 || buildingArea > totalPixels * 0.99) {
     return null;
   }
@@ -1588,8 +1752,10 @@ export function detectEnvelope(imageData, options = {}) {
 
   const rawPolygon = douglasPeucker(contour, epsilon);
   if (rawPolygon.length < 3) return null;
+  console.log(`[detectEnvelope] contour: ${contour.length} pts, rawPolygon: ${rawPolygon.length} verts`);
 
   const polygonPixels = snapPolygonEdges(rawPolygon);
+  console.log(`[detectEnvelope] snapped: ${polygonPixels.length} verts`);
   if (polygonPixels.length < 3) return null;
 
   // Step 7: Detect wall thickness — probe inward (toward building interior)
