@@ -168,7 +168,7 @@ describe('wall thickness on 300dpi KG floor plan', () => {
     setup();
     const wt = detectWallThickness(
       img300, cleanedPx, img300.width, img300.height,
-      ppc300, { probeInward: true }
+      ppc300, { probeFromInnerFace: true }
     );
     console.log('Wall thicknesses (300dpi):', JSON.stringify(wt, null, 2));
     expect(wt.edges.length).toBeGreaterThanOrEqual(1);
@@ -305,7 +305,7 @@ describe('Step 4 pipeline reorder produces identical output (300dpi KG)', () => 
     }));
     const oldWallThicknesses = detectWallThickness(
       img300, oldCleanedPx, img300.width, img300.height,
-      ppc300, { probeInward: true }
+      ppc300, { probeFromInnerFace: true }
     );
     oldResult = { polygonCm: oldCleaned, wallThicknesses: oldWallThicknesses, spanningWalls };
 
@@ -323,7 +323,7 @@ describe('Step 4 pipeline reorder produces identical output (300dpi KG)', () => 
     }));
     const newWallThicknesses = detectWallThickness(
       img300, newCleanedPx, img300.width, img300.height,
-      ppc300, { probeInward: true }
+      ppc300, { probeFromInnerFace: true }
     );
     newResult = { polygonCm: newCleaned, wallThicknesses: newWallThicknesses, spanningWalls, validAngles };
   }

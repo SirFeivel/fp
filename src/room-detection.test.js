@@ -18,6 +18,7 @@ import {
   detectEnvelope,
   detectSpanningWalls,
   removePolygonMicroBumps,
+  removeStackedWalls,
   preprocessForRoomDetection
 } from './room-detection.js';
 
@@ -687,6 +688,98 @@ describe('detectWallThickness', () => {
     const minT = Math.min(...thicknesses);
     const maxT = Math.max(...thicknesses);
     expect(maxT).toBeGreaterThan(minT * 1.3); // at least 30% difference
+  });
+
+  it('clustering picks upper cluster when window readings mix with wall readings', () => {
+    // 200×200 image, wall ring outer (10,10)→(190,190), inner (40,40)→(160,160).
+    // Wall = 30px thick. Punch window holes in top wall so some probes hit thin edge
+    // lines (~3px) while others hit full 30px wall.
+    const w = 200, h = 200;
+    const imageData = makeWallRingImage(w, h, 10, 40, 160, 190);
+    const data = imageData.data;
+
+    // Window holes in top wall: clear fill at x=55..90 and x=110..145, y=12..38
+    for (let y = 12; y < 38; y++) {
+      for (let x = 55; x <= 90; x++) {
+        const idx = (y * w + x) * 4;
+        data[idx] = data[idx + 1] = data[idx + 2] = 255;
+      }
+      for (let x = 110; x <= 145; x++) {
+        const idx = (y * w + x) * 4;
+        data[idx] = data[idx + 1] = data[idx + 2] = 255;
+      }
+    }
+
+    // Polygon at outer face — use probeFromInnerFace
+    const polygon = [
+      { x: 10, y: 10 },
+      { x: 190, y: 10 },
+      { x: 190, y: 190 },
+      { x: 10, y: 190 },
+    ];
+
+    const result = detectWallThickness(imageData, polygon, w, h, 1, { probeFromInnerFace: true });
+    // Top edge: clustering should pick solid wall readings (~28px) over window readings (~3px)
+    const topEdge = result.edges.find(e => e.edgeIndex === 0);
+    expect(topEdge).toBeDefined();
+    expect(topEdge.thicknessPx).toBeGreaterThanOrEqual(15);
+  });
+
+  it('variance retry probes additional spots when initial samples vary > 30%', () => {
+    // Create a wall ring with a single narrow gap in the left wall to trigger variance.
+    // The gap causes one probe to measure ~3px while others measure ~20px → max/min > 1.3.
+    const w = 100, h = 100;
+    const imageData = makeWallRingImage(w, h, 5, 25, 75, 95);
+    const data = imageData.data;
+
+    // Punch one window in the left wall at y=45..55 (clears fill, leaves only thin edge)
+    for (let y = 45; y <= 55; y++) {
+      for (let x = 7; x < 23; x++) {
+        const idx = (y * w + x) * 4;
+        data[idx] = data[idx + 1] = data[idx + 2] = 255;
+      }
+    }
+
+    const polygon = [
+      { x: 25, y: 25 },
+      { x: 75, y: 25 },
+      { x: 75, y: 75 },
+      { x: 25, y: 75 },
+    ];
+
+    const result = detectWallThickness(imageData, polygon, w, h, 1);
+    // Left edge (index 3) should still get the full wall thickness thanks to retry + clustering
+    const leftEdge = result.edges.find(e => e.edgeIndex === 3);
+    expect(leftEdge).toBeDefined();
+    expect(leftEdge.thicknessPx).toBeGreaterThanOrEqual(12);
+  });
+
+  it('probeFromInnerFace measures wall from inner face outward', () => {
+    // Create a wall ring and place the polygon at the OUTER face.
+    // With default probing (outward from polygon), it would measure into white space.
+    // With probeFromInnerFace, it should scan inward to find the inner face,
+    // then reverse and measure the wall outward.
+    const w = 100, h = 100;
+    const imageData = makeWallRingImage(w, h, 5, 25, 75, 95);
+
+    // Polygon at the outer boundary of the wall
+    const polygon = [
+      { x: 5, y: 5 },
+      { x: 95, y: 5 },
+      { x: 95, y: 95 },
+      { x: 5, y: 95 },
+    ];
+
+    // Default probe (outward) should struggle — probing away from the wall
+    const defaultResult = detectWallThickness(imageData, polygon, w, h, 1);
+
+    // probeFromInnerFace should find the wall by scanning inward first
+    const innerFaceResult = detectWallThickness(imageData, polygon, w, h, 1, { probeFromInnerFace: true });
+    expect(innerFaceResult.edges.length).toBeGreaterThanOrEqual(2);
+    // Should measure the full wall thickness (~18-20px center-to-center of 20px wall)
+    for (const edge of innerFaceResult.edges) {
+      expect(edge.thicknessPx).toBeGreaterThanOrEqual(10);
+    }
   });
 });
 
@@ -1803,6 +1896,104 @@ describe('removePolygonMicroBumps', () => {
       { x: 0, y: 800 },
     ];
     const result = removePolygonMicroBumps(rect, 30);
+    expect(result).toEqual(rect);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeStackedWalls
+// ---------------------------------------------------------------------------
+describe('removeStackedWalls', () => {
+  it('returns input unchanged for null, empty, or small polygons', () => {
+    expect(removeStackedWalls(null)).toBeNull();
+    expect(removeStackedWalls([])).toEqual([]);
+    const rect = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 0, y: 80 }];
+    expect(removeStackedWalls(rect)).toEqual(rect);
+  });
+
+  it('removes a stacked horizontal edge close to a parallel outer edge', () => {
+    // Rectangle with a thin horizontal notch on the bottom — simulates a wall
+    // traced on both inner and outer face. The bottom edge (y=800) has a
+    // parallel stacked edge at y=770 (30cm gap, within maxGap=50).
+    //
+    //  0,0 ─────── 1000,0
+    //  │                │
+    //  │                │
+    //  0,770 ── 1000,770   ← stacked inner edge
+    //  0,800 ── 1000,800   ← outer edge
+    //
+    const poly = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 770 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+      { x: 0, y: 770 },
+    ];
+    const result = removeStackedWalls(poly, 50);
+    // Should collapse to a rectangle — the stacked edge at y=770 is removed
+    expect(result.length).toBe(4);
+    // All Y values should be either 0 or 800 (the outer boundary)
+    const ys = result.map(p => p.y);
+    expect(Math.min(...ys)).toBe(0);
+    expect(Math.max(...ys)).toBe(800);
+  });
+
+  it('removes a stacked vertical edge close to a parallel outer edge', () => {
+    // Rectangle with a thin vertical notch on the right side
+    const poly = [
+      { x: 0, y: 0 },
+      { x: 970, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 970, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const result = removeStackedWalls(poly, 50);
+    expect(result.length).toBe(4);
+    const xs = result.map(p => p.x);
+    expect(Math.min(...xs)).toBe(0);
+    expect(Math.max(...xs)).toBe(1000);
+  });
+
+  it('does not remove edges beyond maxGapCm', () => {
+    // Two parallel H edges 100cm apart — not stacked
+    // L-shape where two parallel H edges are 200cm apart — not stacked
+    const poly = [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 200 },
+      { x: 1000, y: 200 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const result = removeStackedWalls(poly, 50);
+    // H edges at y=0 and y=200 are 200cm apart > 50cm, nothing removed
+    expect(result.length).toBe(6);
+  });
+
+  it('does not remove perpendicular edges', () => {
+    // L-shaped polygon — no stacked parallel edges
+    const poly = [
+      { x: 0, y: 0 },
+      { x: 600, y: 0 },
+      { x: 600, y: 400 },
+      { x: 1000, y: 400 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const result = removeStackedWalls(poly, 50);
+    expect(result.length).toBe(6); // L-shape preserved
+  });
+
+  it('does not modify a clean rectangle', () => {
+    const rect = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const result = removeStackedWalls(rect, 50);
     expect(result).toEqual(rect);
   });
 });

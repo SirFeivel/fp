@@ -7,7 +7,7 @@ import { svgEl } from "./geometry.js";
 import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, preprocessForRoomDetection } from "./room-detection.js";
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, removeStackedWalls, detectWallThickness, preprocessForRoomDetection } from "./room-detection.js";
 import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES, DEFAULT_WALL_TYPES, DEFAULT_FLOOR_HEIGHT_CM, snapToWallType, classifyWallTypes } from "./floor-plan-rules.js";
@@ -602,13 +602,17 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
 
   // Re-rectify: bump removal can leave residual notches where nearby V (or H)
   // edges were separated by the bump.  A second pass merges those edges.
-  const cleaned = rectifyPolygon(bumped, rectifyRules);
+  const reRectified = rectifyPolygon(bumped, rectifyRules);
+
+  // Remove stacked walls: parallel edges overlapping within wall-thickness distance
+  // (e.g. contour traced both inner and outer face of same wall)
+  const cleaned = removeStackedWalls(reRectified);
 
   // Re-measure wall thickness on the cleaned polygon so edge indices match
   const cleanedPx = cleaned.map(p => cmToImagePx(p.x, p.y, effectiveBg));
   const wallThicknesses = detectWallThickness(
     imageData, cleanedPx, imageData.width, imageData.height,
-    effectivePpc, { probeInward: true }
+    effectivePpc, { probeFromInnerFace: true }
   );
 
   // Classify wall types from all measured thicknesses

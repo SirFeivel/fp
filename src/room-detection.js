@@ -1246,6 +1246,55 @@ function classifyWallPixel(r, g, b) {
  * @param {number} maxProbe - Maximum probe depth in pixels
  * @returns {number} Wall thickness in pixels (0 if no edge found)
  */
+/**
+ * Two-phase probe for envelope walls: find the inner face by scanning inward
+ * through all wall material until reaching sustained background (room interior),
+ * then reverse and probe outward to measure the full wall assembly.
+ */
+function probeWallThicknessFromInnerFace(data, startX, startY, inwardX, inwardY, w, h, maxProbe, innerFaceGapPx) {
+  // Phase A: scan inward from outer contour to find the inner face.
+  // Pass through all wall material (edge+fill), allowing small bg gaps (≤2px).
+  // Stop when hitting sustained background (≥ innerFaceGapPx consecutive bg pixels).
+  let lastWallD = -1;
+  let bgGap = 0;
+  let enteredWall = false;
+
+  for (let d = 0; d <= maxProbe; d++) {
+    const px = Math.round(startX + inwardX * d);
+    const py = Math.round(startY + inwardY * d);
+    if (px < 0 || px >= w || py < 0 || py >= h) break;
+
+    const idx = (py * w + px) * 4;
+    const cls = classifyWallPixel(data[idx], data[idx + 1], data[idx + 2]);
+
+    if (cls === "edge" || cls === "fill") {
+      enteredWall = true;
+      lastWallD = d;
+      bgGap = 0;
+    } else {
+      if (enteredWall) {
+        bgGap++;
+        if (bgGap >= innerFaceGapPx) {
+          // Found sustained background = room interior
+          break;
+        }
+      }
+    }
+  }
+
+  if (lastWallD < 0) {
+    // Never found wall material — fallback to standard probe outward
+    return probeWallThickness(data, startX, startY, -inwardX, -inwardY, w, h, maxProbe);
+  }
+
+  // Inner face position: the last wall pixel before sustained background
+  const innerFaceX = startX + inwardX * lastWallD;
+  const innerFaceY = startY + inwardY * lastWallD;
+
+  // Phase B: probe outward from the inner face (reverse direction)
+  return probeWallThickness(data, innerFaceX, innerFaceY, -inwardX, -inwardY, w, h, maxProbe);
+}
+
 function probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe) {
   // Phase 1: scan outward, classify every pixel, find the wall band.
   // The wall band is the contiguous region of edge+fill pixels.
@@ -1327,11 +1376,12 @@ function probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxProbe) 
  * @param {number} w - Image width
  * @param {number} h - Image height
  * @param {number} pixelsPerCm - Scale factor for px→cm conversion
- * @param {{ maxProbe?: number, probeInward?: boolean }} [opts]
+ * @param {{ maxProbe?: number, probeInward?: boolean, probeFromInnerFace?: boolean, innerFaceGapCm?: number }} [opts]
  * @returns {{ edges: Array<{edgeIndex: number, thicknessPx: number, thicknessCm: number}>, medianPx: number, medianCm: number }}
  */
 export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm = 1, opts = {}) {
-  const { maxProbe = 200, probeInward = false } = typeof opts === "number" ? { maxProbe: opts } : opts;
+  const { maxProbe = 200, probeInward = false, probeFromInnerFace = false, innerFaceGapCm = 2 } = typeof opts === "number" ? { maxProbe: opts } : opts;
+  const innerFaceGapPx = Math.max(3, Math.round(innerFaceGapCm * pixelsPerCm));
   const empty = { edges: [], medianPx: 0, medianCm: 0 };
   const n = polygonPixels.length;
   if (n < 3) return empty;
@@ -1356,14 +1406,17 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
     const tx = dx / edgeLen, ty = dy / edgeLen;
     let perpX = -ty, perpY = tx; // one perpendicular direction
 
-    // Ensure perpendicular points away from centroid (outward) by default,
-    // or toward centroid (inward) when probeInward is true (for envelope polygons).
+    // Determine perpendicular direction based on mode:
+    // - default (probeInward=false): point away from centroid (outward) — for room polygons
+    // - probeInward=true: point toward centroid (inward) — legacy envelope mode
+    // - probeFromInnerFace=true: point toward centroid (inward) — Phase A scans inward first
     const edgeMidX = (A.x + B.x) / 2;
     const edgeMidY = (A.y + B.y) / 2;
     const toCentroidX = cx - edgeMidX;
     const toCentroidY = cy - edgeMidY;
     const dotProduct = perpX * toCentroidX + perpY * toCentroidY;
-    const shouldFlip = probeInward ? (dotProduct < 0) : (dotProduct > 0);
+    const wantInward = probeInward || probeFromInnerFace;
+    const shouldFlip = wantInward ? (dotProduct < 0) : (dotProduct > 0);
     if (shouldFlip) {
       perpX = -perpX;
       perpY = -perpY;
@@ -1375,33 +1428,68 @@ export function detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm 
     const { minCm: ruleMinCm, maxCm: ruleMaxCm } = FLOOR_PLAN_RULES.wallThickness;
     const probeLimitCm = ruleMaxCm + 10; // small margin beyond max for anti-aliasing
     const maxWallProbe = Math.min(maxProbe, Math.round(probeLimitCm * pixelsPerCm));
-    const raw = [];
-    for (let si = 1; si <= 7; si++) {
-      const frac = si / 8;
-      const startX = A.x + tx * edgeLen * frac;
-      const startY = A.y + ty * edgeLen * frac;
-      const thickness = probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxWallProbe);
-      if (thickness >= 2) {
-        raw.push(thickness);
+    // Probe helper: sample at given fractions along the edge
+    const probeAt = (fractions) => {
+      const samples = [];
+      for (const frac of fractions) {
+        const startX = A.x + tx * edgeLen * frac;
+        const startY = A.y + ty * edgeLen * frac;
+        const thickness = probeFromInnerFace
+          ? probeWallThicknessFromInnerFace(data, startX, startY, perpX, perpY, w, h, maxWallProbe, innerFaceGapPx)
+          : probeWallThickness(data, startX, startY, perpX, perpY, w, h, maxWallProbe);
+        if (thickness >= 2) samples.push(thickness);
       }
-    }
+      return samples;
+    };
+
+    // Initial 7 samples at 1/8, 2/8, ..., 7/8
+    let raw = probeAt([1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8]);
 
     if (raw.length < 2) continue;
 
     // Filter: reject samples outside FLOOR_PLAN_RULES.wallThickness bounds.
-    // Samples outside this range come from junction crossings (too large)
-    // or polygon misalignment (too small).
     const minWallPx = Math.max(2, Math.round(ruleMinCm * pixelsPerCm));
     const maxWallPx = Math.round(ruleMaxCm * pixelsPerCm);
-    const filtered = raw.filter(v => v >= minWallPx && v <= maxWallPx);
+    let filtered = raw.filter(v => v >= minWallPx && v <= maxWallPx);
+
+    // Variance check: if max/min > 1.3 (30% spread), retry at intermediate spots
+    if (filtered.length >= 2) {
+      const fMin = Math.min(...filtered);
+      const fMax = Math.max(...filtered);
+      if (fMax > fMin * 1.3) {
+        const retryRaw = probeAt([1/16, 3/16, 5/16, 7/16, 9/16, 11/16, 13/16, 15/16]);
+        raw = raw.concat(retryRaw);
+        filtered = raw.filter(v => v >= minWallPx && v <= maxWallPx);
+      }
+    }
 
     if (filtered.length < 2) continue;
 
     filtered.sort((a, b) => a - b);
-    const medIdx = Math.floor(filtered.length / 2);
-    const thicknessPx = filtered.length % 2 === 1
-      ? filtered[medIdx]
-      : (filtered[medIdx - 1] + filtered[medIdx]) / 2;
+
+    // Cluster filtered samples: split where consecutive values differ by > 50%.
+    // On edges with windows, thin-line readings (~9px) and solid-wall readings (~35px)
+    // form distinct clusters. Pick the upper cluster — the true wall thickness.
+    const clusters = [[filtered[0]]];
+    for (let fi = 1; fi < filtered.length; fi++) {
+      const prev = filtered[fi - 1];
+      const curr = filtered[fi];
+      if (curr > prev * 1.5) {
+        clusters.push([curr]);
+      } else {
+        clusters[clusters.length - 1].push(curr);
+      }
+    }
+    // Pick the upper cluster with at least 2 members; fall back to largest cluster
+    const upperWithMin2 = clusters.filter(c => c.length >= 2);
+    const bestCluster = upperWithMin2.length > 0
+      ? upperWithMin2[upperWithMin2.length - 1]  // last = highest values
+      : clusters.reduce((a, b) => a.length >= b.length ? a : b);
+
+    const medIdx = Math.floor(bestCluster.length / 2);
+    const thicknessPx = bestCluster.length % 2 === 1
+      ? bestCluster[medIdx]
+      : (bestCluster[medIdx - 1] + bestCluster[medIdx]) / 2;
     edges.push({
       edgeIndex: i,
       thicknessPx,
@@ -1536,6 +1624,145 @@ export function removePolygonMicroBumps(vertices, maxBumpDepthCm = FLOOR_PLAN_RU
         break;
       }
       if (Math.abs(a.x - b.x) < COLLINEAR_TOL && Math.abs(b.x - c.x) < COLLINEAR_TOL) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return pts;
+}
+
+/**
+ * Remove stacked (parallel overlapping) wall segments from an envelope polygon.
+ *
+ * A "stacked wall" is two parallel edges of the polygon that:
+ *   1. Share the same orientation (both H or both V)
+ *   2. Overlap when projected onto their shared axis
+ *   3. Are closer together on the perpendicular axis than maxGapCm
+ *
+ * This happens when the contour traces both sides of a wall or picks up an
+ * interior wall running parallel to the outer boundary. The fix collapses
+ * the stacked pair by removing the inner (shorter) edge and connecting its
+ * neighbors to the outer edge.
+ *
+ * Perpendicular crossings (e.g. a spanning wall crossing an outer wall) are
+ * NOT affected — only parallel overlaps are removed.
+ *
+ * @param {Array<{x:number,y:number}>} vertices - Polygon vertices (cm)
+ * @param {number} [maxGapCm] - Max perpendicular distance to consider stacked
+ * @returns {Array<{x:number,y:number}>} Cleaned polygon
+ */
+export function removeStackedWalls(vertices, maxGapCm = FLOOR_PLAN_RULES.wallThickness.maxCm) {
+  if (!vertices || vertices.length < 5) return vertices;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    console.log(`  edge ${i}: (${a.x.toFixed(1)},${a.y.toFixed(1)}) → (${b.x.toFixed(1)},${b.y.toFixed(1)}) len=${len.toFixed(1)}cm`);
+  }
+
+  const ALIGN_TOL = 1.0; // cm tolerance for axis-alignment
+  let pts = vertices.map(p => ({ x: p.x, y: p.y }));
+
+  // Classify edges as H, V, or diagonal
+  function classifyEdge(a, b) {
+    if (Math.abs(a.y - b.y) < ALIGN_TOL) return 'H';
+    if (Math.abs(a.x - b.x) < ALIGN_TOL) return 'V';
+    return null;
+  }
+
+  // Projection overlap check: do [a1,a2] and [b1,b2] overlap on a 1D axis?
+  function rangesOverlap(a1, a2, b1, b2) {
+    const aMin = Math.min(a1, a2), aMax = Math.max(a1, a2);
+    const bMin = Math.min(b1, b2), bMax = Math.max(b1, b2);
+    return aMin < bMax && bMin < aMax;
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const n = pts.length;
+    if (n < 5) break;
+
+    for (let i = 0; i < n && !changed; i++) {
+      const a1 = pts[i], a2 = pts[(i + 1) % n];
+      const typeA = classifyEdge(a1, a2);
+      if (!typeA) continue;
+      const lenA = Math.hypot(a2.x - a1.x, a2.y - a1.y);
+
+      for (let j = i + 2; j < n && !changed; j++) {
+        if (j === (i - 1 + n) % n) continue; // skip adjacent
+        const b1 = pts[j], b2 = pts[(j + 1) % n];
+        const typeB = classifyEdge(b1, b2);
+        if (typeB !== typeA) continue;
+
+        const lenB = Math.hypot(b2.x - b1.x, b2.y - b1.y);
+
+        if (typeA === 'H') {
+          // Both horizontal — check perpendicular (Y) gap and X overlap
+          const gap = Math.abs(((a1.y + a2.y) / 2) - ((b1.y + b2.y) / 2));
+          if (gap >= maxGapCm) continue;
+          if (!rangesOverlap(a1.x, a2.x, b1.x, b2.x)) continue;
+        } else {
+          // Both vertical — check perpendicular (X) gap and Y overlap
+          const gap = Math.abs(((a1.x + a2.x) / 2) - ((b1.x + b2.x) / 2));
+          if (gap >= maxGapCm) continue;
+          if (!rangesOverlap(a1.y, a2.y, b1.y, b2.y)) continue;
+        }
+
+        // Stacked pair found — remove the shorter edge
+        const gap = typeA === 'H'
+          ? Math.abs(((a1.y + a2.y) / 2) - ((b1.y + b2.y) / 2))
+          : Math.abs(((a1.x + a2.x) / 2) - ((b1.x + b2.x) / 2));
+        const removeIdx = lenA <= lenB ? i : j;
+        const keepIdx = lenA <= lenB ? j : i;
+        const keep1 = pts[keepIdx], keep2 = pts[(keepIdx + 1) % n];
+
+        // Snap the removed edge's neighbors to the kept edge's axis
+        const prevIdx = (removeIdx - 1 + n) % n;
+        const nextIdx = (removeIdx + 2) % n;
+        if (typeA === 'H') {
+          // Kept edge is H — snap neighbors' Y to the kept edge's Y
+          const keepY = (keep1.y + keep2.y) / 2;
+          pts[prevIdx] = { x: pts[prevIdx].x, y: keepY };
+          pts[nextIdx] = { x: pts[nextIdx].x, y: keepY };
+        } else {
+          // Kept edge is V — snap neighbors' X to the kept edge's X
+          const keepX = (keep1.x + keep2.x) / 2;
+          pts[prevIdx] = { x: keepX, y: pts[prevIdx].y };
+          pts[nextIdx] = { x: keepX, y: pts[nextIdx].y };
+        }
+
+        // Remove the two vertices of the shorter edge
+        const r1 = removeIdx;
+        const r2 = (removeIdx + 1) % n;
+        if (r1 < r2) {
+          pts.splice(r2, 1);
+          pts.splice(r1, 1);
+        } else {
+          pts.splice(r1, 1);
+          pts.splice(r2, 1);
+        }
+
+        changed = true;
+      }
+    }
+  }
+
+  // Clean up: remove degenerate edges (zero-length) and collinear vertices
+  const COLLINEAR_TOL = 1.0;
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < pts.length && pts.length > 3; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length];
+      const b = pts[i];
+      const c = pts[(i + 1) % pts.length];
+      // Remove if collinear or degenerate
+      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      if (Math.abs(cross) < COLLINEAR_TOL * Math.max(Math.hypot(b.x - a.x, b.y - a.y), Math.hypot(c.x - b.x, c.y - b.y))) {
         pts.splice(i, 1);
         changed = true;
         break;
@@ -1784,9 +2011,9 @@ export function detectEnvelope(imageData, options = {}) {
   console.log(`[detectEnvelope] snapped: ${polygonPixels.length} verts`);
   if (polygonPixels.length < 3) return null;
 
-  // Step 7: Detect wall thickness — probe inward (toward building interior)
-  // because the envelope polygon traces the outer boundary
-  const wallThicknesses = detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm, { probeInward: true });
+  // Step 7: Detect wall thickness — scan inward to find inner face, then probe outward
+  // through the wall. This measures the full wall assembly from inside to outside.
+  const wallThicknesses = detectWallThickness(imageData, polygonPixels, w, h, pixelsPerCm, { probeFromInnerFace: true });
 
   return { polygonPixels, wallThicknesses, wallMask, buildingMask };
 }

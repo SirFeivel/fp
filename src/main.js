@@ -22,7 +22,7 @@ import { exportRoomsPdf, exportCommercialPdf, exportCommercialXlsx } from "./exp
 import { createBackgroundController } from "./background.js";
 import { createPolygonDrawController } from "./polygon-draw.js";
 import { createRoomDetectionController, detectAndStoreEnvelope, loadImageData } from "./room-detection-controller.js";
-import { preprocessForRoomDetection, detectEnvelope, detectSpanningWalls } from "./room-detection.js";
+import { preprocessForRoomDetection } from "./room-detection.js";
 import { snapToWallType } from "./floor-plan-rules.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { createSurface } from "./surface.js";
@@ -2694,7 +2694,12 @@ function updateAllTranslations() {
         return;
       }
 
-      btn.textContent = "Detecting...";
+      if (!envelope?.polygonCm || envelope.polygonCm.length < 3) {
+        alert("No stored envelope. Run 'Create Envelope' first.");
+        return;
+      }
+
+      btn.textContent = "Rendering...";
       btn.disabled = true;
 
       try {
@@ -2702,99 +2707,36 @@ function updateAllTranslations() {
         const ppc = bg.scale.pixelsPerCm * scaleFactor;
         const w = imageData.width, h = imageData.height;
 
-        // Helper: draw polygon edges + vertex dots on pixel data
-        const drawPoly = (data, poly, edgeR, edgeG, edgeB, vertR, vertG, vertB, thick = 1) => {
-          for (let ei = 0; ei < poly.length; ei++) {
-            const a = poly[ei], b = poly[(ei + 1) % poly.length];
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const steps = Math.max(Math.abs(dx), Math.abs(dy));
-            for (let s = 0; s <= steps; s++) {
-              const px = Math.round(a.x + dx * s / steps);
-              const py = Math.round(a.y + dy * s / steps);
-              for (let oy = -thick; oy <= thick; oy++) {
-                for (let ox = -thick; ox <= thick; ox++) {
-                  const fx = px + ox, fy = py + oy;
-                  if (fx >= 0 && fx < w && fy >= 0 && fy < h) {
-                    const idx = (fy * w + fx) * 4;
-                    data[idx] = edgeR; data[idx + 1] = edgeG; data[idx + 2] = edgeB; data[idx + 3] = 255;
-                  }
-                }
-              }
-            }
-          }
-          const vr = thick + 1;
-          for (const v of poly) {
-            for (let oy = -vr; oy <= vr; oy++) {
-              for (let ox = -vr; ox <= vr; ox++) {
-                const fx = Math.round(v.x) + ox, fy = Math.round(v.y) + oy;
-                if (fx >= 0 && fx < w && fy >= 0 && fy < h) {
-                  const idx = (fy * w + fx) * 4;
-                  data[idx] = vertR; data[idx + 1] = vertG; data[idx + 2] = vertB; data[idx + 3] = 255;
-                }
-              }
-            }
-          }
-        };
+        // Read stored envelope state
+        const polyPx = envelope.polygonCm.map(p => ({ x: Math.round(p.x * ppc), y: Math.round(p.y * ppc) }));
+        const edges = envelope.wallThicknesses?.edges || [];
+        const medianCm = envelope.wallThicknesses?.medianCm || 10;
+        const spanningWalls = envelope.spanningWalls || [];
+        const wallDefaults = floor?.layout?.wallDefaults?.types || null;
 
-        // 1) Detect envelope on raw image
-        const envRaw = detectEnvelope(imageData, { pixelsPerCm: ppc });
-        if (!envRaw || !envRaw.polygonPixels || envRaw.polygonPixels.length < 3) {
-          alert("Envelope detection failed on raw image.");
-          btn.textContent = "Show Envelope";
-          btn.disabled = false;
-          return;
-        }
+        console.log(`[Show Envelope] stored: ${polyPx.length} verts, ${edges.length} edge measurements, ${spanningWalls.length} spanning walls`);
 
-        // 2) Preprocess, then detect envelope on preprocessed image
+        // Preprocess image for background (shows what detection pipeline works with)
         const preData = new Uint8ClampedArray(imageData.data);
         const imgPre = { data: preData, width: w, height: h };
-
-        const envelopePolygonPx = envRaw.polygonPixels;
-        const envThick = envelope?.wallThicknesses || null;
-        const spanningWallsPx = (envelope?.spanningWalls || []).map(sw => ({
+        const spanningWallsPx = spanningWalls.map(sw => ({
           startPx: { x: Math.round(sw.startCm.x * ppc), y: Math.round(sw.startCm.y * ppc) },
           endPx: { x: Math.round(sw.endCm.x * ppc), y: Math.round(sw.endCm.y * ppc) },
           thicknessPx: Math.round(sw.thicknessCm * ppc),
         }));
-
         preprocessForRoomDetection(imgPre, {
           pixelsPerCm: ppc,
-          envelopePolygonPx,
-          envelopeWallThicknesses: envThick,
+          envelopePolygonPx: polyPx,
+          envelopeWallThicknesses: envelope.wallThicknesses || null,
           spanningWallsPx,
         });
 
-        const rawPoly = envRaw.polygonPixels;
-        const envelopeBboxPx = {
-          minX: Math.min(...rawPoly.map(p => p.x)),
-          minY: Math.min(...rawPoly.map(p => p.y)),
-          maxX: Math.max(...rawPoly.map(p => p.x)),
-          maxY: Math.max(...rawPoly.map(p => p.y)),
-        };
-        const envPre = detectEnvelope(imgPre, { pixelsPerCm: ppc, preprocessed: true, envelopeBboxPx });
-        console.log('[Show Envelope] 2nd pass result:', envPre ? `${envPre.polygonPixels.length} verts` : 'null');
-
-        // Detect spanning walls from both passes
-        const { minCm, maxCm } = { minCm: 5, maxCm: 60 }; // FLOOR_PLAN_RULES wall thickness bounds
-        const rawSpanningWalls = (envRaw.wallMask && envRaw.buildingMask)
-          ? detectSpanningWalls(imageData, envRaw.wallMask, envRaw.buildingMask, w, h, { pixelsPerCm: ppc, minThicknessCm: minCm, maxThicknessCm: maxCm })
-          : [];
-        const preSpanningWalls = (envPre?.wallMask && envPre?.buildingMask)
-          ? detectSpanningWalls(imgPre, envPre.wallMask, envPre.buildingMask, w, h, { pixelsPerCm: ppc, minThicknessCm: minCm, maxThicknessCm: maxCm })
-          : [];
-        console.log(`[Show Envelope] spanning walls: raw=${rawSpanningWalls.length}, pre=${preSpanningWalls.length}`);
-
-        // Put preprocessed image on canvas, then draw overlays with canvas 2D API
+        // Put preprocessed image on canvas as background
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
         ctx.putImageData(new ImageData(new Uint8ClampedArray(imgPre.data), w, h), 0, 0);
-
-        // Use 2nd pass (preprocessed) as the final result; fall back to 1st pass
-        const finalEnv = (envPre && envPre.polygonPixels && envPre.polygonPixels.length >= 3) ? envPre : envRaw;
-        const finalSpanning = preSpanningWalls.length > 0 ? preSpanningWalls : rawSpanningWalls;
-        const wallDefaults = floor?.layout?.wallDefaults?.types || null;
         const fontSize = Math.max(12, Math.round(10 * ppc));
 
         // Color map by wall type classification
@@ -2816,14 +2758,11 @@ function updateAllTranslations() {
         };
 
         // ── Draw outer walls (full thickness, color-coded) ────────────────
-        const poly = finalEnv.polygonPixels;
-        const edges = finalEnv.wallThicknesses?.edges || [];
-        console.log('[Show Envelope] drawing:', poly.length, 'verts,', edges.length, 'edge measurements,', finalSpanning.length, 'spanning walls, wallDefaults:', wallDefaults);
-        for (let i = 0; i < poly.length; i++) {
-          const a = poly[i], b = poly[(i + 1) % poly.length];
+        for (let i = 0; i < polyPx.length; i++) {
+          const a = polyPx[i], b = polyPx[(i + 1) % polyPx.length];
           const edgeMeas = edges.find(e => e.edgeIndex === i);
-          const thickPx = edgeMeas ? edgeMeas.thicknessPx : (finalEnv.wallThicknesses?.medianPx || 10);
-          const thickCm = edgeMeas ? edgeMeas.thicknessCm : (finalEnv.wallThicknesses?.medianCm || 10);
+          const thickCm = edgeMeas ? edgeMeas.thicknessCm : medianCm;
+          const thickPx = thickCm * ppc;
           const dx = b.x - a.x, dy = b.y - a.y;
           const len = Math.hypot(dx, dy);
           if (len < 1) continue;
@@ -2843,9 +2782,11 @@ function updateAllTranslations() {
         }
 
         // ── Draw spanning walls (full thickness, color-coded) ─────────────
-        for (const sw of finalSpanning) {
-          const { startPx, endPx, thicknessPx } = sw;
-          const thickCm = thicknessPx / ppc;
+        for (const sw of spanningWalls) {
+          const startPx = { x: sw.startCm.x * ppc, y: sw.startCm.y * ppc };
+          const endPx = { x: sw.endCm.x * ppc, y: sw.endCm.y * ppc };
+          const thickCm = sw.thicknessCm || medianCm;
+          const thicknessPx = thickCm * ppc;
           const dx = endPx.x - startPx.x, dy = endPx.y - startPx.y;
           const len = Math.hypot(dx, dy);
           if (len < 1) continue;
@@ -2868,8 +2809,8 @@ function updateAllTranslations() {
         // ── Labels on outer walls ─────────────────────────────────────────
         ctx.font = `bold ${fontSize}px monospace`;
         ctx.textBaseline = 'middle';
-        for (let i = 0; i < poly.length; i++) {
-          const a = poly[i], b = poly[(i + 1) % poly.length];
+        for (let i = 0; i < polyPx.length; i++) {
+          const a = polyPx[i], b = polyPx[(i + 1) % polyPx.length];
           const edgeMeas = edges.find(e => e.edgeIndex === i);
           if (!edgeMeas) continue;
           const midX = (a.x + b.x) / 2;
@@ -2880,8 +2821,9 @@ function updateAllTranslations() {
           const nx = -dy / len, ny = dx / len;
           const label = makeLabel(edgeMeas.thicknessCm);
           const color = getColor(edgeMeas.thicknessCm);
-          const labelX = midX + nx * (edgeMeas.thicknessPx + fontSize);
-          const labelY = midY + ny * (edgeMeas.thicknessPx + fontSize);
+          const edgeThickPx = edgeMeas.thicknessCm * ppc;
+          const labelX = midX + nx * (edgeThickPx + fontSize);
+          const labelY = midY + ny * (edgeThickPx + fontSize);
           ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           const metrics = ctx.measureText(label);
           ctx.fillRect(labelX - 2, labelY - fontSize / 2 - 2, metrics.width + 4, fontSize + 4);
@@ -2890,18 +2832,20 @@ function updateAllTranslations() {
         }
 
         // ── Labels on spanning walls ──────────────────────────────────────
-        for (const sw of finalSpanning) {
-          const { startPx, endPx, thicknessPx } = sw;
-          const thickCm = thicknessPx / ppc;
-          const dx = endPx.x - startPx.x, dy = endPx.y - startPx.y;
+        for (const sw of spanningWalls) {
+          const sPx = { x: sw.startCm.x * ppc, y: sw.startCm.y * ppc };
+          const ePx = { x: sw.endCm.x * ppc, y: sw.endCm.y * ppc };
+          const thickCm = sw.thicknessCm || medianCm;
+          const thickPxSw = thickCm * ppc;
+          const dx = ePx.x - sPx.x, dy = ePx.y - sPx.y;
           const len = Math.hypot(dx, dy);
           if (len < 1) continue;
           const nx = -dy / len, ny = dx / len;
-          const halfThick = thicknessPx / 2;
+          const halfThick = thickPxSw / 2;
           const label = makeLabel(thickCm);
           const color = getColor(thickCm);
-          const midX = (startPx.x + endPx.x) / 2;
-          const midY = (startPx.y + endPx.y) / 2;
+          const midX = (sPx.x + ePx.x) / 2;
+          const midY = (sPx.y + ePx.y) / 2;
           const lx = midX + nx * (halfThick + fontSize);
           const ly = midY + ny * (halfThick + fontSize);
           ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
@@ -2915,7 +2859,7 @@ function updateAllTranslations() {
         ctx.fillStyle = '#fff';
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 1;
-        for (const v of poly) {
+        for (const v of polyPx) {
           ctx.beginPath();
           ctx.arc(v.x, v.y, 4, 0, Math.PI * 2);
           ctx.fill();
@@ -2926,9 +2870,7 @@ function updateAllTranslations() {
         const url = URL.createObjectURL(blob);
         window.open(url, "_blank");
 
-        const rawV = envRaw.polygonPixels.length;
-        const preV = envPre ? envPre.polygonPixels.length : 0;
-        btn.textContent = `Raw: ${rawV}v / Pre: ${preV}v`;
+        btn.textContent = `${polyPx.length}v / ${edges.length}e / ${spanningWalls.length}sw`;
       } catch (err) {
         console.error("Show envelope failed:", err);
         btn.textContent = "Error";
