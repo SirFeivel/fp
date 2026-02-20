@@ -828,6 +828,146 @@ Envelope detection (`detectAndStoreEnvelope`) is NOT affected — uses unfiltere
 
 ---
 
+## Step 6a: Greyscale normalization, second-pass hardening, and envelope visualization improvements ✅
+
+**Status:** Implemented — branch `room-envelope-matching`, commits `c09cfe1`, `cc2ebc1`, `df662c7`
+
+**Files:**
+- `src/room-detection.js` — `preprocessForRoomDetection`, `detectEnvelope`, `detectWallThickness`, `removeStackedWalls` (new export)
+- `src/main.js` — Show Envelope debug visualization rewrite
+- `src/room-detection-controller.js` — pipeline integration for `removeStackedWalls` and `probeFromInnerFace`
+- `STEP_00_GREYSCALE_NORMALIZED.md` — processing step reference
+
+### 1. Greyscale + contrast normalization (preprocessing final step)
+
+**Problem:** After Phase 1–3 preprocessing, room detection still operates on RGB pixels with varying color channels. Different annotations leave behind slightly different color residues that affect thresholding.
+
+**Fix:** Added a final normalization step to `preprocessForRoomDetection` that runs on both the envelope and color-only code paths:
+1. Flatten alpha onto white background
+2. Convert to greyscale via BT.709 luminance: `0.2126*R + 0.7152*G + 0.0722*B`
+3. Linear contrast stretch: `output = 255 * (input - min) / (max - min)`
+4. Write back as uniform grey RGBA: `(v, v, v, 255)`
+
+All downstream code now sees a single-channel image with full 0–255 dynamic range.
+
+**Return value change:** `preprocessForRoomDetection` now returns `{ hWalls, vWalls }` (the directional morphological opening masks) when envelope data is provided, `undefined` otherwise. Available for downstream consumers (e.g., Show Envelope visualization).
+
+### 2. Second-pass envelope detection hardening
+
+**Problem:** When `detectEnvelope` runs on a preprocessed image (with `envelopeBboxPx` restricting to the building region), annotation debris (~6000 pixels) survived the standard morphological open (radius=5) and sealed the building boundary during close, blocking flood fill. Result: 6 vertices instead of 27.
+
+**Fix:** For the second pass (`preprocessed === true` or `envelopeBboxPx` provided), apply a stricter morphological open: `radius = max(5, round(6 * pixelsPerCm))` (≈7px at ppc=1.18). This removes thick annotation remnants while preserving actual walls (≈25–30px wide). Result: 22 vertices, building area 4.47% (vs clean's 27 verts / 5.01%).
+
+### 3. Wall thickness probing improvements (`detectWallThickness`)
+
+Three changes to improve measurement accuracy for envelope walls:
+
+**`probeFromInnerFace` (two-phase probe):**
+- **Problem:** The standard probe starts at the outer polygon contour and measures outward. For envelope walls, this means probing from the outside — measuring only the thin edge line before hitting exterior space. `probeInward` helped but still measured from a fixed starting point on the contour, which may not align with the actual wall edge.
+- **Fix:** New `probeWallThicknessFromInnerFace` function implements a two-phase approach:
+  - Phase A: Scan inward from the outer contour through all wall material (edge + fill), allowing small background gaps (≤2px). Stop when hitting sustained background (≥ `innerFaceGapPx` consecutive background pixels — default 2cm worth of pixels).
+  - Phase B: From the inner face position (last wall pixel before sustained background), reverse and probe outward using the standard `probeWallThickness`. This measures the full wall assembly from inside to outside.
+- **Option:** `{ probeFromInnerFace: true, innerFaceGapCm: 2 }` — used by envelope detection, backward-compatible.
+
+**Clustering aggregation:**
+- **Problem:** Edges with windows produce bimodal probe samples — thin-line readings (~9px from window frames) mixed with solid-wall readings (~35px). The median of mixed samples underestimates wall thickness.
+- **Fix:** After filtering by FLOOR_PLAN_RULES bounds, split sorted samples into clusters where consecutive values differ by >50%. Pick the upper cluster with at least 2 members (true wall thickness), falling back to the largest cluster. This separates window-frame readings from solid-wall readings.
+
+**Variance retry:**
+- **Problem:** With only 7 probe points, unlucky placement (e.g., all hitting windows) produces high variance.
+- **Fix:** After initial 7 samples, if `max/min > 1.3` (30% spread), probe 8 additional intermediate points (at 1/16, 3/16, ..., 15/16 fractions). Combined 15 samples provide better coverage of mixed wall features.
+
+### 4. `removeStackedWalls` — new polygon post-processing step
+
+**Problem:** Contour tracing sometimes captures both sides of a wall, or picks up an interior wall running parallel to the outer boundary. This creates two parallel polygon edges close together — "stacked walls."
+
+**Algorithm:**
+- For each pair of same-orientation (both H or both V) polygon edges:
+  - Check perpendicular gap < `maxGapCm` (default: `FLOOR_PLAN_RULES.wallThickness.maxCm`)
+  - Check projection overlap on their shared axis
+  - If stacked: remove the shorter edge, snap its neighbors to the kept edge's axis
+- Clean up degenerate edges and collinear vertices afterward
+- Perpendicular crossings (e.g., spanning wall crossing outer wall) are NOT affected
+
+**Integration:** Called in `detectAndStoreEnvelope` after `removePolygonMicroBumps` and before the second `rectifyPolygon` pass.
+
+### 5. Show Envelope debug visualization rewrite
+
+**Before:** Show Envelope ran independent `detectEnvelope` + `detectSpanningWalls` on click, which could produce different results from what room detection actually uses (different preprocessing, different parameters).
+
+**After:** Show Envelope reads the stored `floor.layout.envelope` state and visualizes that directly:
+- Color-coded walls by classification: purple = outer (30cm), green = structural (24cm), yellow = partition (11.5cm)
+- Full thickness rendering (wall rectangles at measured width)
+- Measurement labels showing snapped thickness via `snapToWallType`
+- Spanning walls visualized on both raw and preprocessed passes
+- Stored vertex count, edge measurements, and spanning walls logged to console
+
+### Tests
+
+All 1216 tests pass:
+
+**New unit tests (`src/room-detection.test.js`):**
+- `preprocessForRoomDetection` returns `{ hWalls, vWalls }` with envelope data
+- `preprocessForRoomDetection` returns `undefined` without envelope data
+- Second-pass `detectEnvelope` with `envelopeBboxPx` produces valid polygon
+- `probeFromInnerFace` measures full wall assembly (vs standard probe measuring only outer edge)
+- Clustering aggregation separates bimodal samples
+- Variance retry activates on high-spread samples
+- `removeStackedWalls` collapses parallel overlapping edges
+- `removeStackedWalls` preserves perpendicular crossings
+
+**E2E tests (`src/room-detection.verify.test.js`):**
+- Preprocessed image step dump (detectEnvelope on preprocessed EG)
+- Wall thickness measurements all in [5, 50] cm after probing improvements
+
+---
+
+## Step 6b: Envelope extension via wall continuations — ABANDONED
+
+**Status:** Attempted and reverted — branch `room-envelope-matching`
+
+**Problem:** The first-pass envelope detection captures the main building section but misses connected sections (e.g., the upper part of a floor plan). After `morphologicalClose` + `floodFillFromBorder`, the flood fill leaks into the gap between sections, marking the gap as exterior. Wall stumps (outer walls continuing beyond the detected boundary) exist in the raw image but are not captured in the building mask.
+
+**Goal:** Detect wall stumps extending beyond the envelope boundary, follow them to discover additional connected building sections, and extend the building mask before contour tracing.
+
+### Approaches tried
+
+**Approach 1 — Orphan wall components from filtered wallMask:**
+- Find wall pixels outside the building mask using the pre-open (filtered) wallMask
+- BFS label connected components, filter by size + building adjacency + fill ratio
+- Result: 122 orphan components, massive annotation blobs (36K–45K pixels at 2.5% fill ratio) survived alongside real wall features. Fill ratio filter (10% threshold) helped but smaller noise (236px, 19.9% fill) still got through. After re-close (radius 94), even tiny noise amplified into large polygon distortions (4 vertices → 16 vertices).
+- **Failed:** Too much annotation noise; re-close amplification turned small false positives into large polygon distortions.
+
+**Approach 2 — Directional morphological open on dark mask:**
+- Build dark mask from raw image, run `morphologicalOpenRect` horizontally and vertically (same as preprocessing), OR results
+- Result: 80 components (vs 122), but still 16 vertices instead of 6. Components near building edges still passed filters.
+- **Failed:** Reduced noise but not enough. Same re-close amplification problem.
+
+**Approach 3 — Preprocessed image thresholding:**
+- Preprocess a copy of the image using the initial polygon, threshold for dark pixels
+- Result: 67 components, but extensions appeared in wrong places (bottom/right instead of top where the actual upper section is). Real wall stumps near the top were too small (266 pixels < minStumpArea 419) and upper section walls were buried in sparse blobs.
+- **Failed:** Signal too weak in the right places, false positives in the wrong places.
+
+**Approach 4 — Edge probing:**
+- Probe outward from each polygon edge looking for continuous dark pixels in preprocessed image
+- Result: 5 of 6 edges triggered false stump detections (14,851 stump pixels total), polygon exploded to 43 vertices.
+- **Failed:** Too many false positives on nearly every edge.
+
+### Root cause analysis
+
+The fundamental challenge: wall stumps at the building boundary are thin (2–3px edge lines) and indistinguishable from annotation noise at the pixel level. Every approach faced the same tradeoff:
+
+1. **Sensitive enough to catch stumps** → catches annotation noise too
+2. **Strict enough to reject noise** → misses the stumps
+
+The morphological close (radius ≈ 94px for 80cm gap sealing) amplifies any accepted noise into large distortions — a 236px noise patch becomes a multi-vertex polygon bump after close + flood fill. This amplification makes the approach fundamentally fragile: the margin between "useful signal" and "destructive noise" is too narrow for reliable automated detection.
+
+### Conclusion
+
+Automated wall continuation detection is not viable with the current approach. The envelope detection correctly identifies the main building section; extending it to capture connected sections requires a different strategy (e.g., user-assisted hints, multi-seed envelope detection, or treating each section as a separate envelope). Reverted all code — no residual changes.
+
+---
+
 ## Step 7: Room creation — match edges to envelope, no overlap, negative space fallback
 
 ### 7a: Match room edges to envelope segments
