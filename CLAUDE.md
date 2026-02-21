@@ -79,6 +79,8 @@ State contains:
 
 **Never present unverified results.** Before reporting a task as complete: all tests pass, real-world data (if provided) produces correct results, and the specific success criteria from the plan are confirmed with exact values. "Should work" is not verification.
 
+**Include meaningful logging in every plan.** Every plan must include `console.log` instrumentation as part of the implementation — not as an afterthought. Each new function, pipeline step, and decision point must log its inputs, decisions, and outputs. Logging is a first-class deliverable: it is how the user verifies that the code does what it claims. Prefix all log lines with a bracketed module tag (e.g. `[envelope]`, `[walls]`) for easy filtering. Remove debug logging only when the user confirms the feature works correctly.
+
 ### Plan Scorecard (BLOCKING — every plan must include this)
 
 Before presenting any plan, score it honestly on these five dimensions (0–10). Display the scorecard in a table. **Threshold is 7 on every score.** If any score is below 7, do not present the plan — iterate on the weak areas or discuss with the user first.
@@ -92,11 +94,13 @@ Before presenting any plan, score it honestly on these five dimensions (0–10).
 | **Confidence** (0 = hope, 10 = certain) | How sure am I this will work end-to-end without surprises? Based on evidence, not optimism. |
 
 **Rules:**
-- Scores must be honest self-assessments based on evidence, not aspirational.
+- **Every score starts at 0.** You must work your way up by earning each point with a concrete, specific justification. No score may be stated without the reasoning that produced it.
+- **Iterative scoring is mandatory.** Score after each phase of research. If a score is below 7, stop and do more work — read more code, trace more callers, load real data — before rescoring. Do not present a plan until all scores reach 7.
+- **One point = one piece of evidence.** Vague claims ("I understand the code") do not raise scores. Specific evidence does ("I read all 5 callers of syncFloorWalls and traced what each one does").
 - A low score is not a failure — it is a signal to do more research, simplify, or ask the user.
 - If Problem Understanding is below 7, stop planning and investigate first.
 - If Confidence is below 7, identify what is uncertain and resolve it before proceeding.
-- Inflating scores to pass the threshold is a rulebook violation.
+- **Inflating scores to pass the threshold is a rulebook violation.** Past sessions presented 9s and 10s and were catastrophically wrong. Optimism is not evidence.
 
 ### Architecture Rules
 
@@ -142,6 +146,21 @@ If the review finds violations, fix them before presenting. Do not present code 
 **Sequence:** (1) Add `console.log` / `console.warn` at key points in the suspected code path to capture actual values, flow, and state. (2) Reproduce the issue and read the logs. (3) Only then form a hypothesis based on the observed evidence. (4) Verify the hypothesis with more targeted logging if needed. (5) Fix the root cause. (6) Remove debug logging.
 
 **No armchair debugging.** Reading code and reasoning about "what should happen" is not debugging — it is speculation. The bug exists precisely because what happens differs from what should happen. Observing the actual runtime behavior is mandatory before proposing any fix.
+
+### Plan Storage (BLOCKING — governs all plan files)
+
+**Plans are never overwritten.** Every plan is stored as a new file in `/plans/` with a date-timestamp filename: `plans/YYYY-MM-DD_HH-MM_<short-slug>.md`. Never edit a previously saved plan file to change its approach or steps — create a new one.
+
+**On successful execution, update the plan file.** After a plan is executed and verified (all tests pass, success criteria met), append an `## Implementation` section to the corresponding plan file with:
+- What was actually done (may differ from the steps if reality required adjustments)
+- Core findings: non-obvious discoveries made during implementation (surprising callers, wrong assumptions, edge cases)
+- Final test count and pass/fail result
+
+**Plan file lifecycle:**
+1. Plan approved by user → save to `plans/YYYY-MM-DD_HH-MM_<slug>.md`
+2. Execution begins → file unchanged
+3. Execution succeeds → append `## Implementation` section with findings
+4. Execution fails or is abandoned → append `## Outcome: Abandoned` with reason
 
 ### Execution Rules
 

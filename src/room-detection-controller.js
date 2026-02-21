@@ -8,7 +8,8 @@ import { pointerToSvgXY } from "./svg-coords.js";
 import { createSurface } from "./surface.js";
 import { getCurrentFloor, deepClone, uuid } from "./core.js";
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, removeStackedWalls, detectWallThickness, preprocessForRoomDetection } from "./room-detection.js";
-import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls } from "./walls.js";
+import { getWallForEdge, syncFloorWalls, addDoorwayToWall, mergeCollinearWalls, enforceNoParallelWalls, enforceAdjacentPositions } from "./walls.js";
+import { classifyRoomEdges, assignWallTypesFromClassification, extendSkeletonForRoom, recomputeEnvelope, alignToEnvelope } from "./envelope.js";
 import { showAlert } from "./dialog.js";
 import { rectifyPolygon, extractValidAngles, alignToExistingRooms, FLOOR_PLAN_RULES, DEFAULT_WALL_TYPES, DEFAULT_FLOOR_HEIGHT_CM, snapToWallType, classifyWallTypes } from "./floor-plan-rules.js";
 import { closestPointOnSegment } from "./polygon-draw.js";
@@ -333,7 +334,15 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     const rules = envelope?.validAngles
       ? { ...FLOOR_PLAN_RULES, standardAngles: envelope.validAngles }
       : FLOOR_PLAN_RULES;
+
+    console.log(`[confirmDetection] START — raw polygon: ${_detectedPolygonCm.length} verts`);
+    console.log(`[confirmDetection]   raw verts: ${JSON.stringify(_detectedPolygonCm.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`))}`);
+    console.log(`[confirmDetection]   envelope: ${envelope ? 'present' : 'NONE'}, validAngles: ${JSON.stringify(envelope?.validAngles)}`);
+    console.log(`[confirmDetection]   detectedWallThicknesses: ${JSON.stringify(_detectedWallThicknesses)}`);
+
     const rectifiedGlobal = rectifyPolygon(_detectedPolygonCm, rules);
+    console.log(`[confirmDetection]   rectified: ${rectifiedGlobal.length} verts: ${JSON.stringify(rectifiedGlobal.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`))}`);
+
 
     // Compute bounding box for floorPosition (top-left corner)
     let minX = Infinity, minY = Infinity;
@@ -352,10 +361,19 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
       y: Math.round(minY * 10) / 10
     };
 
-    // Align to existing rooms' edges (adjusts floorPosition only)
-    const { floorPosition: alignedPos } = alignToExistingRooms(
-      localVertices, floorPos, floor.rooms || []
+    console.log(`[confirmDetection]   localVertices: ${JSON.stringify(localVertices.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`))}`);
+    console.log(`[confirmDetection]   initial floorPos: (${floorPos.x},${floorPos.y})`);
+
+    // Align to envelope edges first (higher priority), then to existing rooms
+    const { floorPosition: envAlignedPos } = alignToEnvelope(
+      localVertices, floorPos, envelope
     );
+    console.log(`[confirmDetection]   after alignToEnvelope: (${envAlignedPos.x},${envAlignedPos.y})`);
+
+    const { floorPosition: alignedPos } = alignToExistingRooms(
+      localVertices, envAlignedPos, floor.rooms || []
+    );
+    console.log(`[confirmDetection]   after alignToExistingRooms: (${alignedPos.x},${alignedPos.y})`);
 
     const room = createSurface({
       name: t("room.newRoom") || "New Room",
@@ -366,14 +384,30 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
     floor.rooms = floor.rooms || [];
     floor.rooms.push(room);
     next.selectedRoomId = room.id;
+    console.log(`[confirmDetection]   created room ${room.id}, ${floor.rooms.length} rooms total`);
 
     // Sync walls and merge collinear segments from different rooms
-    syncFloorWalls(floor);
-    mergeCollinearWalls(floor);
+    // Skip position enforcement — thicknesses are still defaults; enforce after classification
+    console.log(`[confirmDetection]   syncFloorWalls (enforcePositions=false)...`);
+    syncFloorWalls(floor, { enforcePositions: false });
+    console.log(`[confirmDetection]   after syncFloorWalls: ${floor.walls.length} walls`);
+    for (const w of floor.walls) {
+      console.log(`[confirmDetection]     wall ${w.id}: room=${w.roomEdge?.roomId}:edge${w.roomEdge?.edgeIndex}, thick=${w.thicknessCm}cm, (${w.start.x.toFixed(1)},${w.start.y.toFixed(1)})→(${w.end.x.toFixed(1)},${w.end.y.toFixed(1)})`);
+    }
 
-    // Apply per-edge wall thickness from detection.
-    // Edge indices from detection correspond to the pre-rectification polygon,
-    // so we match by geometric proximity (raw edge midpoint → closest rectified edge).
+    mergeCollinearWalls(floor);
+    console.log(`[confirmDetection]   after mergeCollinearWalls: ${floor.walls.length} walls`);
+
+    // Classify room edges and assign wall types based on envelope/spanning/shared/interior
+    const classification = classifyRoomEdges(room, floor);
+    assignWallTypesFromClassification(
+      floor, room, classification,
+      _detectedWallThicknesses?.edges,
+    );
+
+    // Apply per-edge wall thickness from detection for edges not covered by classification.
+    // The classification handles envelope/spanning/shared edges; for interior edges with
+    // no direct detection match, fall back to the original midpoint-proximity approach.
     const n = rectifiedGlobal.length;
     if (_detectedWallThicknesses?.edges) {
       const rawPoly = _detectedPolygonCm;
@@ -381,12 +415,10 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
       for (const edgeMeas of _detectedWallThicknesses.edges) {
         if (edgeMeas.thicknessCm < minCm || edgeMeas.thicknessCm > maxCm) continue;
 
-        // Midpoint of the raw (pre-rectification) polygon edge
         const rawA = rawPoly[edgeMeas.edgeIndex];
         const rawB = rawPoly[(edgeMeas.edgeIndex + 1) % rawPoly.length];
         const mid = { x: (rawA.x + rawB.x) / 2, y: (rawA.y + rawB.y) / 2 };
 
-        // Find the closest rectified edge
         let bestEdge = -1;
         let bestDist = Infinity;
         for (let i = 0; i < n; i++) {
@@ -397,14 +429,38 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
         }
 
         if (bestEdge < 0) continue;
+        // Only apply if classification didn't already set this edge's wall type
+        const cls = classification[bestEdge];
+        if (cls && cls.type !== "interior") continue;
+
         const wall = getWallForEdge(floor, room.id, bestEdge);
         if (wall) {
           const wallTypes = floor.layout?.wallDefaults?.types;
           const { snappedCm } = snapToWallType(edgeMeas.thicknessCm, wallTypes);
+          console.log(`[confirmDetection]   fallback thickness: rawEdge=${edgeMeas.edgeIndex} → rectEdge=${bestEdge}, measured=${edgeMeas.thicknessCm}cm → snapped=${snappedCm}cm (was=${wall.thicknessCm}cm)`);
           wall.thicknessCm = snappedCm;
         }
       }
     }
+
+    // Extend skeleton boundary for any "extending" edges
+    const extendingCount = classification.filter(c => c.type === "extending").length;
+    console.log(`[envelope] confirmDetection: extending skeleton for room ${room.id} (${extendingCount} extending edges)`);
+    extendSkeletonForRoom(floor, room, classification);
+
+    // Enforce no parallel walls on envelope edges
+    console.log(`[confirmDetection]   enforceNoParallelWalls...`);
+    enforceNoParallelWalls(floor);
+    console.log(`[confirmDetection]   after enforceNoParallelWalls: ${floor.walls.length} walls`);
+
+    // Enforce adjacent positions with correct post-classification thicknesses
+    console.log(`[confirmDetection]   enforceAdjacentPositions...`);
+    enforceAdjacentPositions(floor);
+
+    // Recompute the living envelope after wall assignments
+    console.log(`[confirmDetection]   recomputeEnvelope...`);
+    recomputeEnvelope(floor);
+    console.log(`[confirmDetection]   final envelope: ${floor.layout?.envelope?.polygonCm?.length || 0} verts`);
 
     // Apply floor height from wallDefaults to all detection-created walls
     const floorHeight = floor.layout?.wallDefaults?.heightCm;
@@ -466,6 +522,12 @@ export function createRoomDetectionController({ getSvg, getState, commit, render
         heightCm: 210,
         elevationCm: 0
       });
+    }
+
+    console.log(`[confirmDetection] DONE — final wall summary:`);
+    for (const w of floor.walls) {
+      const surfStr = w.surfaces.map(s => `${s.roomId}:e${s.edgeIndex}`).join(',');
+      console.log(`[confirmDetection]   wall ${w.id}: owner=${w.roomEdge?.roomId}:e${w.roomEdge?.edgeIndex}, thick=${w.thicknessCm}cm, surfs=[${surfStr}], doors=${w.doorways.length}`);
     }
 
     commit(t("roomDetection.activate") || "Detect room", next);

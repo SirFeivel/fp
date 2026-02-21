@@ -251,6 +251,27 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
             }
           }
 
+          // Preserve classified thickness: a non-default thickness was set by
+          // assignWallTypesFromClassification and should not be overwritten by
+          // a new wall that still has the default 12cm.
+          const prevThick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+          const otherThick = otherWall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+          const prevClassified = prevThick !== DEFAULT_WALL_THICKNESS_CM;
+          const otherClassified = otherThick !== DEFAULT_WALL_THICKNESS_CM;
+          if (prevClassified && !otherClassified) {
+            wall.thicknessCm = prevThick;
+            console.log(`[walls] mergeSharedEdgeWalls: keeping classified ${prevThick}cm over default ${otherThick}cm for wall ${wall.id}`);
+          } else if (!prevClassified && otherClassified) {
+            wall.thicknessCm = otherThick;
+            console.log(`[walls] mergeSharedEdgeWalls: keeping classified ${otherThick}cm over default ${prevThick}cm for wall ${wall.id}`);
+          } else if (prevClassified && otherClassified) {
+            wall.thicknessCm = Math.max(prevThick, otherThick);
+            console.log(`[walls] mergeSharedEdgeWalls: both classified, taking max(${prevThick}, ${otherThick})cm for wall ${wall.id}`);
+          } else {
+            wall.thicknessCm = prevThick;
+            console.log(`[walls] mergeSharedEdgeWalls: both default ${prevThick}cm for wall ${wall.id}`);
+          }
+
           const idx = floor.walls.indexOf(otherWall);
           if (idx !== -1) floor.walls.splice(idx, 1);
           wallByEdgeKey.delete(otherKey);
@@ -313,7 +334,7 @@ function removeStaleWalls(floor, touchedWallIds, roomIds) {
  * The adjacent room's touching edge must sit at the wall's outer edge
  * (perpendicular distance from inner edge = wall thickness).
  */
-function enforceAdjacentPositions(floor) {
+export function enforceAdjacentPositions(floor) {
   for (const wall of floor.walls) {
     if (wall.surfaces.length < 2) continue;
     const ownerRoomId = wall.roomEdge?.roomId;
@@ -336,6 +357,13 @@ function enforceAdjacentPositions(floor) {
       (adjPos.x + adjVertex.x - wall.start.x) * normal.x +
       (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
 
+    // Skip if adjacent room is on the SAME side as the owner room.
+    // Same-side: |currentDist| ≈ 0 (both touching inner face)
+    // Opposite-side: |currentDist| ≈ thick (should be at outer face)
+    if (Math.abs(currentDist) < thick / 2) {
+      console.log(`[walls] enforceAdjacentPositions: skip same-side room ${adjRoom.id?.slice(0,8)} on wall ${wall.id?.slice(0,8)}, dist=${currentDist.toFixed(1)}, thick=${thick}`);
+      continue;
+    }
     const delta = thick - currentDist;
     if (Math.abs(delta) < 0.5) continue;
 
@@ -460,14 +488,154 @@ export function mergeCollinearWalls(floor) {
 }
 
 /**
+ * Merge parallel walls that sit within wall thickness distance of each other,
+ * even if they belong to the same room — provided both are on envelope edges.
+ *
+ * This enforces constraint #3: "one physical wall = one wall entity."
+ * Regular mergeCollinearWalls skips same-room walls; this handles the remaining
+ * case where two edges of the same room both lie on the same envelope boundary.
+ *
+ * @param {Object} floor - Floor with walls[], layout.envelope
+ */
+export function enforceNoParallelWalls(floor) {
+  if (!floor?.walls || floor.walls.length < 2) return;
+  const envelope = floor?.layout?.envelope;
+  const envelopePoly = envelope?.detectedPolygonCm || envelope?.polygonCm;
+  if (!envelopePoly || envelopePoly.length < 3) {
+    console.log(`[walls] enforceNoParallelWalls: no envelope polygon, skipping`);
+    return;
+  }
+  console.log(`[walls] enforceNoParallelWalls: using ${envelope.detectedPolygonCm ? 'detected' : 'recomputed'} polygon (${envelopePoly.length} verts)`);
+
+  // Identify which walls are on envelope edges
+  const onEnvelope = new Set();
+  for (const w of floor.walls) {
+    const mid = {
+      x: (w.start.x + w.end.x) / 2,
+      y: (w.start.y + w.end.y) / 2,
+    };
+    const dx = w.end.x - w.start.x;
+    const dy = w.end.y - w.start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+
+    const nx = dx / len, ny = dy / len;
+
+    for (let i = 0; i < envelopePoly.length; i++) {
+      const C = envelopePoly[i];
+      const D = envelopePoly[(i + 1) % envelopePoly.length];
+      const edx = D.x - C.x, edy = D.y - C.y;
+      const elen = Math.hypot(edx, edy);
+      if (elen < 1) continue;
+      const enx = edx / elen, eny = edy / elen;
+
+      const cross = nx * eny - ny * enx;
+      if (Math.abs(cross) > 0.02) continue;
+
+      const vx = C.x - mid.x, vy = C.y - mid.y;
+      const perpDist = Math.abs(vx * ny - vy * nx);
+      if (perpDist <= (w.thicknessCm || DEFAULT_WALL_THICKNESS_CM) + 2) {
+        onEnvelope.add(w.id);
+        console.log(`[walls] enforceNoParallelWalls: wall ${w.id} (room=${w.roomEdge?.roomId}:e${w.roomEdge?.edgeIndex}) is on envelope edge ${i}`);
+        break;
+      }
+    }
+  }
+
+  // Now check for parallel pairs among envelope walls from the same room
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < floor.walls.length && !merged; i++) {
+      const wA = floor.walls[i];
+      if (!onEnvelope.has(wA.id)) continue;
+      if (!wA.roomEdge) continue;
+
+      const dxA = wA.end.x - wA.start.x;
+      const dyA = wA.end.y - wA.start.y;
+      const lenA = Math.hypot(dxA, dyA);
+      if (lenA < 1) continue;
+      const dirAx = dxA / lenA, dirAy = dyA / lenA;
+
+      for (let j = i + 1; j < floor.walls.length && !merged; j++) {
+        const wB = floor.walls[j];
+        if (!onEnvelope.has(wB.id)) continue;
+        if (!wB.roomEdge) continue;
+        // Only handle same-room case (cross-room is already in mergeCollinearWalls)
+        if (wB.roomEdge.roomId !== wA.roomEdge.roomId) continue;
+
+        const dxB = wB.end.x - wB.start.x;
+        const dyB = wB.end.y - wB.start.y;
+        const lenB = Math.hypot(dxB, dyB);
+        if (lenB < 1) continue;
+        const dirBx = dxB / lenB, dirBy = dyB / lenB;
+
+        const cross = dirAx * dirBy - dirAy * dirBx;
+        if (Math.abs(cross) > 0.02) continue;
+
+        // Perpendicular distance between the wall lines
+        const vx = wB.start.x - wA.start.x;
+        const vy = wB.start.y - wA.start.y;
+        const perpDist = Math.abs(vx * (-dirAy) + vy * dirAx);
+
+        // Only merge if within wall thickness distance
+        const maxThick = Math.max(wA.thicknessCm || 12, wB.thicknessCm || 12);
+        if (perpDist > maxThick + 2) continue;
+
+        // Must overlap or be close along the axis
+        const bStart = vx * dirAx + vy * dirAy;
+        const bEnd = (wB.end.x - wA.start.x) * dirAx + (wB.end.y - wA.start.y) * dirAy;
+        const bMin = Math.min(bStart, bEnd);
+        const bMax = Math.max(bStart, bEnd);
+        const gap = Math.max(0, Math.max(bMin - lenA, 0 - bMax));
+        if (gap > maxThick * FLOOR_PLAN_RULES.mergeGapFactor) continue;
+
+        // Merge B into A — extend A, transfer surfaces
+        wA.thicknessCm = Math.max(wA.thicknessCm || 12, wB.thicknessCm || 12);
+
+        const newMin = Math.min(0, bMin);
+        const newMax = Math.max(lenA, bMax);
+        const shift = -newMin;
+
+        if (shift > 0.5) {
+          for (const s of wA.surfaces) { s.fromCm += shift; s.toCm += shift; }
+          for (const d of wA.doorways) { d.offsetCm += shift; }
+        }
+
+        wA.start = {
+          x: wA.start.x + dirAx * newMin,
+          y: wA.start.y + dirAy * newMin
+        };
+        wA.end = {
+          x: wA.start.x + dirAx * (newMax - newMin),
+          y: wA.start.y + dirAy * (newMax - newMin)
+        };
+
+        for (const s of wB.surfaces) {
+          if (!wA.surfaces.some(ws => ws.roomId === s.roomId && ws.edgeIndex === s.edgeIndex)) {
+            const sFrom = Math.min(bStart, bEnd) + shift;
+            const sTo = sFrom + (s.toCm - s.fromCm);
+            wA.surfaces.push({ ...s, fromCm: Math.max(0, sFrom), toCm: sTo });
+          }
+        }
+
+        floor.walls.splice(j, 1);
+        merged = true;
+      }
+    }
+  }
+}
+
+/**
  * Core sync algorithm. Called after any room change.
  * Ensures floor.walls[] matches the current room geometry.
  *
  * @param {Object} floor - Floor object with rooms[] and walls[]
  */
-export function syncFloorWalls(floor) {
+export function syncFloorWalls(floor, { enforcePositions = true } = {}) {
   if (!floor) return;
   if (!floor.walls) floor.walls = [];
+  console.log(`[walls] syncFloorWalls: enforcePositions=${enforcePositions}`);
 
   const rooms = (floor.rooms || []).filter(
     r => r.polygonVertices?.length >= 3 && !(r.circle?.rx > 0)
@@ -479,7 +647,7 @@ export function syncFloorWalls(floor) {
   mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
-  enforceAdjacentPositions(floor);
+  if (enforcePositions) enforceAdjacentPositions(floor);
 }
 
 /**

@@ -17,6 +17,8 @@ import {
   getWallRenderHelpers,
   computeDoorwayFloorPatches,
   mergeCollinearWalls,
+  enforceNoParallelWalls,
+  enforceAdjacentPositions,
   DEFAULT_WALL,
 } from './walls.js';
 import { DEFAULT_WALL_THICKNESS_CM } from './constants.js';
@@ -908,6 +910,70 @@ describe('syncFloorWalls integration', () => {
   });
 });
 
+// ── mergeSharedEdgeWalls thickness preservation ─────────────────────
+
+describe('mergeSharedEdgeWalls thickness preservation', () => {
+  it('preserves the thicker wall thickness when merging shared edges', () => {
+    // Two rooms sharing an edge — room1 wall has 30cm, room2 wall will have 12cm (default)
+    const room1 = makeRoom('r1', 0, 0, 400, 300);
+    const room2 = makeRoom('r2', 400, 0, 400, 300);
+    const floor = { rooms: [room1, room2], walls: [] };
+
+    // First sync creates walls with default thickness (12cm)
+    syncFloorWalls(floor);
+
+    // Find the shared wall (room1 edge 1 at x=400 or room2 edge 3 at x=400)
+    const sharedWall = floor.walls.find(w => {
+      const mid = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+      return Math.abs(mid.x - 400) < 1;
+    });
+    expect(sharedWall).toBeDefined();
+
+    // Set one room's wall thickness to 30cm before re-sync
+    sharedWall.thicknessCm = 30;
+
+    // Re-sync — mergeSharedEdgeWalls should preserve 30cm, not drop to 12cm
+    syncFloorWalls(floor);
+
+    const afterWall = floor.walls.find(w => {
+      const mid = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+      return Math.abs(mid.x - 400) < 1;
+    });
+    expect(afterWall).toBeDefined();
+    expect(afterWall.thicknessCm).toBe(30);
+  });
+
+  it('preserves classified 11.5cm partition wall over default 12cm on re-sync', () => {
+    // Two rooms sharing an edge — simulate detection assigning 11.5cm partition thickness
+    const room1 = makeRoom('r1', 0, 0, 400, 300);
+    const room2 = makeRoom('r2', 400, 0, 400, 300);
+    const floor = { rooms: [room1, room2], walls: [] };
+
+    // First sync creates walls with default thickness (12cm)
+    syncFloorWalls(floor);
+
+    // Find the shared wall at x=400
+    const sharedWall = floor.walls.find(w => {
+      const mid = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+      return Math.abs(mid.x - 400) < 1;
+    });
+    expect(sharedWall).toBeDefined();
+
+    // Simulate classification setting partition thickness (11.5cm, non-default)
+    sharedWall.thicknessCm = 11.5;
+
+    // Re-sync — mergeSharedEdgeWalls must NOT clobber 11.5cm with default 12cm
+    syncFloorWalls(floor);
+
+    const afterWall = floor.walls.find(w => {
+      const mid = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+      return Math.abs(mid.x - 400) < 1;
+    });
+    expect(afterWall).toBeDefined();
+    expect(afterWall.thicknessCm).toBe(11.5);
+  });
+});
+
 // ── mergeCollinearWalls ─────────────────────────────────────────────
 
 describe('mergeCollinearWalls', () => {
@@ -1522,5 +1588,216 @@ describe('doorway offset stability', () => {
 
     const finalOffset = sharedWall.doorways[0].offsetCm;
     expect(finalOffset).toBeCloseTo(initialOffset, 1);
+  });
+});
+
+// ── enforceNoParallelWalls ──────────────────────────────────────────
+
+describe("enforceNoParallelWalls", () => {
+  function makeWall(id, roomId, edgeIndex, start, end, thicknessCm = 12) {
+    return {
+      id,
+      start,
+      end,
+      thicknessCm,
+      heightStartCm: 240,
+      heightEndCm: 240,
+      roomEdge: { roomId, edgeIndex },
+      doorways: [],
+      surfaces: [],
+    };
+  }
+
+  it("merges same-room parallel walls both on the envelope boundary", () => {
+    // L-shaped room where two edges are on the same envelope edge
+    const envelope = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+
+    const floor = {
+      walls: [
+        // Two parallel walls from same room, both on top envelope edge (y=0)
+        // Gap of 30cm < gapTolerance (30 * 1.5 = 45)
+        makeWall("w1", "r1", 0, { x: 0, y: 0 }, { x: 300, y: 0 }, 30),
+        makeWall("w2", "r1", 4, { x: 330, y: 0 }, { x: 800, y: 0 }, 30),
+      ],
+      rooms: [{ id: "r1" }],
+      layout: { envelope: { polygonCm: envelope } },
+    };
+
+    enforceNoParallelWalls(floor);
+
+    // Should merge into one wall
+    expect(floor.walls.length).toBe(1);
+    expect(floor.walls[0].thicknessCm).toBe(30);
+  });
+
+  it("does NOT merge same-room walls that are NOT on the envelope", () => {
+    const floor = {
+      walls: [
+        makeWall("w1", "r1", 0, { x: 100, y: 400 }, { x: 300, y: 400 }, 12),
+        makeWall("w2", "r1", 2, { x: 300, y: 400 }, { x: 600, y: 400 }, 12),
+      ],
+      rooms: [{ id: "r1" }],
+      layout: {
+        envelope: {
+          polygonCm: [
+            { x: 0, y: 0 },
+            { x: 1000, y: 0 },
+            { x: 1000, y: 800 },
+            { x: 0, y: 800 },
+          ],
+        },
+      },
+    };
+
+    const countBefore = floor.walls.length;
+    enforceNoParallelWalls(floor);
+    expect(floor.walls.length).toBe(countBefore);
+  });
+
+  it("prefers detectedPolygonCm over broken polygonCm", () => {
+    // detectedPolygonCm has the correct boundary at y=0.
+    // polygonCm is broken (degenerate 3-vert triangle) — walls at y=400
+    // would wrongly appear "on envelope" if polygonCm were used.
+    const detected = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ];
+    const broken = [
+      { x: 0, y: 0 },
+      { x: 500, y: 400 },
+      { x: 0, y: 800 },
+    ];
+
+    const floor = {
+      walls: [
+        // Two same-room walls at y=400 — NOT on the detected envelope, but
+        // WOULD match the broken polygon's edge from (0,0)→(500,400)
+        makeWall("w1", "r1", 0, { x: 0, y: 0 }, { x: 300, y: 0 }, 30),
+        makeWall("w2", "r1", 4, { x: 330, y: 0 }, { x: 800, y: 0 }, 30),
+      ],
+      rooms: [{ id: "r1" }],
+      layout: {
+        envelope: {
+          detectedPolygonCm: detected,
+          polygonCm: broken,
+        },
+      },
+    };
+
+    enforceNoParallelWalls(floor);
+
+    // With detectedPolygonCm (correct), both walls ARE on the top envelope
+    // edge at y=0, so they should merge (same behavior as first test).
+    // The key assertion: the function didn't use the broken polygonCm.
+    expect(floor.walls.length).toBe(1);
+  });
+
+  it("does nothing without an envelope", () => {
+    const floor = {
+      walls: [
+        makeWall("w1", "r1", 0, { x: 0, y: 0 }, { x: 300, y: 0 }, 30),
+        makeWall("w2", "r1", 4, { x: 500, y: 0 }, { x: 800, y: 0 }, 30),
+      ],
+      rooms: [{ id: "r1" }],
+      layout: {},
+    };
+
+    const countBefore = floor.walls.length;
+    enforceNoParallelWalls(floor);
+    expect(floor.walls.length).toBe(countBefore);
+  });
+});
+
+// ── enforceAdjacentPositions ─────────────────────────────────────────
+describe("enforceAdjacentPositions", () => {
+  it("does not push rooms that are on the same side of a shared wall", () => {
+    // Two rooms side-by-side, both with top edges on the same envelope wall.
+    // Room A at (100, 130), Room B at (500, 130). Top wall at y=100 with 30cm thickness.
+    // Both rooms' top edges are at global y=130 (inner face = 100 + 30 = 130). Same side.
+    const roomA = makeRoom("rA", 100, 130, 400, 300);
+    const roomB = makeRoom("rB", 500, 130, 400, 300);
+    const floor = {
+      id: "f1",
+      name: "Floor 1",
+      rooms: [roomA, roomB],
+      walls: [
+        {
+          id: "w1",
+          start: { x: 100, y: 130 },
+          end: { x: 900, y: 130 },
+          thicknessCm: 30,
+          heightStartCm: 240,
+          heightEndCm: 240,
+          roomEdge: { roomId: "rA", edgeIndex: 0 },
+          doorways: [],
+          surfaces: [
+            { roomId: "rA", edgeIndex: 0 },
+            { roomId: "rB", edgeIndex: 0 },
+          ],
+        },
+      ],
+      layout: {},
+    };
+
+    const posABefore = { ...roomA.floorPosition };
+    const posBBefore = { ...roomB.floorPosition };
+
+    enforceAdjacentPositions(floor);
+
+    // Neither room should have moved — they're both on the same side of the wall
+    expect(roomA.floorPosition.x).toBe(posABefore.x);
+    expect(roomA.floorPosition.y).toBe(posABefore.y);
+    expect(roomB.floorPosition.x).toBe(posBBefore.x);
+    expect(roomB.floorPosition.y).toBe(posBBefore.y);
+  });
+
+  it("pushes rooms that are on the opposite side of a wall to correct distance", () => {
+    // Room A at (100, 100), 400×300. Top edge (edgeIndex 0) at global y=100.
+    // makeRoom vertices (0,0)→(w,0)→(w,h)→(0,h) have positive signed area → sign=1.
+    // Edge 0: dx=400, dy=0. Normal = (1*0/400, -1*400/400) = (0, -1). Points upward.
+    //
+    // Room B is above room A. Its top edge (edgeIndex 0) at global y = roomB.floorPos.y.
+    // currentDist = (roomB.y - 100) * (-1) = 100 - roomB.y.
+    // Place roomB at y=60 → dist = 100-60 = 40 > 15 → opposite side.
+    // delta = 30 - 40 = -10. newY = 60 + (-1)*(-10) = 70.
+    // Verify: dist at y=70 = 100-70 = 30 = thick. ✓
+    const roomA = makeRoom("rA", 100, 100, 400, 300);
+    const roomB = makeRoom("rB", 100, 60, 400, 300);
+    const floor = {
+      id: "f1",
+      name: "Floor 1",
+      rooms: [roomA, roomB],
+      walls: [
+        {
+          id: "w1",
+          start: { x: 100, y: 100 },
+          end: { x: 500, y: 100 },
+          thicknessCm: 30,
+          heightStartCm: 240,
+          heightEndCm: 240,
+          roomEdge: { roomId: "rA", edgeIndex: 0 },
+          doorways: [],
+          surfaces: [
+            { roomId: "rA", edgeIndex: 0 },
+            { roomId: "rB", edgeIndex: 0 },
+          ],
+        },
+      ],
+      layout: {},
+    };
+
+    enforceAdjacentPositions(floor);
+
+    // Room B's top edge should be at distance=30 along normal (0,-1) from wall y=100.
+    // Target y = 100 + 30*(-1) = 70. floorPosition.y = 70.
+    expect(roomB.floorPosition.y).toBeCloseTo(70, 0);
+    expect(roomB.floorPosition.x).toBe(100);
   });
 });

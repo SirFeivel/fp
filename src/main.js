@@ -14,7 +14,8 @@ import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, syncFloorWalls, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls } from "./walls.js";
+import { classifyAndExtendRooms } from "./envelope.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
 import { getViewport } from "./viewport.js";
@@ -821,6 +822,8 @@ function renderPlanningSection(state, opts) {
           room.heightCm = numVal;
         }
 
+        syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
         store.commit(t("room.sizeChanged") || "Room size changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       },
       onVertexPointerDown: (e, roomId, vertexIndex) => polygonVertexDragController.onVertexPointerDown(e, roomId, vertexIndex),
@@ -888,6 +891,7 @@ function renderPlanningSection(state, opts) {
 
         // Sync walls after edge length change
         syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
 
         store.commit(t("room.edgeChanged") || "Edge length changed", next, { onRender: renderAll, updateMetaCb: updateMeta });
       }
@@ -3260,6 +3264,7 @@ function updateAllTranslations() {
     nextFloor.rooms.push(newRoom);
     next.selectedRoomId = newRoom.id;
     syncFloorWalls(nextFloor);
+    classifyAndExtendRooms(nextFloor);
 
     store.commit(t("room.added") || "Room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
@@ -3315,6 +3320,7 @@ function updateAllTranslations() {
     next.selectedRoomId = newRoom.id;
 
     syncFloorWalls(nextFloor);
+    classifyAndExtendRooms(nextFloor);
 
     store.commit("Circle room added", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
@@ -3342,6 +3348,7 @@ function updateAllTranslations() {
       // Delete the room
       nextFloor.rooms.splice(roomIndex, 1);
       syncFloorWalls(nextFloor);
+      classifyAndExtendRooms(nextFloor);
 
       // Select another room if available
       next.selectedRoomId = nextFloor.rooms[Math.max(0, Math.min(roomIndex, nextFloor.rooms.length - 1))]?.id || null;
@@ -3387,6 +3394,7 @@ function updateAllTranslations() {
         nextFloor.rooms.push(newRoom);
         next.selectedRoomId = newRoom.id;
         syncFloorWalls(nextFloor);
+        classifyAndExtendRooms(nextFloor);
 
         const commitLabel = modifiedRoomIds.length > 0
           ? t("room.addedWithOverlapRemoved") || "Room added (overlap removed from existing rooms)"

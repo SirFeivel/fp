@@ -3,6 +3,7 @@ import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds, isRectRoom } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
+import { classifyAndExtendRooms } from "./envelope.js";
 import { pointerToSvgXY, svgPointToClient, snapToMm, snapToHalfCm, formatCm, dist } from "./svg-coords.js";
 
 function getResizeOverlay() {
@@ -871,6 +872,7 @@ export function createRoomDragController({
         room.floorPosition.y = snappedPos.y;
 
         syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
         commit(getMoveLabel?.() || "Room moved", next);
       }
     }
@@ -1058,6 +1060,7 @@ export function createRoomResizeController({
         room.heightCm = newHeight;
 
         syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       } else if (room && isRectRoom(room)) {
         room.floorPosition = { x: newPosX, y: newPosY };
@@ -1073,6 +1076,7 @@ export function createRoomResizeController({
         room.heightCm = newHeight;
 
         syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
         commit(getResizeLabel?.() || "Room resized", next);
       }
     } else {
@@ -1251,6 +1255,7 @@ export function createPolygonVertexDragController({
 
         // Sync walls after vertex drag
         syncFloorWalls(floor);
+        classifyAndExtendRooms(floor);
 
         commit(getVertexMoveLabel?.() || "Vertex moved", next);
       }

@@ -4,7 +4,8 @@ import { getRoomAbsoluteBounds, findPositionOnFreeEdge } from './floor_geometry.
 import { showAlert } from './dialog.js';
 import { createSurface } from './surface.js';
 import { getRoomPatternGroup, createPatternGroup, addRoomToPatternGroup } from './pattern-groups.js';
-import { syncFloorWalls, getWallsForRoom } from './walls.js';
+import { getWallsForRoom, syncFloorWalls } from './walls.js';
+import { classifyAndExtendRooms } from './envelope.js';
 
 /**
  * Find a position for a new room on a free edge of existing rooms.
@@ -252,8 +253,8 @@ export function createStructureController({
     next.selectedRoomId = newRoom.id;
     next.selectedWallId = null;
 
-    // Sync walls for the floor
     syncFloorWalls(currentFloor);
+    classifyAndExtendRooms(currentFloor);
 
     resetSelectedExcl();
     store.commit(t("structure.roomAdded"), next, { onRender: renderAll, updateMetaCb: updateMeta });
@@ -276,8 +277,8 @@ export function createStructureController({
 
     if (nextFloor.rooms.length === beforeLen) return;
 
-    // Sync walls (will clean up orphaned walls/surfaces)
     syncFloorWalls(nextFloor);
+    classifyAndExtendRooms(nextFloor);
 
     // Select next room
     next.selectedRoomId = nextFloor.rooms[0]?.id || null;
