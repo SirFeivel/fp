@@ -1903,27 +1903,29 @@ export function detectEnvelope(imageData, options = {}) {
   // Minimum area for wall components
   const minComponentArea = Math.max(16, Math.round(8 * pixelsPerCm) ** 2);
 
-  // Close radius: must seal ALL openings (doorways 60–100cm, double doors up to 160cm).
-  // Room detection uses [20,40,66] cm and picks the smallest that works.
-  // Envelope needs the largest — 80cm seals gaps up to 160cm.
-  const closeRadius = Math.max(3, Math.min(300, Math.round(80 * pixelsPerCm)));
+  // Adaptive close radii (cm) — try increasing values to bridge larger gaps
+  const closeRadiiCm = [80, 120, 160, 200];
 
   // Epsilon for Douglas-Peucker
   const epsilon = Math.max(1, Math.round(4 * pixelsPerCm));
 
   // Step 1: Build wall mask
   let wallMask = null;
+  let wallMaskFiltered = null; // pre-open mask, used by pass-2 branch
+  let wallFilteredCount = 0;
   const range = autoDetectWallRange(imageData);
   if (range) {
     wallMask = buildGrayWallMask(imageData, range.low, range.high);
     let wallCount1 = 0; for (let i = 0; i < totalPixels; i++) wallCount1 += wallMask[i];
     wallMask = filterSmallComponents(wallMask, w, h, minComponentArea);
     let wallCount2 = 0; for (let i = 0; i < totalPixels; i++) wallCount2 += wallMask[i];
+    wallMaskFiltered = wallMask; // save before open (open returns new array)
+    wallFilteredCount = wallCount2;
     if (openRadius > 0) {
       wallMask = morphologicalOpen(wallMask, w, h, openRadius);
     }
     let wallCount3 = 0; for (let i = 0; i < totalPixels; i++) wallCount3 += wallMask[i];
-    console.log(`[detectEnvelope] range: ${range.low}-${range.high}, openRadius=${openRadius}, closeRadius=${closeRadius}`);
+    console.log(`[detectEnvelope] range: ${range.low}-${range.high}, openRadius=${openRadius}, closeRadiiCm=[${closeRadiiCm.join(',')}]`);
     console.log(`[detectEnvelope] wallMask: raw=${wallCount1}, filtered=${wallCount2}, opened=${wallCount3} (${(wallCount3/totalPixels*100).toFixed(2)}%)`);
   }
 
@@ -1943,55 +1945,185 @@ export function detectEnvelope(imageData, options = {}) {
 
   if (!wallMask) return null;
 
-  let buildingMask;
-
-  if (envelopeBboxPx) {
-    // ── Second pass: stricter open to remove annotation debris ─────────
-    // Use a stricter open to remove annotation remnants that
-    // survive the standard open and seal the boundary when closed. The
-    // extra ~6000 pixels in preprocessed vs clean are thick-enough
-    // annotation debris that bridge wall gaps. A larger open radius
-    // (removing features under ~20px) eliminates them while preserving
-    // actual walls (~25-30px thick at this scale).
-    const strictOpenRadius = Math.max(3, Math.round(6 * pixelsPerCm));
-    wallMask = morphologicalOpen(wallMask, w, h, strictOpenRadius);
-    let strictCount = 0; for (let i = 0; i < totalPixels; i++) strictCount += wallMask[i];
-    console.log(`[detectEnvelope] strict open (r=${strictOpenRadius}): ${strictCount} (${(strictCount/totalPixels*100).toFixed(2)}%)`);
-
-    const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
-    let closedCount = 0; for (let i = 0; i < totalPixels; i++) closedCount += closedMask[i];
-    console.log(`[detectEnvelope] closedMask: ${closedCount} (${(closedCount/totalPixels*100).toFixed(2)}%)`);
-
+  // ── Adaptive close: try increasing radii until building area stabilizes ──
+  /** Close → flood fill → invert → fillHoles. Returns { buildingMask, area }. */
+  function closeFillBuild(inputMask, radius) {
+    const closedMask = morphologicalClose(inputMask, w, h, radius);
     const exteriorMask = floodFillFromBorder(closedMask, w, h);
-    let extCount = 0; for (let i = 0; i < totalPixels; i++) extCount += exteriorMask[i];
-    console.log(`[detectEnvelope] exterior: ${extCount} (${(extCount/totalPixels*100).toFixed(2)}%)`);
-
-    buildingMask = new Uint8Array(totalPixels);
+    const bMask = new Uint8Array(totalPixels);
     for (let i = 0; i < totalPixels; i++) {
-      buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
+      bMask[i] = exteriorMask[i] === 0 ? 1 : 0;
     }
-    fillInteriorHoles(buildingMask, w, h);
-  } else {
-    // ── First pass: outside-in flood fill (original approach) ──────────
-    // Step 2: Morphological close to seal small gaps in envelope walls
-    const closedMask = morphologicalClose(wallMask, w, h, closeRadius);
-    let closedCount = 0; for (let i = 0; i < totalPixels; i++) closedCount += closedMask[i];
-    console.log(`[detectEnvelope] closedMask: ${closedCount} (${(closedCount/totalPixels*100).toFixed(2)}%)`);
-
-    // Step 3: Flood fill from border to find exterior
-    const exteriorMask = floodFillFromBorder(closedMask, w, h);
-    let extCount = 0; for (let i = 0; i < totalPixels; i++) extCount += exteriorMask[i];
-    console.log(`[detectEnvelope] exterior: ${extCount} (${(extCount/totalPixels*100).toFixed(2)}%)`);
-
-    // Step 4: Invert to building mask, fill interior holes
-    buildingMask = new Uint8Array(totalPixels);
-    for (let i = 0; i < totalPixels; i++) {
-      buildingMask[i] = exteriorMask[i] === 0 ? 1 : 0;
-    }
-    fillInteriorHoles(buildingMask, w, h);
+    fillInteriorHoles(bMask, w, h);
+    let area = 0;
+    for (let i = 0; i < totalPixels; i++) area += bMask[i];
+    return { buildingMask: bMask, area };
   }
 
-  // Step 5: Sanity check — building must be 1–99% of image
+  let buildingMask;
+  let effectiveWallMask; // the wall mask actually used for close (for returning)
+
+  if (envelopeBboxPx) {
+    // ── Second pass: gentle open on pre-open filtered mask ─────────────
+    const gentleOpenRadius = Math.max(1, Math.round(2 * pixelsPerCm));
+    const pass2WallMask = morphologicalOpen(wallMaskFiltered, w, h, gentleOpenRadius);
+    let pass2Count = 0; for (let i = 0; i < totalPixels; i++) pass2Count += pass2WallMask[i];
+    console.log(`[detectEnvelope] pass-2: gentle open (r=${gentleOpenRadius}) on filtered mask: ${pass2Count} px (${(pass2Count/totalPixels*100).toFixed(2)}%)`);
+    effectiveWallMask = pass2WallMask;
+  } else {
+    effectiveWallMask = wallMask;
+  }
+
+  // Try adaptive close radii — pick smallest valid radius.
+  // Larger radii bridge wider gaps but risk leaking into the exterior.
+  // Stop escalating when: (a) area stabilizes (<10% increase), or
+  // (b) area jumps >30% (close is leaking, not bridging a real gap).
+  let prevArea = 0;
+  const logParts = [];
+  for (const radiusCm of closeRadiiCm) {
+    const radiusPx = Math.max(3, Math.min(300, Math.round(radiusCm * pixelsPerCm)));
+    const result = closeFillBuild(effectiveWallMask, radiusPx);
+    const areaPct = (result.area / totalPixels * 100).toFixed(2);
+    logParts.push(`r=${radiusPx}px(${radiusCm}cm) area=${areaPct}%`);
+
+    if (result.area >= totalPixels * 0.01 && result.area <= totalPixels * 0.99) {
+      if (prevArea > 0) {
+        const increase = (result.area - prevArea) / prevArea;
+        if (increase < 0.10) {
+          // Area stabilized — keep previous result (smaller radius)
+          console.log(`[detectEnvelope] adaptive close: ${logParts.join(' | ')} — stabilized`);
+          break;
+        }
+        if (increase > 0.30) {
+          // Area jumped >30% — close is leaking into exterior, revert
+          console.log(`[detectEnvelope] adaptive close: ${logParts.join(' | ')} — over-expansion, using previous r`);
+          break;
+        }
+      }
+      // Accept this result
+      buildingMask = result.buildingMask;
+      prevArea = result.area;
+    }
+  }
+  console.log(`[detectEnvelope] adaptive close: ${logParts.join(' | ')}`);
+  if (!buildingMask) {
+    // All radii failed — use the smallest radius result as fallback
+    const minRadiusPx = Math.max(3, Math.min(300, Math.round(closeRadiiCm[0] * pixelsPerCm)));
+    const fallback = closeFillBuild(effectiveWallMask, minRadiusPx);
+    buildingMask = fallback.buildingMask;
+  }
+
+  // Step 5: Merge nearby disconnected building components.
+  // morphologicalClose may not bridge large gaps (corridors, stairwells >160cm).
+  // If the building mask has multiple components, merge those whose bounding
+  // boxes are within bridgeDistPx of each other by filling the gap.
+  {
+    const maxCloseRadiusPx = Math.max(3, Math.min(300, Math.round(closeRadiiCm[closeRadiiCm.length - 1] * pixelsPerCm)));
+    const bridgeDistPx = maxCloseRadiusPx * 2;
+    const minComponentPx = Math.round(totalPixels * 0.01); // ignore tiny components (<1%)
+
+    // Label connected components via flood fill
+    const labels = new Int32Array(totalPixels); // 0 = unlabeled
+    const components = []; // { id, area, minX, minY, maxX, maxY }
+    let nextLabel = 1;
+    for (let startI = 0; startI < totalPixels; startI++) {
+      if (buildingMask[startI] === 0 || labels[startI] !== 0) continue;
+      const label = nextLabel++;
+      let area = 0, cMinX = w, cMinY = h, cMaxX = 0, cMaxY = 0;
+      const stack = [startI];
+      while (stack.length > 0) {
+        const idx = stack.pop();
+        if (labels[idx] !== 0) continue;
+        labels[idx] = label;
+        area++;
+        const cx = idx % w, cy = (idx - cx) / w;
+        if (cx < cMinX) cMinX = cx;
+        if (cx > cMaxX) cMaxX = cx;
+        if (cy < cMinY) cMinY = cy;
+        if (cy > cMaxY) cMaxY = cy;
+        // 4-connected neighbors
+        if (cx > 0 && buildingMask[idx - 1] && labels[idx - 1] === 0) stack.push(idx - 1);
+        if (cx < w - 1 && buildingMask[idx + 1] && labels[idx + 1] === 0) stack.push(idx + 1);
+        if (cy > 0 && buildingMask[idx - w] && labels[idx - w] === 0) stack.push(idx - w);
+        if (cy < h - 1 && buildingMask[idx + w] && labels[idx + w] === 0) stack.push(idx + w);
+      }
+      components.push({ id: label, area, minX: cMinX, minY: cMinY, maxX: cMaxX, maxY: cMaxY });
+    }
+
+    // Sort by area descending, filter significant ones
+    components.sort((a, b) => b.area - a.area);
+    const significant = components.filter(c => c.area >= minComponentPx);
+
+    if (significant.length > 1) {
+      console.log(`[detectEnvelope] building components: ${significant.length} (sizes: ${significant.map(c => (c.area / totalPixels * 100).toFixed(1) + '%').join(', ')})`);
+
+      // Merge nearby components by filling rectangular bridges
+      const primary = significant[0];
+      let merged = 0;
+      for (let i = 1; i < significant.length; i++) {
+        const sec = significant[i];
+        // Check if bounding boxes are within bridgeDistPx
+        const gapX = Math.max(0, Math.max(primary.minX, sec.minX) - Math.min(primary.maxX, sec.maxX));
+        const gapY = Math.max(0, Math.max(primary.minY, sec.minY) - Math.min(primary.maxY, sec.maxY));
+        const gap = Math.hypot(gapX, gapY);
+        if (gap > bridgeDistPx) {
+          console.log(`[detectEnvelope] component ${i}: gap=${gap.toFixed(0)}px > bridge=${bridgeDistPx}px — skipping`);
+          continue;
+        }
+
+        // Fill a rectangular bridge between the two components
+        // Use the overlapping range on the shared axis, spanning the gap on the other
+        const overlapMinX = Math.max(primary.minX, sec.minX);
+        const overlapMaxX = Math.min(primary.maxX, sec.maxX);
+        const overlapMinY = Math.max(primary.minY, sec.minY);
+        const overlapMaxY = Math.min(primary.maxY, sec.maxY);
+
+        const bridgeMinX = Math.min(primary.minX, sec.minX);
+        const bridgeMaxX = Math.max(primary.maxX, sec.maxX);
+        const bridgeMinY = Math.min(primary.minY, sec.minY);
+        const bridgeMaxY = Math.max(primary.maxY, sec.maxY);
+
+        if (overlapMaxX > overlapMinX) {
+          // Components overlap in X — fill vertical bridge in the overlapping X range
+          for (let y = bridgeMinY; y <= bridgeMaxY; y++) {
+            for (let x = overlapMinX; x <= overlapMaxX; x++) {
+              buildingMask[y * w + x] = 1;
+            }
+          }
+        } else if (overlapMaxY > overlapMinY) {
+          // Components overlap in Y — fill horizontal bridge in the overlapping Y range
+          for (let y = overlapMinY; y <= overlapMaxY; y++) {
+            for (let x = bridgeMinX; x <= bridgeMaxX; x++) {
+              buildingMask[y * w + x] = 1;
+            }
+          }
+        } else {
+          // No overlap — fill a rectangular bridge between closest corners
+          for (let y = Math.min(primary.maxY, sec.maxY); y <= Math.max(primary.minY, sec.minY); y++) {
+            for (let x = Math.min(primary.maxX, sec.maxX); x <= Math.max(primary.minX, sec.minX); x++) {
+              if (y >= 0 && y < h && x >= 0 && x < w) {
+                buildingMask[y * w + x] = 1;
+              }
+            }
+          }
+        }
+
+        // Expand primary bbox to include merged component
+        primary.minX = Math.min(primary.minX, sec.minX);
+        primary.minY = Math.min(primary.minY, sec.minY);
+        primary.maxX = Math.max(primary.maxX, sec.maxX);
+        primary.maxY = Math.max(primary.maxY, sec.maxY);
+        primary.area += sec.area;
+        merged++;
+      }
+      if (merged > 0) {
+        console.log(`[detectEnvelope] merged ${merged} nearby components into primary`);
+        fillInteriorHoles(buildingMask, w, h);
+      }
+    }
+  }
+
+  // Step 5b: Sanity check — building must be 1–99% of image
   let buildingArea = 0;
   for (let i = 0; i < totalPixels; i++) buildingArea += buildingMask[i];
   console.log(`[detectEnvelope] buildingArea: ${buildingArea} (${(buildingArea/totalPixels*100).toFixed(2)}%)`);

@@ -1,7 +1,8 @@
 // src/room-detection-controller.test.js
-// Tests for SVG resolution upscaling in the detection controller.
+// Tests for SVG resolution upscaling and two-pass envelope pipeline.
 import { describe, it, expect } from 'vitest';
 import { getDetectionScaleFactor } from './room-detection-controller.js';
+import { detectEnvelope, preprocessForRoomDetection, detectWallThickness } from './room-detection.js';
 
 // ---------------------------------------------------------------------------
 // getDetectionScaleFactor — pure function, no Canvas needed
@@ -93,5 +94,203 @@ describe('coordinate invariant', () => {
     // 4× roundtrip is at least as accurate as 1×
     expect(Math.abs(rt4.x - cmX)).toBeLessThanOrEqual(Math.abs(rt1.x - cmX) + 1e-9);
     expect(Math.abs(rt4.y - cmY)).toBeLessThanOrEqual(Math.abs(rt1.y - cmY) + 1e-9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two-pass envelope pipeline contract tests
+// ---------------------------------------------------------------------------
+// These tests verify the pipeline contract that detectAndStoreEnvelope relies on:
+// Pass 1 (raw) → preprocessing → Pass 2 (improved envelope) → dynamic fallback.
+// Direct E2E of detectAndStoreEnvelope requires DOM Canvas (loadImageData),
+// unavailable in Node. Tests exercise real detectEnvelope + preprocessing on
+// synthetic images to validate the wiring contract.
+
+/** Build a synthetic building image: white background, gray walls forming a rectangle. */
+function makeBuildingImage(imgW, imgH, bldgRect, wallThick = 8) {
+  const data = new Uint8ClampedArray(imgW * imgH * 4);
+  for (let i = 0; i < imgW * imgH; i++) {
+    data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; data[i * 4 + 3] = 255;
+  }
+  function setPixel(x, y, gray) {
+    if (x < 0 || x >= imgW || y < 0 || y >= imgH) return;
+    const idx = (y * imgW + x) * 4;
+    data[idx] = gray; data[idx + 1] = gray; data[idx + 2] = gray;
+  }
+  const { x: bx, y: by, w: bw, h: bh } = bldgRect;
+  for (let y = by; y < by + bh; y++) {
+    for (let x = bx; x < bx + bw; x++) {
+      const inInterior =
+        x >= bx + wallThick && x < bx + bw - wallThick &&
+        y >= by + wallThick && y < by + bh - wallThick;
+      if (inInterior) continue;
+      const atOuterEdge = x < bx + 2 || x >= bx + bw - 2 || y < by + 2 || y >= by + bh - 2;
+      const atInnerEdge =
+        Math.abs(x - (bx + wallThick)) < 2 || Math.abs(x - (bx + bw - wallThick - 1)) < 2 ||
+        Math.abs(y - (by + wallThick)) < 2 || Math.abs(y - (by + bh - wallThick - 1)) < 2;
+      if (atOuterEdge || atInnerEdge) {
+        setPixel(x, y, 30);
+      } else {
+        setPixel(x, y, 140);
+      }
+    }
+  }
+  return { data, width: imgW, height: imgH };
+}
+
+function cloneImageData(img) {
+  return { data: new Uint8ClampedArray(img.data), width: img.width, height: img.height };
+}
+
+function countBuildingPixels(mask) {
+  let count = 0;
+  for (let i = 0; i < mask.length; i++) count += mask[i];
+  return count;
+}
+
+describe('two-pass envelope pipeline', () => {
+  it('pass 2 with envelopeBboxPx on preprocessed image produces a valid envelope', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    // Pass 1
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(result1).not.toBeNull();
+    expect(result1.polygonPixels.length).toBeGreaterThanOrEqual(3);
+
+    // Preprocess a fresh copy
+    const imageData2 = cloneImageData(imageData);
+    preprocessForRoomDetection(imageData2, {
+      pixelsPerCm: ppc,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: [],
+    });
+
+    // Pass 2 with envelopeBboxPx
+    const bbox = {
+      minX: Math.min(...result1.polygonPixels.map(p => p.x)),
+      minY: Math.min(...result1.polygonPixels.map(p => p.y)),
+      maxX: Math.max(...result1.polygonPixels.map(p => p.x)),
+      maxY: Math.max(...result1.polygonPixels.map(p => p.y)),
+    };
+    const result2 = detectEnvelope(imageData2, { pixelsPerCm: ppc, envelopeBboxPx: bbox });
+
+    expect(result2).not.toBeNull();
+    expect(result2.polygonPixels.length).toBeGreaterThanOrEqual(3);
+    expect(result2.wallMask).toBeInstanceOf(Uint8Array);
+    expect(result2.buildingMask).toBeInstanceOf(Uint8Array);
+  });
+
+  it('dynamic fallback: uses pass-1 when pass-2 building area collapses', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(result1).not.toBeNull();
+    const pass1Area = countBuildingPixels(result1.buildingMask);
+
+    // Simulate a pass-2 result with collapsed building area (<30% of pass-1)
+    const fakeResult2 = {
+      polygonPixels: result1.polygonPixels.slice(0, 4),
+      wallThicknesses: result1.wallThicknesses,
+      wallMask: result1.wallMask,
+      buildingMask: new Uint8Array(result1.buildingMask.length), // empty = 0 area
+    };
+
+    // Apply the same fallback logic as detectAndStoreEnvelope
+    let usePass2 = false;
+    const pass2Area = countBuildingPixels(fakeResult2.buildingMask);
+    const ratio = pass1Area > 0 ? pass2Area / pass1Area : 0;
+    if (fakeResult2.polygonPixels.length >= 3 && ratio >= 0.3) {
+      usePass2 = true;
+    }
+    expect(usePass2).toBe(false);
+    expect(ratio).toBe(0);
+  });
+
+  it('dynamic fallback: uses pass-2 when building area is preserved', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    const pass1Area = countBuildingPixels(result1.buildingMask);
+
+    // Simulate pass-2 with identical building area
+    const fakeResult2 = {
+      polygonPixels: result1.polygonPixels,
+      buildingMask: new Uint8Array(result1.buildingMask), // copy = same area
+    };
+
+    let usePass2 = false;
+    const pass2Area = countBuildingPixels(fakeResult2.buildingMask);
+    const ratio = pass1Area > 0 ? pass2Area / pass1Area : 0;
+    if (fakeResult2.polygonPixels.length >= 3 && ratio >= 0.3) {
+      usePass2 = true;
+    }
+    expect(usePass2).toBe(true);
+    expect(ratio).toBeCloseTo(1.0);
+  });
+
+  it('fallback: pass 1 used when pass 2 returns null', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(result1).not.toBeNull();
+
+    const result2 = null;
+    let usePass2 = false;
+    if (result2 && result2.polygonPixels.length >= 3 && result2.buildingMask) {
+      usePass2 = true; // would check area ratio here
+    }
+    const finalResult = usePass2 ? result2 : result1;
+    expect(finalResult).toBe(result1);
+  });
+
+  it('preprocessing mutates imageData in-place (justifies fresh load)', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    const fresh = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+    const before = new Uint8ClampedArray(fresh.data);
+
+    preprocessForRoomDetection(fresh, {
+      pixelsPerCm: ppc,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: [],
+    });
+
+    let changed = 0;
+    for (let i = 0; i < fresh.data.length; i++) {
+      if (fresh.data[i] !== before[i]) changed++;
+    }
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it('wall thickness measurement works on preprocessed image', () => {
+    const ppc = 0.5;
+    const imageData = makeBuildingImage(400, 300, { x: 50, y: 50, w: 300, h: 200 }, 12);
+
+    const result1 = detectEnvelope(imageData, { pixelsPerCm: ppc });
+    expect(result1).not.toBeNull();
+
+    const imageData2 = cloneImageData(imageData);
+    preprocessForRoomDetection(imageData2, {
+      pixelsPerCm: ppc,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: [],
+    });
+
+    const thicknesses = detectWallThickness(
+      imageData2, result1.polygonPixels, imageData2.width, imageData2.height,
+      ppc, { probeFromInnerFace: true }
+    );
+    expect(thicknesses).toBeDefined();
+    expect(thicknesses.edges.length).toBeGreaterThan(0);
+    expect(thicknesses.medianCm).toBeGreaterThan(0);
   });
 });

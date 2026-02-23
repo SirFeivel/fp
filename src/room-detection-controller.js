@@ -611,13 +611,17 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     return false;
   }
 
+  // ── Pass 1: raw image → rough envelope ───────────────────────────────────
   const { imageData, scaleFactor } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
   const effectivePpc = bg.scale.pixelsPerCm * scaleFactor;
+  console.log(`[envelope] Pass 1 start: ppc=${bg.scale.pixelsPerCm.toFixed(3)} effectivePpc=${effectivePpc.toFixed(3)} scaleFactor=${scaleFactor}`);
 
   const result = detectEnvelope(imageData, { pixelsPerCm: effectivePpc });
   if (!result || result.polygonPixels.length < 3) {
+    console.log("[envelope] Pass 1 failed — no valid polygon");
     return false;
   }
+  console.log("[envelope] Pass 1 polygon: %d vertices", result.polygonPixels.length);
 
   // Build effective bg for coordinate conversion with upscaled image
   const effectiveBg = scaleFactor === 1 ? bg : {
@@ -625,12 +629,8 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     scale: { ...bg.scale, pixelsPerCm: effectivePpc }
   };
 
-  // Convert pixel polygon to floor-global cm coordinates
-  const polygonCm = result.polygonPixels.map(p => imagePxToCm(p.x, p.y, effectiveBg));
-
-  // Detect structural spanning walls inside the envelope (before rectification —
-  // detectSpanningWalls uses wallMask/buildingMask, not the rectified polygon)
-  let spanningWalls = [];
+  // Detect structural spanning walls from pass-1 masks (needed for preprocessing)
+  let pass1SpanningWalls = [];
   if (result.wallMask && result.buildingMask) {
     const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
     const rawWalls = detectSpanningWalls(
@@ -638,28 +638,121 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
       imageData.width, imageData.height,
       { pixelsPerCm: effectivePpc, minThicknessCm: minCm, maxThicknessCm: maxCm }
     );
-    spanningWalls = rawWalls.map(wall => ({
+    pass1SpanningWalls = rawWalls.map(wall => ({
       orientation: wall.orientation,
       startCm: imagePxToCm(wall.startPx.x, wall.startPx.y, effectiveBg),
       endCm: imagePxToCm(wall.endPx.x, wall.endPx.y, effectiveBg),
       thicknessCm: Math.round(wall.thicknessPx / effectivePpc * 10) / 10,
     }));
+    console.log("[envelope] Pass 1 spanning walls: %d", pass1SpanningWalls.length);
+  }
+
+  // Count pass-1 building area for comparison
+  let pass1BuildingArea = 0;
+  if (result.buildingMask) {
+    for (let i = 0; i < result.buildingMask.length; i++) pass1BuildingArea += result.buildingMask[i];
+  } else {
+    console.warn("[envelope] Pass 1 buildingMask missing — area comparison will fall back to pass 1");
+  }
+
+  // ── Pass 2: preprocess raw image, then re-detect envelope ────────────────
+  // Build pixel-space preprocessing args from pass-1 results.
+  // Mirrors exactly what handleSvgClick does for room detection (lines 276-280).
+  const pass1SpanningWallsPx = pass1SpanningWalls.map(w => ({
+    startPx: cmToImagePx(w.startCm.x, w.startCm.y, effectiveBg),
+    endPx: cmToImagePx(w.endCm.x, w.endCm.y, effectiveBg),
+    thicknessPx: Math.round(w.thicknessCm * effectivePpc),
+  }));
+
+  // Load a fresh copy — preprocessForRoomDetection mutates imageData in-place.
+  const { imageData: imageData2 } = await loadImageData(bg.dataUrl, bg.nativeWidth, bg.nativeHeight);
+  console.log("[envelope] Pass 2: fresh image %dx%d", imageData2.width, imageData2.height);
+
+  preprocessForRoomDetection(imageData2, {
+    pixelsPerCm: effectivePpc,
+    envelopePolygonPx: result.polygonPixels,
+    envelopeWallThicknesses: result.wallThicknesses,
+    spanningWallsPx: pass1SpanningWallsPx,
+  });
+  console.log("[envelope] Preprocessing complete");
+
+  // envelopeBboxPx activates the stricter morphological open in detectEnvelope.
+  // Only truthiness is checked — the actual bbox values are not read.
+  const pass1BboxPx = {
+    minX: Math.min(...result.polygonPixels.map(p => p.x)),
+    minY: Math.min(...result.polygonPixels.map(p => p.y)),
+    maxX: Math.max(...result.polygonPixels.map(p => p.x)),
+    maxY: Math.max(...result.polygonPixels.map(p => p.y)),
+  };
+
+  const result2 = detectEnvelope(imageData2, {
+    pixelsPerCm: effectivePpc,
+    envelopeBboxPx: pass1BboxPx,
+  });
+
+  // ── Dynamic fallback: compare building areas ─────────────────────────────
+  // Pass 2 on a preprocessed image typically produces a *smaller* building
+  // area than pass 1 because preprocessing removes noise that inflated the
+  // raw envelope. A pass-2 area of 50-90% of pass-1 is normal and indicates
+  // a more accurate envelope. True collapse (e.g. flood fill leaked through
+  // broken walls) shows as <30% of pass-1 area.
+  let usePass2 = false;
+  if (result2 && result2.polygonPixels.length >= 3 && result2.buildingMask) {
+    let pass2BuildingArea = 0;
+    for (let i = 0; i < result2.buildingMask.length; i++) pass2BuildingArea += result2.buildingMask[i];
+    const areaRatio = pass1BuildingArea > 0 ? pass2BuildingArea / pass1BuildingArea : 0;
+    console.log(`[envelope] Building area: pass1=${pass1BuildingArea} pass2=${pass2BuildingArea} ratio=${areaRatio.toFixed(2)}`);
+    if (areaRatio >= 0.3) {
+      usePass2 = true;
+    } else {
+      console.log(`[envelope] Pass 2 building area too small (${(areaRatio * 100).toFixed(0)}% of pass 1) — falling back to pass 1`);
+    }
+  } else {
+    console.log("[envelope] Pass 2 failed (null or <3 vertices) — falling back to pass 1");
+  }
+
+  const finalResult = usePass2 ? result2 : result;
+  const finalImageData = usePass2 ? imageData2 : imageData;
+  console.log("[envelope] Using %s result: %d vertices", usePass2 ? "pass-2" : "pass-1", finalResult.polygonPixels.length);
+
+  // ── Downstream pipeline: runs on final result ────────────────────────────
+  // Convert final pixel polygon to floor-global cm coordinates
+  const finalPolygonCm = finalResult.polygonPixels.map(p => imagePxToCm(p.x, p.y, effectiveBg));
+
+  // Re-detect spanning walls on the final result
+  let finalSpanningWalls = [];
+  if (finalResult.wallMask && finalResult.buildingMask) {
+    const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const rawWalls = detectSpanningWalls(
+      finalImageData, finalResult.wallMask, finalResult.buildingMask,
+      finalImageData.width, finalImageData.height,
+      { pixelsPerCm: effectivePpc, minThicknessCm: minCm, maxThicknessCm: maxCm }
+    );
+    finalSpanningWalls = rawWalls.map(wall => ({
+      orientation: wall.orientation,
+      startCm: imagePxToCm(wall.startPx.x, wall.startPx.y, effectiveBg),
+      endCm: imagePxToCm(wall.endPx.x, wall.endPx.y, effectiveBg),
+      thicknessCm: Math.round(wall.thicknessPx / effectivePpc * 10) / 10,
+    }));
+    console.log("[envelope] Final spanning walls: %d", finalSpanningWalls.length);
   }
 
   // Discover valid angles from the pre-rectification polygon and spanning walls.
   // Use a higher minEdgeLengthCm than the default (5cm) because raw detection
   // polygons have noise diagonals that can accumulate >5cm total. A real building
   // direction needs at least 50cm of total edge length (≈ max wall thickness).
-  const validAngles = extractValidAngles(polygonCm, spanningWalls, {
+  const validAngles = extractValidAngles(finalPolygonCm, finalSpanningWalls, {
     minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
   });
 
   // Rectify polygon: snap edges to discovered angles
   const rectifyRules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
-  const rectified = rectifyPolygon(polygonCm, rectifyRules);
+  const rectified = rectifyPolygon(finalPolygonCm, rectifyRules);
 
   // Remove micro-bumps from external structures (retaining walls, stairs, etc.)
-  const bumpThreshold = result.wallThicknesses?.medianCm || 30;
+  // Use 80% of median wall thickness — bumps (stairs, retaining walls) are
+  // thinner than walls. Using medianCm directly removes legitimate L-shape steps.
+  const bumpThreshold = (finalResult.wallThicknesses?.medianCm ?? 25) * 0.8;
   const bumped = removePolygonMicroBumps(rectified, bumpThreshold);
 
   // Re-rectify: bump removal can leave residual notches where nearby V (or H)
@@ -667,20 +760,23 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   const reRectified = rectifyPolygon(bumped, rectifyRules);
 
   // Remove stacked walls: parallel edges overlapping within wall-thickness distance
-  // (e.g. contour traced both inner and outer face of same wall)
-  const cleaned = removeStackedWalls(reRectified);
+  // (e.g. contour traced both inner and outer face of same wall).
+  // Use 1.5× measured median thickness — tighter than default maxCm (50cm) to
+  // avoid collapsing L-shape parallel edges that are legitimate building geometry.
+  const stackedGap = (finalResult.wallThicknesses?.medianCm ?? 30) * 1.5;
+  const cleaned = removeStackedWalls(reRectified, stackedGap);
 
   // Re-measure wall thickness on the cleaned polygon so edge indices match
   const cleanedPx = cleaned.map(p => cmToImagePx(p.x, p.y, effectiveBg));
   const wallThicknesses = detectWallThickness(
-    imageData, cleanedPx, imageData.width, imageData.height,
+    finalImageData, cleanedPx, finalImageData.width, finalImageData.height,
     effectivePpc, { probeFromInnerFace: true }
   );
 
   // Classify wall types from all measured thicknesses
   const allThicknesses = [
     ...wallThicknesses.edges.map(e => e.thicknessCm),
-    ...spanningWalls.map(w => w.thicknessCm),
+    ...finalSpanningWalls.map(w => w.thicknessCm),
   ];
   const wallTypes = classifyWallTypes(allThicknesses);
 
@@ -692,7 +788,7 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
   nextFloor.layout.envelope = {
     polygonCm: cleaned,
     wallThicknesses,
-    spanningWalls,
+    spanningWalls: finalSpanningWalls,
     validAngles,
     wallTypes,
   };

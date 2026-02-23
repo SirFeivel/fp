@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'fs';
 import { decode, encode } from 'fast-png';
-import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection, morphologicalClose, floodFillFromBorder, fillInteriorHoles, traceContour } from './room-detection.js';
+import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, removePolygonMicroBumps, removeStackedWalls, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection, morphologicalClose, floodFillFromBorder, fillInteriorHoles, traceContour } from './room-detection.js';
 import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType } from './floor-plan-rules.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
@@ -1144,5 +1144,310 @@ describe('Envelope diagnostic: intermediate masks on preprocessed EG', () => {
     console.log(`contour: ${contour.length} pts`);
 
     expect(buildingArea).toBeGreaterThan(0);
+  });
+});
+
+// ── Two-pass envelope pipeline E2E on real EG floor plan ─────────────────────
+// Exercises the exact pipeline from detectAndStoreEnvelope on the real messy
+// EG floor plan. Validates dynamic building area fallback.
+describe('Two-pass envelope pipeline (real EG image)', () => {
+  it('two-pass pipeline produces valid envelope with dynamic fallback', { timeout: 30000 }, () => {
+    // ── Pass 1: raw image → rough envelope ──────────────────────────────
+    const result1 = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    expect(result1).not.toBeNull();
+    expect(result1.polygonPixels.length).toBeGreaterThanOrEqual(3);
+    console.log(`[2pass] Pass 1: ${result1.polygonPixels.length} vertices`);
+
+    // Count pass-1 building area
+    let pass1BuildingArea = 0;
+    for (let i = 0; i < result1.buildingMask.length; i++) pass1BuildingArea += result1.buildingMask[i];
+    console.log(`[2pass] Pass 1 building area: ${pass1BuildingArea}`);
+
+    // ── Spanning walls from pass 1 ──────────────────────────────────────
+    const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const rawWalls = detectSpanningWalls(
+      imgMessy, result1.wallMask, result1.buildingMask,
+      imgMessy.width, imgMessy.height,
+      { pixelsPerCm: ppcEG, minThicknessCm: minCm, maxThicknessCm: maxCm }
+    );
+    const pass1SpanningWallsPx = rawWalls.map(w => ({
+      startPx: w.startPx,
+      endPx: w.endPx,
+      thicknessPx: w.thicknessPx,
+    }));
+    console.log(`[2pass] Pass 1 spanning walls: ${pass1SpanningWallsPx.length}`);
+
+    // ── Preprocess fresh copy ───────────────────────────────────────────
+    const img2 = { data: new Uint8ClampedArray(imgMessy.data), width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(img2, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: pass1SpanningWallsPx,
+    });
+    console.log(`[2pass] Preprocessing complete`);
+
+    // ── Pass 2: preprocessed image with envelopeBboxPx ──────────────────
+    const pass1BboxPx = {
+      minX: Math.min(...result1.polygonPixels.map(p => p.x)),
+      minY: Math.min(...result1.polygonPixels.map(p => p.y)),
+      maxX: Math.max(...result1.polygonPixels.map(p => p.x)),
+      maxY: Math.max(...result1.polygonPixels.map(p => p.y)),
+    };
+    const result2 = detectEnvelope(img2, { pixelsPerCm: ppcEG, envelopeBboxPx: pass1BboxPx });
+
+    // ── Dynamic fallback: same logic as detectAndStoreEnvelope ──────────
+    let usePass2 = false;
+    if (result2 && result2.polygonPixels.length >= 3 && result2.buildingMask) {
+      let pass2BuildingArea = 0;
+      for (let i = 0; i < result2.buildingMask.length; i++) pass2BuildingArea += result2.buildingMask[i];
+      const areaRatio = pass1BuildingArea > 0 ? pass2BuildingArea / pass1BuildingArea : 0;
+      console.log(`[2pass] Pass 2: ${result2.polygonPixels.length} vertices, building area: ${pass2BuildingArea}, ratio: ${areaRatio.toFixed(2)}`);
+      if (areaRatio >= 0.3) {
+        usePass2 = true;
+      } else {
+        console.log(`[2pass] Fallback to pass 1: area ratio ${(areaRatio * 100).toFixed(0)}% < 30%`);
+      }
+    } else {
+      console.log(`[2pass] Pass 2 returned null or <3 vertices — using pass 1`);
+    }
+
+    const finalResult = usePass2 ? result2 : result1;
+    console.log(`[2pass] Using ${usePass2 ? 'pass-2' : 'pass-1'}: ${finalResult.polygonPixels.length} vertices`);
+
+    // ── Validate final result ───────────────────────────────────────────
+    expect(finalResult.polygonPixels.length).toBeGreaterThanOrEqual(3);
+    expect(finalResult.wallMask).toBeInstanceOf(Uint8Array);
+    expect(finalResult.buildingMask).toBeInstanceOf(Uint8Array);
+
+    // Building area should be reasonable (>3% of image, matching pass-1)
+    let finalArea = 0;
+    for (let i = 0; i < finalResult.buildingMask.length; i++) finalArea += finalResult.buildingMask[i];
+    const totalPx = imgMessy.width * imgMessy.height;
+    const areaPct = finalArea / totalPx * 100;
+    console.log(`[2pass] Final building area: ${finalArea} (${areaPct.toFixed(2)}%)`);
+    expect(areaPct).toBeGreaterThan(3);
+
+    // Downstream pipeline: rectify + bump removal + wall thickness
+    const finalPolygonCm = finalResult.polygonPixels.map(p => ({
+      x: p.x / ppcEG,
+      y: p.y / ppcEG,
+    }));
+    const finalSpanningWallsCm = rawWalls.map(w => ({
+      orientation: w.orientation,
+      startCm: { x: w.startPx.x / ppcEG, y: w.startPx.y / ppcEG },
+      endCm: { x: w.endPx.x / ppcEG, y: w.endPx.y / ppcEG },
+      thicknessCm: w.thicknessPx / ppcEG,
+    }));
+
+    const validAngles = extractValidAngles(finalPolygonCm, finalSpanningWallsCm, {
+      minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
+    });
+    expect(validAngles.length).toBeGreaterThanOrEqual(2);
+    console.log(`[2pass] Valid angles: [${validAngles.join(', ')}]`);
+
+    const rectified = rectifyPolygon(finalPolygonCm, { ...FLOOR_PLAN_RULES, standardAngles: validAngles });
+    expect(rectified.length).toBeGreaterThanOrEqual(3);
+
+    const bumpThreshold = finalResult.wallThicknesses?.medianCm || 30;
+    const bumped = removePolygonMicroBumps(rectified, bumpThreshold);
+    expect(bumped.length).toBeGreaterThanOrEqual(3);
+    console.log(`[2pass] Post-processing: rectified=${rectified.length} → bumped=${bumped.length} vertices`);
+
+    // Wall thickness on final image
+    const finalImageData = usePass2 ? img2 : imgMessy;
+    const cleanedPx = bumped.map(p => ({ x: Math.round(p.x * ppcEG), y: Math.round(p.y * ppcEG) }));
+    const wallThicknesses = detectWallThickness(
+      finalImageData, cleanedPx, finalImageData.width, finalImageData.height,
+      ppcEG, { probeFromInnerFace: true }
+    );
+    expect(wallThicknesses).toBeDefined();
+    expect(wallThicknesses.edges.length).toBeGreaterThan(0);
+    expect(wallThicknesses.medianCm).toBeGreaterThan(0);
+    console.log(`[2pass] Wall thickness: ${wallThicknesses.edges.length} edges, median=${wallThicknesses.medianCm.toFixed(1)}cm`);
+
+    // Wall type classification
+    const allThicknesses = [
+      ...wallThicknesses.edges.map(e => e.thicknessCm),
+      ...finalSpanningWallsCm.map(w => w.thicknessCm),
+    ];
+    const wallTypes = classifyWallTypes(allThicknesses);
+    expect(wallTypes.length).toBeGreaterThanOrEqual(1);
+    console.log(`[2pass] Wall types: ${wallTypes.map(t => `${t.id}=${t.thicknessCm.toFixed(1)}cm`).join(', ')}`);
+  });
+});
+
+// ── Phase 2 E2E: Envelope detection quality on EG floor plan ─────────────────
+// Validates that the Phase 2 changes (adaptive close, multi-component merge,
+// axis-aligned enforcement, bump/stacked wall thresholds) produce a correct
+// envelope on the real EG floor plan.
+describe('Phase 2: Envelope detection quality (real EG image)', () => {
+  let finalPolygon; // post-processed polygon in cm
+  let wallThicknesses;
+  let usePass2;
+
+  function runPipeline() {
+    if (finalPolygon) return;
+
+    // Pass 1
+    const result1 = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    let pass1Area = 0;
+    for (let i = 0; i < result1.buildingMask.length; i++) pass1Area += result1.buildingMask[i];
+
+    // Spanning walls
+    const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const rawWalls = detectSpanningWalls(
+      imgMessy, result1.wallMask, result1.buildingMask,
+      imgMessy.width, imgMessy.height,
+      { pixelsPerCm: ppcEG, minThicknessCm: minCm, maxThicknessCm: maxCm }
+    );
+    const pass1SpanningWallsPx = rawWalls.map(w => ({
+      startPx: w.startPx, endPx: w.endPx, thicknessPx: w.thicknessPx,
+    }));
+
+    // Preprocess
+    const img2 = { data: new Uint8ClampedArray(imgMessy.data), width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(img2, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: pass1SpanningWallsPx,
+    });
+
+    // Pass 2
+    const pass1BboxPx = {
+      minX: Math.min(...result1.polygonPixels.map(p => p.x)),
+      minY: Math.min(...result1.polygonPixels.map(p => p.y)),
+      maxX: Math.max(...result1.polygonPixels.map(p => p.x)),
+      maxY: Math.max(...result1.polygonPixels.map(p => p.y)),
+    };
+    const result2 = detectEnvelope(img2, { pixelsPerCm: ppcEG, envelopeBboxPx: pass1BboxPx });
+
+    // Dynamic fallback
+    usePass2 = false;
+    if (result2 && result2.polygonPixels.length >= 3 && result2.buildingMask) {
+      let pass2Area = 0;
+      for (let i = 0; i < result2.buildingMask.length; i++) pass2Area += result2.buildingMask[i];
+      if (pass1Area > 0 && pass2Area / pass1Area >= 0.3) usePass2 = true;
+    }
+    const finalResult = usePass2 ? result2 : result1;
+
+    // Post-processing (mirrors controller with Phase 2 thresholds)
+    const finalPolygonCm = finalResult.polygonPixels.map(p => ({ x: p.x / ppcEG, y: p.y / ppcEG }));
+    const spanCm = rawWalls.map(w => ({
+      orientation: w.orientation,
+      startCm: { x: w.startPx.x / ppcEG, y: w.startPx.y / ppcEG },
+      endCm: { x: w.endPx.x / ppcEG, y: w.endPx.y / ppcEG },
+      thicknessCm: w.thicknessPx / ppcEG,
+    }));
+
+    const validAngles = extractValidAngles(finalPolygonCm, spanCm, {
+      minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
+    });
+    const rectifyRules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
+    const rectified = rectifyPolygon(finalPolygonCm, rectifyRules);
+    const bumpThreshold = (finalResult.wallThicknesses?.medianCm ?? 25) * 0.8;
+    const bumped = removePolygonMicroBumps(rectified, bumpThreshold);
+    const reRectified = rectifyPolygon(bumped, rectifyRules);
+    const stackedGap = (finalResult.wallThicknesses?.medianCm ?? 30) * 1.5;
+    const cleaned = removeStackedWalls(reRectified, stackedGap);
+
+    finalPolygon = cleaned;
+
+    // Wall thickness on final polygon
+    const finalImageData = usePass2 ? img2 : imgMessy;
+    const cleanedPx = cleaned.map(p => ({ x: Math.round(p.x * ppcEG), y: Math.round(p.y * ppcEG) }));
+    wallThicknesses = detectWallThickness(
+      finalImageData, cleanedPx, finalImageData.width, finalImageData.height,
+      ppcEG, { probeFromInnerFace: true }
+    );
+
+    console.log(`[phase2] Pass used: ${usePass2 ? 'pass-2' : 'pass-1'}`);
+    console.log(`[phase2] Final polygon: ${finalPolygon.length} vertices`);
+    console.log(`[phase2] Wall thicknesses: ${wallThicknesses.edges.length} edges, median=${wallThicknesses.medianCm.toFixed(1)}cm`);
+    finalPolygon.forEach((v, i) => {
+      const next = finalPolygon[(i + 1) % finalPolygon.length];
+      const dx = Math.abs(next.x - v.x), dy = Math.abs(next.y - v.y);
+      const len = Math.hypot(dx, dy);
+      const type = dx < 1 ? 'V' : dy < 1 ? 'H' : 'D';
+      console.log(`[phase2]   edge ${i}: (${v.x.toFixed(1)},${v.y.toFixed(1)}) → (${next.x.toFixed(1)},${next.y.toFixed(1)}) ${type} len=${len.toFixed(1)}cm`);
+    });
+  }
+
+  it('pass 2 is selected (not fallback to pass 1)', { timeout: 30000 }, () => {
+    runPipeline();
+    expect(usePass2, 'expected pass-2 to be used, got pass-1 fallback').toBe(true);
+  });
+
+  it('final polygon has >= 4 vertices (valid polygon after post-processing)', { timeout: 30000 }, () => {
+    runPipeline();
+    // The EG outer envelope is approximately rectangular. Pass-2 raw polygon has
+    // 20 vertices, but notches at wall-thickness distance are correctly collapsed
+    // by removeStackedWalls. Multi-section L-shapes require component merge which
+    // depends on the gap between sections being within bridge distance.
+    expect(finalPolygon.length, `expected >=4 vertices, got ${finalPolygon.length}`).toBeGreaterThanOrEqual(4);
+  });
+
+  it('all edges are axis-aligned (H or V within 1cm tolerance)', { timeout: 30000 }, () => {
+    runPipeline();
+    for (let i = 0; i < finalPolygon.length; i++) {
+      const a = finalPolygon[i];
+      const b = finalPolygon[(i + 1) % finalPolygon.length];
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      const isH = dy < 1;
+      const isV = dx < 1;
+      expect(isH || isV, `edge ${i}: (${a.x.toFixed(1)},${a.y.toFixed(1)}) → (${b.x.toFixed(1)},${b.y.toFixed(1)}) is diagonal (dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)})`).toBe(true);
+    }
+  });
+
+  it('no stacked walls (no parallel edges overlapping within medianCm * 1.5)', { timeout: 30000 }, () => {
+    runPipeline();
+    const maxGap = wallThicknesses.medianCm * 1.5;
+    for (let i = 0; i < finalPolygon.length; i++) {
+      const a1 = finalPolygon[i];
+      const a2 = finalPolygon[(i + 1) % finalPolygon.length];
+      const aIsH = Math.abs(a2.y - a1.y) < 1;
+      const aIsV = Math.abs(a2.x - a1.x) < 1;
+      if (!aIsH && !aIsV) continue;
+
+      for (let j = i + 2; j < finalPolygon.length; j++) {
+        if (j === (i - 1 + finalPolygon.length) % finalPolygon.length) continue;
+        const b1 = finalPolygon[j];
+        const b2 = finalPolygon[(j + 1) % finalPolygon.length];
+        const bIsH = Math.abs(b2.y - b1.y) < 1;
+        const bIsV = Math.abs(b2.x - b1.x) < 1;
+
+        if (aIsH && bIsH) {
+          const gap = Math.abs((a1.y + a2.y) / 2 - (b1.y + b2.y) / 2);
+          if (gap < maxGap) {
+            const aMinX = Math.min(a1.x, a2.x), aMaxX = Math.max(a1.x, a2.x);
+            const bMinX = Math.min(b1.x, b2.x), bMaxX = Math.max(b1.x, b2.x);
+            expect(aMinX >= bMaxX || bMinX >= aMaxX,
+              `stacked H edges ${i} and ${j}: gap=${gap.toFixed(1)}cm < ${maxGap.toFixed(1)}cm and overlapping in X`
+            ).toBe(true);
+          }
+        }
+        if (aIsV && bIsV) {
+          const gap = Math.abs((a1.x + a2.x) / 2 - (b1.x + b2.x) / 2);
+          if (gap < maxGap) {
+            const aMinY = Math.min(a1.y, a2.y), aMaxY = Math.max(a1.y, a2.y);
+            const bMinY = Math.min(b1.y, b2.y), bMaxY = Math.max(b1.y, b2.y);
+            expect(aMinY >= bMaxY || bMinY >= aMaxY,
+              `stacked V edges ${i} and ${j}: gap=${gap.toFixed(1)}cm < ${maxGap.toFixed(1)}cm and overlapping in Y`
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it('wall thickness edges are in valid range [5, 50] cm', { timeout: 30000 }, () => {
+    runPipeline();
+    expect(wallThicknesses.edges.length).toBeGreaterThan(0);
+    for (const edge of wallThicknesses.edges) {
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}: ${edge.thicknessCm}cm`).toBeGreaterThanOrEqual(5);
+      expect(edge.thicknessCm, `edge ${edge.edgeIndex}: ${edge.thicknessCm}cm`).toBeLessThanOrEqual(50);
+    }
   });
 });

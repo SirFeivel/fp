@@ -420,6 +420,55 @@ export function rectifyPolygon(vertices, rules = FLOOR_PLAN_RULES) {
     }
   }
 
+  // Step 5: Enforce all edges axis-aligned — snap any surviving diagonals.
+  // After rebuild + collinear merge, some edges may still be diagonal (from
+  // type=null edges that kept original vertices). Force-snap each to H or V.
+  const SNAP_TOL = 1.0; // cm — edges within this are already axis-aligned
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < rebuilt.length && rebuilt.length > 3; i++) {
+      const a = rebuilt[i];
+      const b = rebuilt[(i + 1) % rebuilt.length];
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      if (dx < SNAP_TOL || dy < SNAP_TOL) continue; // already axis-aligned
+      // Diagonal edge — snap to nearest axis
+      if (dx >= dy) {
+        // More horizontal → snap to H (average Y)
+        const avgY = round1((a.y + b.y) / 2);
+        rebuilt[i] = { x: a.x, y: avgY };
+        rebuilt[(i + 1) % rebuilt.length] = { x: b.x, y: avgY };
+      } else {
+        // More vertical → snap to V (average X)
+        const avgX = round1((a.x + b.x) / 2);
+        rebuilt[i] = { x: avgX, y: a.y };
+        rebuilt[(i + 1) % rebuilt.length] = { x: avgX, y: b.y };
+      }
+      console.log(`[rectifyPolygon] enforcement: snapped diagonal edge ${i} (dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}) to axis-aligned`);
+      changed = true;
+      break; // restart — snapping may create new collinear vertices
+    }
+    // Re-merge collinear after each snap
+    if (changed) {
+      let merged = true;
+      while (merged) {
+        merged = false;
+        for (let i = 0; i < rebuilt.length && rebuilt.length > 3; i++) {
+          const a = rebuilt[(i - 1 + rebuilt.length) % rebuilt.length];
+          const b = rebuilt[i];
+          const c = rebuilt[(i + 1) % rebuilt.length];
+          if (Math.abs(a.y - b.y) < 0.2 && Math.abs(b.y - c.y) < 0.2) {
+            rebuilt.splice(i, 1); merged = true; break;
+          }
+          if (Math.abs(a.x - b.x) < 0.2 && Math.abs(b.x - c.x) < 0.2) {
+            rebuilt.splice(i, 1); merged = true; break;
+          }
+        }
+      }
+    }
+  }
+
   return rebuilt;
 }
 
