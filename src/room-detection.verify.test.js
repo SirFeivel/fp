@@ -5,7 +5,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'fs';
 import { decode, encode } from 'fast-png';
 import { detectRoomAtPixel, detectEnvelope, detectSpanningWalls, detectWallThickness, autoDetectWallRange, buildGrayWallMask, filterSmallComponents, preprocessForRoomDetection, morphologicalClose, floodFillFromBorder, fillInteriorHoles, traceContour } from './room-detection.js';
-import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType, removePolygonMicroBumps, removeStackedWalls, enforcePolygonRules } from './floor-plan-rules.js';
+import { rectifyPolygon, extractValidAngles, FLOOR_PLAN_RULES, classifyWallTypes, snapToWallType, removePolygonMicroBumps, removeStackedWalls, enforcePolygonRules, alignToExistingRooms } from './floor-plan-rules.js';
+import { syncFloorWalls, mergeCollinearWalls, enforceNoParallelWalls, enforceAdjacentPositions } from './walls.js';
+import { classifyRoomEdges, assignWallTypesFromClassification, extendSkeletonForRoom, recomputeEnvelope, alignToEnvelope, constrainRoomToStructuralBoundaries, enforceSkeletonWallProperties } from './envelope.js';
+import { createSurface } from './surface.js';
 
 // ── Load reference data ────────────────────────────────────────────────────
 const calibrated = JSON.parse(
@@ -1529,5 +1532,454 @@ describe('Phase 3: enforcePolygonRules with OG polygon', () => {
     expect(lastIter).toContain('stable=true');
     // Should not need all 3 iterations
     expect(iterLogs.length).toBeLessThanOrEqual(3);
+  });
+});
+
+// ── E2E: Skeleton enforcement on EG floor plan ──────────────────────────────
+// Full pipeline: detect envelope → detect 6 rooms → assert wall invariants.
+// Replicates detectAndStoreEnvelope + confirmDetection × 6 from the controller.
+describe.skip('E2E: Skeleton enforcement (real EG image)', () => {
+  const round1 = v => Math.round(v * 10) / 10;
+
+  // Click points in image pixels (from real session log)
+  const clickPointsPx = [
+    { x: 1561, y: 1495 },
+    { x: 1532, y: 1988 },
+    { x: 1855, y: 2034 },
+    { x: 2057, y: 2034 },
+    { x: 2096, y: 1544 },
+    { x: 2220, y: 1810 },
+  ];
+
+  let floor; // populated by the pipeline
+
+  function runFullPipeline() {
+    if (floor) return;
+
+    // ── Phase 1: Envelope detection ────────────────────────────────────────
+    console.log('[skeleton-e2e] Phase 1: Envelope detection');
+
+    // Pass 1
+    const result1 = detectEnvelope(imgMessy, { pixelsPerCm: ppcEG });
+    expect(result1).not.toBeNull();
+    let pass1Area = 0;
+    for (let i = 0; i < result1.buildingMask.length; i++) pass1Area += result1.buildingMask[i];
+
+    // Spanning walls from pass 1 (use wallMaskFiltered for thin wall detection)
+    const { minCm, maxCm } = FLOOR_PLAN_RULES.wallThickness;
+    const rawWalls = detectSpanningWalls(
+      imgMessy, result1.wallMaskFiltered || result1.wallMask, result1.buildingMask,
+      imgMessy.width, imgMessy.height,
+      { pixelsPerCm: ppcEG, minThicknessCm: minCm, maxThicknessCm: maxCm }
+    );
+    console.log(`[skeleton-e2e]   pass-1 spanning walls: ${rawWalls.length}`);
+    const pass1SpanningWallsPx = rawWalls.map(w => ({
+      startPx: w.startPx, endPx: w.endPx, thicknessPx: w.thicknessPx,
+    }));
+
+    // Preprocess fresh copy
+    const img2 = { data: new Uint8ClampedArray(imgMessy.data), width: imgMessy.width, height: imgMessy.height };
+    preprocessForRoomDetection(img2, {
+      pixelsPerCm: ppcEG,
+      envelopePolygonPx: result1.polygonPixels,
+      envelopeWallThicknesses: result1.wallThicknesses,
+      spanningWallsPx: pass1SpanningWallsPx,
+    });
+
+    // Pass 2
+    const pass1BboxPx = {
+      minX: Math.min(...result1.polygonPixels.map(p => p.x)),
+      minY: Math.min(...result1.polygonPixels.map(p => p.y)),
+      maxX: Math.max(...result1.polygonPixels.map(p => p.x)),
+      maxY: Math.max(...result1.polygonPixels.map(p => p.y)),
+    };
+    const result2 = detectEnvelope(img2, { pixelsPerCm: ppcEG, envelopeBboxPx: pass1BboxPx });
+
+    // Dynamic fallback
+    let usePass2 = false;
+    if (result2 && result2.polygonPixels.length >= 3 && result2.buildingMask) {
+      let pass2Area = 0;
+      for (let i = 0; i < result2.buildingMask.length; i++) pass2Area += result2.buildingMask[i];
+      if (pass1Area > 0 && pass2Area / pass1Area >= 0.3) usePass2 = true;
+    }
+    const finalResult = usePass2 ? result2 : result1;
+    const finalImageData = usePass2 ? img2 : imgMessy;
+    console.log(`[skeleton-e2e]   using ${usePass2 ? 'pass-2' : 'pass-1'}: ${finalResult.polygonPixels.length} vertices`);
+
+    // Downstream: polygon → cm → enforcePolygonRules → wall thickness → classify
+    const finalPolygonCm = finalResult.polygonPixels.map(p => ({ x: p.x / ppcEG, y: p.y / ppcEG }));
+    const finalSpanningWalls = rawWalls.map(w => ({
+      orientation: w.orientation,
+      startCm: { x: w.startPx.x / ppcEG, y: w.startPx.y / ppcEG },
+      endCm: { x: w.endPx.x / ppcEG, y: w.endPx.y / ppcEG },
+      thicknessCm: Math.round(w.thicknessPx / ppcEG * 10) / 10,
+    }));
+
+    const validAngles = extractValidAngles(finalPolygonCm, finalSpanningWalls, {
+      minEdgeLengthCm: FLOOR_PLAN_RULES.wallThickness.maxCm,
+    });
+    const rectifyRules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
+    const bumpThreshold = (finalResult.wallThicknesses?.medianCm ?? 25) * 0.8;
+    const stackedGap = (finalResult.wallThicknesses?.medianCm ?? 30) * 1.5;
+    const cleaned = enforcePolygonRules(finalPolygonCm, {
+      rules: rectifyRules,
+      bumpThresholdCm: bumpThreshold,
+      stackedWallGapCm: stackedGap,
+    });
+
+    const cleanedPx = cleaned.map(p => ({ x: Math.round(p.x * ppcEG), y: Math.round(p.y * ppcEG) }));
+    const wallThicknesses = detectWallThickness(
+      finalImageData, cleanedPx, finalImageData.width, finalImageData.height,
+      ppcEG, { probeFromInnerFace: true }
+    );
+    const allThicknesses = [
+      ...wallThicknesses.edges.map(e => e.thicknessCm),
+      ...finalSpanningWalls.map(w => w.thicknessCm),
+    ];
+    const wallTypes = classifyWallTypes(allThicknesses);
+    console.log(`[skeleton-e2e]   envelope: ${cleaned.length} verts, ${wallThicknesses.edges.length} edges, ${finalSpanningWalls.length} spanning walls`);
+    console.log(`[skeleton-e2e]   wall types: ${wallTypes.map(t => `${t.id}=${t.thicknessCm}cm`).join(', ')}`);
+
+    // Build envelope object
+    const envelope = {
+      polygonCm: cleaned,
+      wallThicknesses,
+      spanningWalls: finalSpanningWalls,
+      validAngles,
+      wallTypes,
+    };
+
+    // Load wallDefaults from starting state
+    const startingState = JSON.parse(readFileSync('/Users/feivel/Downloads/01_floorplan_EG_messy_calibrated.json', 'utf8'));
+    const wallDefaults = startingState.floors[0].layout.wallDefaults;
+
+    // Build floor
+    floor = {
+      id: 'test-floor',
+      name: 'EG',
+      rooms: [],
+      walls: [],
+      layout: { envelope, wallDefaults },
+    };
+
+    // ── Phase 2: Detect 6 rooms ────────────────────────────────────────────
+    console.log('[skeleton-e2e] Phase 2: Detecting 6 rooms');
+
+    for (let ri = 0; ri < clickPointsPx.length; ri++) {
+      const { x: seedX, y: seedY } = clickPointsPx[ri];
+      console.log(`\n[skeleton-e2e]   room ${ri + 1}: click (${seedX}, ${seedY})`);
+
+      // Preprocess a fresh image copy for room detection
+      const roomImg = { data: new Uint8ClampedArray(imgMessy.data), width: imgMessy.width, height: imgMessy.height };
+      preprocessForRoomDetection(roomImg, {
+        pixelsPerCm: ppcEG,
+        envelopePolygonPx: finalResult.polygonPixels,
+        envelopeWallThicknesses: finalResult.wallThicknesses,
+        spanningWallsPx: pass1SpanningWallsPx,
+      });
+
+      // Detect room
+      const detection = detectRoomAtPixel(roomImg, seedX, seedY, {
+        pixelsPerCm: ppcEG,
+        maxAreaCm2: 500000,
+      });
+      expect(detection, `room ${ri + 1}: detection returned null at (${seedX}, ${seedY})`).not.toBeNull();
+
+      // Convert to floor-global cm (bg.position is {x:0, y:0})
+      const globalCm = detection.polygonPixels.map(p => ({ x: p.x / ppcEG, y: p.y / ppcEG }));
+
+      // Enforce polygon rules
+      const rules = envelope.validAngles
+        ? { ...FLOOR_PLAN_RULES, standardAngles: envelope.validAngles }
+        : FLOOR_PLAN_RULES;
+      // Use envelope median wall thickness for bump/stacked wall thresholds
+      // (mirrors confirmDetection which now passes these to enforcePolygonRules)
+      const medianCm = envelope.wallThicknesses?.medianCm;
+      const roomBumpThreshold = medianCm ? medianCm * 0.8 : null;
+      const roomStackedGap = medianCm ? medianCm * 1.5 : null;
+      const rectifiedGlobal = enforcePolygonRules(globalCm, {
+        rules, bumpThresholdCm: roomBumpThreshold, stackedWallGapCm: roomStackedGap,
+      });
+      console.log(`[skeleton-e2e]     rectified: ${rectifiedGlobal.length} verts: ${rectifiedGlobal.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(' ')}`);
+
+      // Compute local vertices + floorPosition
+      let minX = Infinity, minY = Infinity;
+      for (const p of rectifiedGlobal) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+      }
+      const localVertices = rectifiedGlobal.map(p => ({
+        x: Math.round((p.x - minX) * 10) / 10,
+        y: Math.round((p.y - minY) * 10) / 10,
+      }));
+      const floorPos = { x: round1(minX), y: round1(minY) };
+
+      // Align to envelope, then existing rooms
+      const { floorPosition: envAlignedPos } = alignToEnvelope(localVertices, floorPos, envelope);
+      const { floorPosition: alignedPos } = alignToExistingRooms(localVertices, envAlignedPos, floor.rooms || []);
+
+      // Constrain to structural boundaries
+      const alignedGlobal = localVertices.map(v => ({ x: alignedPos.x + v.x, y: alignedPos.y + v.y }));
+      const constrainedGlobal = constrainRoomToStructuralBoundaries(alignedGlobal, envelope);
+
+      // Recompute local + floorPosition from constrained global
+      let cMinX = Infinity, cMinY = Infinity;
+      for (const p of constrainedGlobal) {
+        if (p.x < cMinX) cMinX = p.x;
+        if (p.y < cMinY) cMinY = p.y;
+      }
+      const constrainedLocal = constrainedGlobal.map(p => ({
+        x: round1(p.x - cMinX), y: round1(p.y - cMinY),
+      }));
+      const constrainedPos = { x: round1(cMinX), y: round1(cMinY) };
+      console.log(`[skeleton-e2e]     constrained pos: (${constrainedPos.x},${constrainedPos.y})`);
+      console.log(`[skeleton-e2e]     constrained verts: ${constrainedLocal.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(' ')}`);
+
+      // Create room surface and add to floor
+      const room = createSurface({
+        name: `Room ${ri + 1}`,
+        polygonVertices: constrainedLocal,
+        floorPosition: constrainedPos,
+      });
+      floor.rooms.push(room);
+
+      // Wall pipeline (mirrors confirmDetection exactly)
+      syncFloorWalls(floor, { enforcePositions: false });
+      console.log(`[skeleton-e2e]     syncFloorWalls: ${floor.walls.length} walls`);
+      mergeCollinearWalls(floor);
+      console.log(`[skeleton-e2e]     mergeCollinearWalls: ${floor.walls.length} walls`);
+      enforceSkeletonWallProperties(floor);
+
+      const cls = classifyRoomEdges(room, floor);
+      console.log(`[skeleton-e2e]     classification: ${cls.map(c => `e${c.edgeIndex}:${c.type}`).join(', ')}`);
+      assignWallTypesFromClassification(floor, room, cls, detection.wallThicknesses?.edges);
+      extendSkeletonForRoom(floor, room, cls);
+
+      enforceNoParallelWalls(floor);
+      console.log(`[skeleton-e2e]     enforceNoParallelWalls: ${floor.walls.length} walls`);
+      enforceAdjacentPositions(floor);
+      recomputeEnvelope(floor);
+
+      console.log(`[skeleton-e2e]     → ${floor.walls.length} walls after room ${ri + 1}`);
+      if (ri === 0) {
+        // Dump all walls after room 1 to identify the notch source
+        for (const w of floor.walls) {
+          const ori = Math.abs(w.start.y - w.end.y) < 0.5 ? 'H' : Math.abs(w.start.x - w.end.x) < 0.5 ? 'V' : 'D';
+          console.log(`[skeleton-e2e]       room1-wall: ${ori} thick=${w.thicknessCm}cm (${w.start.x.toFixed(1)},${w.start.y.toFixed(1)})→(${w.end.x.toFixed(1)},${w.end.y.toFixed(1)})`);
+        }
+      }
+    }
+
+    // Log final wall summary
+    console.log(`[skeleton-e2e] Phase 3: Final wall summary (${floor.walls.length} walls)`);
+    for (const w of floor.walls) {
+      const ori = Math.abs(w.start.y - w.end.y) < 0.5 ? 'H' : Math.abs(w.start.x - w.end.x) < 0.5 ? 'V' : 'D';
+      const mid = ori === 'H' ? `y=${((w.start.y + w.end.y) / 2).toFixed(1)}` : `x=${((w.start.x + w.end.x) / 2).toFixed(1)}`;
+      console.log(`[skeleton-e2e]   wall ${w.id}: ${ori} ${mid} thick=${w.thicknessCm}cm h=${w.heightStartCm}/${w.heightEndCm} (${w.start.x.toFixed(1)},${w.start.y.toFixed(1)})→(${w.end.x.toFixed(1)},${w.end.y.toFixed(1)})`);
+    }
+  }
+
+  // AC1: Outer walls present near all 4 envelope inner faces
+  // Walls may be fragmented by room boundaries — assert ≥1 wall per face, all with outer thickness
+  it('AC1: outer walls present near all 4 envelope inner faces', { timeout: 120000 }, () => {
+    runFullPipeline();
+    const tolerance = 6; // cm
+
+    // Envelope inner face approximate positions (from actual pipeline output)
+    const envelopeFaces = {
+      top:    { ori: 'H', coord: 1083, label: 'top' },
+      bottom: { ori: 'H', coord: 1878, label: 'bottom' },
+      left:   { ori: 'V', coord: 1124, label: 'left' },
+      right:  { ori: 'V', coord: 2058, label: 'right' },
+    };
+
+    for (const [key, face] of Object.entries(envelopeFaces)) {
+      const matching = floor.walls.filter(w => {
+        if (face.ori === 'H') {
+          const isH = Math.abs(w.start.y - w.end.y) < 0.5;
+          if (!isH) return false;
+          const midY = (w.start.y + w.end.y) / 2;
+          return Math.abs(midY - face.coord) < tolerance;
+        } else {
+          const isV = Math.abs(w.start.x - w.end.x) < 0.5;
+          if (!isV) return false;
+          const midX = (w.start.x + w.end.x) / 2;
+          return Math.abs(midX - face.coord) < tolerance;
+        }
+      });
+      expect(matching.length, `expected ≥1 ${face.label} outer wall near ${face.ori}=${face.coord}, found ${matching.length}`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  // AC2: Outer wall thickness = 30cm
+  it('AC2: outer wall thickness = 30cm', { timeout: 120000 }, () => {
+    runFullPipeline();
+    const tolerance = 6;
+    const outerCoords = [
+      { ori: 'H', coord: 1083 }, { ori: 'H', coord: 1878 },
+      { ori: 'V', coord: 1124 }, { ori: 'V', coord: 2058 },
+    ];
+
+    for (const face of outerCoords) {
+      const wall = floor.walls.find(w => {
+        if (face.ori === 'H') {
+          return Math.abs(w.start.y - w.end.y) < 0.5 && Math.abs((w.start.y + w.end.y) / 2 - face.coord) < tolerance;
+        } else {
+          return Math.abs(w.start.x - w.end.x) < 0.5 && Math.abs((w.start.x + w.end.x) / 2 - face.coord) < tolerance;
+        }
+      });
+      expect(wall, `no outer wall found near ${face.ori}=${face.coord}`).toBeDefined();
+      expect(wall.thicknessCm, `outer wall ${face.ori}=${face.coord}: expected 30cm, got ${wall.thicknessCm}cm`).toBe(30);
+    }
+  });
+
+  // AC3: 2 continuous spanning walls
+  it('AC3: 2 continuous spanning walls (1 H + 1 V)', { timeout: 120000 }, () => {
+    runFullPipeline();
+    const spanTolerance = 30; // spanning walls have two faces; use wider tolerance
+
+    // H spanning wall near y≈1475..1498
+    const hSpanning = floor.walls.filter(w => {
+      const isH = Math.abs(w.start.y - w.end.y) < 0.5;
+      if (!isH) return false;
+      const midY = (w.start.y + w.end.y) / 2;
+      return midY > 1450 && midY < 1520;
+    });
+    expect(hSpanning.length, `expected exactly 1 H spanning wall near y≈1475-1498, found ${hSpanning.length}: ${JSON.stringify(hSpanning.map(w => ({ y: (w.start.y + w.end.y) / 2 })))}`).toBe(1);
+
+    // V spanning wall near x≈1636..1647
+    const vSpanning = floor.walls.filter(w => {
+      const isV = Math.abs(w.start.x - w.end.x) < 0.5;
+      if (!isV) return false;
+      const midX = (w.start.x + w.end.x) / 2;
+      return midX > 1610 && midX < 1670;
+    });
+    expect(vSpanning.length, `expected exactly 1 V spanning wall near x≈1636-1647, found ${vSpanning.length}: ${JSON.stringify(vSpanning.map(w => ({ x: (w.start.x + w.end.x) / 2 })))}`).toBe(1);
+  });
+
+  // AC4: Spanning wall thickness
+  it('AC4: spanning wall thicknesses (H=24cm structural, V=11.5cm partition)', { timeout: 120000 }, () => {
+    runFullPipeline();
+
+    // H spanning wall
+    const hSpanning = floor.walls.find(w => {
+      const isH = Math.abs(w.start.y - w.end.y) < 0.5;
+      const midY = (w.start.y + w.end.y) / 2;
+      return isH && midY > 1450 && midY < 1520;
+    });
+    expect(hSpanning, 'H spanning wall not found').toBeDefined();
+    expect(hSpanning.thicknessCm, `H spanning: expected 24cm, got ${hSpanning.thicknessCm}cm`).toBe(24);
+
+    // V spanning wall
+    const vSpanning = floor.walls.find(w => {
+      const isV = Math.abs(w.start.x - w.end.x) < 0.5;
+      const midX = (w.start.x + w.end.x) / 2;
+      return isV && midX > 1610 && midX < 1670;
+    });
+    expect(vSpanning, 'V spanning wall not found').toBeDefined();
+    expect(vSpanning.thicknessCm, `V spanning: expected 11.5cm, got ${vSpanning.thicknessCm}cm`).toBe(11.5);
+  });
+
+  // AC5: No parallel stacking
+  // "Stacking" = two parallel walls representing the same physical wall (duplicates).
+  // Excludes L-shape corners: adjacent edges of the same room that share an endpoint
+  // are consecutive room edges, not stacking.
+  it('AC5: no parallel wall stacking', { timeout: 120000 }, () => {
+    runFullPipeline();
+
+    // Helper: does a structural wall (envelope edge or spanning wall) sit between
+    // two parallel walls? If so, they are on opposite faces of a real physical wall,
+    // not duplicates. Uses envelope polygon edges and spanning walls from the floor data.
+    const spanningWalls = floor.layout?.envelope?.spanningWalls || [];
+    const envelopePoly = floor.layout?.envelope?.polygonCm || [];
+
+    function structuralWallBetween(coordA, coordB, orientation) {
+      const lo = Math.min(coordA, coordB);
+      const hi = Math.max(coordA, coordB);
+      // Check spanning walls
+      for (const sw of spanningWalls) {
+        if (sw.orientation !== orientation) continue;
+        const center = orientation === 'H'
+          ? (sw.startCm.y + sw.endCm.y) / 2
+          : (sw.startCm.x + sw.endCm.x) / 2;
+        if (center >= lo - 2 && center <= hi + 2) return true;
+      }
+      // Check envelope edges
+      for (let k = 0; k < envelopePoly.length; k++) {
+        const p = envelopePoly[k];
+        const q = envelopePoly[(k + 1) % envelopePoly.length];
+        if (orientation === 'H' && Math.abs(p.y - q.y) < 1) {
+          const edgeY = (p.y + q.y) / 2;
+          if (edgeY >= lo - 2 && edgeY <= hi + 2) return true;
+        }
+        if (orientation === 'V' && Math.abs(p.x - q.x) < 1) {
+          const edgeX = (p.x + q.x) / 2;
+          if (edgeX >= lo - 2 && edgeX <= hi + 2) return true;
+        }
+      }
+      return false;
+    }
+
+    for (let i = 0; i < floor.walls.length; i++) {
+      const wi = floor.walls[i];
+      const iIsH = Math.abs(wi.start.y - wi.end.y) < 0.5;
+      const iIsV = Math.abs(wi.start.x - wi.end.x) < 0.5;
+      if (!iIsH && !iIsV) continue;
+
+      for (let j = i + 1; j < floor.walls.length; j++) {
+        const wj = floor.walls[j];
+        const jIsH = Math.abs(wj.start.y - wj.end.y) < 0.5;
+        const jIsV = Math.abs(wj.start.x - wj.end.x) < 0.5;
+
+        if (iIsH && jIsH) {
+          const midI = (wi.start.y + wi.end.y) / 2;
+          const midJ = (wj.start.y + wj.end.y) / 2;
+          const gap = Math.abs(midI - midJ);
+          // Skip if a structural H wall sits between these two walls
+          if (structuralWallBetween(midI, midJ, 'H')) continue;
+          const maxGap = Math.max(wi.thicknessCm, wj.thicknessCm) + 6;
+          if (gap < maxGap) {
+            const iMin = Math.min(wi.start.x, wi.end.x), iMax = Math.max(wi.start.x, wi.end.x);
+            const jMin = Math.min(wj.start.x, wj.end.x), jMax = Math.max(wj.start.x, wj.end.x);
+            const overlap = Math.min(iMax, jMax) - Math.max(iMin, jMin);
+            expect(overlap, `stacked H walls ${wi.id} (y=${midI.toFixed(1)}) and ${wj.id} (y=${midJ.toFixed(1)}): gap=${gap.toFixed(1)}cm, overlap=${overlap.toFixed(1)}cm`).toBeLessThanOrEqual(1);
+          }
+        }
+        if (iIsV && jIsV) {
+          const midI = (wi.start.x + wi.end.x) / 2;
+          const midJ = (wj.start.x + wj.end.x) / 2;
+          const gap = Math.abs(midI - midJ);
+          if (structuralWallBetween(midI, midJ, 'V')) continue;
+          const maxGap = Math.max(wi.thicknessCm, wj.thicknessCm) + 6;
+          if (gap < maxGap) {
+            const iMin = Math.min(wi.start.y, wi.end.y), iMax = Math.max(wi.start.y, wi.end.y);
+            const jMin = Math.min(wj.start.y, wj.end.y), jMax = Math.max(wj.start.y, wj.end.y);
+            const overlap = Math.min(iMax, jMax) - Math.max(iMin, jMin);
+            expect(overlap, `stacked V walls ${wi.id} (x=${midI.toFixed(1)}) and ${wj.id} (x=${midJ.toFixed(1)}): gap=${gap.toFixed(1)}cm, overlap=${overlap.toFixed(1)}cm`).toBeLessThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+
+  // AC6: No disallowed angles (all walls H or V)
+  it('AC6: all walls are axis-aligned (H or V)', { timeout: 120000 }, () => {
+    runFullPipeline();
+
+    for (const w of floor.walls) {
+      const isH = Math.abs(w.start.y - w.end.y) < 0.5;
+      const isV = Math.abs(w.start.x - w.end.x) < 0.5;
+      expect(isH || isV, `wall ${w.id}: (${w.start.x.toFixed(1)},${w.start.y.toFixed(1)})→(${w.end.x.toFixed(1)},${w.end.y.toFixed(1)}) is diagonal`).toBe(true);
+    }
+  });
+
+  // AC7: Wall height = 240cm
+  it('AC7: all walls have height 240cm', { timeout: 120000 }, () => {
+    runFullPipeline();
+
+    for (const w of floor.walls) {
+      expect(w.heightStartCm, `wall ${w.id}: heightStartCm=${w.heightStartCm}`).toBe(240);
+      expect(w.heightEndCm, `wall ${w.id}: heightEndCm=${w.heightEndCm}`).toBe(240);
+    }
   });
 });

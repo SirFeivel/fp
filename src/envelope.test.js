@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchEdgeToEnvelope, classifyRoomEdges, assignWallTypesFromClassification, extendSkeletonForRoom, recomputeEnvelope, alignToEnvelope, syncFloorWallsAndEnvelope } from "./envelope.js";
+import { matchEdgeToEnvelope, classifyRoomEdges, assignWallTypesFromClassification, extendSkeletonForRoom, recomputeEnvelope, alignToEnvelope, syncFloorWallsAndEnvelope, computeStructuralBoundaries, constrainRoomToStructuralBoundaries, enforceSkeletonWallProperties } from "./envelope.js";
 import { DEFAULT_WALL_TYPES } from "./floor-plan-rules.js";
 import { syncFloorWalls } from "./walls.js";
 
@@ -1373,5 +1373,439 @@ describe("syncFloorWallsAndEnvelope", () => {
     // Both rooms should have at least one outer wall (30cm)
     expect(r1Walls.some(w => w.thicknessCm === 30)).toBe(true);
     expect(r2Walls.some(w => w.thicknessCm === 30)).toBe(true);
+  });
+});
+
+// ── Skeleton constraint enforcement (E2E) ──────────────────────────────
+
+describe("computeStructuralBoundaries", () => {
+  // KG-style envelope: rectangle with CW winding, wall thicknesses, and a spanning wall
+  const envelope = {
+    detectedPolygonCm: [
+      { x: 647.2, y: 992.1 },   // top-left (outer)
+      { x: 1643.0, y: 992.1 },  // top-right
+      { x: 1643.0, y: 1845.4 }, // bottom-right
+      { x: 647.2, y: 1845.4 },  // bottom-left
+    ],
+    wallThicknesses: {
+      edges: [
+        { edgeIndex: 0, thicknessCm: 31.1 },  // top
+        { edgeIndex: 1, thicknessCm: 29.4 },  // right
+        { edgeIndex: 2, thicknessCm: 29.8 },  // bottom
+        { edgeIndex: 3, thicknessCm: 31.4 },  // left
+      ],
+    },
+    spanningWalls: [
+      {
+        orientation: "H",
+        startCm: { x: 678.6, y: 1425.7 },
+        endCm: { x: 1613.6, y: 1425.7 },
+        thicknessCm: 25.1,
+      },
+    ],
+  };
+
+  it("extracts 4 envelope inner faces + 2 spanning wall faces", () => {
+    const { hTargets, vTargets } = computeStructuralBoundaries(envelope);
+
+    // 2 H envelope edges (top, bottom) + 2 spanning wall faces = 4 H targets
+    expect(hTargets.length).toBe(4);
+    // 2 V envelope edges (left, right)
+    expect(vTargets.length).toBe(2);
+  });
+
+  it("inner faces are offset inward by wall thickness", () => {
+    const { hTargets, vTargets } = computeStructuralBoundaries(envelope);
+
+    // Top edge: outer y=992.1, thickness=31.1, inward = y increases → inner ≈ 1023.2
+    const topTarget = hTargets.find(t => t.type === "envelope" && t.envelopeEdgeIndex === 0);
+    expect(topTarget).toBeTruthy();
+    expect(topTarget.coord).toBeCloseTo(992.1 + 31.1, 0);
+
+    // Right edge: outer x=1643.0, thickness=29.4, inward = x decreases → inner ≈ 1613.6
+    const rightTarget = vTargets.find(t => t.type === "envelope" && t.envelopeEdgeIndex === 1);
+    expect(rightTarget).toBeTruthy();
+    expect(rightTarget.coord).toBeCloseTo(1643.0 - 29.4, 0);
+
+    // Left edge: outer x=647.2, thickness=31.4, inward = x increases → inner ≈ 678.6
+    const leftTarget = vTargets.find(t => t.type === "envelope" && t.envelopeEdgeIndex === 3);
+    expect(leftTarget).toBeTruthy();
+    expect(leftTarget.coord).toBeCloseTo(647.2 + 31.4, 0);
+  });
+
+  it("spanning wall has two faces offset from center", () => {
+    const { hTargets } = computeStructuralBoundaries(envelope);
+
+    const spanningTargets = hTargets.filter(t => t.type === "spanning");
+    expect(spanningTargets.length).toBe(2);
+
+    const coords = spanningTargets.map(t => t.coord).sort((a, b) => a - b);
+    // center=1425.7, half=12.55 → faces at 1413.15 and 1438.25
+    expect(coords[0]).toBeCloseTo(1425.7 - 25.1 / 2, 0);
+    expect(coords[1]).toBeCloseTo(1425.7 + 25.1 / 2, 0);
+  });
+});
+
+describe("constrainRoomToStructuralBoundaries", () => {
+  const envelope = {
+    detectedPolygonCm: [
+      { x: 647.2, y: 992.1 },
+      { x: 1643.0, y: 992.1 },
+      { x: 1643.0, y: 1845.4 },
+      { x: 647.2, y: 1845.4 },
+    ],
+    wallThicknesses: {
+      edges: [
+        { edgeIndex: 0, thicknessCm: 31.1 },
+        { edgeIndex: 1, thicknessCm: 29.4 },
+        { edgeIndex: 2, thicknessCm: 29.8 },
+        { edgeIndex: 3, thicknessCm: 31.4 },
+      ],
+    },
+    spanningWalls: [
+      {
+        orientation: "H",
+        startCm: { x: 678.6, y: 1425.7 },
+        endCm: { x: 1613.6, y: 1425.7 },
+        thicknessCm: 25.1,
+      },
+    ],
+  };
+
+  it("snaps room edges near envelope inner faces to exact boundary positions", () => {
+    // Room with edges slightly off the skeleton boundaries
+    const globalVerts = [
+      { x: 680, y: 1025 },   // near top-inner (1023.2) and left-inner (678.6)
+      { x: 1200, y: 1025 },  // near top-inner
+      { x: 1200, y: 1415 },  // near spanning upper face (1413.15)
+      { x: 680, y: 1415 },   // near spanning upper face and left-inner
+    ];
+
+    const result = constrainRoomToStructuralBoundaries(globalVerts, envelope);
+
+    // Top edge should snap to envelope top inner face ≈ 1023.2
+    expect(result[0].y).toBeCloseTo(992.1 + 31.1, 0);
+    expect(result[1].y).toBeCloseTo(992.1 + 31.1, 0);
+
+    // Bottom edge should snap to spanning wall upper face ≈ 1413.15
+    expect(result[2].y).toBeCloseTo(1425.7 - 25.1 / 2, 0);
+    expect(result[3].y).toBeCloseTo(1425.7 - 25.1 / 2, 0);
+
+    // Left edge should snap to envelope left inner face ≈ 678.6
+    expect(result[0].x).toBeCloseTo(647.2 + 31.4, 0);
+    expect(result[3].x).toBeCloseTo(647.2 + 31.4, 0);
+
+    // Right edge (x=1200) should NOT snap — too far from any boundary
+    expect(result[1].x).toBe(1200);
+    expect(result[2].x).toBe(1200);
+  });
+
+  it("does not snap edges that are far from any boundary", () => {
+    // Interior room edges far from all skeleton boundaries
+    const globalVerts = [
+      { x: 900, y: 1100 },
+      { x: 1100, y: 1100 },
+      { x: 1100, y: 1300 },
+      { x: 900, y: 1300 },
+    ];
+
+    const result = constrainRoomToStructuralBoundaries(globalVerts, envelope);
+
+    // All coordinates should be unchanged
+    expect(result[0]).toEqual({ x: 900, y: 1100 });
+    expect(result[1]).toEqual({ x: 1100, y: 1100 });
+    expect(result[2]).toEqual({ x: 1100, y: 1300 });
+    expect(result[3]).toEqual({ x: 900, y: 1300 });
+  });
+});
+
+describe("enforceSkeletonWallProperties", () => {
+  // Simulates the core bug: first room gets correct 30cm, second room gets default 12cm.
+  // After enforceSkeletonWallProperties, both should have 30cm on envelope edges.
+  const wallTypes = [
+    { id: "structural", thicknessCm: 24 },
+    { id: "outer", thicknessCm: 30 },
+  ];
+
+  const envelope = {
+    detectedPolygonCm: [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ],
+    wallThicknesses: {
+      edges: [
+        { edgeIndex: 0, thicknessCm: 31.1 },
+        { edgeIndex: 1, thicknessCm: 29.4 },
+        { edgeIndex: 2, thicknessCm: 29.8 },
+        { edgeIndex: 3, thicknessCm: 31.4 },
+      ],
+    },
+    spanningWalls: [],
+  };
+
+  it("forces correct thickness on all envelope-aligned walls regardless of detection order", () => {
+    const room1 = {
+      id: "r1",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 770 },
+        { x: 0, y: 770 },
+      ],
+      floorPosition: { x: 31.4, y: 31.1 }, // at inner faces
+    };
+    const room2 = {
+      id: "r2",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 770 },
+        { x: 0, y: 770 },
+      ],
+      floorPosition: { x: 500, y: 31.1 }, // at inner faces, right side of floor
+    };
+
+    const floor = {
+      rooms: [room1, room2],
+      walls: [],
+      layout: {
+        envelope,
+        wallDefaults: {
+          types: wallTypes,
+          heightCm: 240,
+        },
+      },
+    };
+
+    // Create walls with default thickness (simulates detection)
+    syncFloorWalls(floor, { enforcePositions: false });
+
+    // Before enforcement: walls have default 12cm
+    const topWalls = floor.walls.filter(w => {
+      const midY = (w.start.y + w.end.y) / 2;
+      return Math.abs(midY - 31.1) < 2;
+    });
+    expect(topWalls.length).toBeGreaterThan(0);
+
+    // Run enforcement
+    enforceSkeletonWallProperties(floor);
+
+    // After enforcement: all top-edge walls should have 30cm (snapped from 31.1)
+    for (const w of topWalls) {
+      expect(w.thicknessCm, `wall ${w.id} on top edge should be 30cm`).toBe(30);
+    }
+
+    // Left-edge wall (room1 edge 3) should also be 30cm
+    const leftWalls = floor.walls.filter(w => {
+      const midX = (w.start.x + w.end.x) / 2;
+      return Math.abs(midX - 31.4) < 2;
+    });
+    expect(leftWalls.length).toBeGreaterThan(0);
+    for (const w of leftWalls) {
+      expect(w.thicknessCm, `wall ${w.id} on left edge should be 30cm`).toBe(30);
+    }
+
+    // All walls should have height 240cm from wallDefaults
+    for (const w of floor.walls) {
+      expect(w.heightStartCm).toBe(240);
+      expect(w.heightEndCm).toBe(240);
+    }
+  });
+
+  it("does not modify walls far from skeleton boundaries", () => {
+    const room = {
+      id: "r-interior",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 200, y: 0 },
+        { x: 200, y: 200 },
+        { x: 0, y: 200 },
+      ],
+      floorPosition: { x: 400, y: 300 }, // center of envelope, far from all edges
+    };
+
+    const floor = {
+      rooms: [room],
+      walls: [],
+      layout: {
+        envelope,
+        wallDefaults: { types: wallTypes },
+      },
+    };
+
+    syncFloorWalls(floor, { enforcePositions: false });
+    enforceSkeletonWallProperties(floor);
+
+    // All walls should keep default 12cm (none near envelope edges)
+    for (const w of floor.walls) {
+      expect(w.thicknessCm, `interior wall ${w.id} should remain 12cm`).toBe(12);
+    }
+  });
+});
+
+describe("E2E: syncFloorWalls auto-enforces skeleton properties", () => {
+  // This is the core E2E scenario: the app calls syncFloorWalls from ~20+ sites
+  // (main.js, state.js, structure.js, drag.js). Walls must get correct thickness
+  // and height WITHOUT any explicit enforceSkeletonWallProperties call.
+  // This test caught the circular dependency bug where enforcement never ran.
+
+  const wallTypes = [
+    { id: "structural", thicknessCm: 24 },
+    { id: "outer", thicknessCm: 30 },
+  ];
+
+  const envelope = {
+    detectedPolygonCm: [
+      { x: 0, y: 0 },     // TL
+      { x: 1000, y: 0 },  // TR
+      { x: 1000, y: 800 }, // BR
+      { x: 0, y: 800 },   // BL
+    ],
+    wallThicknesses: {
+      edges: [
+        { edgeIndex: 0, thicknessCm: 31.1 }, // top
+        { edgeIndex: 1, thicknessCm: 29.4 }, // right
+        { edgeIndex: 2, thicknessCm: 29.8 }, // bottom
+        { edgeIndex: 3, thicknessCm: 31.4 }, // left
+      ],
+    },
+    spanningWalls: [
+      {
+        orientation: "H",
+        startCm: { x: 0, y: 400 },
+        endCm: { x: 1000, y: 400 },
+        thicknessCm: 25.0,
+      },
+    ],
+  };
+
+  it("walls get correct thickness and height from just syncFloorWalls (no explicit enforcement)", () => {
+    const room1 = {
+      id: "r1",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 357 },
+        { x: 0, y: 357 },
+      ],
+      floorPosition: { x: 31.4, y: 31.1 },
+    };
+    const room2 = {
+      id: "r2",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 357 },
+        { x: 0, y: 357 },
+      ],
+      floorPosition: { x: 31.4, y: 413.5 },
+    };
+
+    const floor = {
+      rooms: [room1, room2],
+      walls: [],
+      layout: {
+        envelope,
+        wallDefaults: {
+          types: wallTypes,
+          heightCm: 240,
+        },
+      },
+    };
+
+    // ONLY call syncFloorWalls — no explicit enforceSkeletonWallProperties.
+    // This is how the app calls it from main.js, state.js, etc.
+    syncFloorWalls(floor);
+
+    // All walls should have height 240cm from wallDefaults
+    for (const w of floor.walls) {
+      expect(w.heightStartCm, `wall ${w.id} height should be 240`).toBe(240);
+      expect(w.heightEndCm, `wall ${w.id} height should be 240`).toBe(240);
+    }
+
+    // Top-edge walls (near y=31.1) should have 30cm (snapped from 31.1)
+    const topWalls = floor.walls.filter(w => {
+      const midY = (w.start.y + w.end.y) / 2;
+      return Math.abs(midY - 31.1) < 2;
+    });
+    expect(topWalls.length).toBeGreaterThan(0);
+    for (const w of topWalls) {
+      expect(w.thicknessCm, `top-edge wall ${w.id} should be 30cm`).toBe(30);
+    }
+
+    // Left-edge walls (near x=31.4) should have 30cm (snapped from 31.4)
+    const leftWalls = floor.walls.filter(w => {
+      const midX = (w.start.x + w.end.x) / 2;
+      return Math.abs(midX - 31.4) < 2;
+    });
+    expect(leftWalls.length).toBeGreaterThan(0);
+    for (const w of leftWalls) {
+      expect(w.thicknessCm, `left-edge wall ${w.id} should be 30cm`).toBe(30);
+    }
+
+    // Interior walls far from any boundary should keep default 12cm
+    const interiorWalls = floor.walls.filter(w => {
+      const midY = (w.start.y + w.end.y) / 2;
+      const midX = (w.start.x + w.end.x) / 2;
+      const nearTop = Math.abs(midY - 31.1) < 6;
+      const nearBot = Math.abs(midY - 770.2) < 6;
+      const nearLeft = Math.abs(midX - 31.4) < 6;
+      const nearRight = Math.abs(midX - 970.6) < 6;
+      const nearSpanTop = Math.abs(midY - 387.5) < 6;
+      const nearSpanBot = Math.abs(midY - 412.5) < 6;
+      return !nearTop && !nearBot && !nearLeft && !nearRight && !nearSpanTop && !nearSpanBot;
+    });
+    for (const w of interiorWalls) {
+      expect(w.thicknessCm, `interior wall ${w.id} should stay 12cm`).toBe(12);
+    }
+  });
+
+  it("re-calling syncFloorWalls preserves skeleton properties (no revert to defaults)", () => {
+    const room = {
+      id: "r1",
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 900, y: 0 },
+        { x: 900, y: 740 },
+        { x: 0, y: 740 },
+      ],
+      floorPosition: { x: 31.4, y: 31.1 },
+    };
+
+    const floor = {
+      rooms: [room],
+      walls: [],
+      layout: {
+        envelope,
+        wallDefaults: {
+          types: wallTypes,
+          heightCm: 240,
+        },
+      },
+    };
+
+    // First call: creates walls with skeleton enforcement
+    syncFloorWalls(floor);
+
+    const wallsBefore = floor.walls.map(w => ({
+      id: w.id,
+      thick: w.thicknessCm,
+      h1: w.heightStartCm,
+      h2: w.heightEndCm,
+    }));
+
+    // Second call: simulates render loop / state commit calling syncFloorWalls again
+    syncFloorWalls(floor);
+
+    // Properties must NOT revert to 12cm/200cm
+    for (const before of wallsBefore) {
+      const after = floor.walls.find(w => w.id === before.id);
+      if (!after) continue;
+      expect(after.thicknessCm, `wall ${before.id} thickness should be preserved`).toBe(before.thick);
+      expect(after.heightStartCm, `wall ${before.id} height should be preserved`).toBe(before.h1);
+      expect(after.heightEndCm, `wall ${before.id} height should be preserved`).toBe(before.h2);
+    }
   });
 });

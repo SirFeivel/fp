@@ -6,6 +6,7 @@
 // recomputing the living envelope.
 
 import { FLOOR_PLAN_RULES, snapToWallType } from "./floor-plan-rules.js";
+export { computeStructuralBoundaries, constrainRoomToStructuralBoundaries, enforceSkeletonWallProperties } from "./skeleton.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
 import { syncFloorWalls, mergeCollinearWalls, enforceNoParallelWalls, enforceAdjacentPositions } from "./walls.js";
 
@@ -613,6 +614,7 @@ export function classifyAndExtendRooms(floor) {
     assignWallTypesFromClassification(floor, room, cls);
     extendSkeletonForRoom(floor, room, cls);
   }
+
   console.log(`[envelope] classifyAndExtendRooms: done`);
 }
 
@@ -643,9 +645,8 @@ export function syncFloorWallsAndEnvelope(floor) {
     extendSkeletonForRoom(floor, room, cls);
   }
   console.log(`[envelope]   classified and extended ${validRooms.length} rooms`);
-  console.log(`[envelope] syncFloorWallsAndEnvelope: extending skeleton for ${validRooms.length} rooms`);
 
-  // 3. Enforce constraints with correct thicknesses
+  // 3. Enforce constraints with correct thicknesses (skeleton enforcement happens inside syncFloorWalls)
   enforceNoParallelWalls(floor);
   enforceAdjacentPositions(floor);
   console.log(`[envelope]   after constraint enforcement: ${floor?.walls?.length || 0} walls`);

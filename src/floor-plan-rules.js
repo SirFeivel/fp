@@ -589,20 +589,31 @@ export function removePolygonMicroBumps(vertices, maxBumpDepthCm = FLOOR_PLAN_RU
       const leg2IsV = Math.abs(C.x - D.x) < 0.5;
 
       // Both legs must be parallel (both H or both V)
+      const { minCm: minWallCm } = FLOOR_PLAN_RULES.wallThickness;
       if (leg1IsH && leg2IsH) {
         // Legs are H, outer wall (B→C) should be V (perpendicular)
         if (Math.abs(B.x - C.x) >= 0.5) continue;
-        // U-shape: legs go in opposite directions
         const dir1 = B.x - A.x;
         const dir2 = D.x - C.x;
-        if (dir1 * dir2 >= 0) continue;
+        if (dir1 === 0 || dir2 === 0) continue; // degenerate
+        if (dir1 * dir2 > 0) {
+          // Same-direction step: only remove if narrower than min wall thickness (artifact)
+          if (outerLen >= minWallCm) continue;
+          console.log(`[removePolygonMicroBumps] removed artifact step at vertex ${i}: depth=${outerLen.toFixed(1)}cm (< minWall=${minWallCm}cm)`);
+        }
+        // dir1 * dir2 < 0: U-bump, always remove (outerLen already checked above)
       } else if (leg1IsV && leg2IsV) {
         // Legs are V, outer wall (B→C) should be H (perpendicular)
         if (Math.abs(B.y - C.y) >= 0.5) continue;
-        // U-shape: legs go in opposite directions
         const dir1 = B.y - A.y;
         const dir2 = D.y - C.y;
-        if (dir1 * dir2 >= 0) continue;
+        if (dir1 === 0 || dir2 === 0) continue; // degenerate
+        if (dir1 * dir2 > 0) {
+          // Same-direction step: only remove if narrower than min wall thickness (artifact)
+          if (outerLen >= minWallCm) continue;
+          console.log(`[removePolygonMicroBumps] removed artifact step at vertex ${i}: depth=${outerLen.toFixed(1)}cm (< minWall=${minWallCm}cm)`);
+        }
+        // dir1 * dir2 < 0: U-bump, always remove (outerLen already checked above)
       } else {
         continue;
       }
@@ -628,6 +639,95 @@ export function removePolygonMicroBumps(vertices, maxBumpDepthCm = FLOOR_PLAN_RU
       }
       changed = true;
       break;
+    }
+  }
+
+  // ── Pass 2: Rectangular step-notch removal (5-vertex, 4-edge pattern) ──
+  // Detects patterns like: ...A→B (H)→C (V,down)→D (H,short)→E (V,up)→F (H)...
+  // where the perpendicular jog (B→C, D→E) is small and the notch width (C→D)
+  // is also small. Both depth and width must be < maxBumpDepthCm.
+  changed = true;
+  while (changed) {
+    changed = false;
+    const n = pts.length;
+    if (n < 6) break; // need at least 6 vertices (5 for notch + 1 remaining)
+
+    for (let i = 0; i < n; i++) {
+      const iB = i;
+      const iC = (i + 1) % n;
+      const iD = (i + 2) % n;
+      const iE = (i + 3) % n;
+      const iA = (i - 1 + n) % n;
+
+      const A = pts[iA];
+      const B = pts[iB];
+      const C = pts[iC];
+      const D = pts[iD];
+      const E = pts[iE];
+
+      // B→C: perpendicular leg (depth)
+      // C→D: parallel to main axis (notch width)
+      // D→E: perpendicular return (must be opposite direction of B→C)
+
+      const bcIsV = Math.abs(B.x - C.x) < 0.5;
+      const bcIsH = Math.abs(B.y - C.y) < 0.5;
+      const deIsV = Math.abs(D.x - E.x) < 0.5;
+      const deIsH = Math.abs(D.y - E.y) < 0.5;
+
+      // B→C and D→E must be same orientation (both V or both H)
+      if (bcIsV && deIsV) {
+        // Perpendicular legs are V → main axis is H
+        // A→B should be H, E→next should be H
+        if (Math.abs(A.y - B.y) >= 0.5) continue;
+        // C→D should be H (notch width)
+        if (Math.abs(C.y - D.y) >= 0.5) continue;
+
+        const depth = Math.abs(C.y - B.y);  // V jog
+        const width = Math.abs(D.x - C.x);  // H width
+        if (depth >= maxBumpDepthCm || depth < 0.1) continue;
+        if (width >= maxBumpDepthCm || width < 0.1) continue;
+
+        // B→C and D→E must go in opposite directions (one down, one up)
+        const bcDir = C.y - B.y;
+        const deDir = E.y - D.y;
+        if (bcDir * deDir >= 0) continue;
+
+        console.log(`[removePolygonMicroBumps] removed rectangular notch at vertex ${iB}: depth=${depth.toFixed(1)}cm, width=${width.toFixed(1)}cm`);
+
+        // Collapse: remove B, C, D. Snap E to A's y-axis value.
+        pts[iE] = { x: E.x, y: A.y };
+
+        // Remove B, C, D (descending index order to avoid shifts)
+        const indices = [iB, iC, iD].sort((a, b) => b - a);
+        for (const idx of indices) pts.splice(idx, 1);
+        changed = true;
+        break;
+      } else if (bcIsH && deIsH) {
+        // Perpendicular legs are H → main axis is V
+        if (Math.abs(A.x - B.x) >= 0.5) continue;
+        // C→D should be V (notch width)
+        if (Math.abs(C.x - D.x) >= 0.5) continue;
+
+        const depth = Math.abs(C.x - B.x);  // H jog
+        const width = Math.abs(D.y - C.y);  // V width
+        if (depth >= maxBumpDepthCm || depth < 0.1) continue;
+        if (width >= maxBumpDepthCm || width < 0.1) continue;
+
+        // B→C and D→E must go in opposite directions
+        const bcDir = C.x - B.x;
+        const deDir = E.x - D.x;
+        if (bcDir * deDir >= 0) continue;
+
+        console.log(`[removePolygonMicroBumps] removed rectangular notch at vertex ${iB}: depth=${depth.toFixed(1)}cm, width=${width.toFixed(1)}cm`);
+
+        // Collapse: remove B, C, D. Snap E to A's x-axis value.
+        pts[iE] = { x: A.x, y: E.y };
+
+        const indices = [iB, iC, iD].sort((a, b) => b - a);
+        for (const idx of indices) pts.splice(idx, 1);
+        changed = true;
+        break;
+      }
     }
   }
 
