@@ -359,6 +359,53 @@ export function rectifyPolygon(vertices, rules = FLOOR_PLAN_RULES) {
   mergeAxisRuns("V");
   mergeAxisRuns("H");
 
+  // Step 1c: Correct axis values for wide nearly-aligned edges.
+  // An edge classified as V by angle (e.g. 4° off vertical) may have endpoints
+  // on different wall faces (dx=26cm). Its axisValue = average of endpoints is
+  // wrong — it should inherit from an adjacent same-type edge whose position
+  // is actually established (endpoint matches the adjacent edge's axisValue).
+  const WIDE_TOL = 1.0; // cm — edges with spread > this need correction
+  for (let i = 0; i < n; i++) {
+    const e = edges[i];
+    if (e.type !== "V" && e.type !== "H") continue;
+    const a = vertices[i];
+    const b = vertices[(i + 1) % n];
+    const isV = e.type === "V";
+    const spread = isV ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y);
+    if (spread <= WIDE_TOL) continue; // truly axis-aligned, no correction needed
+
+    const prev = edges[(i - 1 + n) % n];
+    const next = edges[(i + 1) % n];
+
+    if (isV) {
+      // Check if start endpoint matches previous V edge's position
+      const prevMatch = prev.type === "V" && Math.abs(prev.axisValue - a.x) < WIDE_TOL;
+      const prevLen = prevMatch ? prev.len : 0;
+      // Check if end endpoint matches next V edge's position
+      const nextMatch = next.type === "V" && Math.abs(next.axisValue - b.x) < WIDE_TOL;
+      const nextLen = nextMatch ? next.len : 0;
+      if (prevMatch && nextMatch) {
+        e.axisValue = prevLen >= nextLen ? prev.axisValue : next.axisValue;
+      } else if (prevMatch) {
+        e.axisValue = prev.axisValue;
+      } else if (nextMatch) {
+        e.axisValue = next.axisValue;
+      }
+    } else {
+      const prevMatch = prev.type === "H" && Math.abs(prev.axisValue - a.y) < WIDE_TOL;
+      const prevLen = prevMatch ? prev.len : 0;
+      const nextMatch = next.type === "H" && Math.abs(next.axisValue - b.y) < WIDE_TOL;
+      const nextLen = nextMatch ? next.len : 0;
+      if (prevMatch && nextMatch) {
+        e.axisValue = prevLen >= nextLen ? prev.axisValue : next.axisValue;
+      } else if (prevMatch) {
+        e.axisValue = prev.axisValue;
+      } else if (nextMatch) {
+        e.axisValue = next.axisValue;
+      }
+    }
+  }
+
   // Step 2: Remove noise edges — short AND diagonal (not snappable).
   // Short axis-aligned edges (e.g. a 4cm vertical step) are real features.
   const kept = [];
@@ -423,7 +470,27 @@ export function rectifyPolygon(vertices, rules = FLOOR_PLAN_RULES) {
   // Step 5: Enforce all edges axis-aligned — snap any surviving diagonals.
   // After rebuild + collinear merge, some edges may still be diagonal (from
   // type=null edges that kept original vertices). Force-snap each to H or V.
+  // When an adjacent edge is already axis-aligned on the same axis, use its
+  // established coordinate instead of blindly averaging the two endpoints.
   const SNAP_TOL = 1.0; // cm — edges within this are already axis-aligned
+
+  function pickAdjacentAxisValue(pts, idx, axis, tol) {
+    const n = pts.length;
+    const ptA = pts[idx];
+    const ptB = pts[(idx + 1) % n];
+    const cross = axis === 'x' ? 'y' : 'x';
+    const prev = pts[(idx - 1 + n) % n];
+    const prevAligned = Math.abs(prev[axis] - ptA[axis]) < tol;
+    const prevLen = prevAligned ? Math.abs(prev[cross] - ptA[cross]) : 0;
+    const next = pts[(idx + 2) % n];
+    const nextAligned = Math.abs(ptB[axis] - next[axis]) < tol;
+    const nextLen = nextAligned ? Math.abs(ptB[cross] - next[cross]) : 0;
+    if (prevAligned && nextAligned) return prevLen >= nextLen ? ptA[axis] : ptB[axis];
+    if (prevAligned) return ptA[axis];
+    if (nextAligned) return ptB[axis];
+    return null;
+  }
+
   changed = true;
   while (changed) {
     changed = false;
@@ -433,17 +500,18 @@ export function rectifyPolygon(vertices, rules = FLOOR_PLAN_RULES) {
       const dx = Math.abs(b.x - a.x);
       const dy = Math.abs(b.y - a.y);
       if (dx < SNAP_TOL || dy < SNAP_TOL) continue; // already axis-aligned
-      // Diagonal edge — snap to nearest axis
       if (dx >= dy) {
-        // More horizontal → snap to H (average Y)
-        const avgY = round1((a.y + b.y) / 2);
-        rebuilt[i] = { x: a.x, y: avgY };
-        rebuilt[(i + 1) % rebuilt.length] = { x: b.x, y: avgY };
+        // More horizontal → snap to H
+        const snapY = pickAdjacentAxisValue(rebuilt, i, 'y', SNAP_TOL)
+                      ?? round1((a.y + b.y) / 2);
+        rebuilt[i] = { x: a.x, y: snapY };
+        rebuilt[(i + 1) % rebuilt.length] = { x: b.x, y: snapY };
       } else {
-        // More vertical → snap to V (average X)
-        const avgX = round1((a.x + b.x) / 2);
-        rebuilt[i] = { x: avgX, y: a.y };
-        rebuilt[(i + 1) % rebuilt.length] = { x: avgX, y: b.y };
+        // More vertical → snap to V
+        const snapX = pickAdjacentAxisValue(rebuilt, i, 'x', SNAP_TOL)
+                      ?? round1((a.x + b.x) / 2);
+        rebuilt[i] = { x: snapX, y: a.y };
+        rebuilt[(i + 1) % rebuilt.length] = { x: snapX, y: b.y };
       }
       console.log(`[rectifyPolygon] enforcement: snapped diagonal edge ${i} (dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}) to axis-aligned`);
       changed = true;
@@ -670,16 +738,16 @@ export function removeStackedWalls(vertices, maxGapCm = FLOOR_PLAN_RULES.wallThi
         }
 
         // Stacked pair found — remove the shorter edge
-        const gap = typeA === 'H'
-          ? Math.abs(((a1.y + a2.y) / 2) - ((b1.y + b2.y) / 2))
-          : Math.abs(((a1.x + a2.x) / 2) - ((b1.x + b2.x) / 2));
         const removeIdx = lenA <= lenB ? i : j;
         const keepIdx = lenA <= lenB ? j : i;
         const keep1 = pts[keepIdx], keep2 = pts[(keepIdx + 1) % n];
+        const rem1 = pts[removeIdx], rem2 = pts[(removeIdx + 1) % n];
 
         // Snap the removed edge's neighbors to the kept edge's axis
         const prevIdx = (removeIdx - 1 + n) % n;
         const nextIdx = (removeIdx + 2) % n;
+        const prevBefore = { ...pts[prevIdx] };
+        const nextBefore = { ...pts[nextIdx] };
         if (typeA === 'H') {
           // Kept edge is H — snap neighbors' Y to the kept edge's Y
           const keepY = (keep1.y + keep2.y) / 2;
@@ -691,6 +759,7 @@ export function removeStackedWalls(vertices, maxGapCm = FLOOR_PLAN_RULES.wallThi
           pts[prevIdx] = { x: keepX, y: pts[prevIdx].y };
           pts[nextIdx] = { x: keepX, y: pts[nextIdx].y };
         }
+        console.log(`  [stacked] ${typeA} remove (${rem1.x.toFixed(1)},${rem1.y.toFixed(1)})→(${rem2.x.toFixed(1)},${rem2.y.toFixed(1)}) keep (${keep1.x.toFixed(1)},${keep1.y.toFixed(1)})→(${keep2.x.toFixed(1)},${keep2.y.toFixed(1)}) | snap prev (${prevBefore.x.toFixed(1)},${prevBefore.y.toFixed(1)})→(${pts[prevIdx].x.toFixed(1)},${pts[prevIdx].y.toFixed(1)}) next (${nextBefore.x.toFixed(1)},${nextBefore.y.toFixed(1)})→(${pts[nextIdx].x.toFixed(1)},${pts[nextIdx].y.toFixed(1)}) | ${n}→${n-2} pts`);
 
         // Remove the two vertices of the shorter edge
         const r1 = removeIdx;
@@ -708,7 +777,10 @@ export function removeStackedWalls(vertices, maxGapCm = FLOOR_PLAN_RULES.wallThi
     }
   }
 
-  // Clean up: remove degenerate edges (zero-length) and collinear vertices
+  // Clean up: remove collinear vertices (strict axis-aligned check).
+  // Uses H/V checks matching rectifyPolygon Step 4 and removePolygonMicroBumps.
+  // Do NOT use cross-product tolerance — it treats vertices at x=531 and x=557
+  // as "nearly collinear" on long edges, merging distinct wall faces.
   const COLLINEAR_TOL = 1.0;
   changed = true;
   while (changed) {
@@ -717,9 +789,13 @@ export function removeStackedWalls(vertices, maxGapCm = FLOOR_PLAN_RULES.wallThi
       const a = pts[(i - 1 + pts.length) % pts.length];
       const b = pts[i];
       const c = pts[(i + 1) % pts.length];
-      // Remove if collinear or degenerate
-      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-      if (Math.abs(cross) < COLLINEAR_TOL * Math.max(Math.hypot(b.x - a.x, b.y - a.y), Math.hypot(c.x - b.x, c.y - b.y))) {
+
+      if (Math.abs(a.y - b.y) < COLLINEAR_TOL && Math.abs(b.y - c.y) < COLLINEAR_TOL) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+      if (Math.abs(a.x - b.x) < COLLINEAR_TOL && Math.abs(b.x - c.x) < COLLINEAR_TOL) {
         pts.splice(i, 1);
         changed = true;
         break;

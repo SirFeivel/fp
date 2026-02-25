@@ -1502,6 +1502,11 @@ describe('Phase 3: enforcePolygonRules with OG polygon', () => {
       const isV = dx < 1;
       expect(isH || isV, `edge ${i}: (${a.x.toFixed(1)},${a.y.toFixed(1)}) → (${b.x.toFixed(1)},${b.y.toFixed(1)}) is diagonal (dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)})`).toBe(true);
     }
+
+    // Left wall should be at x ≈ 531 (outer wall face), not drifted to x ≈ 540
+    const minX = Math.min(...result.map(v => v.x));
+    expect(minX).toBeGreaterThan(528);   // not too far left
+    expect(minX).toBeLessThan(533);      // not drifted right (was 540 before collinear fix)
   });
 
   it('converges within 3 iterations (no excessive looping)', () => {
