@@ -1608,6 +1608,16 @@ function initBackgroundControls() {
     }
   });
 
+  // Assisted tracing toggle
+  document.getElementById("bgAssistedMode")?.addEventListener("click", () => {
+    const state = store.getState();
+    const next = deepClone(state);
+    const floor = getCurrentFloor(next);
+    if (!floor?.layout) return;
+    floor.layout.assistedTracing = !floor.layout.assistedTracing;
+    store.commit("Toggle assisted tracing", next, { onRender: renderAll, updateMetaCb: updateMeta });
+  });
+
   // Room detection panel: Confirm
   document.getElementById("btnConfirmRoomDetection")?.addEventListener("click", () => {
     roomDetectionController.confirmDetection();
@@ -4001,6 +4011,12 @@ function updateAllTranslations() {
     if (bgCalibrateBtn) bgCalibrateBtn.disabled = !hasBackground;
     const bgDetectRoomBtn = document.getElementById("bgDetectRoom");
     if (bgDetectRoomBtn) bgDetectRoomBtn.disabled = !isCalibrated;
+    const bgAssistedBtn = document.getElementById("bgAssistedMode");
+    const hasEnvelope = Boolean(floor?.layout?.envelope);
+    if (bgAssistedBtn) {
+      bgAssistedBtn.disabled = !(isCalibrated && hasEnvelope);
+      bgAssistedBtn.classList.toggle("active", Boolean(floor?.layout?.assistedTracing));
+    }
     if (bgOpacitySlider) {
       bgOpacitySlider.disabled = !hasBackground;
       if (hasBackground && floor?.layout?.background?.opacity !== undefined) {

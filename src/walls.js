@@ -158,12 +158,22 @@ function validateProposedWall(startPt, endPt, existingWalls) {
  */
 function findAlignedBoundary(hTargets, vTargets, startPt, endPt) {
   const dx = endPt.x - startPt.x, dy = endPt.y - startPt.y;
+  const len = Math.hypot(dx, dy);
 
-  const isH = Math.abs(dy) < 0.5;
-  const isV = Math.abs(dx) < 0.5;
+  // Angle-based H/V: < ~6° deviation from axis (handles polygon vertex imprecision)
+  const isH = len > 0.5 && Math.abs(dy / len) < 0.1;
+  const isV = len > 0.5 && Math.abs(dx / len) < 0.1;
   if (!isH && !isV) return null;
 
   const baseTolerance = FLOOR_PLAN_RULES.alignmentToleranceCm;
+
+  // Use the max thickness across ALL targets as a floor for tolerance.
+  // This handles cases where envelope re-detection changes wall measurements —
+  // a room drawn at the inner face of a 30cm wall should still match even if
+  // a later detection measures that wall as only 8.5cm.
+  let maxThickness = 0;
+  for (const t of hTargets) if (t.thickness > maxThickness) maxThickness = t.thickness;
+  for (const t of vTargets) if (t.thickness > maxThickness) maxThickness = t.thickness;
 
   if (isH) {
     const edgeY = (startPt.y + endPt.y) / 2;
@@ -171,9 +181,10 @@ function findAlignedBoundary(hTargets, vTargets, startPt, endPt) {
     const edgeMaxX = Math.max(startPt.x, endPt.x);
     let best = null, bestDist = Infinity;
     for (const t of hTargets) {
-      const tol = Math.max(baseTolerance, t.thickness);
+      const tol = Math.max(baseTolerance, t.thickness, maxThickness);
       const dist = Math.abs(t.coord - edgeY);
       const overlap = Math.min(edgeMaxX, t.rangeMax) - Math.max(edgeMinX, t.rangeMin);
+      console.log(`[walls] findAlignedBoundary H: edgeY=${edgeY.toFixed(1)} x=[${edgeMinX.toFixed(1)},${edgeMaxX.toFixed(1)}] vs target y=${t.coord.toFixed(1)} range=[${t.rangeMin.toFixed(1)},${t.rangeMax.toFixed(1)}] dist=${dist.toFixed(1)} tol=${tol.toFixed(1)} overlap=${overlap.toFixed(1)} → ${dist <= tol && overlap > 1 ? 'MATCH' : 'no'}`);
       if (dist <= tol && dist < bestDist && overlap > 1) {
         best = t; bestDist = dist;
       }
@@ -185,9 +196,10 @@ function findAlignedBoundary(hTargets, vTargets, startPt, endPt) {
     const edgeMaxY = Math.max(startPt.y, endPt.y);
     let best = null, bestDist = Infinity;
     for (const t of vTargets) {
-      const tol = Math.max(baseTolerance, t.thickness);
+      const tol = Math.max(baseTolerance, t.thickness, maxThickness);
       const dist = Math.abs(t.coord - edgeX);
       const overlap = Math.min(edgeMaxY, t.rangeMax) - Math.max(edgeMinY, t.rangeMin);
+      console.log(`[walls] findAlignedBoundary V: edgeX=${edgeX.toFixed(1)} y=[${edgeMinY.toFixed(1)},${edgeMaxY.toFixed(1)}] vs target x=${t.coord.toFixed(1)} range=[${t.rangeMin.toFixed(1)},${t.rangeMax.toFixed(1)}] dist=${dist.toFixed(1)} tol=${tol.toFixed(1)} overlap=${overlap.toFixed(1)} → ${dist <= tol && overlap > 1 ? 'MATCH' : 'no'}`);
       if (dist <= tol && dist < bestDist && overlap > 1) {
         best = t; bestDist = dist;
       }
@@ -207,14 +219,21 @@ function findAlignedWall(walls, startPt, endPt, tolerance, excludeRoomId) {
   const len = Math.hypot(dx, dy);
   if (len < 1) return null;
 
-  const isH = Math.abs(dy) < 0.5;
-  const isV = Math.abs(dx) < 0.5;
+  // Angle-based H/V: < ~6° deviation from axis (handles polygon vertex imprecision)
+  const isH = Math.abs(dy / len) < 0.1;
+  const isV = Math.abs(dx / len) < 0.1;
   if (!isH && !isV) return null; // diagonal — no matching
 
   // Gap tolerance along the axis: rooms separated by a wall have a gap equal to
-  // wall thickness. Use WALL_ADJACENCY_TOLERANCE_CM (thickness + 1cm) so that
-  // edges on the same structural line but separated by a wall are still merged.
-  const gapTolerance = WALL_ADJACENCY_TOLERANCE_CM;
+  // wall thickness. Use the max thickness of any existing wall (+1cm margin) so
+  // that edges on the same structural line but separated by a spanning wall or
+  // thick envelope wall are still matched to the same wall.
+  let maxThick = DEFAULT_WALL_THICKNESS_CM;
+  for (const w of walls) {
+    const t = w.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    if (t > maxThick) maxThick = t;
+  }
+  const gapTolerance = maxThick + 1;
 
   let bestWall = null, bestDist = Infinity;
 
@@ -225,7 +244,10 @@ function findAlignedWall(walls, startPt, endPt, tolerance, excludeRoomId) {
     const wLen = Math.hypot(wdx, wdy);
     if (wLen < 1) continue;
 
-    if (isH && Math.abs(wdy) < 0.5) {
+    const wIsH = Math.abs(wdy / wLen) < 0.1;
+    const wIsV = Math.abs(wdx / wLen) < 0.1;
+
+    if (isH && wIsH) {
       // Both horizontal: compare Y coords and check range overlap/adjacency
       const edgeY = (startPt.y + endPt.y) / 2;
       const wallY = (w.start.y + w.end.y) / 2;
@@ -238,7 +260,7 @@ function findAlignedWall(walls, startPt, endPt, tolerance, excludeRoomId) {
       if (dist <= tolerance && dist < bestDist && gap <= gapTolerance) {
         bestWall = w; bestDist = dist;
       }
-    } else if (isV && Math.abs(wdx) < 0.5) {
+    } else if (isV && wIsV) {
       // Both vertical: compare X coords and check range overlap/adjacency
       const edgeX = (startPt.x + endPt.x) / 2;
       const wallX = (w.start.x + w.end.x) / 2;
@@ -264,8 +286,15 @@ function findAlignedWall(walls, startPt, endPt, tolerance, excludeRoomId) {
 function extendWallGeometry(wall, startPt, endPt) {
   const wdx = wall.end.x - wall.start.x;
   const wdy = wall.end.y - wall.start.y;
+  const wLen = Math.hypot(wdx, wdy);
 
-  if (Math.abs(wdy) < 0.5) {
+  // Use angle-based classification: a wall is H/V if its deviation from
+  // the axis is < ~6° (sin < 0.1). This handles polygon-drawn walls with
+  // small vertex deviations (e.g. 1cm over 400cm).
+  const isH = wLen > 0.5 && Math.abs(wdy / wLen) < 0.1;
+  const isV = wLen > 0.5 && Math.abs(wdx / wLen) < 0.1;
+
+  if (isH) {
     // Horizontal wall: extend X range
     const minX = Math.min(wall.start.x, wall.end.x, startPt.x, endPt.x);
     const maxX = Math.max(wall.start.x, wall.end.x, startPt.x, endPt.x);
@@ -274,7 +303,7 @@ function extendWallGeometry(wall, startPt, endPt) {
     } else {
       wall.start.x = maxX; wall.end.x = minX;
     }
-  } else if (Math.abs(wdx) < 0.5) {
+  } else if (isV) {
     // Vertical wall: extend Y range
     const minY = Math.min(wall.start.y, wall.end.y, startPt.y, endPt.y);
     const maxY = Math.max(wall.start.y, wall.end.y, startPt.y, endPt.y);
@@ -334,6 +363,22 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
           }
           wall.start = startPt;
           wall.end = endPt;
+
+          // Re-extend to cover guest rooms that were already processed
+          // (their edges may extend beyond the owner's edge range)
+          for (const s of wall.surfaces) {
+            if (s.roomId === room.id) continue;
+            const guestRoom = rooms.find(r => r.id === s.roomId);
+            if (!guestRoom) continue;
+            const gPos = guestRoom.floorPosition || { x: 0, y: 0 };
+            const gVerts = guestRoom.polygonVertices;
+            if (!gVerts || s.edgeIndex >= gVerts.length) continue;
+            const gA = gVerts[s.edgeIndex];
+            const gB = gVerts[(s.edgeIndex + 1) % gVerts.length];
+            const gStart = { x: gPos.x + gA.x, y: gPos.y + gA.y };
+            const gEnd = { x: gPos.x + gB.x, y: gPos.y + gB.y };
+            extendWallGeometry(wall, gStart, gEnd);
+          }
         }
         else {
           // Guest room (found via surface key): EXTEND geometry to cover this edge
@@ -427,6 +472,21 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
  * for adjacent rooms onto the surviving wall.
  */
 function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
+  // Merge tolerance: edges on opposite faces of the same wall can be up to
+  // maxThick apart. Use max thickness across all walls AND wallDefaults types + margin.
+  let maxThick = DEFAULT_WALL_THICKNESS_CM;
+  for (const w of floor.walls) {
+    const t = w.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    if (t > maxThick) maxThick = t;
+  }
+  const wallTypes = floor.layout?.wallDefaults?.types;
+  if (wallTypes) {
+    for (const t of wallTypes) {
+      if (t.thicknessCm > maxThick) maxThick = t.thicknessCm;
+    }
+  }
+  const mergeTolerance = maxThick + 1;
+
   for (const room of rooms) {
     const verts = room.polygonVertices;
     if (!verts || verts.length < 3) continue;
@@ -438,9 +498,7 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
       const wall = wallByEdgeKey.get(key);
       if (!wall) continue;
 
-      // + 1 cm: adjacency detection tolerance beyond wall thickness
-      const wallTolerance = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 1;
-      const matches = findSharedEdgeMatches(room, i, otherRooms, wallTolerance);
+      const matches = findSharedEdgeMatches(room, i, otherRooms, mergeTolerance);
       for (const match of matches) {
         // If the other room's edge already points to THIS wall (wall reuse from
         // ensureWallsForEdges), the wall is already shared — skip merge.
@@ -538,8 +596,24 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
             wall.thicknessCm = Math.max(prevThick, otherThick);
             console.log(`[walls] mergeSharedEdgeWalls: both classified, taking max(${prevThick}, ${otherThick})cm for wall ${wall.id}`);
           } else {
-            wall.thicknessCm = prevThick;
-            console.log(`[walls] mergeSharedEdgeWalls: both default ${prevThick}cm for wall ${wall.id}`);
+            // Both default thickness — try gap-based inference from perpDist
+            const gap = match.perpDist;
+            if (gap > 0.5) {
+              const wallTypes = floor.layout?.wallDefaults?.types;
+              const { snappedCm } = snapToWallType(gap, wallTypes);
+              const delta = Math.abs(gap - snappedCm);
+              const GAP_SNAP_TOLERANCE_CM = 3;
+              if (delta <= GAP_SNAP_TOLERANCE_CM) {
+                wall.thicknessCm = snappedCm;
+                console.log(`[walls] mergeSharedEdgeWalls: gap-inferred thickness: gap=${gap.toFixed(1)} → ${snappedCm}cm (delta=${delta.toFixed(1)}) for wall ${wall.id}`);
+              } else {
+                wall.thicknessCm = Math.round(gap);
+                console.log(`[walls] mergeSharedEdgeWalls: gap-inferred thickness: gap=${gap.toFixed(1)} → ${Math.round(gap)}cm (delta=${delta.toFixed(1)}, exceeded tolerance) for wall ${wall.id}`);
+              }
+            } else {
+              wall.thicknessCm = prevThick;
+              console.log(`[walls] mergeSharedEdgeWalls: both default ${prevThick}cm for wall ${wall.id}`);
+            }
           }
 
           const idx = floor.walls.indexOf(otherWall);
@@ -579,8 +653,11 @@ function pruneOrphanSurfaces(floor, rooms, roomIds) {
       };
       const vx = eMid.x - wall.start.x, vy = eMid.y - wall.start.y;
       const perpDist = Math.abs(vx * wny - vy * wnx);
-      // + 2 cm: slightly wider tolerance than wall thickness for adjacency detection
-      const maxDist = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 2;
+      // After gap-based merge, the guest surface sits at the true gap distance which
+      // may exceed the snapped wall thickness (e.g. 14cm gap snapped to 11.5cm).
+      // Use GAP_SNAP_TOLERANCE_CM (3) + 2cm margin beyond wall thickness to avoid
+      // pruning legitimate surfaces that were just merged.
+      const maxDist = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 5;
       return perpDist <= maxDist;
     });
   }
@@ -613,34 +690,35 @@ export function enforceAdjacentPositions(floor) {
     const normal = getWallNormal(wall, floor);
     const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
 
-    const adjSurf = wall.surfaces.find(s => s.roomId !== ownerRoomId);
-    if (!adjSurf) continue;
+    // Process ALL non-owner surfaces, not just the first one
+    const adjSurfaces = wall.surfaces.filter(s => s.roomId !== ownerRoomId);
+    for (const adjSurf of adjSurfaces) {
+      const adjRoom = floor.rooms.find(r => r.id === adjSurf.roomId);
+      if (!adjRoom?.polygonVertices?.length) continue;
 
-    const adjRoom = floor.rooms.find(r => r.id === adjSurf.roomId);
-    if (!adjRoom?.polygonVertices?.length) continue;
+      const adjPos = adjRoom.floorPosition || { x: 0, y: 0 };
+      const adjVertex = adjRoom.polygonVertices[adjSurf.edgeIndex];
+      if (!adjVertex) continue;
 
-    const adjPos = adjRoom.floorPosition || { x: 0, y: 0 };
-    const adjVertex = adjRoom.polygonVertices[adjSurf.edgeIndex];
-    if (!adjVertex) continue;
+      const currentDist =
+        (adjPos.x + adjVertex.x - wall.start.x) * normal.x +
+        (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
 
-    const currentDist =
-      (adjPos.x + adjVertex.x - wall.start.x) * normal.x +
-      (adjPos.y + adjVertex.y - wall.start.y) * normal.y;
+      // Skip if adjacent room is on the SAME side as the owner room.
+      // Same-side: |currentDist| ≈ 0 (both touching inner face)
+      // Opposite-side: |currentDist| ≈ thick (should be at outer face)
+      if (Math.abs(currentDist) < thick / 2) {
+        console.log(`[walls] enforceAdjacentPositions: skip same-side room ${adjRoom.id?.slice(0,8)} on wall ${wall.id?.slice(0,8)}, dist=${currentDist.toFixed(1)}, thick=${thick}`);
+        continue;
+      }
+      const delta = thick - currentDist;
+      if (Math.abs(delta) < 0.5) continue;
 
-    // Skip if adjacent room is on the SAME side as the owner room.
-    // Same-side: |currentDist| ≈ 0 (both touching inner face)
-    // Opposite-side: |currentDist| ≈ thick (should be at outer face)
-    if (Math.abs(currentDist) < thick / 2) {
-      console.log(`[walls] enforceAdjacentPositions: skip same-side room ${adjRoom.id?.slice(0,8)} on wall ${wall.id?.slice(0,8)}, dist=${currentDist.toFixed(1)}, thick=${thick}`);
-      continue;
+      adjRoom.floorPosition = {
+        x: adjPos.x + normal.x * delta,
+        y: adjPos.y + normal.y * delta,
+      };
     }
-    const delta = thick - currentDist;
-    if (Math.abs(delta) < 0.5) continue;
-
-    adjRoom.floorPosition = {
-      x: adjPos.x + normal.x * delta,
-      y: adjPos.y + normal.y * delta,
-    };
   }
 }
 

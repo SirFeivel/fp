@@ -590,6 +590,7 @@ const translations = {
     },
     roomDetection: {
       activate: "Raum erkennen",
+      assistedMode: "Assistiertes Zeichnen (Einrasten an Hülle)",
       clickPrompt: "Klicke auf einen Raum im Plan",
       confirm: "Raum einfügen",
       cancel: "Abbrechen",
@@ -1250,6 +1251,7 @@ const translations = {
     },
     roomDetection: {
       activate: "Detect Room",
+      assistedMode: "Assisted tracing (snap to envelope)",
       clickPrompt: "Click inside a room on the plan",
       confirm: "Insert Room",
       cancel: "Cancel",

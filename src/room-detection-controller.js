@@ -825,6 +825,9 @@ export async function detectAndStoreEnvelope({ getState, commit, getCurrentFloor
     wallTypes,
   };
 
+  // Auto-enable assisted tracing when envelope is detected
+  nextFloor.layout.assistedTracing = true;
+
   // Populate floor-level wall defaults (if absent — preserves user customizations)
   if (!nextFloor.layout.wallDefaults) {
     nextFloor.layout.wallDefaults = {

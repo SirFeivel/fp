@@ -1376,6 +1376,7 @@ export function findSharedEdgeMatches(room, edgeIndex, otherRooms, tolerance = W
         edgeIndex: j,
         overlapStartCm: overlapStart,
         overlapEndCm: overlapEnd,
+        perpDist,
         targetEdgeOrigin: { x: tcx, y: tcy },
         targetEdgeDir: { x: tnx, y: tny },
         targetEdgeLen: tLen,

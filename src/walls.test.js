@@ -2021,3 +2021,327 @@ describe('wall reuse/extension (decision tree a→b→c→d)', () => {
     expect(floor.walls.length).toBe(6);
   });
 });
+
+describe("gap-based wall thickness inference", () => {
+  function makeRoom(id, x, y, w, h) {
+    return {
+      id, name: id,
+      floorPosition: { x, y },
+      widthCm: w, heightCm: h,
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: w, y: 0 },
+        { x: w, y: h }, { x: 0, y: h },
+      ],
+      exclusions: [],
+    };
+  }
+
+  it("snaps 12cm gap to partition type (11.5cm)", () => {
+    // Room1: bottom edge at y=300. Room2: top edge at y=312. Gap=12cm.
+    const r1 = makeRoom("r1", 0, 0, 400, 300);
+    const r2 = makeRoom("r2", 0, 312, 400, 300);
+    const floor = {
+      id: "f1", rooms: [r1, r2], walls: [],
+      layout: {
+        wallDefaults: {
+          types: [
+            { label: "partition", thicknessCm: 11.5 },
+            { label: "structural", thicknessCm: 24 },
+            { label: "outer", thicknessCm: 30 },
+          ]
+        }
+      }
+    };
+
+    syncFloorWalls(floor);
+
+    // Find the HORIZONTAL shared wall between r1 and r2 (between y=300 and y=312)
+    const sharedWall = floor.walls.find(w => {
+      const hasR1 = w.surfaces.some(s => s.roomId === "r1");
+      const hasR2 = w.surfaces.some(s => s.roomId === "r2");
+      const isH = Math.abs(w.end.y - w.start.y) < 0.5;
+      return hasR1 && hasR2 && isH;
+    });
+    expect(sharedWall).toBeDefined();
+    expect(sharedWall.thicknessCm).toBe(11.5);
+  });
+
+  it("snaps 10cm gap to partition type (11.5cm)", () => {
+    // 10cm gap is within tolerance (delta=1.5 ≤ 3) and within merge tolerance (13cm)
+    const r1 = makeRoom("r1", 0, 0, 400, 300);
+    const r2 = makeRoom("r2", 0, 310, 400, 300);
+    const floor = {
+      id: "f1", rooms: [r1, r2], walls: [],
+      layout: {
+        wallDefaults: {
+          types: [
+            { label: "partition", thicknessCm: 11.5 },
+            { label: "structural", thicknessCm: 24 },
+            { label: "outer", thicknessCm: 30 },
+          ]
+        }
+      }
+    };
+
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w => {
+      const hasR1 = w.surfaces.some(s => s.roomId === "r1");
+      const hasR2 = w.surfaces.some(s => s.roomId === "r2");
+      const isH = Math.abs(w.end.y - w.start.y) < 0.5;
+      return hasR1 && hasR2 && isH;
+    });
+    expect(sharedWall).toBeDefined();
+    expect(sharedWall.thicknessCm).toBe(11.5);
+  });
+
+  it("keeps raw gap when delta exceeds snap tolerance (8cm gap)", () => {
+    // 8cm gap: nearest type is 11.5cm (delta=3.5 > tolerance=3), so raw value kept
+    const r1 = makeRoom("r1", 0, 0, 400, 300);
+    const r2 = makeRoom("r2", 0, 308, 400, 300);
+    const floor = {
+      id: "f1", rooms: [r1, r2], walls: [],
+      layout: {
+        wallDefaults: {
+          types: [
+            { label: "partition", thicknessCm: 11.5 },
+            { label: "structural", thicknessCm: 24 },
+            { label: "outer", thicknessCm: 30 },
+          ]
+        }
+      }
+    };
+
+    syncFloorWalls(floor);
+
+    const sharedWall = floor.walls.find(w => {
+      const hasR1 = w.surfaces.some(s => s.roomId === "r1");
+      const hasR2 = w.surfaces.some(s => s.roomId === "r2");
+      const isH = Math.abs(w.end.y - w.start.y) < 0.5;
+      return hasR1 && hasR2 && isH;
+    });
+    expect(sharedWall).toBeDefined();
+    expect(sharedWall.thicknessCm).toBe(8);
+  });
+});
+
+describe("parallel wall overlap prevention", () => {
+  it("merges overlapping V walls from adjacent rooms (14cm gap)", () => {
+    // Room 1 right edge at x=472, Room 4 left edge at x=486 → 14cm gap.
+    // Without fix: two 12cm walls overlap by 10cm in 3D.
+    // With fix: mergeSharedEdgeWalls uses maxThick+1 tolerance → merges into one wall.
+    const r1 = makeRoom("r1", 100, 500, 372, 381);
+    const r4 = makeRoom("r4", 486, 500, 349, 128);
+    const floor = {
+      id: "f1", rooms: [r1, r4], walls: [],
+      layout: {
+        wallDefaults: {
+          types: [
+            { id: "partition", thicknessCm: 11.5 },
+            { id: "structural", thicknessCm: 24 },
+            { id: "outer", thicknessCm: 30 },
+          ]
+        }
+      }
+    };
+
+    syncFloorWalls(floor);
+
+    // The V walls at x≈472 and x≈486 should be merged into ONE wall
+    const vWallsInRange = floor.walls.filter(w => {
+      const wallX = (w.start.x + w.end.x) / 2;
+      const isV = Math.abs(w.end.x - w.start.x) < 5;
+      return isV && wallX > 460 && wallX < 500;
+    });
+    expect(vWallsInRange.length).toBe(1);
+
+    // The merged wall should have both rooms' surfaces
+    const wall = vWallsInRange[0];
+    const roomIds = new Set(wall.surfaces.map(s => s.roomId));
+    expect(roomIds.has("r1")).toBe(true);
+    expect(roomIds.has("r4")).toBe(true);
+
+    // Thickness should be snapped from the 14cm gap (→ 11.5cm partition, delta=2.5 < 3)
+    expect(wall.thicknessCm).toBe(11.5);
+  });
+});
+
+// ── Nearly-H/V wall extension ──────────────────────────────────────────
+
+describe("wall extension with slightly tilted edges", () => {
+  it("extends a nearly-horizontal spanning wall to cover adjacent room edges", () => {
+    // Room 1: L-shaped, bottom edge has 1cm y-deviation over 470cm
+    // This reproduces the real bug where extendWallGeometry classified the
+    // wall as "diagonal" and refused to extend it.
+    const room1 = {
+      id: "r1", name: "r1",
+      floorPosition: { x: 1124, y: 1080 },
+      widthCm: 509, heightCm: 395,
+      polygonVertices: [
+        { x: 470.5, y: 394 },  // bottom-right of L notch
+        { x: 0, y: 395 },      // bottom-left (1cm y-diff = slightly tilted)
+        { x: 0, y: 4 },        // top-left
+        { x: 509, y: 0 },      // top-right
+        { x: 509, y: 367 },    // notch corner
+        { x: 470, y: 367 },    // notch corner
+      ],
+      tile: { widthCm: 60, heightCm: 60, shape: 'rect' },
+      grout: { widthCm: 0.2, colorHex: '#ccc' },
+      pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl', xCm: 0, yCm: 0 } },
+      exclusions: [],
+    };
+    // Room 2: rectangle, top edge at y=1497 (opposite face of spanning wall)
+    const room2 = {
+      id: "r2", name: "r2",
+      floorPosition: { x: 1484, y: 1497 },
+      widthCm: 350, heightCm: 127,
+      polygonVertices: [
+        { x: 0, y: 0 },
+        { x: 0, y: 127 },
+        { x: 350, y: 127 },
+        { x: 350, y: 0 },
+      ],
+      tile: { widthCm: 60, heightCm: 60, shape: 'rect' },
+      grout: { widthCm: 0.2, colorHex: '#ccc' },
+      pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl', xCm: 0, yCm: 0 } },
+      exclusions: [],
+    };
+    const floor = {
+      id: "f1", rooms: [room1, room2], walls: [],
+      layout: {
+        envelope: {
+          polygonCm: [
+            { x: 2088, y: 1052 },
+            { x: 2088, y: 1906 },
+            { x: 1093, y: 1906 },
+            { x: 1093, y: 1052 },
+          ],
+          wallThicknesses: {
+            edges: [
+              { edgeIndex: 0, thicknessCm: 30 },
+              { edgeIndex: 1, thicknessCm: 8.5 },
+              { edgeIndex: 2, thicknessCm: 8.5 },
+              { edgeIndex: 3, thicknessCm: 29 },
+            ],
+          },
+          spanningWalls: [{
+            orientation: 'H',
+            startCm: { x: 1094, y: 1486 },
+            endCm: { x: 2088, y: 1486 },
+            thicknessCm: 22.4,
+          }],
+        },
+      },
+    };
+
+    syncFloorWalls(floor);
+
+    // The spanning wall should cover BOTH rooms' top edges.
+    // Room 1's edge e0 spans x=[1124..1594.5], room 2's edge e3 spans x=[1484..1834].
+    // The wall must extend from at least x=1124 to x=1834.
+    const spanningWall = floor.walls.find(w => {
+      const hasR1 = w.surfaces.some(s => s.roomId === "r1");
+      const hasR2 = w.surfaces.some(s => s.roomId === "r2");
+      return hasR1 && hasR2;
+    });
+    expect(spanningWall).toBeDefined();
+
+    const wallMinX = Math.min(spanningWall.start.x, spanningWall.end.x);
+    const wallMaxX = Math.max(spanningWall.start.x, spanningWall.end.x);
+    // Wall must cover room2's full x-range, within 1cm for tilt rounding
+    expect(wallMinX).toBeLessThanOrEqual(1485);
+    expect(wallMaxX).toBeGreaterThanOrEqual(1833);
+  });
+
+  it("owner reset re-extends for guest rooms processed before owner", () => {
+    // Reproduces the vanishing wall bug: when the owner room resets wall
+    // geometry, extensions from rooms processed earlier are lost.
+    //
+    // Three rooms along a spanning wall:
+    //   Room A (left):   x=100→400, top edge at y=500 (south face)
+    //   Room B (right):  x=600→1000, bottom edge at y=480 (north face)
+    //   Room C (center): x=380→620, top edge at y=500 (bridges A and B)
+    //
+    // Room C's edge finds Room A's wall (same y=500) and extends it to x=100→620.
+    // Then mergeSharedEdgeWalls: Room B's wall (y=480) matches Room C's edge (y=500)
+    // with perpDist=20 < tolerance=25. Room B's wall absorbs Room A's extended wall.
+    // On the second sync, Room B (owner) resets to x=600→1000. Without the fix,
+    // Room A's extension to x=100 is lost.
+    const mkRoom = (id, x, y, w, h) => ({
+      id, name: id,
+      floorPosition: { x, y },
+      widthCm: w, heightCm: h,
+      polygonVertices: [
+        { x: 0, y: 0 }, { x: w, y: 0 },
+        { x: w, y: h }, { x: 0, y: h },
+      ],
+      tile: { widthCm: 40, heightCm: 20, shape: 'rect' },
+      grout: { widthCm: 0.2, colorHex: '#fff' },
+      pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl', xCm: 0, yCm: 0 } },
+      exclusions: [],
+    });
+
+    const roomA = mkRoom("rA", 100, 500, 300, 200);
+    const roomB = mkRoom("rB", 600, 280, 400, 200);  // bottom edge at y=480
+    const roomC = mkRoom("rC", 380, 500, 240, 150);
+
+    const floor = {
+      id: "f1", rooms: [roomA, roomB, roomC], walls: [],
+      layout: {
+        envelope: {
+          polygonCm: [
+            { x: 50, y: 250 }, { x: 1050, y: 250 },
+            { x: 1050, y: 750 }, { x: 50, y: 750 },
+          ],
+          wallThicknesses: {
+            edges: [
+              { edgeIndex: 0, thicknessCm: 30 },
+              { edgeIndex: 1, thicknessCm: 30 },
+              { edgeIndex: 2, thicknessCm: 30 },
+              { edgeIndex: 3, thicknessCm: 30 },
+            ],
+          },
+          spanningWalls: [{
+            orientation: 'H',
+            startCm: { x: 50, y: 490 },
+            endCm: { x: 1050, y: 490 },
+            thicknessCm: 20,
+          }],
+        },
+        wallDefaults: {
+          types: [
+            { id: "partition", thicknessCm: 11.5 },
+            { id: "structural", thicknessCm: 24 },
+            { id: "outer", thicknessCm: 30 },
+          ],
+          heightCm: 240,
+        },
+      },
+    };
+
+    // Two syncs: first establishes + merges, second triggers owner reset
+    syncFloorWalls(floor);
+    syncFloorWalls(floor);
+
+    // Find the H wall near the spanning wall (y≈480-500)
+    const spanningWall = floor.walls.find(w => {
+      const dy = Math.abs(w.end.y - w.start.y);
+      const dx = Math.abs(w.end.x - w.start.x);
+      const wallY = (w.start.y + w.end.y) / 2;
+      return dx > 500 && dy < 5 && wallY > 475 && wallY < 505;
+    });
+    expect(spanningWall).toBeDefined();
+
+    const wallMinX = Math.min(spanningWall.start.x, spanningWall.end.x);
+    const wallMaxX = Math.max(spanningWall.start.x, spanningWall.end.x);
+
+    // Must extend left to cover roomA (x=100) and right to cover roomB (x=1000)
+    expect(wallMinX).toBeLessThanOrEqual(101);
+    expect(wallMaxX).toBeGreaterThanOrEqual(999);
+
+    // Must have surfaces for rooms on both sides
+    const roomIds = new Set(spanningWall.surfaces.map(s => s.roomId));
+    expect(roomIds.has("rA")).toBe(true);
+    expect(roomIds.has("rB")).toBe(true);
+  });
+});
