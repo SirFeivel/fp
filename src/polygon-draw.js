@@ -1046,7 +1046,20 @@ export function createPolygonDrawController({
       return;
     }
 
-    if (points.length === 0) return;
+    // When no points placed yet, show only the snap indicator so the user
+    // can see where the first click will land (critical in assisted mode).
+    if (points.length === 0) {
+      if (mousePoint && (assistedMode || edgeSnapMode || roomVertices.length > 0)) {
+        const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge";
+        const isBoundary = currentSnapType === "boundary";
+        const fillColor = isBoundary ? "#f97316" : isSnapped ? "#22c55e" : "#3b82f6";
+        previewGroup.appendChild(svgEl("circle", {
+          cx: mousePoint.x, cy: mousePoint.y, r: 6,
+          fill: fillColor, stroke: "#fff", "stroke-width": 2,
+        }));
+      }
+      return;
+    }
 
     // Draw lines between points
     const allPoints = [...points];
