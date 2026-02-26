@@ -1144,14 +1144,12 @@ export function createPolygonDrawController({
 
     // Edge snap mode preview (before any points or with one point)
     if (edgeSnapMode && points.length < 2 && currentEdgeSnapPoint) {
-      // Draw the edge snap marker (green circle)
+      // Draw the edge snap marker
       const snapCircle = svgEl("circle", {
         cx: currentEdgeSnapPoint.x,
         cy: currentEdgeSnapPoint.y,
-        r: 8,
-        fill: "#22c55e",
-        stroke: "#fff",
-        "stroke-width": 2,
+        r: 7, fill: "none",
+        stroke: "#22c55e", "stroke-width": 1.5, opacity: 0.8,
         class: "edge-snap-marker"
       });
       previewGroup.appendChild(snapCircle);
@@ -1188,11 +1186,19 @@ export function createPolygonDrawController({
         const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge" || currentSnapType === "close-angle";
         const isBoundary = currentSnapType === "boundary";
         const isCorner = currentSnapType === "corner";
-        const fillColor = isCorner ? "#eab308" : isBoundary ? "#f97316" : isSnapped ? "#22c55e" : "#3b82f6";
+        const snapColor = isCorner ? "#eab308" : isBoundary ? "#f97316" : isSnapped ? "#22c55e" : "#3b82f6";
         previewGroup.appendChild(svgEl("circle", {
-          cx: mousePoint.x, cy: mousePoint.y, r: 6,
-          fill: fillColor, stroke: "#fff", "stroke-width": 2,
+          cx: mousePoint.x, cy: mousePoint.y,
+          r: 7, fill: "none",
+          stroke: snapColor, "stroke-width": 1.5, opacity: 0.8
         }));
+        if (isCorner) {
+          const arm = 11;
+          previewGroup.appendChild(svgEl("path", {
+            d: `M ${mousePoint.x - arm} ${mousePoint.y} L ${mousePoint.x + arm} ${mousePoint.y} M ${mousePoint.x} ${mousePoint.y - arm} L ${mousePoint.x} ${mousePoint.y + arm}`,
+            stroke: snapColor, "stroke-width": 1.5, fill: "none", opacity: 0.8
+          }));
+        }
       }
       return;
     }
@@ -1257,73 +1263,30 @@ export function createPolygonDrawController({
 
     // Draw mouse position marker
     if (mousePoint) {
-      // Show red marker if inside a room, green if snapped to geometry, orange for boundary, blue otherwise
       const isInvalid = isMouseInsideRoom;
       const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge" || currentSnapType === "close-angle";
       const isBoundary = currentSnapType === "boundary";
       const isCorner = currentSnapType === "corner";
 
-      // Choose appearance based on state
-      let fillColor, strokeColor, radius, strokeWidth;
-      if (isInvalid) {
-        fillColor = "rgba(239, 68, 68, 0.7)";
-        strokeColor = "#dc2626";
-        radius = 6;
-        strokeWidth = 2;
-      } else if (isCorner) {
-        // Yellow marker for corner snaps (H∩V intersection)
-        fillColor = "#eab308";
-        strokeColor = "#fff";
-        radius = 8;
-        strokeWidth = 2;
-      } else if (isBoundary) {
-        // Orange marker for boundary snaps
-        fillColor = "#f97316";
-        strokeColor = "#fff";
-        radius = 6;
-        strokeWidth = 2;
-      } else if (isSnapped) {
-        // Green marker for geometry snaps
-        fillColor = "#22c55e";
-        strokeColor = "#fff";
-        radius = currentSnapType === "vertex" ? 8 : 6;
-        strokeWidth = 2;
-      } else {
-        fillColor = "rgba(59, 130, 246, 0.5)";
-        strokeColor = "#3b82f6";
-        radius = 4;
-        strokeWidth = 1;
-      }
+      // Unified snap color — ring style so cursor crosshair stays visible
+      const snapColor = isInvalid ? "#ef4444"
+        : isCorner    ? "#eab308"
+        : isBoundary  ? "#f97316"
+        : isSnapped   ? "#22c55e"
+        :               "#3b82f6";
 
-      const mouseCircle = svgEl("circle", {
-        cx: mousePoint.x,
-        cy: mousePoint.y,
-        r: radius,
-        fill: fillColor,
-        stroke: strokeColor,
-        "stroke-width": strokeWidth
-      });
-      previewGroup.appendChild(mouseCircle);
+      previewGroup.appendChild(svgEl("circle", {
+        cx: mousePoint.x, cy: mousePoint.y,
+        r: 7, fill: "none",
+        stroke: snapColor, "stroke-width": 1.5, opacity: 0.8
+      }));
 
-      // Add snap type indicator for vertex snaps (diamond shape)
-      if (currentSnapType === "vertex") {
-        const diamond = svgEl("path", {
-          d: `M ${mousePoint.x} ${mousePoint.y - 12} L ${mousePoint.x + 5} ${mousePoint.y - 7} L ${mousePoint.x} ${mousePoint.y - 2} L ${mousePoint.x - 5} ${mousePoint.y - 7} Z`,
-          fill: "#22c55e",
-          stroke: "#fff",
-          "stroke-width": 1
-        });
-        previewGroup.appendChild(diamond);
-      }
-
-      // Add crosshair indicator for corner snaps (both axes locked)
-      if (currentSnapType === "corner") {
-        const arm = 12;
+      // Crosshair lines for corner snaps (both axes locked)
+      if (isCorner) {
+        const arm = 11;
         previewGroup.appendChild(svgEl("path", {
           d: `M ${mousePoint.x - arm} ${mousePoint.y} L ${mousePoint.x + arm} ${mousePoint.y} M ${mousePoint.x} ${mousePoint.y - arm} L ${mousePoint.x} ${mousePoint.y + arm}`,
-          stroke: "#eab308",
-          "stroke-width": 2,
-          fill: "none"
+          stroke: snapColor, "stroke-width": 1.5, fill: "none", opacity: 0.8
         }));
       }
     }
