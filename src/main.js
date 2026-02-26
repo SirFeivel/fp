@@ -562,10 +562,11 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       doorways: wallDesc.extDoorways,
       roomEdge: wall.roomEdge,
       endCornerFill: wallDesc.endCornerFill ?? null,
+      startCornerFill: wallDesc.startCornerFill ?? null,
       surfaces,
     };
     const s = assembled.start, e = assembled.end, os = assembled.outerStart, oe = assembled.outerEnd;
-    console.log(`[three-view:pipeline] wall ${assembled.id}: inner=(${s.x.toFixed(1)},${s.y.toFixed(1)})→(${e.x.toFixed(1)},${e.y.toFixed(1)}) outer=(${os.x.toFixed(1)},${os.y.toFixed(1)})→(${oe.x.toFixed(1)},${oe.y.toFixed(1)}) thick=${thick} h=${hStart}/${hEnd} len=${assembled.edgeLength?.toFixed(1)} doorways=${assembled.doorways?.length || 0} surfaces=${assembled.surfaces.length}${assembled.endCornerFill ? ` endFill=${assembled.endCornerFill.p4 ? 'quad' : 'tri'}` : ''}`);
+    console.log(`[three-view:pipeline] wall ${assembled.id}: inner=(${s.x.toFixed(1)},${s.y.toFixed(1)})→(${e.x.toFixed(1)},${e.y.toFixed(1)}) outer=(${os.x.toFixed(1)},${os.y.toFixed(1)})→(${oe.x.toFixed(1)},${oe.y.toFixed(1)}) thick=${thick} h=${hStart}/${hEnd} len=${assembled.edgeLength?.toFixed(1)} doorways=${assembled.doorways?.length || 0} surfaces=${assembled.surfaces.length}${assembled.endCornerFill ? ` endFill=${assembled.endCornerFill.p4 ? 'quad' : 'tri'}` : ''}${assembled.startCornerFill ? ` startFill=${assembled.startCornerFill.p4 ? 'quad' : 'tri'}` : ''}`);
     return assembled;
   }).filter(Boolean);
 }

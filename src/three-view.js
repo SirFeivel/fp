@@ -70,8 +70,8 @@ function createWallMapper(surfaceVerts, ax, az, bx, bz, hStart, hEnd) {
   const U = { x: surfaceVerts[1].x - P0.x, y: surfaceVerts[1].y - P0.y };
   const V = { x: surfaceVerts[3].x - P0.x, y: surfaceVerts[3].y - P0.y };
   const det = U.x * V.y - U.y * V.x;
-  if (Math.abs(det) < 0.001) {
-    console.log(`[three-view] mapper: NULL (degenerate, det=${det.toFixed(6)})`);
+  if (Math.abs(det) < 0.0001) {
+    console.warn(`[three-view] createWallMapper: skipping degenerate surface (det=${det.toFixed(6)})`);
     return null;
   }
   const invDet = 1 / det;
@@ -215,14 +215,18 @@ function buildWallGeo(iax, iaz, ibx, ibz, oax, oaz, obx, obz, hA, hB, edgeLen, d
 
   // Pre-compute clamped doorway heights so hole and reveals stay within face
   const clampedDoorways = doorways.map(dw => {
-    const off = dw.offsetCm;
-    const w = dw.widthCm;
+    const off = Math.max(0, dw.offsetCm);
+    let w = dw.widthCm;
+    if (off + w > edgeLen) {
+      console.warn(`[three-view] buildWallGeo: clamping doorway width from ${w.toFixed(1)} to ${(edgeLen - off).toFixed(1)} (offset=${off.toFixed(1)}, edgeLen=${edgeLen.toFixed(1)})`);
+      w = Math.max(0, edgeLen - off);
+    }
     const elev = dw.elevationCm || 0;
     const tMid = edgeLen > 0 ? (off + w / 2) / edgeLen : 0;
     const wallHere = hA + (hB - hA) * tMid;
     const h = Math.min(dw.heightCm, wallHere - elev);
-    return { ...dw, _clampedH: h, _elev: elev };
-  }).filter(dw => dw._clampedH > 0);
+    return { ...dw, offsetCm: off, widthCm: w, _clampedH: h, _elev: elev };
+  }).filter(dw => dw._clampedH > 0 && dw.widthCm > 0);
 
   for (const dw of clampedDoorways) {
     const off = dw.offsetCm;

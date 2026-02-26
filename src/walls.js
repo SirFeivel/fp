@@ -89,6 +89,8 @@ function indexWallsByEdge(walls) {
       const sKey = `${s.roomId}:${s.edgeIndex}`;
       if (!wallByEdgeKey.has(sKey)) {
         wallByEdgeKey.set(sKey, wall);
+      } else if (wallByEdgeKey.get(sKey).id !== wall.id) {
+        console.warn(`[walls] indexWallsByEdge: duplicate key ${sKey} — wall ${wall.id.slice(0,8)} shadowed by ${wallByEdgeKey.get(sKey).id.slice(0,8)}`);
       }
     }
   }
@@ -321,6 +323,40 @@ function extendWallGeometry(wall, startPt, endPt) {
  * Updates wall geometry for existing walls, creates surfaces for new walls.
  * @returns {Set<string>} IDs of all walls that correspond to valid room edges
  */
+/**
+ * Re-project all surface fromCm/toCm onto their wall's current axis.
+ * Call after wall geometry is finalized to fix stale projections from
+ * intermediate wall states (H2) or position shifts (M5).
+ */
+function reprojectAllSurfaces(floor) {
+  for (const wall of floor.walls) {
+    const wallLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+    if (wallLen < 0.5) continue;
+    const dirX = (wall.end.x - wall.start.x) / wallLen;
+    const dirY = (wall.end.y - wall.start.y) / wallLen;
+    for (const s of wall.surfaces) {
+      const room = floor.rooms?.find(r => r.id === s.roomId);
+      if (!room?.polygonVertices) continue;
+      const pos = room.floorPosition || { x: 0, y: 0 };
+      const verts = room.polygonVertices;
+      if (s.edgeIndex >= verts.length) continue;
+      const A = verts[s.edgeIndex];
+      const B = verts[(s.edgeIndex + 1) % verts.length];
+      const sx = pos.x + A.x, sy = pos.y + A.y;
+      const ex = pos.x + B.x, ey = pos.y + B.y;
+      let from = (sx - wall.start.x) * dirX + (sy - wall.start.y) * dirY;
+      let to = (ex - wall.start.x) * dirX + (ey - wall.start.y) * dirY;
+      if (from > to) [from, to] = [to, from];
+      const oldFrom = s.fromCm, oldTo = s.toCm;
+      s.fromCm = from;
+      s.toCm = to;
+      if (Math.abs(from - oldFrom) > 0.5 || Math.abs(to - oldTo) > 0.5) {
+        console.log(`[walls] reprojectAllSurfaces: ${s.roomId.slice(0,8)}:e${s.edgeIndex} on wall ${wall.id.slice(0,8)} from=${oldFrom.toFixed(1)}→${from.toFixed(1)} to=${oldTo.toFixed(1)}→${to.toFixed(1)}`);
+      }
+    }
+  }
+}
+
 function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
   const touchedWallIds = new Set();
   const tolerance = FLOOR_PLAN_RULES.alignmentToleranceCm;
@@ -469,6 +505,9 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
       }
     }
   }
+
+  // Re-project all surfaces onto final wall geometry (H2 fix)
+  reprojectAllSurfaces(floor);
 
   return touchedWallIds;
 }
@@ -627,7 +666,14 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
 
           const idx = floor.walls.indexOf(otherWall);
           if (idx !== -1) floor.walls.splice(idx, 1);
-          wallByEdgeKey.delete(otherKey);
+          // Repoint all wallByEdgeKey entries referencing the absorbed wall to the surviving wall.
+          // otherWall may be indexed under multiple keys (owner roomEdge + guest surface keys).
+          for (const [key, val] of wallByEdgeKey) {
+            if (val === otherWall) {
+              wallByEdgeKey.set(key, wall);
+              console.log(`[walls] merge: repointed key ${key} → surviving wall ${wall.id.slice(0,8)}`);
+            }
+          }
           touchedWallIds.delete(otherWall.id);
         }
       }
@@ -682,6 +728,14 @@ function pruneOrphanSurfaces(floor, rooms, roomIds) {
       }
       return true;
     });
+
+    // Reassign roomEdge if the owner room was deleted but surviving surfaces exist
+    if (wall.roomEdge && !roomIds.has(wall.roomEdge.roomId) && wall.surfaces.length > 0) {
+      const newOwner = wall.surfaces[0];
+      const oldOwner = wall.roomEdge;
+      wall.roomEdge = { roomId: newOwner.roomId, edgeIndex: newOwner.edgeIndex };
+      console.log(`[walls] pruneOrphanSurfaces: reassign wall ${wall.id?.slice(0,8)} owner from deleted room ${oldOwner.roomId.slice(0,8)}:e${oldOwner.edgeIndex} → ${newOwner.roomId.slice(0,8)}:e${newOwner.edgeIndex}`);
+    }
   }
 }
 
@@ -1025,7 +1079,10 @@ export function syncFloorWalls(floor, { enforcePositions = true } = {}) {
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
   console.log(`[walls] syncFloorWalls: after removeStaleWalls → ${floor.walls.length} walls`);
-  if (enforcePositions) enforceAdjacentPositions(floor);
+  if (enforcePositions) {
+    enforceAdjacentPositions(floor);
+    reprojectAllSurfaces(floor); // M5 fix: re-project after position shifts
+  }
 
   // Top-down skeleton enforcement: force skeleton thickness + height on boundary-aligned walls
   enforceSkeletonWallProperties(floor);
@@ -1089,9 +1146,15 @@ export function getWallById(floor, wallId) {
  */
 export function getWallNormal(wall, floor) {
   const re = wall.roomEdge;
-  if (!re) return { x: 0, y: -1 };
+  if (!re) {
+    console.warn(`[walls] getWallNormal: fallback {0,-1} — wall ${wall.id?.slice(0,8)} has no roomEdge`);
+    return { x: 0, y: -1 };
+  }
   const room = (floor.rooms || []).find(r => r.id === re.roomId);
-  if (!room?.polygonVertices || room.polygonVertices.length < 3) return { x: 0, y: -1 };
+  if (!room?.polygonVertices || room.polygonVertices.length < 3) {
+    console.warn(`[walls] getWallNormal: fallback {0,-1} — room ${re.roomId?.slice(0,8)} not found or has <3 vertices`);
+    return { x: 0, y: -1 };
+  }
 
   const verts = room.polygonVertices;
   let area2 = 0;
@@ -1104,7 +1167,10 @@ export function getWallNormal(wall, floor) {
   const dx = wall.end.x - wall.start.x;
   const dy = wall.end.y - wall.start.y;
   const len = Math.hypot(dx, dy);
-  if (len < 0.001) return { x: 0, y: -1 };
+  if (len < 0.001) {
+    console.warn(`[walls] getWallNormal: fallback {0,-1} — wall ${wall.id?.slice(0,8)} has zero length`);
+    return { x: 0, y: -1 };
+  }
 
   return { x: sign * dy / len, y: -sign * dx / len };
 }
@@ -1192,12 +1258,20 @@ export function computeWallExtensions(floor, roomId) {
       if (Math.abs(crossAB) > 0.01) {
         const dotAB = dA.x * dB.x + dA.y * dB.y;
         const tB = windingSign * (thick * dotAB - thickPrev) / crossAB;
-        extStart = Math.max(0, Math.min(-tB, Math.max(thickPrev, thick) * 3));
+        const rawStart = -tB;
+        const clampStart = Math.max(thickPrev, thick) * 2;
+        extStart = Math.max(0, Math.min(rawStart, clampStart));
+        if (rawStart > clampStart) {
+          console.log(`[walls] computeWallExtensions: clamped e${i} extStart from ${rawStart.toFixed(1)} to ${clampStart.toFixed(1)}`);
+        }
       } else if (dA.x * dB.x + dA.y * dB.y > 0) {
         // Parallel, same direction (co-linear continuation): walls just continue each other
         extStart = 0;
+      } else {
+        // Parallel, opposite direction (hairpin/180° turn): walls overlap, no extension needed
+        extStart = 0;
+        console.log(`[walls] computeWallExtensions: hairpin at e${i} start, ext=0`);
       }
-      // else: parallel, opposite direction (hairpin) → keep fallback thickPrev
     }
 
     if (guestSharedEdges.has(next)) {
@@ -1208,12 +1282,20 @@ export function computeWallExtensions(floor, roomId) {
       if (Math.abs(crossBC) > 0.01) {
         const dotBC = dB.x * dC.x + dB.y * dC.y;
         const t = windingSign * (thickNext - thick * dotBC) / crossBC;
-        extEnd = Math.max(0, Math.min(t, Math.max(thickNext, thick) * 3));
+        const rawEnd = t;
+        const clampEnd = Math.max(thickNext, thick) * 2;
+        extEnd = Math.max(0, Math.min(rawEnd, clampEnd));
+        if (rawEnd > clampEnd) {
+          console.log(`[walls] computeWallExtensions: clamped e${i} extEnd from ${rawEnd.toFixed(1)} to ${clampEnd.toFixed(1)}`);
+        }
       } else if (dB.x * dC.x + dB.y * dC.y > 0) {
         // Parallel, same direction (co-linear continuation): walls just continue each other
         extEnd = 0;
+      } else {
+        // Parallel, opposite direction (hairpin/180° turn): walls overlap, no extension needed
+        extEnd = 0;
+        console.log(`[walls] computeWallExtensions: hairpin at e${i} end, ext=0`);
       }
-      // else: parallel, opposite direction (hairpin) → keep fallback thickNext
     }
 
     result.set(i, { extStart, extEnd });
@@ -1681,16 +1763,27 @@ export function computeFloorWallGeometry(floor) {
       return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
     };
 
-    // Each outer endpoint: { wallId, desc, isEnd, outerPt, dir, h }
+    // Unbounded line intersection: find where two infinite lines cross.
+    // No directional constraint — inner faces may overlap at corners.
+    const lineLineIntersect = (p1, d1, p2, d2) => {
+      const cross = d1.x * d2.y - d1.y * d2.x;
+      if (Math.abs(cross) < 0.001) return null; // parallel
+      const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / cross;
+      return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
+    };
+
+    // Each outer endpoint: { wallId, desc, isEnd, outerPt, innerPt, dir, h }
     // "isEnd=true"  → outer face extends forward (+dir) past outerEndPt
     // "isEnd=false" → outer face extends backward (-dir) past outerStartPt
     const eps = [];
     for (const [wallId, desc] of result) {
       const h = desc.wall.heightEndCm ?? DEFAULT_WALL_HEIGHT_CM;
       eps.push({ wallId, desc, isEnd: true,
-        outerPt: desc.outerEndPt, dir: { x: desc.dirX, y: desc.dirY }, h });
+        outerPt: desc.outerEndPt, innerPt: desc.extEndPt,
+        dir: { x: desc.dirX, y: desc.dirY }, h });
       eps.push({ wallId, desc, isEnd: false,
-        outerPt: desc.outerStartPt, dir: { x: -desc.dirX, y: -desc.dirY }, h });
+        outerPt: desc.outerStartPt, innerPt: desc.extStartPt,
+        dir: { x: -desc.dirX, y: -desc.dirY }, h });
     }
 
     for (let i = 0; i < eps.length; i++) {
@@ -1701,13 +1794,16 @@ export function computeFloorWallGeometry(floor) {
         const pCorner = outerLineIntersect(eA.outerPt, eA.dir, eB.outerPt, eB.dir);
         if (!pCorner) continue;
 
+        // Inner corner: intersect infinite inner face lines (no directional constraint)
+        const pInner = lineLineIntersect(eA.innerPt, eA.dir, eB.innerPt, eB.dir);
+
         // Quad fill: p1=eA outer endpoint, p2=eB outer endpoint,
-        // p4=outer corner, p3=inner corner (parallelogram: p1+p2-p4)
+        // p4=outer corner, p3=inner corner (line intersection, fallback to parallelogram)
         const fill = {
           p1: eA.outerPt,
           p2: eB.outerPt,
-          p3: { x: eA.outerPt.x + eB.outerPt.x - pCorner.x,
-                y: eA.outerPt.y + eB.outerPt.y - pCorner.y },
+          p3: pInner ?? { x: eA.outerPt.x + eB.outerPt.x - pCorner.x,
+                          y: eA.outerPt.y + eB.outerPt.y - pCorner.y },
           p4: pCorner,
           h: Math.max(eA.h, eB.h),
         };
@@ -1716,12 +1812,12 @@ export function computeFloorWallGeometry(floor) {
         if (eA.isEnd) {
           if (!eA.desc.endCornerFill) {
             eA.desc.endCornerFill = fill;
-            console.log(`[walls] cross-room corner fill: end of ${eA.wallId.slice(0, 8)} + ${eB.isEnd ? 'end' : 'start'} of ${eB.wallId.slice(0, 8)}, corner=(${pCorner.x.toFixed(1)},${pCorner.y.toFixed(1)})`);
+            console.log(`[walls] cross-room corner fill: end of ${eA.wallId.slice(0, 8)} + ${eB.isEnd ? 'end' : 'start'} of ${eB.wallId.slice(0, 8)}, outer=(${pCorner.x.toFixed(1)},${pCorner.y.toFixed(1)}) inner=(${fill.p3.x.toFixed(1)},${fill.p3.y.toFixed(1)})`);
           }
         } else {
           if (!eA.desc.startCornerFill) {
             eA.desc.startCornerFill = fill;
-            console.log(`[walls] cross-room corner fill: start of ${eA.wallId.slice(0, 8)} + ${eB.isEnd ? 'end' : 'start'} of ${eB.wallId.slice(0, 8)}, corner=(${pCorner.x.toFixed(1)},${pCorner.y.toFixed(1)})`);
+            console.log(`[walls] cross-room corner fill: start of ${eA.wallId.slice(0, 8)} + ${eB.isEnd ? 'end' : 'start'} of ${eB.wallId.slice(0, 8)}, outer=(${pCorner.x.toFixed(1)},${pCorner.y.toFixed(1)}) inner=(${fill.p3.x.toFixed(1)},${fill.p3.y.toFixed(1)})`);
           }
         }
       }
