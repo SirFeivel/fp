@@ -344,6 +344,7 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
 
       const key = `${room.id}:${i}`;
       let wall = wallByEdgeKey.get(key);
+      console.log(`[walls] edge ${room.id.slice(0,8)}:e${i}: (${startPt.x.toFixed(1)},${startPt.y.toFixed(1)})→(${endPt.x.toFixed(1)},${endPt.y.toFixed(1)}) len=${edgeLen.toFixed(1)} ${wall ? `existing=${wall.id.slice(0,8)}` : 'no wall'}`);
 
       if (wall) {
         const isOwner = wall.roomEdge &&
@@ -352,6 +353,8 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
         if (isOwner) {
           // Owner room: SET geometry to this room's edge (source of truth)
           const oldLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+          console.log(`[walls] edge ${room.id.slice(0,8)}:e${i}: owner update wall ${wall.id.slice(0,8)} (${wall.start.x.toFixed(1)},${wall.start.y.toFixed(1)})→(${wall.end.x.toFixed(1)},${wall.end.y.toFixed(1)}) → (${startPt.x.toFixed(1)},${startPt.y.toFixed(1)})→(${endPt.x.toFixed(1)},${endPt.y.toFixed(1)})`);
+
           const geometryChanged = oldLen > 1 && (
             Math.abs(wall.start.x - startPt.x) > 0.5 ||
             Math.abs(wall.start.y - startPt.y) > 0.5 ||
@@ -382,6 +385,7 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
         }
         else {
           // Guest room (found via surface key): EXTEND geometry to cover this edge
+          console.log(`[walls] edge ${room.id.slice(0,8)}:e${i}: guest extend wall ${wall.id.slice(0,8)}`);
           extendWallGeometry(wall, startPt, endPt);
         }
         touchedWallIds.add(wall.id);
@@ -453,6 +457,7 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
       );
       if (!hasOwnSurface) {
         wall.surfaces.push(createDefaultSurface("left", room.id, i, surfaceFrom, surfaceTo));
+        console.log(`[walls] edge ${room.id.slice(0,8)}:e${i}: new surface on wall ${wall.id.slice(0,8)} from=${surfaceFrom.toFixed(1)} to=${surfaceTo.toFixed(1)}`);
       } else {
         for (const s of wall.surfaces) {
           if (s.roomId === room.id && s.edgeIndex === i) {
@@ -460,6 +465,7 @@ function ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope) {
             s.toCm = surfaceTo;
           }
         }
+        console.log(`[walls] edge ${room.id.slice(0,8)}:e${i}: update surface on wall ${wall.id.slice(0,8)} from=${surfaceFrom.toFixed(1)} to=${surfaceTo.toFixed(1)}`);
       }
     }
   }
@@ -527,6 +533,8 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
         const otherKey = `${match.room.id}:${match.edgeIndex}`;
         const otherWall = wallByEdgeKey.get(otherKey);
         if (otherWall && otherWall.id !== wall.id) {
+          console.log(`[walls] merge: wall ${wall.id.slice(0,8)} absorbs ${otherWall.id.slice(0,8)} (room ${match.room.id.slice(0,8)}:e${match.edgeIndex}, perpDist=${match.perpDist?.toFixed(1)}cm, overlap=${match.overlapStartCm?.toFixed(1)}-${match.overlapEndCm?.toFixed(1)})`);
+
           for (const dw of otherWall.doorways) {
             if (!wall.doorways.some(d => d.id === dw.id)) {
               wall.doorways.push(dw);
@@ -553,6 +561,7 @@ function mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds) {
             const shift = -newMin;
 
             if (shift > 0.5 || newMax > wLen + 0.5) {
+              console.log(`[walls] merge geometry: wall ${wall.id.slice(0,8)} shift=${shift.toFixed(1)} newLen=${newMax.toFixed(1)} (was ${wLen.toFixed(1)})`);
               // Wall is being extended/shifted — delete all doorways instead of compensating
               if (wall.doorways.length > 0) {
                 wall.doorways = [];
@@ -640,11 +649,20 @@ function pruneOrphanSurfaces(floor, rooms, roomIds) {
     const wny = wLen > 0.01 ? wdy / wLen : 0;
 
     wall.surfaces = wall.surfaces.filter(s => {
-      if (!roomIds.has(s.roomId)) return false;
+      if (!roomIds.has(s.roomId)) {
+        console.log(`[walls] pruneOrphanSurfaces: remove surface room=${s.roomId.slice(0,8)}:e${s.edgeIndex} from wall ${wall.id?.slice(0,8)} (room gone)`);
+        return false;
+      }
       const sRoom = rooms.find(r => r.id === s.roomId);
-      if (!sRoom) return false;
+      if (!sRoom) {
+        console.log(`[walls] pruneOrphanSurfaces: remove surface room=${s.roomId.slice(0,8)}:e${s.edgeIndex} from wall ${wall.id?.slice(0,8)} (room not found)`);
+        return false;
+      }
       const sVerts = sRoom.polygonVertices;
-      if (!sVerts || s.edgeIndex >= sVerts.length) return false;
+      if (!sVerts || s.edgeIndex >= sVerts.length) {
+        console.log(`[walls] pruneOrphanSurfaces: remove surface room=${s.roomId.slice(0,8)}:e${s.edgeIndex} from wall ${wall.id?.slice(0,8)} (edge index out of range)`);
+        return false;
+      }
       const sPos = sRoom.floorPosition || { x: 0, y: 0 };
       const eA = sVerts[s.edgeIndex];
       const eMid = {
@@ -658,7 +676,11 @@ function pruneOrphanSurfaces(floor, rooms, roomIds) {
       // Use GAP_SNAP_TOLERANCE_CM (3) + 2cm margin beyond wall thickness to avoid
       // pruning legitimate surfaces that were just merged.
       const maxDist = (wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM) + 5;
-      return perpDist <= maxDist;
+      if (perpDist > maxDist) {
+        console.log(`[walls] pruneOrphanSurfaces: remove surface room=${s.roomId.slice(0,8)}:e${s.edgeIndex} from wall ${wall.id?.slice(0,8)} (drift=${perpDist.toFixed(1)}cm > ${maxDist.toFixed(1)}cm)`);
+        return false;
+      }
+      return true;
     });
   }
 }
@@ -669,9 +691,13 @@ function pruneOrphanSurfaces(floor, rooms, roomIds) {
  */
 function removeStaleWalls(floor, touchedWallIds, roomIds) {
   floor.walls = floor.walls.filter(wall => {
-    if (wall.roomEdge && !touchedWallIds.has(wall.id)) return false;
+    if (wall.roomEdge && !touchedWallIds.has(wall.id)) {
+      console.log(`[walls] removeStaleWalls: remove wall ${wall.id?.slice(0,8)} (untouched owner edge ${wall.roomEdge.roomId.slice(0,8)}:e${wall.roomEdge.edgeIndex})`);
+      return false;
+    }
     if (wall.surfaces.length > 0) return true;
     if (wall.roomEdge && roomIds.has(wall.roomEdge.roomId)) return true;
+    console.log(`[walls] removeStaleWalls: remove wall ${wall.id?.slice(0,8)} (no surfaces, no valid owner)`);
     return false;
   });
 }
@@ -718,6 +744,7 @@ export function enforceAdjacentPositions(floor) {
         x: adjPos.x + normal.x * delta,
         y: adjPos.y + normal.y * delta,
       };
+      console.log(`[walls] enforceAdjacentPositions: shift room ${adjRoom.id?.slice(0,8)} by (${(normal.x * delta).toFixed(1)},${(normal.y * delta).toFixed(1)}) (delta=${delta.toFixed(1)}, thick=${thick}, wall ${wall.id?.slice(0,8)})`);
     }
   }
 }
@@ -983,23 +1010,26 @@ export function enforceNoParallelWalls(floor) {
 export function syncFloorWalls(floor, { enforcePositions = true } = {}) {
   if (!floor) return;
   if (!floor.walls) floor.walls = [];
-  console.log(`[walls] syncFloorWalls: enforcePositions=${enforcePositions}`);
-
   const rooms = (floor.rooms || []).filter(
     r => r.polygonVertices?.length >= 3 && !(r.circle?.rx > 0)
   );
   const roomIds = new Set(rooms.map(r => r.id));
+  console.log(`[walls] syncFloorWalls: enforcePositions=${enforcePositions}, rooms=${rooms.length}, walls_before=${floor.walls.length}`);
 
   const wallByEdgeKey = indexWallsByEdge(floor.walls);
   const envelope = floor.layout?.envelope;
   const touchedWallIds = ensureWallsForEdges(rooms, floor, wallByEdgeKey, envelope);
+  console.log(`[walls] syncFloorWalls: after ensureWallsForEdges → ${floor.walls.length} walls`);
   mergeSharedEdgeWalls(rooms, floor, wallByEdgeKey, touchedWallIds);
+  console.log(`[walls] syncFloorWalls: after mergeSharedEdgeWalls → ${floor.walls.length} walls`);
   pruneOrphanSurfaces(floor, rooms, roomIds);
   removeStaleWalls(floor, touchedWallIds, roomIds);
+  console.log(`[walls] syncFloorWalls: after removeStaleWalls → ${floor.walls.length} walls`);
   if (enforcePositions) enforceAdjacentPositions(floor);
 
   // Top-down skeleton enforcement: force skeleton thickness + height on boundary-aligned walls
   enforceSkeletonWallProperties(floor);
+  console.log(`[walls] syncFloorWalls done: ${floor.walls.length} walls total`);
 }
 
 /**
@@ -1187,6 +1217,7 @@ export function computeWallExtensions(floor, roomId) {
     }
 
     result.set(i, { extStart, extEnd });
+    console.log(`[walls] computeWallExtensions room=${roomId.slice(0,8)} e${i}: extStart=${extStart.toFixed(1)} extEnd=${extEnd.toFixed(1)} thick=${thick}`);
   }
 
   return result;
