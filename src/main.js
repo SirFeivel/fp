@@ -14,7 +14,7 @@ import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -760,10 +760,18 @@ function renderPlanningSection(state, opts) {
         }
         if (room && room.polygonVertices?.length >= 3) {
           const descriptor = prepareRoom3DData(state, room, floor, wallGeometry);
-          // Only include walls that have a surface for the selected room
-          const roomWallDescs = wallDescs.filter(wd =>
-            wd.surfaces.some(s => s.roomId === room.id)
-          );
+          // Only include walls that have a surface for the selected room,
+          // clipped to the room's portion so they don't span the entire building
+          const allRoomWalls = wallDescs.filter(wd => wd.surfaces.some(s => s.roomId === room.id));
+          console.log(`[walls:rebuild] Room 3D for ${room.id}: ${allRoomWalls.length} walls, wallGeometry has ${wallGeometry.size} entries`);
+          const roomWallDescs = allRoomWalls.map(wd => {
+              const rawDesc = wallGeometry.get(wd.id);
+              if (!rawDesc) {
+                console.log(`[walls:rebuild]   wall ${wd.id}: NO rawDesc → skip`);
+                return wd;
+              }
+              return rebuildWallForRoom(wd, rawDesc, room);
+            });
           threeViewController.buildScene({
             rooms: [descriptor],
             walls: roomWallDescs,

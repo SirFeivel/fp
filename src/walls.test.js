@@ -20,6 +20,7 @@ import {
   enforceNoParallelWalls,
   enforceAdjacentPositions,
   computeWallExtensions,
+  rebuildWallForRoom,
   DEFAULT_WALL,
 } from './walls.js';
 import { DEFAULT_WALL_THICKNESS_CM } from './constants.js';
@@ -2961,5 +2962,205 @@ describe('roomEdge reassignment after owner deletion', () => {
 
     // All walls should be removed
     expect(floor.walls.length).toBe(0);
+  });
+});
+
+// ── rebuildWallForRoom ───────────────────────────────────────────────
+
+describe('rebuildWallForRoom', () => {
+  it('owner room: wall length matches room edge + extensions', () => {
+    const room = makeRoom('r1', 0, 0, 300, 200);
+    const floor = makeFloor([room]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    // Pick a wall owned by r1
+    const wall = floor.walls.find(w => w.roomEdge?.roomId === 'r1');
+    const desc = wg.get(wall.id);
+    const assembled = {
+      id: wall.id,
+      start: desc.extStartPt, end: desc.extEndPt,
+      outerStart: desc.outerStartPt, outerEnd: desc.outerEndPt,
+      edgeLength: desc.totalLength,
+      hStart: 250, hEnd: 250,
+      thicknessCm: wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM,
+      doorways: desc.extDoorways,
+      roomEdge: wall.roomEdge,
+      endCornerFill: null, startCornerFill: null,
+      surfaces: [{ roomId: 'r1', edgeIndex: wall.roomEdge.edgeIndex, fromFrac: 0, toFrac: 1, tiles: [] }],
+    };
+
+    const rebuilt = rebuildWallForRoom(assembled, desc, room);
+
+    // Rebuilt wall should have similar length (room vertex + extensions)
+    expect(rebuilt.edgeLength).toBeGreaterThan(0);
+    expect(rebuilt.edgeLength).toBeCloseTo(assembled.edgeLength, 1);
+    // Vector length should match edgeLength
+    const dx = rebuilt.end.x - rebuilt.start.x;
+    const dy = rebuilt.end.y - rebuilt.start.y;
+    expect(Math.hypot(dx, dy)).toBeCloseTo(rebuilt.edgeLength, 1);
+  });
+
+  it('guest room: wall is rebuilt to room edge length, not owner length', () => {
+    // r1: 500x200 at (0,0), r2: 200x200 at (150,200) — r2 partially shares r1's bottom edge
+    const r1 = makeRoom('r1', 0, 0, 500, 200);
+    const r2 = makeRoom('r2', 150, 200, 200, 200);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    // Find shared wall (has surfaces for both r1 and r2)
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.length === 2 &&
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    expect(sharedWall).toBeTruthy();
+
+    const desc = wg.get(sharedWall.id);
+    const thick = sharedWall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const assembled = {
+      id: sharedWall.id,
+      start: desc.extStartPt, end: desc.extEndPt,
+      outerStart: desc.outerStartPt, outerEnd: desc.outerEndPt,
+      edgeLength: desc.totalLength,
+      hStart: 250, hEnd: 250,
+      thicknessCm: thick,
+      doorways: desc.extDoorways,
+      roomEdge: sharedWall.roomEdge,
+      endCornerFill: null, startCornerFill: null,
+      surfaces: sharedWall.surfaces.map(s => ({
+        roomId: s.roomId, edgeIndex: s.edgeIndex,
+        fromFrac: 0, toFrac: 1, tiles: [],
+      })),
+    };
+
+    // The owner-extended wall spans ~500cm+extensions. Rebuild for r2 (200cm edge).
+    const rebuilt = rebuildWallForRoom(assembled, desc, r2);
+
+    // Rebuilt wall should be much shorter: ~200cm + r2's extensions
+    const r2Ext = desc.extensions.get('r2') ?? { extStart: thick, extEnd: thick };
+    const expectedLen = 200 + r2Ext.extStart + r2Ext.extEnd;
+    expect(rebuilt.edgeLength).toBeCloseTo(expectedLen, 1);
+    expect(rebuilt.edgeLength).toBeLessThan(assembled.edgeLength);
+
+    // Vector length should match
+    const dx = rebuilt.end.x - rebuilt.start.x;
+    const dy = rebuilt.end.y - rebuilt.start.y;
+    expect(Math.hypot(dx, dy)).toBeCloseTo(rebuilt.edgeLength, 1);
+  });
+
+  it('corner fills are always discarded', () => {
+    const r1 = makeRoom('r1', 0, 0, 300, 200);
+    const r2 = makeRoom('r2', 0, 200, 300, 200);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const wall = floor.walls.find(w => w.roomEdge?.roomId === 'r1');
+    const desc = wg.get(wall.id);
+    const fill = { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 }, p3: { x: 0, y: 1 }, h: 250 };
+    const assembled = {
+      id: wall.id,
+      start: desc.extStartPt, end: desc.extEndPt,
+      outerStart: desc.outerStartPt, outerEnd: desc.outerEndPt,
+      edgeLength: desc.totalLength,
+      hStart: 250, hEnd: 250,
+      thicknessCm: wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM,
+      doorways: desc.extDoorways,
+      roomEdge: wall.roomEdge,
+      endCornerFill: fill, startCornerFill: fill,
+      surfaces: [{ roomId: 'r1', edgeIndex: wall.roomEdge.edgeIndex, fromFrac: 0, toFrac: 1, tiles: [] }],
+    };
+
+    const rebuilt = rebuildWallForRoom(assembled, desc, r1);
+    expect(rebuilt.startCornerFill).toBeNull();
+    expect(rebuilt.endCornerFill).toBeNull();
+  });
+
+  it('surface fracs are set correctly for room portion', () => {
+    const r1 = makeRoom('r1', 0, 0, 300, 200);
+    const floor = makeFloor([r1]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const wall = floor.walls.find(w => w.roomEdge?.roomId === 'r1');
+    const desc = wg.get(wall.id);
+    const thick = wall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const assembled = {
+      id: wall.id,
+      start: desc.extStartPt, end: desc.extEndPt,
+      outerStart: desc.outerStartPt, outerEnd: desc.outerEndPt,
+      edgeLength: desc.totalLength,
+      hStart: 250, hEnd: 250,
+      thicknessCm: thick,
+      doorways: desc.extDoorways,
+      roomEdge: wall.roomEdge,
+      endCornerFill: null, startCornerFill: null,
+      surfaces: [{ roomId: 'r1', edgeIndex: wall.roomEdge.edgeIndex, fromFrac: 0, toFrac: 1, tiles: [] }],
+    };
+
+    const rebuilt = rebuildWallForRoom(assembled, desc, r1);
+    const surf = rebuilt.surfaces.find(s => s.roomId === 'r1');
+    const ext = desc.extensions.get('r1') ?? { extStart: thick, extEnd: thick };
+    const edgeLen = desc.edgeLength;
+    const L = edgeLen + ext.extStart + ext.extEnd;
+
+    // Surface covers from extStart to extStart+edgeLen within the rebuilt wall
+    expect(surf.fromFrac).toBeCloseTo(ext.extStart / L, 3);
+    expect(surf.toFrac).toBeCloseTo((ext.extStart + edgeLen) / L, 3);
+  });
+
+  it('E2E: two-room floor, shared wall rebuilt for each room', () => {
+    // r1: 300x200 at (0,0), r2: 300x200 at (0,200) — share full edge
+    const r1 = makeRoom('r1', 0, 0, 300, 200);
+    const r2 = makeRoom('r2', 0, 200, 300, 200);
+    const floor = makeFloor([r1, r2]);
+    syncFloorWalls(floor);
+    const wg = computeFloorWallGeometry(floor);
+
+    const sharedWall = floor.walls.find(w =>
+      w.surfaces.length === 2 &&
+      w.surfaces.some(s => s.roomId === 'r1') &&
+      w.surfaces.some(s => s.roomId === 'r2')
+    );
+    expect(sharedWall).toBeTruthy();
+
+    const desc = wg.get(sharedWall.id);
+    const thick = sharedWall.thicknessCm ?? DEFAULT_WALL_THICKNESS_CM;
+    const assembled = {
+      id: sharedWall.id,
+      start: desc.extStartPt, end: desc.extEndPt,
+      outerStart: desc.outerStartPt, outerEnd: desc.outerEndPt,
+      edgeLength: desc.totalLength,
+      hStart: 250, hEnd: 250,
+      thicknessCm: thick,
+      doorways: desc.extDoorways,
+      roomEdge: sharedWall.roomEdge,
+      endCornerFill: null, startCornerFill: null,
+      surfaces: sharedWall.surfaces.map(s => ({
+        roomId: s.roomId, edgeIndex: s.edgeIndex,
+        fromFrac: 0, toFrac: 1, tiles: [],
+      })),
+    };
+
+    // Rebuild for r1
+    const rebuilt1 = rebuildWallForRoom(assembled, desc, r1);
+    expect(rebuilt1.edgeLength).toBeGreaterThan(0);
+    const dx1 = rebuilt1.end.x - rebuilt1.start.x;
+    const dy1 = rebuilt1.end.y - rebuilt1.start.y;
+    expect(Math.hypot(dx1, dy1)).toBeCloseTo(rebuilt1.edgeLength, 1);
+
+    // Rebuild for r2
+    const rebuilt2 = rebuildWallForRoom(assembled, desc, r2);
+    expect(rebuilt2.edgeLength).toBeGreaterThan(0);
+    const dx2 = rebuilt2.end.x - rebuilt2.start.x;
+    const dy2 = rebuilt2.end.y - rebuilt2.start.y;
+    expect(Math.hypot(dx2, dy2)).toBeCloseTo(rebuilt2.edgeLength, 1);
+
+    // Both rooms share a merged wall (collinear right edges, merged to ~400cm).
+    // Each rebuilt wall should be shorter than the full merged wall.
+    expect(rebuilt1.edgeLength).toBeLessThan(assembled.edgeLength);
+    expect(rebuilt2.edgeLength).toBeLessThan(assembled.edgeLength);
   });
 });

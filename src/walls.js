@@ -1942,6 +1942,95 @@ export function getWallRenderHelpers(wallDesc, roomId) {
 }
 
 /**
+ * Rebuild a wall descriptor for room-level 3D by anchoring geometry to the
+ * room's own polygon vertices — the same approach the 2D renderer uses
+ * (render.js:1579-1601). This avoids building-spanning wall geometry by
+ * starting from the room's edge and extending outward by room-specific amounts.
+ *
+ * @param {Object} assembled - Wall descriptor from prepareFloorWallData
+ * @param {Object} rawDesc - WallDescriptor from computeFloorWallGeometry
+ * @param {Object} room - Room object with polygonVertices and floorPosition
+ * @returns {Object} Rebuilt wall descriptor anchored to the room's edge
+ */
+export function rebuildWallForRoom(assembled, rawDesc, room) {
+  const roomId = room.id;
+  const verts = room.polygonVertices;
+  const pos = room.floorPosition || { x: 0, y: 0 };
+  if (!verts?.length) return assembled;
+
+  // Find the surface for this room to get edgeIndex
+  const roomSurf = assembled.surfaces.find(s => s.roomId === roomId);
+  if (!roomSurf) {
+    console.log(`[walls] rebuildWallForRoom: wall ${assembled.id} no surface for room ${roomId} → skip`);
+    return assembled;
+  }
+  const edgeIdx = roomSurf.edgeIndex;
+  if (edgeIdx == null || edgeIdx < 0 || edgeIdx >= verts.length) return assembled;
+
+  const n = verts.length;
+  const thick = assembled.thicknessCm;
+
+  // Room edge vertices in floor coordinates (same as 2D renderer)
+  const origA = { x: pos.x + verts[edgeIdx].x, y: pos.y + verts[edgeIdx].y };
+  const origB = { x: pos.x + verts[(edgeIdx + 1) % n].x, y: pos.y + verts[(edgeIdx + 1) % n].y };
+  const edgeDx = origB.x - origA.x;
+  const edgeDy = origB.y - origA.y;
+  const origL = Math.hypot(edgeDx, edgeDy);
+  if (origL < 1) return assembled;
+
+  const edgeDirX = edgeDx / origL;
+  const edgeDirY = edgeDy / origL;
+
+  // Room-specific extensions (exactly like 2D: render.js:1597)
+  const roomExt = rawDesc.extensions.get(roomId) ?? { extStart: thick, extEnd: thick };
+  const extStart = roomExt.extStart;
+  const extEnd = roomExt.extEnd;
+
+  // Build A/B/OA/OB from room vertices + extensions (render.js:1600-1604)
+  const normal = rawDesc.normal;
+  const A = { x: origA.x - edgeDirX * extStart, y: origA.y - edgeDirY * extStart };
+  const B = { x: origB.x + edgeDirX * extEnd, y: origB.y + edgeDirY * extEnd };
+  const L = origL + extStart + extEnd;
+  const OA = { x: A.x + normal.x * thick, y: A.y + normal.y * thick };
+  const OB = { x: B.x + normal.x * thick, y: B.y + normal.y * thick };
+
+  // Remap doorways into extended-wall-local space using the existing API.
+  // getDoorwaysInEdgeSpace already includes extStart in the offset, so no extra shift needed.
+  const doorways = getDoorwaysInEdgeSpace(rawDesc, room, edgeIdx);
+
+  // Interpolate height at this edge's position along the original wall
+  const hStart = assembled.hStart;
+  const hEnd = assembled.hEnd;
+
+  // Surface fracs: the room's surface spans the extended wall from extStart to extStart+origL
+  const surfaces = assembled.surfaces.map(s => {
+    if (s.roomId === roomId) {
+      return { ...s, fromFrac: L > 0 ? extStart / L : 0, toFrac: L > 0 ? (extStart + origL) / L : 1 };
+    }
+    // Other surfaces: keep but mark as covering the same range (they share the wall)
+    return { ...s, fromFrac: L > 0 ? extStart / L : 0, toFrac: L > 0 ? (extStart + origL) / L : 1 };
+  });
+
+  console.log(`[walls] rebuildWallForRoom: wall ${assembled.id} for room ${roomId} edge=${edgeIdx} ownerLen=${assembled.edgeLength.toFixed(1)}→roomLen=${L.toFixed(1)} A=(${A.x.toFixed(1)},${A.y.toFixed(1)}) B=(${B.x.toFixed(1)},${B.y.toFixed(1)}) ext=${extStart.toFixed(1)}/${extEnd.toFixed(1)} doorways=${doorways.length}`);
+
+  return {
+    ...assembled,
+    start: A,
+    end: B,
+    outerStart: OA,
+    outerEnd: OB,
+    edgeLength: L,
+    hStart,
+    hEnd,
+    doorways,
+    surfaces,
+    // Discard corner fills — they belong to owner geometry, not room-local
+    startCornerFill: null,
+    endCornerFill: null,
+  };
+}
+
+/**
  * Compute rectangular floor patches for ground-level doorways on walls owned by a room.
  * Replaces the duplicate functions in main.js and render.js.
  *
