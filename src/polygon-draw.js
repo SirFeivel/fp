@@ -830,27 +830,11 @@ export function createPolygonDrawController({
     }
 
     // When grid snap is active and the polygon is closable, apply dual-constraint
-    // closing snap (same logic as handleMouseMove) so clicks land on valid positions.
+    // closing snap so clicks land on valid positions.
     if (snapType === "grid" && assistedAngles && assistedAngles.length > 0
         && lastPoint && points.length >= MIN_POINTS) {
-      const P0 = points[0];
-      let bestQ = null;
-      let bestDist = Infinity;
-      const DUAL_SNAP_CM = 80;
-      for (const inAngle of assistedAngles) {
-        const inRad = inAngle * Math.PI / 180;
-        for (const closeAngle of assistedAngles) {
-          const closeRad = ((closeAngle + 180) % 360) * Math.PI / 180;
-          const Q = findLineIntersection(lastPoint, inRad, P0, closeRad);
-          if (!Q || !Number.isFinite(Q.x) || !Number.isFinite(Q.y)) continue;
-          const dist = Math.hypot(Q.x - svgPoint.x, Q.y - svgPoint.y);
-          if (dist < DUAL_SNAP_CM && dist < bestDist) { bestDist = dist; bestQ = Q; }
-        }
-      }
-      if (bestQ) {
-        snappedPoint = { x: snapToGrid(bestQ.x), y: snapToGrid(bestQ.y) };
-        snapType = "close-angle";
-      }
+      const q = _dualConstraintSnap(svgPoint, lastPoint, points[0], assistedAngles);
+      if (q) { snappedPoint = q; snapType = "close-angle"; }
     }
 
     // For room view (exclusions): restrict clicks to within room bounds
@@ -930,37 +914,11 @@ export function createPolygonDrawController({
       }
     }
 
-    // If no geometry snap, try dual-constraint closing snap first (assisted mode).
-    // When the polygon is closable, find the intersection of the incoming edge
-    // (lastPoint → Q at a valid angle) and the closing edge (Q → points[0] at a
-    // valid angle). The candidate nearest to the cursor wins.
+    // If no geometry snap, try dual-constraint closing snap (assisted mode).
     if (!snappedPoint && assistedAngles && assistedAngles.length > 0
         && lastPoint && points.length >= MIN_POINTS) {
-      const P0 = points[0];
-      let bestQ = null;
-      let bestDist = Infinity;
-      const DUAL_SNAP_CM = 80; // attract within 80 cm of a valid intersection
-
-      for (const inAngle of assistedAngles) {
-        const inRad = inAngle * Math.PI / 180;
-        for (const closeAngle of assistedAngles) {
-          // closing edge Q→P0 has direction closeAngle; P0→Q is the reverse
-          const closeRad = ((closeAngle + 180) % 360) * Math.PI / 180;
-          const Q = findLineIntersection(lastPoint, inRad, P0, closeRad);
-          if (!Q || !Number.isFinite(Q.x) || !Number.isFinite(Q.y)) continue;
-          const dist = Math.hypot(Q.x - svgPoint.x, Q.y - svgPoint.y);
-          if (dist < DUAL_SNAP_CM && dist < bestDist) {
-            bestDist = dist;
-            bestQ = Q;
-          }
-        }
-      }
-
-      if (bestQ) {
-        snappedPoint = { x: snapToGrid(bestQ.x), y: snapToGrid(bestQ.y) };
-        snapType = "close-angle";
-        console.log(`[poly-draw] dual-angle close snap: (${snappedPoint.x.toFixed(1)},${snappedPoint.y.toFixed(1)}) dist=${bestDist.toFixed(1)}cm`);
-      }
+      const q = _dualConstraintSnap(svgPoint, lastPoint, points[0], assistedAngles);
+      if (q) { snappedPoint = q; snapType = "close-angle"; }
     }
 
     if (!snappedPoint) {
@@ -1000,6 +958,34 @@ export function createPolygonDrawController({
       x: p1.x + t * cos1,
       y: p1.y + t * sin1
     };
+  }
+
+  /**
+   * Dual-constraint closing snap: when the polygon is closable, find the point Q
+   * where the incoming edge (lastPoint→Q at a valid angle) meets the closing edge
+   * (Q→points[0] at a valid angle). Returns the nearest valid Q within DUAL_SNAP_CM,
+   * or null if none found.
+   */
+  function _dualConstraintSnap(svgPoint, lastPoint, P0, validAngles) {
+    const DUAL_SNAP_CM = 80;
+    let bestQ = null;
+    let bestDist = Infinity;
+
+    for (const inAngle of validAngles) {
+      const inRad = inAngle * Math.PI / 180;
+      for (const closeAngle of validAngles) {
+        const closeRad = ((closeAngle + 180) % 360) * Math.PI / 180;
+        const Q = findLineIntersection(lastPoint, inRad, P0, closeRad);
+        if (!Q || !Number.isFinite(Q.x) || !Number.isFinite(Q.y)) continue;
+        const dist = Math.hypot(Q.x - svgPoint.x, Q.y - svgPoint.y);
+        if (dist < DUAL_SNAP_CM && dist < bestDist) { bestDist = dist; bestQ = Q; }
+      }
+    }
+
+    if (!bestQ) return null;
+    const point = { x: snapToGrid(bestQ.x), y: snapToGrid(bestQ.y) };
+    console.log(`[poly-draw] dual-angle close snap: (${point.x.toFixed(1)},${point.y.toFixed(1)}) dist=${bestDist.toFixed(1)}cm`);
+    return point;
   }
 
   function handleRightClick(e) {
