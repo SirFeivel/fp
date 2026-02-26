@@ -879,14 +879,6 @@ export function createPolygonDrawController({
       snappedPoint = snapPoint(svgPoint, lastPoint, e.shiftKey, assistedAngles);
     }
 
-    // When grid snap is active and the polygon is closable, apply dual-constraint
-    // closing snap so clicks land on valid positions.
-    if (snapType === "grid" && assistedAngles && assistedAngles.length > 0
-        && lastPoint && points.length >= MIN_POINTS) {
-      const q = _dualConstraintSnap(svgPoint, lastPoint, points[0], assistedAngles);
-      if (q) { snappedPoint = q; snapType = "close-angle"; }
-    }
-
     // For room view (exclusions): restrict clicks to within room bounds
     if (roomBoundsPolygon && !isPointInPolygon(snappedPoint, roomBoundsPolygon)) {
       // Point is outside room bounds - don't add it
@@ -962,13 +954,6 @@ export function createPolygonDrawController({
         snappedPoint = snapResult.point;
         snapType = snapResult.type;
       }
-    }
-
-    // If no geometry snap, try dual-constraint closing snap (assisted mode).
-    if (!snappedPoint && assistedAngles && assistedAngles.length > 0
-        && lastPoint && points.length >= MIN_POINTS) {
-      const q = _dualConstraintSnap(svgPoint, lastPoint, points[0], assistedAngles);
-      if (q) { snappedPoint = q; snapType = "close-angle"; }
     }
 
     if (!snappedPoint) {
@@ -1201,7 +1186,7 @@ export function createPolygonDrawController({
     // can see where the first click will land (critical in assisted mode).
     if (points.length === 0) {
       if (mousePoint && (assistedMode || edgeSnapMode || roomVertices.length > 0)) {
-        const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge" || currentSnapType === "close-angle";
+        const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge";
         const isBoundary = currentSnapType === "boundary";
         const isCorner = currentSnapType === "corner";
         const snapColor = isCorner ? "#eab308" : isBoundary ? "#f97316" : isSnapped ? "#22c55e" : "#3b82f6";
@@ -1282,7 +1267,7 @@ export function createPolygonDrawController({
     // Draw mouse position marker
     if (mousePoint) {
       const isInvalid = isMouseInsideRoom;
-      const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge" || currentSnapType === "close-angle";
+      const isSnapped = currentSnapType === "vertex" || currentSnapType === "edge";
       const isBoundary = currentSnapType === "boundary";
       const isCorner = currentSnapType === "corner";
 
