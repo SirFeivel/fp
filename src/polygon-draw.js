@@ -1015,9 +1015,17 @@ export function createPolygonDrawController({
    * where the incoming edge (lastPoint→Q at a valid angle) meets the closing edge
    * (Q→points[0] at a valid angle). Returns the nearest valid Q within DUAL_SNAP_CM,
    * or null if none found.
+   *
+   * Direction escape: after finding the best Q, verify that the cursor's direction
+   * from lastPoint is within ESCAPE_ANGLE_DEG of the direction toward Q. If the
+   * user is pulling in a different valid direction (e.g. perpendicular to lay an
+   * intermediate edge), the snap releases and returns null.
+   * Skipped when cursor is very close to lastPoint (direction is undefined).
    */
   function _dualConstraintSnap(svgPoint, lastPoint, P0, validAngles) {
     const DUAL_SNAP_CM = 80;
+    const ESCAPE_ANGLE_DEG = 20;
+    const MIN_MOVE_CM = 3; // below this distance, skip direction check
     let bestQ = null;
     let bestDist = Infinity;
 
@@ -1033,8 +1041,18 @@ export function createPolygonDrawController({
     }
 
     if (!bestQ) return null;
-    const point = { x: snapToGrid(bestQ.x), y: snapToGrid(bestQ.y) };
-    return point;
+
+    // Direction escape: release snap if cursor is heading away from Q
+    const moveDist = Math.hypot(svgPoint.x - lastPoint.x, svgPoint.y - lastPoint.y);
+    if (moveDist >= MIN_MOVE_CM) {
+      const dirToCursor = Math.atan2(svgPoint.y - lastPoint.y, svgPoint.x - lastPoint.x);
+      const dirToQ = Math.atan2(bestQ.y - lastPoint.y, bestQ.x - lastPoint.x);
+      let diff = Math.abs(dirToCursor - dirToQ) * 180 / Math.PI;
+      if (diff > 180) diff = 360 - diff;
+      if (diff > ESCAPE_ANGLE_DEG) return null;
+    }
+
+    return { x: snapToGrid(bestQ.x), y: snapToGrid(bestQ.y) };
   }
 
   function handleRightClick(e) {
