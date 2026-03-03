@@ -4141,6 +4141,20 @@ function updateAllTranslations() {
       planningArea.textContent = totalArea.toFixed(2) + " m²";
     }
 
+    // Disable 3D object add/delete buttons when a wall or obj3d surface is selected (not room floor)
+    const isFloorSelected = !state.selectedWallId;
+    const obj3dAddBtns = [
+      document.getElementById("quickAddObj3d"),
+      document.getElementById("btnAddObj3dRect"),
+      document.getElementById("btnAddObj3dTri"),
+      document.getElementById("btnAddObj3dFreeform"),
+    ];
+    for (const btn of obj3dAddBtns) {
+      if (btn) btn.disabled = !isFloorSelected;
+    }
+    const btnDeleteObj3d = document.getElementById("btnDeleteObj3d");
+    if (btnDeleteObj3d) btnDeleteObj3d.disabled = !isFloorSelected;
+
     // Surface tiling toggle + tile form visibility
     const isSurfaceSelected = Boolean(state.selectedWallId);
     const tileSection = document.getElementById("planningTileSection");
