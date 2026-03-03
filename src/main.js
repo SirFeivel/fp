@@ -5,14 +5,15 @@ import { isInlineEditing } from "./ui_state.js";
 import { validateState } from "./validation.js";
 import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, getSelectedSurface, uuid, getDefaultPricing, getDefaultTilePresetTemplate, DEFAULT_SKIRTING_PRESET } from "./core.js";
 import { createStateStore } from "./state.js";
-import { createExclusionDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
+import { createExclusionDragController, createObject3DDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
+import { createObjects3DController } from "./objects3d.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
@@ -38,6 +39,8 @@ import {
   renderTilePatternForm,
   renderExclList,
   renderExclProps,
+  renderObj3dList,
+  renderObj3dProps,
   renderSkirtingRoomList,
   renderPlanSvg,
   renderFloorCanvas,
@@ -70,6 +73,7 @@ const store = createStateStore(defaultState, validateState);
 window.__fpStore = store; // keep for console testing
 
 let selectedExclId = null;
+let selectedObj3dId = null;
 let selectedTilePresetId = null;
 let selectedSkirtingPresetId = null;
 let lastUnionError = null;
@@ -79,6 +83,21 @@ let selectedWallEdge = null;
 let selectedDoorwayId = null;
 const exportSelection = new Set();
 let threeViewController = null;
+
+/**
+ * Get a human-readable face name for a 3D object surface.
+ */
+function getObj3dFaceName(obj, face) {
+  if (face === "top") return t("objects3d.faceTop") || "Top";
+  if (obj.type === "rect") {
+    const names = { front: "Front", back: "Back", left: "Left side", right: "Right side" };
+    return t(`objects3d.face_${face}`) || names[face] || face;
+  }
+  // tri / freeform: side-0, side-1, etc. → "Side 1", "Side 2", ...
+  const match = face.match(/^side-(\d+)$/);
+  if (match) return `${t("objects3d.faceSide") || "Side"} ${parseInt(match[1]) + 1}`;
+  return face;
+}
 
 /**
  * Get a human-readable wall name based on room shape and edge index.
@@ -156,11 +175,24 @@ function setSelectedExcl(id) {
   const newId = id || null;
   const changed = selectedExclId !== newId;
   selectedExclId = newId;
+  if (newId) selectedObj3dId = null; // mutual exclusion
   if (changed) renderAll();
   updateRoomDeleteButtonState();
 }
 function setSelectedId(id) {
   selectedExclId = id || null;
+}
+
+function setSelectedObj3d(id) {
+  const newId = id || null;
+  const changed = selectedObj3dId !== newId;
+  selectedObj3dId = newId;
+  if (newId) selectedExclId = null; // mutual exclusion
+  if (changed) renderAll();
+  updateRoomDeleteButtonState();
+}
+function setSelectedObj3dIdOnly(id) {
+  selectedObj3dId = id || null;
 }
 
 function setSelectedWallEdge(idx) {
@@ -429,7 +461,7 @@ function renderSetupSection(state) {
 
 
 function prepareRoom3DData(state, room, floor, wallGeometry) {
-  const avail = computeAvailableArea(room, room.exclusions || []);
+  const avail = computeAvailableArea(room, getAllFloorExclusions(room));
   const effectiveSettings = getEffectiveTileSettings(room, floor);
   const isRemovalMode = Boolean(state.view?.removalMode);
   let tileResult = null;
@@ -457,14 +489,53 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
   }
 
+  // Compute tiles for each 3D object face that has tiling configured
+  const objects3dWithTiles = (room.objects3d || []).map(obj => {
+    const faceTiles = {};
+    for (const surf of (obj.surfaces || [])) {
+      if (!surf.tile) continue;
+
+      // Face dimensions
+      const isTop = surf.face === "top";
+      const faceW = isTop ? obj.w : (surf.face === "left" || surf.face === "right" ? obj.h : obj.w);
+      const faceH = isTop ? obj.h : (obj.heightCm || 100);
+
+      // Create a virtual room-like region for this face
+      const region = {
+        widthCm: faceW,
+        heightCm: faceH,
+        polygonVertices: [
+          { x: 0, y: 0 }, { x: faceW, y: 0 },
+          { x: faceW, y: faceH }, { x: 0, y: faceH },
+        ],
+        tile: surf.tile,
+        grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
+        pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
+        exclusions: [],
+      };
+      const faceAvail = computeAvailableArea(region, []);
+      if (faceAvail.mp) {
+        const result = tilesForPreview(state, faceAvail.mp, region, isRemovalMode, floor, {
+          effectiveSettings: { tile: surf.tile, grout: region.grout, pattern: region.pattern },
+        });
+        faceTiles[surf.face] = {
+          tiles: result?.tiles || [],
+          groutColor: region.grout.colorHex || "#ffffff",
+        };
+      }
+    }
+    return { ...obj, faceTiles };
+  });
+
   const desc = {
     id: room.id,
     polygonVertices: room.polygonVertices,
     floorPosition: room.floorPosition || { x: 0, y: 0 },
     floorTiles: tileResult?.tiles || [],
-    floorExclusions: room.exclusions || [],
+    floorExclusions: getAllFloorExclusions(room),
     groutColor,
     doorwayFloorPatches,
+    objects3d: objects3dWithTiles,
   };
   const pos3d = desc.floorPosition;
   const verts3d = desc.polygonVertices || [];
@@ -667,6 +738,13 @@ function renderPlanningSection(state, opts) {
     getSelectedExcl: excl.getSelectedExcl,
     commitExclProps: excl.commitExclProps
   });
+  renderObj3dList(state, selectedObj3dId);
+  renderObj3dProps({
+    state,
+    selectedObj3dId,
+    getSelectedObj: obj3dCtrl.getSelectedObj,
+    commitObjProps: obj3dCtrl.commitObjProps
+  });
 
   renderWarnings(state, validateState);
   if (!isDrag) renderMetrics(state);
@@ -708,6 +786,7 @@ function renderPlanningSection(state, opts) {
           const current = store.getState();
           const floor = getCurrentFloor(current);
           if (!floor) return;
+          setSelectedObj3d(null); // clear obj3d selection when selecting wall/floor
           if (edgeIndex != null) {
             const wall = getWallForEdge(floor, roomId, edgeIndex);
             if (wall && current.selectedWallId !== wall.id) {
@@ -732,7 +811,46 @@ function renderPlanningSection(state, opts) {
           const next = deepClone(current);
           next.selectedRoomId = roomId;
           store.commit(t("room.selected") || "Room selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
-        }
+        },
+        onObjectSelect: ({ objectId, face, roomId }) => {
+          console.log(`[objects3d] 3D click: objectId=${objectId}, face=${face}, roomId=${roomId}`);
+          const current = store.getState();
+          const next = deepClone(current);
+          next.selectedRoomId = roomId;
+          next.selectedWallId = `obj3d:${objectId}`;
+          // Find surface index for the clicked face
+          const clickRoom = next.floors?.flatMap(f => f.rooms || []).find(r => r.id === roomId);
+          const obj = clickRoom?.objects3d?.find(o => o.id === objectId);
+          const surfIdx = obj?.surfaces?.findIndex(s => s.face === face) ?? 0;
+          next.selectedSurfaceIdx = Math.max(0, surfIdx);
+          setSelectedObj3d(objectId);
+          store.commit("Object surface selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
+        },
+        onObjectDoubleClick: async ({ objectId, face, roomId }) => {
+          console.log(`[objects3d] 3D double-click: objectId=${objectId}, face=${face}, roomId=${roomId}`);
+          const state = store.getState();
+          const room = state.floors?.flatMap(f => f.rooms || []).find(r => r.id === roomId);
+          const obj = room?.objects3d?.find(o => o.id === objectId);
+          if (!obj) return;
+          const surf = obj.surfaces?.find(s => s.face === face);
+          if (!surf) return;
+
+          const result = await showSurfaceEditor({
+            title: `${obj.label || "Object"} — ${face}`,
+            hideWallConfig: true,
+            tile: surf.tile,
+            grout: surf.grout,
+            pattern: surf.pattern,
+            tilePresets: state.tilePresets || [],
+          });
+          if (result === null) return;
+
+          obj3dCtrl.updateSurface(objectId, face, {
+            tile: result.enabled ? result.tile : null,
+            grout: result.enabled ? result.grout : null,
+            pattern: result.enabled ? result.pattern : null,
+          });
+        },
       });
     }
     const floor = getCurrentFloor(state);
@@ -1007,7 +1125,11 @@ function renderPlanningSection(state, opts) {
       },
       onDoorwayPointerDown: doorwayDragController.onDoorwayPointerDown,
       onDoorwayResizePointerDown: doorwayDragController.onDoorwayResizePointerDown,
-      roomOverride
+      roomOverride,
+      selectedObj3dId,
+      setSelectedObj3d,
+      onObj3dPointerDown: obj3dDragCtrl.onObjPointerDown,
+      onObj3dResizeHandlePointerDown: obj3dDragCtrl.onResizeHandlePointerDown
     });
   }
   updateDoorButtonState();
@@ -1305,8 +1427,8 @@ function updateRoomDeleteButtonState() {
   const btn = document.getElementById("roomDeleteObject");
   if (!btn) return;
 
-  // Enable for exclusions or doorways
-  btn.disabled = !selectedExclId && !selectedDoorwayId;
+  // Enable for exclusions, doorways, or 3D objects
+  btn.disabled = !selectedExclId && !selectedDoorwayId && !selectedObj3dId;
 }
 
 function initViewToggle() {
@@ -1710,6 +1832,13 @@ const excl = createExclusionsController({
   setSelectedId
 });
 
+const obj3dCtrl = createObjects3DController({
+  getState: () => store.getState(),
+  commit: commitViaStore,
+  getSelectedId: () => selectedObj3dId,
+  setSelectedId: setSelectedObj3dIdOnly
+});
+
 const structure = createStructureController({
   store,
   renderAll,
@@ -1747,6 +1876,25 @@ const dragController = createExclusionDragController({
   getSelectedId: () => selectedExclId,
   getMoveLabel: () => t("exclusions.moved"),
   getResizeLabel: () => t("exclusions.resized"),
+  onDragStart: () => {
+    lastExclDragAt = Date.now();
+  },
+  onDragEnd: () => {
+    lastExclDragAt = Date.now();
+  }
+});
+
+const obj3dDragCtrl = createObject3DDragController({
+  getSvg: () => document.getElementById("planSvgFullscreen") || document.getElementById("planSvg"),
+  getState: () => store.getState(),
+  commit: (label, next) => commitViaStore(label, next),
+  render: (label) => renderAll(label),
+  getSelectedObj: () => obj3dCtrl.getSelectedObj(),
+  setSelectedObj: setSelectedObj3d,
+  setSelectedIdOnly: setSelectedObj3dIdOnly,
+  getSelectedId: () => selectedObj3dId,
+  getMoveLabel: () => t("objects3d.moved"),
+  getResizeLabel: () => t("objects3d.resized"),
   onDragStart: () => {
     lastExclDragAt = Date.now();
   },
@@ -2403,6 +2551,12 @@ function updateAllTranslations() {
     next.selectedWallId = wallId || null;
     // Reset surface selection when changing walls
     next.selectedSurfaceIdx = 0;
+    // Sync obj3d selection with Structure dropdown
+    if (wallId?.startsWith("obj3d:")) {
+      setSelectedObj3d(wallId.slice(6));
+    } else {
+      setSelectedObj3d(null);
+    }
     store.commit("Wall selected", next, { onRender: renderAll, updateMetaCb: updateMeta });
   });
 
@@ -3007,12 +3161,14 @@ function updateAllTranslations() {
     });
   }
 
-  // Room delete button - deletes selected exclusion or doorway
+  // Room delete button - deletes selected exclusion, doorway, or 3D object
   document.getElementById("roomDeleteObject")?.addEventListener("click", () => {
     if (selectedDoorwayId) {
       deleteDoorway(selectedDoorwayId);
     } else if (selectedExclId) {
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
+    } else if (selectedObj3dId) {
+      obj3dCtrl.deleteSelectedObj();
     }
   });
 
@@ -3141,18 +3297,33 @@ function updateAllTranslations() {
   const quickAddExclusion = document.getElementById("quickAddExclusion");
   const exclDropdown = document.getElementById("exclDropdown");
 
+  // 3D Object dropdown
+  const quickAddObj3d = document.getElementById("quickAddObj3d");
+  const obj3dDropdown = document.getElementById("obj3dDropdown");
+
   quickAddExclusion?.addEventListener("click", (e) => {
     e.stopPropagation();
+    obj3dDropdown?.classList.add("hidden");
     exclDropdown?.classList.toggle("hidden");
+  });
+
+  quickAddObj3d?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exclDropdown?.classList.add("hidden");
+    obj3dDropdown?.classList.toggle("hidden");
   });
 
   // Close dropdowns when clicking outside
   document.addEventListener("click", (e) => {
-    // Close exclusion dropdown
     if (exclDropdown && !exclDropdown.classList.contains("hidden") &&
         !exclDropdown.contains(e.target) &&
         e.target !== quickAddExclusion) {
       exclDropdown.classList.add("hidden");
+    }
+    if (obj3dDropdown && !obj3dDropdown.classList.contains("hidden") &&
+        !obj3dDropdown.contains(e.target) &&
+        e.target !== quickAddObj3d) {
+      obj3dDropdown.classList.add("hidden");
     }
   });
 
@@ -3207,6 +3378,99 @@ function updateAllTranslations() {
         });
       }
     });
+  });
+
+  // 3D Object dropdown items (bottom bar)
+  document.querySelectorAll(".quick-dropdown-item[data-obj3d-type]").forEach(item => {
+    item.addEventListener("click", () => {
+      const type = item.dataset.obj3dType;
+      obj3dDropdown?.classList.add("hidden");
+
+      if (type === "rect") {
+        obj3dCtrl.addRect();
+      } else if (type === "tri") {
+        obj3dCtrl.addTri();
+      } else if (type === "freeform") {
+        const freeformBtn = item;
+        freeformBtn.classList.add("active");
+
+        const room = getCurrentRoom(store.getState());
+        let roomBoundsPolygon = null;
+        if (room) {
+          try {
+            const mp = roomPolygon(room);
+            if (mp && mp[0] && mp[0][0]) {
+              roomBoundsPolygon = mp[0][0];
+            }
+          } catch (e) {
+            console.warn("Could not get room polygon for bounds check:", e);
+          }
+        }
+
+        polygonDrawController.startDrawing({
+          disableEdgeSnap: true,
+          roomBoundsPolygon,
+          onComplete: (polygonPoints) => {
+            freeformBtn.classList.remove("active");
+            const vertices = polygonPoints.map(p => ({
+              x: Math.round(p.x),
+              y: Math.round(p.y),
+            }));
+            obj3dCtrl.addFreeform(vertices);
+          },
+          onCancel: () => {
+            freeformBtn.classList.remove("active");
+          }
+        });
+      }
+    });
+  });
+
+  // 3D Objects buttons (settings panel)
+  document.getElementById("btnAddObj3dRect")?.addEventListener("click", () => {
+    obj3dCtrl.addRect();
+  });
+  document.getElementById("btnAddObj3dTri")?.addEventListener("click", () => {
+    obj3dCtrl.addTri();
+  });
+  document.getElementById("btnAddObj3dFreeform")?.addEventListener("click", () => {
+    const btn = document.getElementById("btnAddObj3dFreeform");
+    btn?.classList.add("active");
+
+    const room = getCurrentRoom(store.getState());
+    let roomBoundsPolygon = null;
+    if (room) {
+      try {
+        const mp = roomPolygon(room);
+        if (mp && mp[0] && mp[0][0]) {
+          roomBoundsPolygon = mp[0][0];
+        }
+      } catch (e) {
+        console.warn("Could not get room polygon for bounds check:", e);
+      }
+    }
+
+    polygonDrawController.startDrawing({
+      disableEdgeSnap: true,
+      roomBoundsPolygon,
+      onComplete: (polygonPoints) => {
+        btn?.classList.remove("active");
+        const vertices = polygonPoints.map(p => ({
+          x: Math.round(p.x),
+          y: Math.round(p.y),
+        }));
+        obj3dCtrl.addFreeform(vertices);
+      },
+      onCancel: () => {
+        btn?.classList.remove("active");
+      }
+    });
+  });
+  document.getElementById("btnDeleteObj3d")?.addEventListener("click", () => {
+    obj3dCtrl.deleteSelectedObj();
+  });
+  document.getElementById("obj3dList")?.addEventListener("change", (e) => {
+    setSelectedObj3d(e.target.value || null);
   });
 
   // Zoom controls (room view)
@@ -3811,6 +4075,16 @@ function updateAllTranslations() {
           if (w.id === state.selectedWallId) opt.selected = true;
           wallSelect.appendChild(opt);
         });
+
+        // 3D objects
+        const objects3d = room.objects3d || [];
+        objects3d.forEach((obj, idx) => {
+          const opt = document.createElement("option");
+          opt.value = `obj3d:${obj.id}`;
+          opt.textContent = obj.label || `${t("objects3d.object") || "Object"} ${idx + 1}`;
+          if (state.selectedWallId === `obj3d:${obj.id}`) opt.selected = true;
+          wallSelect.appendChild(opt);
+        });
       }
     }
 
@@ -3819,12 +4093,28 @@ function updateAllTranslations() {
     const surfaceSelectLabel = document.getElementById("surfaceSelectLabel");
     if (surfaceSelect && surfaceSelectLabel) {
       const floor = state.floors?.find(f => f.id === state.selectedFloorId);
-      const selectedWall = state.selectedWallId && floor ? floor.walls?.find(w => w.id === state.selectedWallId) : null;
+      const isObj3d = state.selectedWallId?.startsWith("obj3d:");
+      const selectedWall = state.selectedWallId && !isObj3d && floor ? floor.walls?.find(w => w.id === state.selectedWallId) : null;
 
-      if (!selectedWall) {
-        // Hide surface selector when no wall is selected
-        surfaceSelectLabel.style.display = "none";
-      } else {
+      if (isObj3d) {
+        // 3D object selected — show its surfaces
+        const objId = state.selectedWallId.slice(6);
+        const obj = room?.objects3d?.find(o => o.id === objId);
+        if (obj && obj.surfaces?.length) {
+          surfaceSelectLabel.style.display = "";
+          surfaceSelect.innerHTML = "";
+          surfaceSelect.disabled = false;
+          obj.surfaces.forEach((surf, idx) => {
+            const opt = document.createElement("option");
+            opt.value = String(idx);
+            opt.textContent = getObj3dFaceName(obj, surf.face);
+            if (idx === (state.selectedSurfaceIdx ?? 0)) opt.selected = true;
+            surfaceSelect.appendChild(opt);
+          });
+        } else {
+          surfaceSelectLabel.style.display = "none";
+        }
+      } else if (selectedWall) {
         surfaceSelectLabel.style.display = "";
         surfaceSelect.innerHTML = "";
         surfaceSelect.disabled = false;
@@ -3837,6 +4127,9 @@ function updateAllTranslations() {
           if (idx === (state.selectedSurfaceIdx ?? 0)) opt.selected = true;
           surfaceSelect.appendChild(opt);
         });
+      } else {
+        // Hide surface selector when no wall/obj3d is selected
+        surfaceSelectLabel.style.display = "none";
       }
     }
 
