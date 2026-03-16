@@ -182,11 +182,12 @@ export function computeSkirtingArea(room, exclusions) {
  */
 export function computeSkirtingSegments(room, includeExcluded = false, floor = null) {
   if (!room) return [];
-  const area = computeSkirtingArea(room, room.exclusions);
+  const allExcl = getAllFloorExclusions(room);
+  const area = computeSkirtingArea(room, allExcl);
   if (!area.mp) return [];
 
   // Source of truth for physical walls (includes all exclusions)
-  const avail = computeAvailableArea(room, room.exclusions);
+  const avail = computeAvailableArea(room, allExcl);
   if (!avail.mp) return [];
 
   const skirting = room.skirting || {};
@@ -581,6 +582,36 @@ export function multiPolyArea(mp) {
   return area;
 }
 
+/**
+ * Returns all exclusions that affect floor area, including objects3d footprints.
+ * This is the single source of truth for "what subtracts from floor tiles".
+ */
+export function getAllFloorExclusions(room) {
+  const excls = [...(room.exclusions || [])];
+  for (const obj of (room.objects3d || [])) {
+    if (obj.type === 'tri') {
+      excls.push({
+        type: 'tri', id: obj.id,
+        p1: obj.p1, p2: obj.p2, p3: obj.p3,
+        skirtingEnabled: obj.skirtingEnabled, _isObject3d: true
+      });
+    } else if (obj.type === 'freeform' && obj.vertices?.length >= 3) {
+      excls.push({
+        type: 'freeform', id: obj.id,
+        vertices: obj.vertices,
+        skirtingEnabled: obj.skirtingEnabled, _isObject3d: true
+      });
+    } else {
+      excls.push({
+        type: 'rect', id: obj.id,
+        x: obj.x, y: obj.y, w: obj.w, h: obj.h,
+        skirtingEnabled: obj.skirtingEnabled, _isObject3d: true
+      });
+    }
+  }
+  return excls;
+}
+
 export function exclusionToPolygon(ex) {
   if (ex.type === "rect") {
     const x1 = ex.x,
@@ -657,6 +688,116 @@ export function computeAvailableArea(room, exclusions) {
   } catch (e) {
     return { mp: roomP, error: String(e?.message || e) };
   }
+}
+
+/**
+ * Returns the footprint edges of a 3D object in room-local 2D coords,
+ * each tagged with its face name matching createBoxFaceMapper conventions.
+ * @param {Object} obj - 3D object (rect/tri/freeform)
+ * @returns {Array} [{ p1, p2, face }]
+ */
+export function getObjFootprintEdges(obj) {
+  if (obj.type === 'rect') {
+    const { x, y, w, h } = obj;
+    return [
+      { p1: { x, y },               p2: { x: x + w, y },           face: 'front' },
+      { p1: { x: x + w, y },        p2: { x: x + w, y: y + h },    face: 'right' },
+      { p1: { x: x + w, y: y + h }, p2: { x, y: y + h },           face: 'back'  },
+      { p1: { x, y: y + h },        p2: { x, y },                  face: 'left'  },
+    ];
+  }
+  const verts = obj.type === 'tri'
+    ? [obj.p1, obj.p2, obj.p3]
+    : (obj.vertices || []);
+  return verts.map((v, i) => ({
+    p1: v,
+    p2: verts[(i + 1) % verts.length],
+    face: `side-${i}`,
+  }));
+}
+
+/**
+ * Detects contacts between a wall's inner face and 3D object side faces in a room.
+ * Two surfaces are in contact when they are coplanar (collinear edges in plan view)
+ * and their segments overlap horizontally and vertically.
+ *
+ * Returns exclusion data for both the wall surface and the object face so tiles
+ * can be removed from both at the contact zone.
+ *
+ * @param {Object} room  - Room with objects3d[]
+ * @param {Object} wall  - Wall entity { id, start, end, heightStartCm, heightEndCm }
+ * @returns {Array} Contact records:
+ *   { objId, face, overlapStart, overlapEnd, contactH, faceLocalX1, faceLocalX2 }
+ *   - overlapStart/End: cm from wall.start along wall direction
+ *   - contactH: height of contact zone in cm (from floor up)
+ *   - faceLocalX1/X2: cm from face edge start along face direction
+ */
+export function computeSurfaceContacts(room, wall) {
+  const contacts = [];
+  const objects = room?.objects3d || [];
+  if (!objects.length) return contacts;
+
+  // wall.start/end are in floor-global coords (room polygon vertices + room.floorPosition).
+  // obj.x/y are in room-local coords. Convert object vertices to floor-global before comparing.
+  const fp = room?.floorPosition || { x: 0, y: 0 };
+
+  const ax = wall.start.x, ay = wall.start.y;
+  const bx = wall.end.x,   by = wall.end.y;
+  const wallLen = Math.hypot(bx - ax, by - ay);
+  if (wallLen < 0.1) return contacts;
+
+  const dirX = (bx - ax) / wallLen;
+  const dirY = (by - ay) / wallLen;
+  const wallH = Math.max(wall.heightStartCm ?? 250, wall.heightEndCm ?? 250);
+
+  for (const obj of objects) {
+    const objH = obj.heightCm ?? 0;
+    const contactH = Math.min(wallH, objH);
+    if (contactH < 0.1) continue;
+
+    for (const { p1, p2, face } of getObjFootprintEdges(obj)) {
+      // Convert room-local object vertices to floor-global to match wall coordinate space
+      const p1g = { x: p1.x + fp.x, y: p1.y + fp.y };
+      const p2g = { x: p2.x + fp.x, y: p2.y + fp.y };
+
+      const ex = p2g.x - p1g.x, ey = p2g.y - p1g.y;
+      const eLen = Math.hypot(ex, ey);
+      if (eLen < 0.1) continue;
+
+      // Direction vectors must be parallel (cross product ≈ 0)
+      const cross = dirX * (ey / eLen) - dirY * (ex / eLen);
+      if (Math.abs(cross) > 0.01) continue;
+
+      // p1g must lie on the wall line (perpendicular distance ≈ 0)
+      const dpx = p1g.x - ax, dpy = p1g.y - ay;
+      const dist = Math.abs(dpx * (-dirY) + dpy * dirX);
+      if (dist > 0.01) continue;
+
+      // Project both segments onto the wall direction vector
+      const tP1 = dpx * dirX + dpy * dirY;
+      const tP2 = (p2g.x - ax) * dirX + (p2g.y - ay) * dirY;
+      const overlapStart = Math.max(0, Math.min(tP1, tP2));
+      const overlapEnd   = Math.min(wallLen, Math.max(tP1, tP2));
+      if (overlapEnd - overlapStart < 0.1) continue;
+
+      // Convert wall-space overlap to face-local x coordinates
+      const edgeDirX = ex / eLen, edgeDirY = ey / eLen;
+      const faceX1 = (ax + overlapStart * dirX - p1g.x) * edgeDirX + (ay + overlapStart * dirY - p1g.y) * edgeDirY;
+      const faceX2 = (ax + overlapEnd   * dirX - p1g.x) * edgeDirX + (ay + overlapEnd   * dirY - p1g.y) * edgeDirY;
+
+      contacts.push({
+        objId: obj.id,
+        face,
+        overlapStart,
+        overlapEnd,
+        contactH,
+        faceLocalX1: Math.min(faceX1, faceX2),
+        faceLocalX2: Math.max(faceX1, faceX2),
+      });
+      console.log(`[surface-contact] wall=${wall.id} ↔ obj=${obj.id} face=${face}: overlap=[${overlapStart.toFixed(1)},${overlapEnd.toFixed(1)}] h=${contactH.toFixed(1)} faceX=[${Math.min(faceX1, faceX2).toFixed(1)},${Math.max(faceX1, faceX2).toFixed(1)}]`);
+    }
+  }
+  return contacts;
 }
 
 /**

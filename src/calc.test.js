@@ -463,3 +463,174 @@ describe('computePlanMetrics', () => {
     expect(result.data.material.wastePct).toBeLessThan(1);
   });
 });
+
+describe('computePlanMetrics – 3D object face tiles', () => {
+  function createStateWithObject(opts = {}) {
+    const roomW = opts.roomW || 200;
+    const roomH = opts.roomH || 200;
+    const floorId = 'test-floor';
+    const roomId = 'test-room';
+
+    const faceTile = opts.faceTile || { widthCm: 20, heightCm: 20 };
+    const surfaces = opts.surfaces || [
+      { id: 's-front', face: 'front', tile: faceTile, grout: { widthCm: 0, colorHex: '#fff' }, pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 } },
+      { id: 's-back', face: 'back', tile: null, grout: null, pattern: null },
+      { id: 's-left', face: 'left', tile: null, grout: null, pattern: null },
+      { id: 's-right', face: 'right', tile: null, grout: null, pattern: null },
+      { id: 's-top', face: 'top', tile: null, grout: null, pattern: null },
+    ];
+
+    const objects3d = opts.objects3d || [{
+      id: 'obj-1',
+      type: 'rect',
+      label: 'Test Object',
+      x: 10, y: 10,
+      w: opts.objW || 100,
+      h: opts.objH || 60,
+      heightCm: opts.objHeight || 80,
+      skirtingEnabled: false,
+      surfaces,
+    }];
+
+    return {
+      meta: { version: 8 },
+      project: { name: 'Test Project' },
+      floors: [{
+        id: floorId,
+        name: 'Test Floor',
+        rooms: [{
+          id: roomId,
+          name: 'Test Room',
+          polygonVertices: [
+            { x: 0, y: 0 }, { x: roomW, y: 0 },
+            { x: roomW, y: roomH }, { x: 0, y: roomH },
+          ],
+          exclusions: [],
+          tile: { widthCm: 50, heightCm: 50 },
+          grout: { widthCm: 0 },
+          pattern: { type: 'grid', rotationDeg: 0, offsetXcm: 0, offsetYcm: 0, origin: { preset: 'tl' } },
+          skirting: { enabled: false },
+          objects3d,
+        }],
+      }],
+      selectedFloorId: floorId,
+      selectedRoomId: roomId,
+      pricing: { pricePerM2: 50, packM2: 1, reserveTiles: 0 },
+      waste: { allowRotate: true, optimizeCuts: false, kerfCm: 0 },
+      view: {},
+    };
+  }
+
+  it('includes face tiles in total tile count', () => {
+    // Room: 200x200 with 50x50 tiles, 0 grout → 4x4 = 16 floor tiles (all full)
+    // Object: front face = 100w × 80h with 20x20 tiles, 0 grout → 5×4 = 20 face tiles
+    const state = createStateWithObject();
+    const baseline = computePlanMetrics(createStateWithObject({ objects3d: [] }));
+    const result = computePlanMetrics(state);
+
+    assertMetricsInvariants(baseline);
+    assertMetricsInvariants(result);
+
+    const baseTotal = baseline.data.tiles.fullTiles + baseline.data.tiles.cutTiles;
+    const withObjTotal = result.data.tiles.fullTiles + result.data.tiles.cutTiles;
+
+    // Face tiles should add to the count
+    expect(withObjTotal).toBeGreaterThan(baseTotal);
+    // Front face: 100×80 with 20×20 tiles = 5×4 = 20 tiles
+    expect(withObjTotal - baseTotal).toBe(20);
+  });
+
+  it('does not count faces with tile=null', () => {
+    // All surfaces have tile=null → no extra tiles
+    const surfaces = ['front', 'back', 'left', 'right', 'top'].map(face => ({
+      id: `s-${face}`, face, tile: null, grout: null, pattern: null,
+    }));
+    const state = createStateWithObject({ surfaces });
+    const baseline = computePlanMetrics(createStateWithObject({ objects3d: [] }));
+    const result = computePlanMetrics(state);
+
+    assertMetricsInvariants(result);
+
+    const baseTotal = baseline.data.tiles.fullTiles + baseline.data.tiles.cutTiles;
+    const withObjTotal = result.data.tiles.fullTiles + result.data.tiles.cutTiles;
+    expect(withObjTotal).toBe(baseTotal);
+  });
+
+  it('counts tiles on multiple faces', () => {
+    const faceTile = { widthCm: 20, heightCm: 20 };
+    const faceSettings = { tile: faceTile, grout: { widthCm: 0, colorHex: '#fff' }, pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 } };
+    const surfaces = [
+      { id: 's-front', face: 'front', ...faceSettings },
+      { id: 's-back', face: 'back', ...faceSettings },
+      { id: 's-left', face: 'left', tile: null, grout: null, pattern: null },
+      { id: 's-right', face: 'right', tile: null, grout: null, pattern: null },
+      { id: 's-top', face: 'top', ...faceSettings },
+    ];
+    // obj: w=100, h=60, heightCm=80
+    // front: 100×80 → 5×4 = 20 tiles
+    // back: 100×80 → 5×4 = 20 tiles
+    // top: 100×60 → 5×3 = 15 tiles
+    const state = createStateWithObject({ surfaces });
+    const baseline = computePlanMetrics(createStateWithObject({ objects3d: [] }));
+    const result = computePlanMetrics(state);
+
+    assertMetricsInvariants(result);
+
+    const baseTotal = baseline.data.tiles.fullTiles + baseline.data.tiles.cutTiles;
+    const withObjTotal = result.data.tiles.fullTiles + result.data.tiles.cutTiles;
+    expect(withObjTotal - baseTotal).toBe(20 + 20 + 15);
+  });
+
+  it('uses correct face dimensions for side vs top faces', () => {
+    // left/right faces use obj.h (depth) × heightCm
+    const faceTile = { widthCm: 10, heightCm: 10 };
+    const faceSettings = { tile: faceTile, grout: { widthCm: 0, colorHex: '#fff' }, pattern: { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 } };
+    // Only left face tiled: obj.h=60 × heightCm=80 → 6×8 = 48 tiles
+    const surfaces = [
+      { id: 's-front', face: 'front', tile: null, grout: null, pattern: null },
+      { id: 's-back', face: 'back', tile: null, grout: null, pattern: null },
+      { id: 's-left', face: 'left', ...faceSettings },
+      { id: 's-right', face: 'right', tile: null, grout: null, pattern: null },
+      { id: 's-top', face: 'top', tile: null, grout: null, pattern: null },
+    ];
+    const state = createStateWithObject({ surfaces, objW: 100, objH: 60, objHeight: 80 });
+    const baseline = computePlanMetrics(createStateWithObject({ objects3d: [] }));
+    const result = computePlanMetrics(state);
+
+    assertMetricsInvariants(result);
+
+    const baseTotal = baseline.data.tiles.fullTiles + baseline.data.tiles.cutTiles;
+    const withObjTotal = result.data.tiles.fullTiles + result.data.tiles.cutTiles;
+    // left face: obj.h(60) × heightCm(80) with 10×10 tiles = 6×8 = 48
+    expect(withObjTotal - baseTotal).toBe(48);
+  });
+
+  it('includes face tile area in installed area', () => {
+    const state = createStateWithObject();
+    const baseline = computePlanMetrics(createStateWithObject({ objects3d: [] }));
+    const result = computePlanMetrics(state);
+
+    assertMetricsInvariants(result);
+
+    // The object's footprint (100×60) is subtracted from floor area by getAllFloorExclusions,
+    // but the front face area (100×80) is added back as face tile installed area.
+    // Net change: -100×60 + 100×80 = -6000 + 8000 = +2000 cm² = +0.2 m²
+    const footprintM2 = (100 * 60) / 10000;
+    const faceAreaM2 = (100 * 80) / 10000;
+    const expectedDelta = faceAreaM2 - footprintM2;
+    expect(result.data.material.installedAreaM2).toBeCloseTo(
+      baseline.data.material.installedAreaM2 + expectedDelta, 2
+    );
+  });
+
+  it('handles room with no objects3d property', () => {
+    const state = createStateWithObject({ objects3d: [] });
+    // Remove objects3d entirely
+    delete state.floors[0].rooms[0].objects3d;
+
+    const result = computePlanMetrics(state);
+    assertMetricsInvariants(result);
+    // Should work fine — no extra tiles
+    expect(result.data.tiles.fullTiles).toBeGreaterThan(0);
+  });
+});

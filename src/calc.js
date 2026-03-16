@@ -1,5 +1,5 @@
 // src/calc.js
-import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments } from "./geometry.js";
+import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments, getAllFloorExclusions } from "./geometry.js";
 import { getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
 import { TRIANGULAR_CUT_MIN, TRIANGULAR_CUT_MAX, AREA_RATIO_SCALING_THRESHOLD, COMPLEMENTARY_FIT_MIN, COMPLEMENTARY_FIT_MAX } from "./constants.js";
@@ -492,6 +492,7 @@ function getMetricsKey(state, room) {
     grout: room.grout,
     pattern: room.pattern,
     exclusions: room.exclusions,
+    objects3d: room.objects3d,
     polygonVertices: room.polygonVertices,
     waste: state?.waste,
     originTile: originRoom?.tile || null,
@@ -548,7 +549,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
   const kerfCm = clampPos(state?.waste?.kerfCm); // default 0
 
   // Available area
-  const avail = computeAvailableArea(currentRoom, currentRoom.exclusions);
+  const avail = computeAvailableArea(currentRoom, getAllFloorExclusions(currentRoom));
   if (!avail.mp) return { ok: false, error: "Keine verfügbare Fläche.", data: null };
 
   // Preview tiles (clipped paths) - use effective settings from pattern group origin
@@ -698,6 +699,47 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
     tileUsage[i] = { isFull: false, reused: false, source: "new", need, usedOffcut: null, createdOffcuts };
   }
 
+  // === 3D OBJECT FACE TILES ===
+  let faceTilesInstalledAreaCm2 = 0;
+  for (const obj of (currentRoom.objects3d || [])) {
+    for (const surf of (obj.surfaces || [])) {
+      if (!surf.tile) continue;
+
+      const isTop = surf.face === "top";
+      const faceW = isTop ? obj.w : (surf.face === "left" || surf.face === "right" ? obj.h : obj.w);
+      const faceH = isTop ? obj.h : (obj.heightCm || 100);
+
+      const region = {
+        widthCm: faceW,
+        heightCm: faceH,
+        polygonVertices: [
+          { x: 0, y: 0 }, { x: faceW, y: 0 },
+          { x: faceW, y: faceH }, { x: 0, y: faceH },
+        ],
+        tile: surf.tile,
+        grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
+        pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
+        exclusions: [],
+      };
+
+      const faceAvail = computeAvailableArea(region, []);
+      if (!faceAvail.mp) continue;
+
+      const faceResult = tilesForPreview(state, faceAvail.mp, region, false, floor, {
+        effectiveSettings: { tile: surf.tile, grout: region.grout, pattern: region.pattern },
+      });
+      if (!faceResult?.tiles) continue;
+
+      for (const ft of faceResult.tiles) {
+        if (ft.isFull) fullTiles++;
+        else cutTiles++;
+      }
+
+      faceTilesInstalledAreaCm2 += Math.max(0, multiPolyArea(faceAvail.mp));
+      console.log(`[calc] 3D face tiles: obj=${obj.id} face=${surf.face} faceW=${faceW} faceH=${faceH} tiles=${faceResult.tiles.length}`);
+    }
+  }
+
   // === PURCHASE / MATERIAL (Einkauf) ===
   const reserveTiles = Math.max(0, Math.floor(Number(state.pricing?.reserveTiles) || 0));
 
@@ -708,8 +750,8 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
   const purchasedTiles = fullTiles + newTilesForCuts;
   const purchasedTilesWithReserve = purchasedTiles + reserveTiles;
 
-  // Installed area = net available area (not tile sum)
-  const installedAreaCm2 = Math.max(0, multiPolyArea(avail.mp));
+  // Installed area = net available area (not tile sum) + 3D face tile area
+  const installedAreaCm2 = Math.max(0, multiPolyArea(avail.mp)) + faceTilesInstalledAreaCm2;
   const installedAreaM2 = cm2ToM2(installedAreaCm2);
 
   const purchasedAreaCm2 = purchasedTilesWithReserve * tileAreaCm2;

@@ -63,6 +63,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 12) {
       s = migrateV12ToV13(s);
     }
+    if (s.meta?.version === 13) {
+      s = migrateV13ToV14(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -206,6 +209,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
 
             if (!room.excludedTiles) room.excludedTiles = [];
             if (!room.excludedSkirts) room.excludedSkirts = [];
+            if (!Array.isArray(room.objects3d)) room.objects3d = [];
 
             if (room.exclusions && Array.isArray(room.exclusions)) {
               for (const ex of room.exclusions) {
@@ -647,6 +651,13 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.selectedWallId === undefined) s.selectedWallId = null;
     if (s.selectedSurfaceIdx === undefined) s.selectedSurfaceIdx = 0;
 
+    return s;
+  }
+
+  function migrateV13ToV14(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 14;
+    // objects3d arrays are added by normalization — no data conversion needed
     return s;
   }
 

@@ -644,6 +644,7 @@ export function showSurfaceEditor({
   grout,
   pattern,
   tilePresets = [],
+  hideWallConfig = false,
   confirmText = t("dialog.confirm") || "Confirm",
   cancelText = t("dialog.cancel") || "Cancel"
 }) {
@@ -688,7 +689,7 @@ export function showSurfaceEditor({
     messageEl.innerHTML = `
       <div class="surface-editor-form">
         <!-- Wall Configuration Section -->
-        <div class="surface-editor-section">
+        <div class="surface-editor-section" style="${hideWallConfig ? 'display:none' : ''}">
           <h3 class="surface-editor-section-title" data-i18n="wall.configuration">Wall Configuration</h3>
           <div class="surface-editor-field">
             <label data-i18n="wall.thickness">Wall Thickness (cm)</label>
@@ -707,7 +708,7 @@ export function showSurfaceEditor({
         </div>
 
         <!-- Divider -->
-        <div class="surface-editor-divider"></div>
+        <div class="surface-editor-divider" style="${hideWallConfig ? 'display:none' : ''}"></div>
 
         <!-- Surface Tiling Section -->
         <div class="surface-editor-section">

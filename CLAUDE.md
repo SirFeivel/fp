@@ -79,6 +79,14 @@ State contains:
 
 **Never present unverified results.** Before reporting a task as complete: all tests pass, real-world data (if provided) produces correct results, and the specific success criteria from the plan are confirmed with exact values. "Should work" is not verification.
 
+**No optimism. No confidence without evidence. (BLOCKING)** This rule exists because the historical claim-to-confirmation rate in this project is 27% — meaning 3 out of 4 "it works" claims were wrong. The following are unconditionally forbidden:
+- Saying a runtime feature "works", "is complete", "is fixed", or "is done" based solely on tests passing. Tests passing is a necessary condition, not a sufficient one. Runtime behavior must be confirmed by the user.
+- Saying "should work", "this will fix it", "you can verify by...", or any other forward-looking confidence claim before the user has actually verified.
+- Summarizing the end of an implementation with confident language ("Done.", "Complete.", "All steps finished.") without explicitly stating what remains unverified and what the user must check.
+- Presenting a scorecard score above 5 for Confidence unless you have runtime-verified evidence, not just code reasoning.
+
+**What to say instead:** After writing code, state exactly what was changed, what the user must do to verify it (e.g. "drag a 3D object close to a wall and check the console for `[snap]` lines"), and what you do not yet know. If the feature is not verified, say "unverified" explicitly. Do not dress up uncertainty as confidence.
+
 **Include meaningful logging in every plan.** Every plan must include `console.log` instrumentation as part of the implementation — not as an afterthought. Each new function, pipeline step, and decision point must log its inputs, decisions, and outputs. Logging is a first-class deliverable: it is how the user verifies that the code does what it claims. Prefix all log lines with a bracketed module tag (e.g. `[envelope]`, `[walls]`) for easy filtering. Remove debug logging only when the user confirms the feature works correctly.
 
 ### Plan Scorecard (BLOCKING — every plan must include this)

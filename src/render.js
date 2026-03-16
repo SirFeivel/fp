@@ -16,7 +16,8 @@ import {
   isRectRoom,
   computeOriginPoint,
   computeMultiPolygonPerimeter,
-  computeSkirtingSegments
+  computeSkirtingSegments,
+  getAllFloorExclusions
 } from "./geometry.js";
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
@@ -1323,6 +1324,111 @@ export function renderExclProps({
   });
 }
 
+export function renderObj3dList(state, selectedObj3dId) {
+  const sel = document.getElementById("obj3dList");
+  if (!sel) return;
+  sel.innerHTML = "";
+  const currentRoom = getCurrentRoom(state);
+  const objects = currentRoom?.objects3d || [];
+  if (!objects.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = t("project.none");
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  for (const obj of objects) {
+    const opt = document.createElement("option");
+    opt.value = obj.id;
+    opt.textContent = obj.label || obj.type;
+    if (obj.id === selectedObj3dId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+export function renderObj3dProps({
+  state,
+  selectedObj3dId,
+  getSelectedObj,
+  commitObjProps
+}) {
+  const wrap = document.getElementById("obj3dProps");
+  if (!wrap) return;
+  const obj = getSelectedObj();
+  wrap.innerHTML = "";
+
+  if (!obj) {
+    const div = document.createElement("div");
+    div.className = "meta subtle span2";
+    div.textContent = t("objects3d.noneSelected");
+    wrap.appendChild(div);
+    return;
+  }
+
+  const field = (label, id, value, step = "0.1") => {
+    const d = document.createElement("div");
+    d.className = "field";
+    d.innerHTML = `<label>${escapeHTML(label)}</label><input id="${id}" type="number" step="${step}" />`;
+    wrap.appendChild(d);
+    const inp = d.querySelector("input");
+    inp.value = Number.isFinite(value) ? value.toFixed(2) : value;
+    inp.addEventListener("blur", () => commitObjProps(t("objects3d.changed")));
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    });
+    return inp;
+  };
+
+  // Label
+  const labelDiv = document.createElement("div");
+  labelDiv.className = "field span2";
+  labelDiv.innerHTML = `<label>${t("objects3d.label")}</label><input id="obj3dLabel" type="text" />`;
+  wrap.appendChild(labelDiv);
+  const labelInp = labelDiv.querySelector("input");
+  labelInp.value = obj.label || "";
+  labelInp.addEventListener("blur", () => commitObjProps(t("objects3d.changed")));
+  labelInp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); labelInp.blur(); }
+  });
+
+  if (obj.type === "tri") {
+    field(t("exclProps.p1x"), "obj3dP1X", obj.p1.x, "0.01");
+    field(t("exclProps.p1y"), "obj3dP1Y", obj.p1.y, "0.01");
+    field(t("exclProps.p2x"), "obj3dP2X", obj.p2.x, "0.01");
+    field(t("exclProps.p2y"), "obj3dP2Y", obj.p2.y, "0.01");
+    field(t("exclProps.p3x"), "obj3dP3X", obj.p3.x, "0.01");
+    field(t("exclProps.p3y"), "obj3dP3Y", obj.p3.y, "0.01");
+  } else if (obj.type === "freeform" && obj.vertices) {
+    const infoDiv = document.createElement("div");
+    infoDiv.className = "field span2";
+    infoDiv.innerHTML = `<span class="field-label">${t("exclProps.vertices")}</span><span>${obj.vertices.length} ${t("exclProps.points")}</span>`;
+    wrap.appendChild(infoDiv);
+  } else {
+    field(t("exclProps.x"), "obj3dX", obj.x, "0.01");
+    field(t("exclProps.y"), "obj3dY", obj.y, "0.01");
+    field(t("exclProps.width"), "obj3dW", obj.w, "0.01");
+    field(t("exclProps.height"), "obj3dH", obj.h, "0.01");
+  }
+  field(t("objects3d.height"), "obj3dHeight", obj.heightCm, "1");
+
+  // Skirting toggle
+  const div = document.createElement("div");
+  div.className = "field span2";
+  div.innerHTML = `
+    <label class="toggle-switch">
+      <span class="toggle-label">${t("skirting.enabled")}</span>
+      <input id="obj3dSkirtingEnabled" type="checkbox" ${obj.skirtingEnabled !== false ? "checked" : ""}>
+      <div class="toggle-slider"></div>
+    </label>
+  `;
+  wrap.appendChild(div);
+  div.querySelector("#obj3dSkirtingEnabled").addEventListener("change", () => {
+    commitObjProps(t("objects3d.changed"));
+  });
+}
+
 export function renderPlanSvg({
   state,
   selectedExclId,
@@ -1345,7 +1451,11 @@ export function renderPlanSvg({
   onWallDoubleClick = null,
   onDoorwayPointerDown = null,
   onDoorwayResizePointerDown = null,
-  roomOverride = null
+  roomOverride = null,
+  selectedObj3dId = null,
+  setSelectedObj3d = null,
+  onObj3dPointerDown = null,
+  onObj3dResizeHandlePointerDown = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = roomOverride || getCurrentRoom(state);
@@ -1890,7 +2000,7 @@ export function renderPlanSvg({
 
   if (!skipTiles && !suppressDetails && !ratioError) {
     const isRemovalMode = Boolean(state.view?.removalMode);
-    const avail = computeAvailableArea(currentRoom, exclusions);
+    const avail = computeAvailableArea(currentRoom, getAllFloorExclusions(currentRoom));
     if (avail.error) setLastTileError(avail.error);
     else setLastTileError(null);
 
@@ -2376,6 +2486,98 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
     }
   }
   svg.appendChild(gEx);
+
+  // 3D object footprints (green)
+  const objects3d = currentRoom.objects3d || [];
+  if (objects3d.length > 0) {
+    const gObj = svgEl("g");
+    for (const obj of objects3d) {
+      const isSel = obj.id === selectedObj3dId;
+      const common = {
+        fill: isSel ? "rgba(34,197,94,0.15)" : "rgba(34,197,94,0.06)",
+        stroke: isSel ? "rgba(34,197,94,1)" : "rgba(34,197,94,0.8)",
+        "stroke-width": isSel ? 2 : 1.2,
+        cursor: "move",
+        "data-objid": obj.id
+      };
+
+      let shapeEl;
+      if (obj.type === "rect") {
+        shapeEl = svgEl("rect", { ...common, x: obj.x, y: obj.y, width: obj.w, height: obj.h });
+      } else if (obj.type === "freeform" && obj.vertices?.length >= 3) {
+        const pts = obj.vertices.map(v => `${v.x},${v.y}`).join(" ");
+        shapeEl = svgEl("polygon", { ...common, points: pts });
+      } else if (obj.type === "tri") {
+        const pts = `${obj.p1.x},${obj.p1.y} ${obj.p2.x},${obj.p2.y} ${obj.p3.x},${obj.p3.y}`;
+        shapeEl = svgEl("polygon", { ...common, points: pts });
+      } else {
+        continue;
+      }
+
+      if (onObj3dPointerDown) {
+        shapeEl.addEventListener("pointerdown", onObj3dPointerDown);
+      }
+      if (setSelectedObj3d) {
+        shapeEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setSelectedObj3d(obj.id);
+        });
+      }
+      gObj.appendChild(shapeEl);
+
+      // Resize handles for selected object
+      if (isSel && onObj3dResizeHandlePointerDown) {
+        const handleRadius = 6;
+        const handleStyle = {
+          fill: "#22c55e",
+          stroke: "#fff",
+          "stroke-width": 1.5,
+          cursor: "pointer",
+          "data-objid": obj.id
+        };
+
+        if (obj.type === "rect") {
+          const handles = [
+            { type: "nw", x: obj.x, y: obj.y, cursor: "nwse-resize" },
+            { type: "ne", x: obj.x + obj.w, y: obj.y, cursor: "nesw-resize" },
+            { type: "sw", x: obj.x, y: obj.y + obj.h, cursor: "nesw-resize" },
+            { type: "se", x: obj.x + obj.w, y: obj.y + obj.h, cursor: "nwse-resize" },
+            { type: "n", x: obj.x + obj.w / 2, y: obj.y, cursor: "ns-resize" },
+            { type: "s", x: obj.x + obj.w / 2, y: obj.y + obj.h, cursor: "ns-resize" },
+            { type: "w", x: obj.x, y: obj.y + obj.h / 2, cursor: "ew-resize" },
+            { type: "e", x: obj.x + obj.w, y: obj.y + obj.h / 2, cursor: "ew-resize" }
+          ];
+          handles.forEach(h => {
+            const handle = svgEl("circle", {
+              ...handleStyle, cx: h.x, cy: h.y, r: handleRadius,
+              cursor: h.cursor, "data-resize-handle": h.type
+            });
+            handle.addEventListener("pointerdown", onObj3dResizeHandlePointerDown);
+            gObj.appendChild(handle);
+          });
+        } else if (obj.type === "tri") {
+          [{ type: "p1", ...obj.p1 }, { type: "p2", ...obj.p2 }, { type: "p3", ...obj.p3 }].forEach(p => {
+            const handle = svgEl("circle", {
+              ...handleStyle, cx: p.x, cy: p.y, r: handleRadius,
+              cursor: "move", "data-resize-handle": p.type
+            });
+            handle.addEventListener("pointerdown", onObj3dResizeHandlePointerDown);
+            gObj.appendChild(handle);
+          });
+        } else if (obj.type === "freeform" && obj.vertices?.length >= 3) {
+          obj.vertices.forEach((v, i) => {
+            const handle = svgEl("circle", {
+              ...handleStyle, cx: v.x, cy: v.y, r: handleRadius,
+              cursor: "move", "data-resize-handle": `v${i}`
+            });
+            handle.addEventListener("pointerdown", onObj3dResizeHandlePointerDown);
+            gObj.appendChild(handle);
+          });
+        }
+      }
+    }
+    svg.appendChild(gObj);
+  }
 
   // errors overlay
   if (lastUnionError) {
@@ -2979,7 +3181,7 @@ export function renderFloorCanvas({
       if (state.view?.showFloorTiles && effectiveTile?.widthCm > 0 && effectiveTile?.heightCm > 0) {
         try {
           // Compute available area (room polygon minus exclusions)
-          const avail = computeAvailableArea(room, room.exclusions || []);
+          const avail = computeAvailableArea(room, getAllFloorExclusions(room));
           if (avail.mp) {
             // Extend available area through doorway openings for continuous floor tiles
             let extendedMP = avail.mp;

@@ -13,7 +13,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions, computeSurfaceContacts } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
@@ -489,6 +489,9 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     groutColor = effectiveSettings.grout?.colorHex || "#ffffff";
   }
 
+  // Pre-compute surface contacts for all walls in this floor touching this room's objects
+  const allSurfaceContacts = (floor?.walls || []).flatMap(w => computeSurfaceContacts(room, w));
+
   // Compute tiles for each 3D object face that has tiling configured
   const objects3dWithTiles = (room.objects3d || []).map(obj => {
     const faceTiles = {};
@@ -539,6 +542,20 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
           { x: faceW, y: faceH }, { x: 0, y: faceH },
         ];
       }
+      // Contact exclusions for this face: areas where this face touches a wall
+      const faceContacts = allSurfaceContacts.filter(c => c.objId === obj.id && c.face === surf.face);
+      const faceContactExclusions = faceContacts.map(c => ({
+        type: 'rect',
+        x: c.faceLocalX1,
+        y: 0,
+        w: c.faceLocalX2 - c.faceLocalX1,
+        h: c.contactH,
+        _isContact: true,
+      }));
+      if (faceContactExclusions.length) {
+        console.log(`[surface-contact] obj=${obj.id} face=${surf.face}: added ${faceContactExclusions.length} contact exclusion(s)`);
+      }
+
       const region = {
         widthCm: faceW,
         heightCm: faceH,
@@ -546,9 +563,9 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
         tile: surf.tile,
         grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
         pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
-        exclusions: [],
+        exclusions: faceContactExclusions,
       };
-      const faceAvail = computeAvailableArea(region, []);
+      const faceAvail = computeAvailableArea(region, faceContactExclusions);
       if (faceAvail.mp) {
         const result = tilesForPreview(state, faceAvail.mp, region, isRemovalMode, floor, {
           effectiveSettings: { tile: surf.tile, grout: region.grout, pattern: region.pattern },
@@ -610,15 +627,37 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       const region = wallSurfaceToTileableRegion(wall, idx, { room, floor });
       if (!region) return null;
 
+      // Inject contact exclusions: areas where 3D objects touch this wall surface
+      if (room) {
+        const surfFromCm = surface.fromCm || 0;
+        const surfToCm = surface.toCm || edgeLength;
+        const maxH = region.heightCm;
+        const contacts = computeSurfaceContacts(room, wall);
+        const contactExclusions = contacts
+          .filter(c => c.overlapEnd > surfFromCm && c.overlapStart < surfToCm)
+          .map(c => {
+            const localX1 = Math.max(0, c.overlapStart - surfFromCm);
+            const localX2 = Math.min(surfToCm - surfFromCm, c.overlapEnd - surfFromCm);
+            return { type: 'rect', x: localX1, y: maxH - c.contactH, w: localX2 - localX1, h: c.contactH, _isContact: true };
+          });
+        if (contactExclusions.length) {
+          console.log(`[surface-contact] wall=${wall.id} surface=${idx}: added ${contactExclusions.length} contact exclusion(s)`);
+          region.exclusions = [...(region.exclusions || []), ...contactExclusions];
+        }
+      }
+
       let tiles = [];
       // Only compute tiles if surface has tiling configured (not null)
+      console.log(`[surface-contact] wall=${wall.id} surf=${idx}: tile=${!!surface.tile} excl=${(region.exclusions||[]).length}`);
       if (surface.tile) {
+        const contactExclCount = (region.exclusions || []).filter(e => e._isContact).length;
         const avail = computeAvailableArea(region, region.exclusions || []);
-        if (avail.mp) {
-          const result = tilesForPreview(state, avail.mp, region, isRemovalMode, floor, {
+        const result = avail.mp ? tilesForPreview(state, avail.mp, region, isRemovalMode, floor, {
             effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
-          });
-          tiles = result?.tiles || [];
+          }) : null;
+        tiles = result?.tiles || [];
+        if (contactExclCount > 0) {
+          console.log(`[surface-contact] wall=${wall.id} surface=${idx}: contactExcl=${contactExclCount} availPoly=${avail.mp?.length ?? 0} tileCount=${tiles.length}`);
         }
       }
 

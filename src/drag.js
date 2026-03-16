@@ -1,6 +1,6 @@
 // src/drag.js
 import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
-import { getRoomBounds, isRectRoom } from "./geometry.js";
+import { getRoomBounds, isRectRoom, getObjFootprintEdges } from "./geometry.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
@@ -697,6 +697,461 @@ export function createExclusionDragController({
   }
 
   return { onExclPointerDown, onResizeHandlePointerDown };
+}
+
+/**
+ * Wire drag + resize handlers for 3D objects inside the planSvg.
+ * Parallel to createExclusionDragController but operates on data-objid / room.objects3d[].
+ */
+export function createObject3DDragController({
+  getSvg,
+  getState,
+  commit,
+  render,
+  getSelectedObj,
+  setSelectedObj,
+  setSelectedIdOnly,
+  getSelectedId,
+  getMoveLabel,
+  getResizeLabel,
+  onDragStart,
+  onDragEnd
+}) {
+  function getObj3dBounds(obj) {
+    let pts;
+    if (obj.type === 'tri') {
+      pts = [obj.p1, obj.p2, obj.p3];
+    } else if (obj.type === 'freeform' && obj.vertices?.length >= 3) {
+      pts = obj.vertices;
+    } else {
+      return { minX: obj.x, minY: obj.y, maxX: obj.x + obj.w, maxY: obj.y + obj.h };
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  let drag = null;
+  let resize = null;
+  let dragStartState = null;
+  let pendingFrame = false;
+  let lastMoveEvent = null;
+
+  function findObjElements(id) {
+    return document.querySelectorAll(`[data-objid="${id}"]`);
+  }
+  function findObjResizeHandles(id) {
+    return document.querySelectorAll(`[data-objid="${id}"][data-resize-handle]`);
+  }
+
+  function applyDragMove(e) {
+    if (!drag) return;
+    const svg = getSvg();
+    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const svgDx = snapToMm(curMouse.x - drag.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - drag.startMouse.y);
+    drag.currentDx = svgDx;
+    drag.currentDy = svgDy;
+
+    const elements = findObjElements(drag.id);
+    elements.forEach(el => {
+      el.setAttribute("transform", `translate(${svgDx}, ${svgDy})`);
+    });
+
+    if (drag.bounds && drag.startShape) {
+      const origBox = getObj3dBounds(drag.startShape);
+      if (origBox) {
+        const box = {
+          minX: origBox.minX + svgDx,
+          minY: origBox.minY + svgDy,
+          maxX: origBox.maxX + svgDx,
+          maxY: origBox.maxY + svgDy
+        };
+        const text = getDragOverlayText(drag.bounds, box);
+        const center = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+        showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
+      }
+    }
+  }
+
+  function scheduleDragMove(e) {
+    lastMoveEvent = e;
+    if (pendingFrame) return;
+    pendingFrame = true;
+    requestAnimationFrame(() => {
+      pendingFrame = false;
+      const evt = lastMoveEvent;
+      lastMoveEvent = null;
+      if (evt) applyDragMove(evt);
+    });
+  }
+
+  function onSvgPointerMove(e) {
+    if (!drag) return;
+    scheduleDragMove(e);
+  }
+
+  /**
+   * Adjusts (dx, dy) to snap the nearest 3D-object face onto the nearest wall edge
+   * if it is within SNAP_THRESHOLD cm. All coordinates are room-local.
+   */
+  function computeWallSnap(obj, dx, dy, room) {
+    const SNAP_THRESHOLD = 10; // cm
+    const PAR_TOLERANCE  = 0.1; // sin of max angle for "parallel" (~6°)
+    const verts = room?.polygonVertices;
+    if (!verts || verts.length < 2) return { dx, dy };
+
+    // Build wall edges from room polygon vertices (room-local)
+    const wallEdges = verts.map((v, i) => ({ p1: v, p2: verts[(i + 1) % verts.length] }));
+
+    // Apply tentative delta to get object face edges at proposed position
+    let tentObj;
+    if (obj.type === 'tri') {
+      tentObj = { ...obj, p1: { x: obj.p1.x + dx, y: obj.p1.y + dy },
+        p2: { x: obj.p2.x + dx, y: obj.p2.y + dy },
+        p3: { x: obj.p3.x + dx, y: obj.p3.y + dy } };
+    } else if (obj.type === 'freeform' && obj.vertices) {
+      tentObj = { ...obj, vertices: obj.vertices.map(v => ({ x: v.x + dx, y: v.y + dy })) };
+    } else {
+      tentObj = { ...obj, x: obj.x + dx, y: obj.y + dy };
+    }
+
+    let bestDist = SNAP_THRESHOLD;
+    let bestAdj  = null;
+
+    for (const { p1, p2 } of getObjFootprintEdges(tentObj)) {
+      const ex = p2.x - p1.x, ey = p2.y - p1.y;
+      const eLen = Math.hypot(ex, ey);
+      if (eLen < 0.1) continue;
+
+      for (const wall of wallEdges) {
+        const wx = wall.p2.x - wall.p1.x, wy = wall.p2.y - wall.p1.y;
+        const wLen = Math.hypot(wx, wy);
+        if (wLen < 0.1) continue;
+        const wdx = wx / wLen, wdy = wy / wLen;
+
+        // Face edge must be parallel to wall edge
+        const cross = (ex / eLen) * wdy - (ey / eLen) * wdx;
+        if (Math.abs(cross) > PAR_TOLERANCE) continue;
+
+        // Signed perpendicular distance from face edge to wall line
+        // Normal to wall direction: (-wdy, wdx)
+        const dpx = p1.x - wall.p1.x, dpy = p1.y - wall.p1.y;
+        const signedDist = dpx * (-wdy) + dpy * wdx;
+        const absDist = Math.abs(signedDist);
+        if (absDist < bestDist) {
+          bestDist = absDist;
+          // Move face onto wall line: adj = signedDist * (wdy, -wdx)
+          bestAdj = { dx: signedDist * wdy, dy: -signedDist * wdx };
+        }
+      }
+    }
+
+    if (!bestAdj) return { dx, dy };
+    console.log(`[snap] obj ${obj.id} snapped by (${bestAdj.dx.toFixed(2)}, ${bestAdj.dy.toFixed(2)}) dist=${bestDist.toFixed(2)}cm`);
+    return { dx: dx + bestAdj.dx, dy: dy + bestAdj.dy };
+  }
+
+  function onSvgPointerUp(e) {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onSvgPointerMove);
+    hideResizeOverlay();
+
+    if (!drag || !dragStartState) return;
+
+    const svgDx = drag.currentDx || 0;
+    const svgDy = drag.currentDy || 0;
+    const hasMoved = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
+
+    if (hasMoved) {
+      const finalState = deepClone(dragStartState);
+      const finalRoom = getCurrentRoom(finalState);
+      const obj = finalRoom?.objects3d?.find(o => o.id === drag.id);
+      if (obj) {
+        // Snap the object face to the nearest wall if within threshold
+        const { dx: snapDx, dy: snapDy } = computeWallSnap(obj, svgDx, svgDy, finalRoom);
+        if (obj.type === 'tri') {
+          obj.p1.x += snapDx; obj.p1.y += snapDy;
+          obj.p2.x += snapDx; obj.p2.y += snapDy;
+          obj.p3.x += snapDx; obj.p3.y += snapDy;
+        } else if (obj.type === 'freeform' && obj.vertices) {
+          for (const v of obj.vertices) { v.x += snapDx; v.y += snapDy; }
+        } else {
+          obj.x += snapDx;
+          obj.y += snapDy;
+        }
+      }
+      commit(getMoveLabel(), finalState);
+    } else {
+      const elements = findObjElements(drag.id);
+      elements.forEach(el => el.removeAttribute("transform"));
+      if (render) render();
+    }
+
+    if (onDragEnd) onDragEnd({ id: drag.id, moved: hasMoved, type: "drag" });
+    drag = null;
+    dragStartState = null;
+  }
+
+  function onObjPointerDown(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = e.currentTarget.getAttribute("data-objid");
+    if (!id) return;
+
+    if (setSelectedIdOnly) setSelectedIdOnly(id);
+
+    const elements = findObjElements(id);
+    elements.forEach(el => {
+      el.setAttribute("stroke", "rgba(34,197,94,1)");
+      el.setAttribute("stroke-width", "2");
+      el.setAttribute("fill", "rgba(34,197,94,0.25)");
+    });
+
+    if (render) render({ mode: "drag" });
+    if (onDragStart) onDragStart(id);
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    const obj = room?.objects3d?.find(o => o.id === id);
+    if (!obj) return;
+
+    const svg = getSvg();
+    svg.setPointerCapture(e.pointerId);
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    dragStartState = deepClone(state);
+    const bounds = getRoomBounds(room);
+
+    drag = {
+      id,
+      startMouse,
+      startShape: deepClone(obj),
+      currentDx: 0,
+      currentDy: 0,
+      bounds,
+    };
+
+    const box = getObj3dBounds(obj);
+    if (box) {
+      const text = getDragOverlayText(bounds, box);
+      const center = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+      showDragOverlay(text, svg, { x: e.clientX, y: e.clientY }, center);
+    }
+
+    svg.addEventListener("pointermove", onSvgPointerMove);
+    svg.addEventListener("pointerup", onSvgPointerUp, { once: true });
+    svg.addEventListener("pointercancel", onSvgPointerUp, { once: true });
+  }
+
+  // --- Resize ---
+  function applyResize(e) {
+    if (!resize) return;
+    const svg = getSvg();
+    const curMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    const svgDx = snapToMm(curMouse.x - resize.startMouse.x);
+    const svgDy = snapToMm(curMouse.y - resize.startMouse.y);
+    resize.currentDx = svgDx;
+    resize.currentDy = svgDy;
+
+    const { startShape, handleType } = resize;
+    const isVertex = handleType === 'p1' || handleType === 'p2' || handleType === 'p3' || handleType.startsWith('v');
+
+    if (isVertex) {
+      // Vertex drag for tri/freeform: move the dragged handle visually
+      const handles = findObjResizeHandles(resize.id);
+      handles.forEach(h => {
+        if (h.getAttribute("data-resize-handle") === handleType) {
+          let origX, origY;
+          if (startShape.type === 'tri') {
+            const pt = startShape[handleType];
+            origX = pt.x; origY = pt.y;
+          } else {
+            const idx = parseInt(handleType.slice(1), 10);
+            origX = startShape.vertices[idx].x;
+            origY = startShape.vertices[idx].y;
+          }
+          h.setAttribute("cx", origX + svgDx);
+          h.setAttribute("cy", origY + svgDy);
+        }
+      });
+
+      // Rebuild polygon points on shape element
+      const elements = findObjElements(resize.id);
+      elements.forEach(el => {
+        if (el.hasAttribute("data-resize-handle")) return;
+        if (startShape.type === 'tri') {
+          const pts = ['p1', 'p2', 'p3'].map(k => {
+            const p = startShape[k];
+            const dx2 = k === handleType ? svgDx : 0;
+            const dy2 = k === handleType ? svgDy : 0;
+            return `${p.x + dx2},${p.y + dy2}`;
+          }).join(" ");
+          el.setAttribute("points", pts);
+        } else if (startShape.type === 'freeform') {
+          const dragIdx = parseInt(handleType.slice(1), 10);
+          const pts = startShape.vertices.map((v, i) => {
+            const dx2 = i === dragIdx ? svgDx : 0;
+            const dy2 = i === dragIdx ? svgDy : 0;
+            return `${v.x + dx2},${v.y + dy2}`;
+          }).join(" ");
+          el.setAttribute("points", pts);
+        }
+      });
+
+      showResizeOverlay(`(${formatCm(curMouse.x)}, ${formatCm(curMouse.y)})`, e.clientX, e.clientY);
+    } else {
+      // Rect resize (original logic)
+      const dims = getRectResizeDims(startShape, handleType, svgDx, svgDy);
+      const overlayText = `${formatCm(dims.newW)} x ${formatCm(dims.newH)} cm`;
+
+      const elements = findObjElements(resize.id);
+      elements.forEach(el => {
+        if (!el.hasAttribute("data-resize-handle")) {
+          el.setAttribute("x", dims.newX);
+          el.setAttribute("y", dims.newY);
+          el.setAttribute("width", dims.newW);
+          el.setAttribute("height", dims.newH);
+        }
+      });
+
+      const handles = findObjResizeHandles(resize.id);
+      const positions = {
+        nw: { cx: dims.newX, cy: dims.newY },
+        ne: { cx: dims.newX + dims.newW, cy: dims.newY },
+        sw: { cx: dims.newX, cy: dims.newY + dims.newH },
+        se: { cx: dims.newX + dims.newW, cy: dims.newY + dims.newH },
+        n: { cx: dims.newX + dims.newW / 2, cy: dims.newY },
+        s: { cx: dims.newX + dims.newW / 2, cy: dims.newY + dims.newH },
+        w: { cx: dims.newX, cy: dims.newY + dims.newH / 2 },
+        e: { cx: dims.newX + dims.newW, cy: dims.newY + dims.newH / 2 }
+      };
+      handles.forEach(h => {
+        const ht = h.getAttribute("data-resize-handle");
+        if (positions[ht]) {
+          h.setAttribute("cx", positions[ht].cx);
+          h.setAttribute("cy", positions[ht].cy);
+        }
+      });
+
+      showResizeOverlay(overlayText, e.clientX, e.clientY);
+    }
+  }
+
+  function scheduleResize(e) {
+    lastMoveEvent = e;
+    if (pendingFrame) return;
+    pendingFrame = true;
+    requestAnimationFrame(() => {
+      pendingFrame = false;
+      const evt = lastMoveEvent;
+      lastMoveEvent = null;
+      if (evt) applyResize(evt);
+    });
+  }
+
+  function onResizePointerMove(e) {
+    if (!resize) return;
+    scheduleResize(e);
+  }
+
+  function onResizePointerUp(e) {
+    const svg = getSvg();
+    svg.removeEventListener("pointermove", onResizePointerMove);
+    hideResizeOverlay();
+
+    if (!resize || !dragStartState) return;
+    const svgDx = resize.currentDx || 0;
+    const svgDy = resize.currentDy || 0;
+    const hasResized = Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01;
+
+    if (hasResized) {
+      const finalState = deepClone(dragStartState);
+      const finalRoom = getCurrentRoom(finalState);
+      const obj = finalRoom?.objects3d?.find(o => o.id === resize.id);
+      if (obj) {
+        const { startShape, handleType } = resize;
+        const isVertex = handleType === 'p1' || handleType === 'p2' || handleType === 'p3' || handleType.startsWith('v');
+
+        if (isVertex) {
+          if (obj.type === 'tri') {
+            obj[handleType].x = startShape[handleType].x + svgDx;
+            obj[handleType].y = startShape[handleType].y + svgDy;
+          } else if (obj.type === 'freeform' && obj.vertices) {
+            const idx = parseInt(handleType.slice(1), 10);
+            obj.vertices[idx].x = startShape.vertices[idx].x + svgDx;
+            obj.vertices[idx].y = startShape.vertices[idx].y + svgDy;
+          }
+        } else {
+          if (handleType.includes("w")) {
+            obj.x = startShape.x + svgDx;
+            obj.w = Math.max(1, startShape.w - svgDx);
+          }
+          if (handleType.includes("e")) {
+            obj.w = Math.max(1, startShape.w + svgDx);
+          }
+          if (handleType.includes("n")) {
+            obj.y = startShape.y + svgDy;
+            obj.h = Math.max(1, startShape.h - svgDy);
+          }
+          if (handleType.includes("s")) {
+            obj.h = Math.max(1, startShape.h + svgDy);
+          }
+        }
+      }
+      const label = getResizeLabel ? getResizeLabel() : "Resized 3D object";
+      commit(label, finalState);
+    } else {
+      render();
+    }
+
+    if (onDragEnd) onDragEnd({ id: resize.id, moved: hasResized, type: "resize" });
+    resize = null;
+    dragStartState = null;
+  }
+
+  function onResizeHandlePointerDown(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = e.currentTarget.getAttribute("data-objid");
+    const handleType = e.currentTarget.getAttribute("data-resize-handle");
+    if (!id || !handleType) return;
+
+    const state = getState();
+    const room = getCurrentRoom(state);
+    const obj = room?.objects3d?.find(o => o.id === id);
+    if (!obj) return;
+
+    const svg = getSvg();
+    svg.setPointerCapture(e.pointerId);
+    const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
+    dragStartState = deepClone(state);
+
+    resize = {
+      id,
+      handleType,
+      startMouse,
+      startShape: deepClone(obj),
+      currentDx: 0,
+      currentDy: 0,
+    };
+
+    if (obj.type === 'rect') {
+      showResizeOverlay(`${formatCm(obj.w)} x ${formatCm(obj.h)} cm`, e.clientX, e.clientY);
+    }
+
+    svg.addEventListener("pointermove", onResizePointerMove);
+    svg.addEventListener("pointerup", onResizePointerUp, { once: true });
+    svg.addEventListener("pointercancel", onResizePointerUp, { once: true });
+  }
+
+  return { onObjPointerDown, onResizeHandlePointerDown };
 }
 
 /**
