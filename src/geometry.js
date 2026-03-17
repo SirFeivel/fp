@@ -768,10 +768,11 @@ export function computeSurfaceContacts(room, wall) {
       const cross = dirX * (ey / eLen) - dirY * (ex / eLen);
       if (Math.abs(cross) > 0.01) continue;
 
-      // p1g must lie on the wall line (perpendicular distance ≈ 0)
+      // p1g must lie on the wall line (perpendicular distance ≤ 1 cm).
+      // Threshold is 1 cm to tolerate floating-point drift during drag placement.
       const dpx = p1g.x - ax, dpy = p1g.y - ay;
       const dist = Math.abs(dpx * (-dirY) + dpy * dirX);
-      if (dist > 0.01) continue;
+      if (dist > 1.0) continue;
 
       // Project both segments onto the wall direction vector
       const tP1 = dpx * dirX + dpy * dirY;

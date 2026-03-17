@@ -291,4 +291,38 @@ describe('render.js smoke tests', () => {
     expect(materialsList.innerHTML).toContain(t('commercial.grandTotal'));
     expect(materialsList.innerHTML).not.toContain('TOTAL'); // Since we replaced hardcoded TOTAL
   });
+
+  it('skirting stroke-dasharray uses Math.max(widthCm, heightCm) for portrait tiles', () => {
+    document.body.innerHTML = '<svg id="planSvg"></svg>';
+    const state = defaultStateWithRoom();
+    state.view.showSkirting = true;
+    const room = state.floors[0].rooms[0];
+    room.skirting = { enabled: true, type: 'custom' };
+    // Portrait tile: heightCm (40) > widthCm (20)
+    room.tile = { widthCm: 20, heightCm: 40, shape: 'rect' };
+    room.polygonVertices = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 200 },
+      { x: 0, y: 200 }
+    ];
+
+    renderPlanSvg({
+      state,
+      setSelectedExcl: vi.fn(),
+      setLastUnionError: vi.fn(),
+      setLastTileError: vi.fn()
+    });
+
+    const svg = document.getElementById('planSvg');
+    const paths = Array.from(svg.querySelectorAll('path[stroke-dasharray]'));
+    const dasharrays = paths.map(p => p.getAttribute('stroke-dasharray'));
+
+    // pieceLength should be Math.max(20, 40) = 40; gap = 2.5 → dasharray "37.5 2.5"
+    // It must NOT be "17.5 2.5" (which would indicate widthCm=20 was used instead)
+    const correctDash = dasharrays.some(d => d === '37.5 2.5');
+    const wrongDash = dasharrays.some(d => d === '17.5 2.5');
+    expect(correctDash).toBe(true);
+    expect(wrongDash).toBe(false);
+  });
 });

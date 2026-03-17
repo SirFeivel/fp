@@ -1423,7 +1423,11 @@ export function renderPlanSvg({
   const minY = bounds.minY;
   const maxX = bounds.maxX;
   const maxY = bounds.maxY;
-  const exclusions = currentRoom.exclusions || [];
+  // When a wall surface is selected, currentRoom is the wall surface region whose
+  // exclusions are doorway shapes in surface-space — not floor exclusions. Use the
+  // actual room's exclusions for the floor plan display.
+  const floorRoom = roomOverride ? getCurrentRoom(state) : currentRoom;
+  const exclusions = floorRoom?.exclusions || [];
   const displayExclusions = includeExclusions ? exclusions : [];
 
   if (!svgOverride) {
@@ -1629,8 +1633,8 @@ export function renderPlanSvg({
     const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
     const patternGroupOrigin = computePatternGroupOrigin(currentRoom, currentFloor);
     const tileResult = computeSurfaceTiles(state, currentRoom, currentFloor, {
-      exclusions: getAllFloorExclusions(currentRoom),
-      includeDoorwayPatches: true,
+      exclusions: roomOverride ? (currentRoom.exclusions || []) : getAllFloorExclusions(currentRoom),
+      includeDoorwayPatches: !roomOverride,
       effectiveSettings,
       originOverride: patternGroupOrigin,
       isRemovalMode,
@@ -1834,7 +1838,7 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
       const skirting = currentRoom.skirting || {};
       const pieceLength = skirting.type === "bought" 
         ? (Number(skirting.boughtWidthCm) || DEFAULT_SKIRTING_PRESET.lengthCm)
-        : (Number(currentRoom.tile?.widthCm) || DEFAULT_TILE_PRESET.widthCm);
+        : (Math.max(Number(currentRoom.tile?.widthCm) || 0, Number(currentRoom.tile?.heightCm) || 0) || DEFAULT_TILE_PRESET.widthCm);
 
       const gap = 2.5; // visible gap in cm
 

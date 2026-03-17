@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | node -e \"const i=require('fs').readFileSync('/dev/stdin','utf8'); const inp=JSON.parse(i); const cmd=inp.command||''; if(!/git\\s+commit/.test(cmd)) process.exit(0); const {execSync}=require('child_process'); const tmp='/tmp/vitest-hook-result.json'; try { execSync('cd /Users/feivel/WebstormProjects/fp && npx vitest run --reporter=json --outputFile='+tmp+' 2>/dev/null',{timeout:60000}); const out=require('fs').readFileSync(tmp,'utf8'); const r=JSON.parse(out); if(r.numFailedTests>0){console.error('BLOCKED: '+r.numFailedTests+' test(s) failing. Fix before committing.'); process.exit(2);} else {console.log(r.numPassedTests+' tests passed. Commit allowed.');} } catch(e){ console.error('BLOCKED: Test run failed: '+e.message); process.exit(2); }\"",
+            "command": "echo \"$CLAUDE_TOOL_INPUT\" | node -e \"try { const i=require('fs').readFileSync('/dev/stdin','utf8'); const inp=JSON.parse(i); const cmd=inp.command||''; if(!/git\\s+commit/.test(cmd)) process.exit(0); const {execSync}=require('child_process'); const tmp='/tmp/vitest-hook-result.json'; try { execSync('cd /Users/feivel/WebstormProjects/fp && npx vitest run --reporter=json --outputFile='+tmp+' 2>/dev/null',{timeout:60000}); const out=require('fs').readFileSync(tmp,'utf8'); const r=JSON.parse(out); if(r.numFailedTests>0){console.error('BLOCKED: '+r.numFailedTests+' test(s) failing. Fix before committing.'); process.exit(2);} else {console.log(r.numPassedTests+' tests passed. Commit allowed.');} } catch(e){ console.error('BLOCKED: Test run failed: '+e.message); process.exit(2); } } catch(e){ process.exit(0); }\"",
             "timeout": 70
           }
         ]

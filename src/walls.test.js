@@ -8,6 +8,7 @@ import {
   getWallById,
   getWallNormal,
   wallSurfaceToTileableRegion,
+  prepareWallSurface,
   addDoorwayToWall,
   removeDoorwayFromWall,
   findWallByDoorwayId,
@@ -3162,5 +3163,80 @@ describe('rebuildWallForRoom', () => {
     // Each rebuilt wall should be shorter than the full merged wall.
     expect(rebuilt1.edgeLength).toBeLessThan(assembled.edgeLength);
     expect(rebuilt2.edgeLength).toBeLessThan(assembled.edgeLength);
+  });
+});
+
+// ── prepareWallSurface ────────────────────────────────────────────────
+
+describe('prepareWallSurface', () => {
+  it('returns same region as wallSurfaceToTileableRegion when room has no 3D objects', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wall = getWallForEdge(floor, 'r1', 0);
+    const room = floor.rooms[0];
+
+    const bare = wallSurfaceToTileableRegion(wall, 0, { room, floor });
+    const prepared = prepareWallSurface(wall, 0, room, floor);
+
+    expect(prepared).not.toBeNull();
+    expect(prepared.widthCm).toBeCloseTo(bare.widthCm, 2);
+    expect(prepared.heightCm).toBe(bare.heightCm);
+    expect(prepared.exclusions).toHaveLength(bare.exclusions?.length ?? 0);
+  });
+
+  it('injects contact exclusion when a 3D object touches the wall surface', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+
+    // Edge 0 is the top edge of the room: from (0,0) to (400,0) in floor-global coords.
+    // Place a rect 3D object flush against that edge (y=0 in room-local → y=0 floor-global).
+    // The object front face (face='front') runs from x=100 to x=200 in room-local.
+    const wall = getWallForEdge(floor, 'r1', 0);
+    const room = floor.rooms[0];
+    room.objects3d = [{
+      id: 'obj1',
+      type: 'rect',
+      x: 100, y: 0,   // room-local; y=0 means flush with top edge
+      w: 100, h: 50,  // footprint width × depth
+      heightCm: 80,
+      surfaces: [],
+    }];
+
+    const prepared = prepareWallSurface(wall, 0, room, floor);
+
+    expect(prepared).not.toBeNull();
+    const contactExcls = (prepared.exclusions || []).filter(e => e._isContact);
+    expect(contactExcls).toHaveLength(1);
+    const excl = contactExcls[0];
+    expect(excl.type).toBe('rect');
+    expect(excl.w).toBeGreaterThan(0);
+    expect(excl.h).toBeGreaterThan(0);
+    expect(excl._isContact).toBe(true);
+  });
+
+  it('wallSurfaceToTileableRegion does NOT include contact exclusions (confirming wrapper adds them)', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wall = getWallForEdge(floor, 'r1', 0);
+    const room = floor.rooms[0];
+    room.objects3d = [{
+      id: 'obj1',
+      type: 'rect',
+      x: 100, y: 0,
+      w: 100, h: 50,
+      heightCm: 80,
+      surfaces: [],
+    }];
+
+    const bare = wallSurfaceToTileableRegion(wall, 0, { room, floor });
+    const contactExcls = (bare.exclusions || []).filter(e => e._isContact);
+    expect(contactExcls).toHaveLength(0);
+  });
+
+  it('returns null for out-of-range surface index', () => {
+    const floor = makeFloor([makeRoom('r1', 0, 0, 400, 300)]);
+    syncFloorWalls(floor);
+    const wall = getWallForEdge(floor, 'r1', 0);
+    expect(prepareWallSurface(wall, 99, floor.rooms[0], floor)).toBeNull();
   });
 });

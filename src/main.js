@@ -7,7 +7,7 @@ import { LS_SESSION, defaultState, deepClone, getCurrentRoom, getCurrentFloor, g
 import { createStateStore } from "./state.js";
 import { createExclusionDragController, createObject3DDragController, createRoomDragController, createRoomResizeController, createPolygonVertexDragController, createDoorwayDragController } from "./drag.js";
 import { createExclusionsController } from "./exclusions.js";
-import { createObjects3DController } from "./objects3d.js";
+import { createObjects3DController, prepareObj3dFaceRegion } from "./objects3d.js";
 import { bindUI } from "./ui.js";
 import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
@@ -15,7 +15,7 @@ import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions, computeSurfaceContacts } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, wallSurfaceToTileableRegion, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls, computeSurfaceTiles } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, prepareWallSurface, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls, computeSurfaceTiles } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -486,77 +486,13 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     for (const surf of (obj.surfaces || [])) {
       if (!surf.tile) continue;
 
-      // Compute face dimensions from object geometry
-      let faceW, faceH;
-      if (obj.type === "rect") {
-        const isTop = surf.face === "top";
-        faceW = isTop ? obj.w : (surf.face === "left" || surf.face === "right" ? obj.h : obj.w);
-        faceH = isTop ? obj.h : (obj.heightCm || 100);
-      } else {
-        // tri / freeform: compute from vertices
-        const verts = obj.type === "tri" ? [obj.p1, obj.p2, obj.p3] : (obj.vertices || []);
-        if (surf.face === "top") {
-          // Top face: bounding box of the polygon
-          const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
-          faceW = Math.max(...xs) - Math.min(...xs);
-          faceH = Math.max(...ys) - Math.min(...ys);
-        } else {
-          // Side face: edge length × object height
-          const match = surf.face.match(/^side-(\d+)$/);
-          if (match) {
-            const idx = parseInt(match[1]);
-            const a = verts[idx], b = verts[(idx + 1) % verts.length];
-            if (a && b) {
-              faceW = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-            }
-          }
-          faceH = obj.heightCm || 100;
-        }
-      }
+      const region = prepareObj3dFaceRegion(obj, surf, allSurfaceContacts);
+      if (!region) continue;
 
-      if (!faceW || !faceH) continue;
-
-      // Create a virtual room-like region for this face
-      // For tri/freeform top faces, use the actual polygon shape (origin-shifted) so tiles clip correctly
-      let polyVerts;
-      if (surf.face === "top" && obj.type !== "rect") {
-        const verts = obj.type === "tri" ? [obj.p1, obj.p2, obj.p3] : (obj.vertices || []);
-        const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
-        const minX = Math.min(...xs), minY = Math.min(...ys);
-        polyVerts = verts.map(v => ({ x: v.x - minX, y: v.y - minY }));
-      } else {
-        polyVerts = [
-          { x: 0, y: 0 }, { x: faceW, y: 0 },
-          { x: faceW, y: faceH }, { x: 0, y: faceH },
-        ];
-      }
-      // Contact exclusions for this face: areas where this face touches a wall
-      const faceContacts = allSurfaceContacts.filter(c => c.objId === obj.id && c.face === surf.face);
-      const faceContactExclusions = faceContacts.map(c => ({
-        type: 'rect',
-        x: c.faceLocalX1,
-        y: 0,
-        w: c.faceLocalX2 - c.faceLocalX1,
-        h: c.contactH,
-        _isContact: true,
-      }));
-      if (faceContactExclusions.length) {
-        console.log(`[surface-contact] obj=${obj.id} face=${surf.face}: added ${faceContactExclusions.length} contact exclusion(s)`);
-      }
-
-      const region = {
-        widthCm: faceW,
-        heightCm: faceH,
-        polygonVertices: polyVerts,
-        tile: surf.tile,
-        grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
-        pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
-        exclusions: faceContactExclusions,
-      };
       const faceTileResult = computeSurfaceTiles(state, region, floor, {
-        exclusions: faceContactExclusions,
+        exclusions: region.exclusions,
         includeDoorwayPatches: false,
-        effectiveSettings: { tile: surf.tile, grout: region.grout, pattern: region.pattern },
+        effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
         isRemovalMode,
       });
       faceTiles[surf.face] = { tiles: faceTileResult.tiles, groutColor: faceTileResult.groutColor };
@@ -609,27 +545,8 @@ function prepareFloorWallData(state, floor, wallGeometry) {
     const surfaces = wall.surfaces.map((surface, idx) => {
       // Get room for this surface to pass context for skirting offset
       const room = floor.rooms.find(r => r.id === surface.roomId);
-      const region = wallSurfaceToTileableRegion(wall, idx, { room, floor });
+      const region = prepareWallSurface(wall, idx, room, floor);
       if (!region) return null;
-
-      // Inject contact exclusions: areas where 3D objects touch this wall surface
-      if (room) {
-        const surfFromCm = surface.fromCm || 0;
-        const surfToCm = surface.toCm || edgeLength;
-        const maxH = region.heightCm;
-        const contacts = computeSurfaceContacts(room, wall);
-        const contactExclusions = contacts
-          .filter(c => c.overlapEnd > surfFromCm && c.overlapStart < surfToCm)
-          .map(c => {
-            const localX1 = Math.max(0, c.overlapStart - surfFromCm);
-            const localX2 = Math.min(surfToCm - surfFromCm, c.overlapEnd - surfFromCm);
-            return { type: 'rect', x: localX1, y: maxH - c.contactH, w: localX2 - localX1, h: c.contactH, _isContact: true };
-          });
-        if (contactExclusions.length) {
-          console.log(`[surface-contact] wall=${wall.id} surface=${idx}: added ${contactExclusions.length} contact exclusion(s)`);
-          region.exclusions = [...(region.exclusions || []), ...contactExclusions];
-        }
-      }
 
       let tiles = [];
       // Only compute tiles if surface has tiling configured (not null)
@@ -1147,7 +1064,7 @@ function renderPlanningSection(state, opts) {
       if (wall) {
         const surface = wall.surfaces[state.selectedSurfaceIdx ?? 0];
         const room = floor.rooms.find(r => r.id === surface?.roomId);
-        roomOverride = wallSurfaceToTileableRegion(wall, state.selectedSurfaceIdx ?? 0, { room, floor });
+        roomOverride = prepareWallSurface(wall, state.selectedSurfaceIdx ?? 0, room, floor);
         surfaceTilingDisabled = !roomOverride?.tile;
       }
     }

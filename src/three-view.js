@@ -1204,8 +1204,11 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       const nz = nmLen > 0.001 ? nmz / nmLen : 0;
       console.log(`[three-view]   surface[${surfIdx}] normal: nx=${nx.toFixed(3)}, nz=${nz.toFixed(3)}`);
 
-      // Grout background quad — covers this surface, hides wall color behind tiles
-      if (surf.tiles?.length) {
+      // Grout background quad — covers this surface, hides wall color behind tiles.
+      // Skip when doorway freeform exclusions are present: the wall mesh already has
+      // the hole cut; the grout quad would cover it and make the doorway opaque.
+      const hasDoorwayExcl = (surf.region?.exclusions || []).some(e => e.type === 'freeform');
+      if (surf.tiles?.length && !hasDoorwayExcl) {
         const groutMesh = createGroutQuad(surf.surfaceVerts, mapper, nx, nz, surf.groutColor || "#ffffff");
         if (groutMesh) scene.add(groutMesh);
       }

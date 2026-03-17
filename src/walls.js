@@ -2,7 +2,7 @@
 import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
 import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
-import { computeSkirtingSegments, roomPolygon, computeAvailableArea, tilesForPreview } from "./geometry.js";
+import { computeSkirtingSegments, roomPolygon, computeAvailableArea, tilesForPreview, computeSurfaceContacts } from "./geometry.js";
 import polygonClipping from "polygon-clipping";
 import { FLOOR_PLAN_RULES, snapToWallType } from "./floor-plan-rules.js";
 import { enforceSkeletonWallProperties, computeStructuralBoundaries } from "./skeleton.js";
@@ -2162,4 +2162,35 @@ export function computeSurfaceTiles(state, region, floor, options = {}) {
   console.log(`[computeSurfaceTiles] result tiles=${result.tiles?.length ?? 0} error=${result.error || 'none'}`);
 
   return { tiles: result.tiles || [], groutColor, error: result.error || null };
+}
+
+/**
+ * Prepare a wall surface region with contact exclusions injected.
+ * Single entry point for both the 3D pipeline and the 2D wall editor.
+ * Returns the region (with contact exclusions) or null.
+ */
+export function prepareWallSurface(wall, idx, room, floor) {
+  const region = wallSurfaceToTileableRegion(wall, idx, { room, floor });
+  if (!region || !room) return region;
+
+  const surface = wall.surfaces[idx];
+  const surfFromCm = surface?.fromCm || 0;
+  const surfToCm = surface?.toCm ?? (wall.lengthCm || 0);
+  const maxH = region.heightCm;
+
+  const contacts = computeSurfaceContacts(room, wall);
+  const contactExclusions = contacts
+    .filter(c => c.overlapEnd > surfFromCm && c.overlapStart < surfToCm)
+    .map(c => {
+      const localX1 = Math.max(0, c.overlapStart - surfFromCm);
+      const localX2 = Math.min(surfToCm - surfFromCm, c.overlapEnd - surfFromCm);
+      return { type: 'rect', x: localX1, y: maxH - c.contactH, w: localX2 - localX1, h: c.contactH, _isContact: true };
+    });
+
+  if (contactExclusions.length) {
+    console.log(`[prepareWallSurface] wall=${wall.id} surface=${idx}: ${contactExclusions.length} contact exclusion(s)`);
+    region.exclusions = [...(region.exclusions || []), ...contactExclusions];
+  }
+
+  return region;
 }

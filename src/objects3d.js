@@ -4,6 +4,75 @@ import { t } from './i18n.js';
 import { getRoomBounds } from './geometry.js';
 
 /**
+ * Build the virtual room-like region for a 3D object face.
+ * Returns { widthCm, heightCm, polygonVertices, tile, grout, pattern, exclusions }
+ * or null if dimensions cannot be determined.
+ */
+export function prepareObj3dFaceRegion(obj, surf, allSurfaceContacts) {
+  // Compute face dimensions
+  let faceW, faceH;
+  if (obj.type === "rect") {
+    const isTop = surf.face === "top";
+    faceW = isTop ? obj.w : (surf.face === "left" || surf.face === "right" ? obj.h : obj.w);
+    faceH = isTop ? obj.h : (obj.heightCm || 100);
+  } else {
+    const verts = obj.type === "tri" ? [obj.p1, obj.p2, obj.p3] : (obj.vertices || []);
+    if (surf.face === "top") {
+      const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+      faceW = Math.max(...xs) - Math.min(...xs);
+      faceH = Math.max(...ys) - Math.min(...ys);
+    } else {
+      const match = surf.face.match(/^side-(\d+)$/);
+      if (match) {
+        const idx = parseInt(match[1]);
+        const a = verts[idx], b = verts[(idx + 1) % verts.length];
+        if (a && b) faceW = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      }
+      faceH = obj.heightCm || 100;
+    }
+  }
+  if (!faceW || !faceH) return null;
+
+  // Build polygon vertices for this face
+  let polyVerts;
+  if (surf.face === "top" && obj.type !== "rect") {
+    const verts = obj.type === "tri" ? [obj.p1, obj.p2, obj.p3] : (obj.vertices || []);
+    const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    polyVerts = verts.map(v => ({ x: v.x - minX, y: v.y - minY }));
+  } else {
+    polyVerts = [
+      { x: 0, y: 0 }, { x: faceW, y: 0 },
+      { x: faceW, y: faceH }, { x: 0, y: faceH },
+    ];
+  }
+
+  // Contact exclusions: areas where this face touches a wall
+  const faceContacts = allSurfaceContacts.filter(c => c.objId === obj.id && c.face === surf.face);
+  const exclusions = faceContacts.map(c => ({
+    type: 'rect',
+    x: c.faceLocalX1,
+    y: 0,
+    w: c.faceLocalX2 - c.faceLocalX1,
+    h: c.contactH,
+    _isContact: true,
+  }));
+  if (exclusions.length) {
+    console.log(`[prepareObj3dFaceRegion] obj=${obj.id} face=${surf.face}: ${exclusions.length} contact exclusion(s)`);
+  }
+
+  return {
+    widthCm: faceW,
+    heightCm: faceH,
+    polygonVertices: polyVerts,
+    tile: surf.tile,
+    grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
+    pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
+    exclusions,
+  };
+}
+
+/**
  * Creates surfaces for a 3D object based on its type.
  * rect → 5 faces: front, back, left, right, top
  * tri  → 4 faces: side-0, side-1, side-2, top
