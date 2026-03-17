@@ -22,7 +22,7 @@ import {
 import { EPSILON, DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM } from "./constants.js";
 import { setBaseViewBox, calculateEffectiveViewBox, getViewport } from "./viewport.js";
 import { getFloorBounds } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, getWallsForEdge, computeFloorWallGeometry, getDoorwaysInEdgeSpace, getWallRenderHelpers, computeDoorwayFloorPatches, computeSurfaceTiles, computeSubSurfaceTiles } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, getWallsForEdge, computeFloorWallGeometry, getDoorwaysInEdgeSpace, getWallRenderHelpers, computeDoorwayFloorPatches, computeSurfaceTiles, computeSubSurfaceTiles, computeZoneTiles } from "./walls.js";
 import { computePatternGroupOrigin, getEffectiveTileSettings, getRoomPatternGroup, isPatternGroupChild } from "./pattern-groups.js";
 
 function isCircleRoom(room) {
@@ -851,6 +851,127 @@ export function renderSubSurfaceProps({
   groutCInp.addEventListener("input", onCommit);
 }
 
+export function renderDividerZoneUI({
+  state,
+  selectedDividerId,
+  commitZoneSettings,
+  deleteDivider,
+}) {
+  const btn = document.getElementById("quickDivider");
+  const menu = document.getElementById("dividerZoneDropdown");
+  if (!btn || !menu) return;
+
+  const currentRoom = getCurrentRoom(state);
+  const dividers = currentRoom?.dividers || [];
+  btn.disabled = !currentRoom;
+  menu.innerHTML = "";
+  if (!currentRoom) return;
+
+  const { computeZones: _computeZones } = (() => {
+    // Lazily access computeZones from zones already computed in render pipeline
+    // — imported at top of file from walls.js via computeZoneTiles
+    return { computeZones: null };
+  })();
+
+  const currentFloor = state.floors?.find(f => f.id === state.selectedFloorId);
+  const zoneResults = computeZoneTiles(state, currentRoom, currentFloor, { isRemovalMode: false });
+
+  // Selected divider delete button
+  if (selectedDividerId) {
+    const delBtn = document.createElement("button");
+    delBtn.className = "quick-btn";
+    delBtn.style.cssText = "width:100%;padding:6px 10px;text-align:left;color:rgb(239,68,68);border-bottom:1px solid var(--line)";
+    delBtn.textContent = `${t("dividers.title")} ✕`;
+    delBtn.addEventListener("click", () => deleteDivider(selectedDividerId));
+    menu.appendChild(delBtn);
+  }
+
+  // Zone list
+  for (const zr of zoneResults) {
+    const settings = currentRoom.zoneSettings?.[zr.zoneId] || {};
+    const label = settings.label || zr.zoneId;
+    const enabled = !!settings.tile;
+
+    const section = document.createElement("div");
+    section.style.cssText = "border-bottom:1px solid var(--line);padding:6px 10px";
+
+    const headerRow = document.createElement("div");
+    headerRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:4px";
+    headerRow.innerHTML = `
+      <label class="quick-toggle">
+        <input id="qzEnabled_${zr.zoneId}" type="checkbox" ${enabled ? "checked" : ""}>
+        <span class="quick-toggle-icon">⬚</span>
+      </label>
+      <span class="quick-label" style="color:var(--text)">${label}</span>
+    `;
+    section.appendChild(headerRow);
+
+    const inp = headerRow.querySelector("input");
+    inp.addEventListener("change", () => commitZoneSettings(zr.zoneId, label));
+
+    if (enabled) {
+      const row = (labelText, el) => {
+        const d = document.createElement("div");
+        d.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:4px";
+        d.innerHTML = `<span class="quick-label">${labelText}</span>`;
+        d.appendChild(el);
+        section.appendChild(d);
+      };
+
+      const presetSel = document.createElement("select");
+      presetSel.id = `qzPreset_${zr.zoneId}`;
+      presetSel.className = "quick-select";
+      (state.tilePresets || []).forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.id; opt.textContent = p.name;
+        if (settings.tile?.reference === p.name) opt.selected = true;
+        presetSel.appendChild(opt);
+      });
+      presetSel.addEventListener("change", () => commitZoneSettings(zr.zoneId, label));
+      row(t("dividers.preset"), presetSel);
+
+      const patSel = document.createElement("select");
+      patSel.id = `qzPattern_${zr.zoneId}`;
+      patSel.className = "quick-select";
+      [["grid","Grid"],["runningBond","Running Bond"],["herringbone","Herringbone"]].forEach(([v,l]) => {
+        const opt = document.createElement("option");
+        opt.value = v; opt.textContent = l;
+        if ((settings.pattern?.type || "grid") === v) opt.selected = true;
+        patSel.appendChild(opt);
+      });
+      patSel.addEventListener("change", () => commitZoneSettings(zr.zoneId, label));
+      row(t("dividers.pattern"), patSel);
+
+      const groutW = document.createElement("input");
+      groutW.id = `qzGroutWidth_${zr.zoneId}`;
+      groutW.type = "number"; groutW.min = "0"; groutW.step = "0.01";
+      groutW.className = "quick-input small no-spinner";
+      groutW.value = (settings.grout?.widthCm ?? 0.2).toFixed(2);
+      groutW.addEventListener("blur", () => commitZoneSettings(zr.zoneId, label));
+      row(t("dividers.groutWidth"), groutW);
+
+      const groutC = document.createElement("input");
+      groutC.id = `qzGroutColor_${zr.zoneId}`;
+      groutC.type = "color";
+      groutC.value = settings.grout?.colorHex || "#ffffff";
+      groutC.style.cssText = "width:36px;height:28px;padding:2px;border-radius:4px;border:1px solid var(--line);cursor:pointer";
+      groutC.addEventListener("input", () => commitZoneSettings(zr.zoneId, label));
+      row(t("dividers.groutColor"), groutC);
+    }
+
+    menu.appendChild(section);
+  }
+
+  if (!zoneResults.length && dividers.length === 0) {
+    const hint = document.createElement("div");
+    hint.style.cssText = "padding:8px 10px;color:var(--text-subtle);font-size:0.85em";
+    hint.textContent = t("dividers.title");
+    menu.appendChild(hint);
+  }
+
+  console.log(`[render:dividerZoneUI] dividers=${dividers.length} zones=${zoneResults.length}`);
+}
+
 export function renderObj3dList(state, selectedObj3dId) {
   const sel = document.getElementById("obj3dList");
   if (!sel) return;
@@ -1487,7 +1608,9 @@ export function renderPlanSvg({
   selectedObj3dId = null,
   setSelectedObj3d = null,
   onObj3dPointerDown = null,
-  onObj3dResizeHandlePointerDown = null
+  onObj3dResizeHandlePointerDown = null,
+  selectedDividerId = null,
+  setSelectedDividerId = null
 }) {
   const svg = svgOverride || document.getElementById("planSvg");
   const currentRoom = roomOverride || getCurrentRoom(state);
@@ -1898,6 +2021,49 @@ export function renderPlanSvg({
       }
       svg.appendChild(ssG);
       console.log(`[render:2D-subSurface] excl=${ss.exclusionId} tiles=${ss.tiles.length}`);
+    }
+
+    // Zone tile groups (surface dividers)
+    const zoneResults = computeZoneTiles(state, currentRoom, currentFloor, { isRemovalMode });
+    for (const zr of zoneResults) {
+      if (!zr.tiles.length) continue;
+      const zGroutRgb = hexToRgb(zr.groutColor);
+      const zG = svgEl("g", { "pointer-events": "none" });
+      for (const tile of zr.tiles) {
+        if (!tile.d) continue;
+        zG.appendChild(svgEl("path", {
+          d: tile.d,
+          fill: tile.isFull ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.08)",
+          stroke: `rgba(${zGroutRgb.r},${zGroutRgb.g},${zGroutRgb.b},0.50)`,
+          "stroke-width": tile.isFull ? 0.5 : 1.2,
+        }));
+      }
+      svg.appendChild(zG);
+      console.log(`[render:2D-zone] zone=${zr.zoneId} tiles=${zr.tiles.length}`);
+    }
+    // Zone outlines
+    for (const zr of zoneResults) {
+      const pts = zr.polygonVertices.map(v => `${v.x},${v.y}`).join(' ');
+      svg.appendChild(svgEl("polygon", {
+        points: pts, fill: "none",
+        stroke: "rgba(99,102,241,0.35)", "stroke-width": 1, "stroke-dasharray": "3 2",
+        "pointer-events": "none",
+      }));
+    }
+    // Divider lines
+    for (const div of (currentRoom.dividers || [])) {
+      const isSel = div.id === selectedDividerId;
+      const lineEl = svgEl("line", {
+        x1: div.p1.x, y1: div.p1.y, x2: div.p2.x, y2: div.p2.y,
+        stroke: isSel ? "rgba(99,102,241,1)" : "rgba(99,102,241,0.7)",
+        "stroke-width": isSel ? 2 : 1.5,
+        "stroke-dasharray": "4 3",
+        "pointer-events": "stroke",
+        "data-divid": div.id, cursor: "pointer",
+      });
+      lineEl.addEventListener("click", e => { e.stopPropagation(); setSelectedDividerId?.(div.id); });
+      svg.appendChild(lineEl);
+      console.log(`[render:2D-divider] id=${div.id} sel=${isSel}`);
     }
   }
 

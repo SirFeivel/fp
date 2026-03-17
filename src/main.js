@@ -15,7 +15,7 @@ import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
 import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions, computeSurfaceContacts } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
-import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, prepareWallSurface, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls, computeSurfaceTiles, computeSubSurfaceTiles } from "./walls.js";
+import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, prepareWallSurface, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls, computeSurfaceTiles, computeSubSurfaceTiles, computeZoneTiles } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
 import { wireQuickViewToggleHandlers, syncQuickViewToggleStates } from "./quick_view_toggles.js";
 import { createZoomPanController } from "./zoom-pan.js";
@@ -41,6 +41,7 @@ import {
   renderExclProps,
   renderSubSurfaceProps,
   renderQuickSubSurface,
+  renderDividerZoneUI,
   renderObj3dList,
   renderObj3dProps,
   renderSkirtingRoomList,
@@ -52,6 +53,8 @@ import {
   renderCommercialTab,
   renderExportTab
 } from "./render.js";
+import { createDividerController } from "./dividers.js";
+import { createDividerDrawController } from "./divider-draw.js";
 import { createStructureController } from "./structure.js";
 import { createRemovalController } from "./removal.js";
 import { enforceCutoutForPresetRooms } from "./skirting_rules.js";
@@ -76,6 +79,7 @@ window.__fpStore = store; // keep for console testing
 
 let selectedExclId = null;
 let selectedObj3dId = null;
+let selectedDividerId = null;
 let selectedTilePresetId = null;
 let selectedSkirtingPresetId = null;
 let lastUnionError = null;
@@ -183,6 +187,11 @@ function setSelectedExcl(id) {
 }
 function setSelectedId(id) {
   selectedExclId = id || null;
+}
+
+function setSelectedDividerId(id) {
+  selectedDividerId = id || null;
+  renderAll();
 }
 
 function setSelectedObj3d(id) {
@@ -506,6 +515,9 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
   const floorSubSurfaces = computeSubSurfaceTiles(state, getAllFloorExclusions(room), floor, { isRemovalMode });
   console.log(`[main:subSurface-floor] room=${room.id} subSurfaces=${floorSubSurfaces.length}`);
 
+  const floorZoneTiles = computeZoneTiles(state, room, floor, { isRemovalMode });
+  console.log(`[main:zoneTiles-floor] room=${room.id} zones=${floorZoneTiles.length}`);
+
   const desc = {
     id: room.id,
     polygonVertices: room.polygonVertices,
@@ -516,6 +528,7 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     doorwayFloorPatches,
     objects3d: objects3dWithTiles,
     subSurfaceTiles: floorSubSurfaces,
+    zoneTiles: floorZoneTiles,
   };
   const pos3d = desc.floorPosition;
   const verts3d = desc.polygonVertices || [];
@@ -575,6 +588,9 @@ function prepareFloorWallData(state, floor, wallGeometry) {
       const subSurfaceTiles = computeSubSurfaceTiles(state, region.exclusions || [], floor, { isRemovalMode });
       console.log(`[main:subSurface-wall] wall=${wall.id} surf=${idx} subSurfaces=${subSurfaceTiles.length}`);
 
+      const zoneTiles = computeZoneTiles(state, region, floor, { isRemovalMode });
+      console.log(`[main:zoneTiles-wall] wall=${wall.id} surf=${idx} zones=${zoneTiles.length}`);
+
       const surfFromCm = surface.fromCm || 0;
       const surfToCm = surface.toCm || edgeLength;
       const tStart = edgeLength > 0 ? surfFromCm / edgeLength : 0;
@@ -607,6 +623,7 @@ function prepareFloorWallData(state, floor, wallGeometry) {
         skirtingSegments, // Skirting segments in wall surface coordinates
         skirtingHeight, // Height of skirting for 3D rendering
         subSurfaceTiles,
+        zoneTiles,
       };
     }).filter(Boolean);
 
@@ -739,6 +756,12 @@ function renderPlanningSection(state, opts) {
     selectedExclId,
     getSelectedExcl: excl.getSelectedExcl,
     commitSubSurface: excl.commitSubSurface,
+  });
+  renderDividerZoneUI({
+    state,
+    selectedDividerId,
+    commitZoneSettings: dividerCtrl.commitZoneSettings,
+    deleteDivider: dividerCtrl.deleteDivider,
   });
   renderObj3dList(state, selectedObj3dId);
   renderObj3dProps({
@@ -1131,7 +1154,9 @@ function renderPlanningSection(state, opts) {
       selectedObj3dId,
       setSelectedObj3d,
       onObj3dPointerDown: obj3dDragCtrl.onObjPointerDown,
-      onObj3dResizeHandlePointerDown: obj3dDragCtrl.onResizeHandlePointerDown
+      onObj3dResizeHandlePointerDown: obj3dDragCtrl.onResizeHandlePointerDown,
+      selectedDividerId,
+      setSelectedDividerId,
     });
   }
   updateDoorButtonState();
@@ -1868,6 +1893,46 @@ const obj3dCtrl = createObjects3DController({
   commit: commitViaStore,
   getSelectedId: () => selectedObj3dId,
   setSelectedId: setSelectedObj3dIdOnly
+});
+
+function getDividerTarget(state) {
+  const floor = getCurrentFloor(state);
+  const room = getCurrentRoom(state);
+  if (!room || !floor) return null;
+  // If a wall surface is selected, target that surface; otherwise target the room
+  if (state.selectedWallId) {
+    const wall = floor.walls?.find(w => w.id === state.selectedWallId);
+    const surf = wall?.surfaces?.find(s => s.roomId === state.selectedRoomId);
+    return surf || null;
+  }
+  return room;
+}
+
+const dividerCtrl = createDividerController({
+  getState: () => store.getState(),
+  commit: commitViaStore,
+  getTarget: getDividerTarget,
+  t,
+});
+
+const dividerDrawCtrl = createDividerDrawController({
+  getSvg: () => document.getElementById("planSvg"),
+  getPolygonEdges: () => {
+    const state = store.getState();
+    const target = getDividerTarget(state);
+    if (!target?.polygonVertices) return [];
+    const verts = target.polygonVertices;
+    return verts.map((v, i) => ({ p1: v, p2: verts[(i + 1) % verts.length] }));
+  },
+  onComplete: ({ p1, p2 }) => {
+    dividerDrawCtrl.stop();
+    document.getElementById("quickDivider")?.classList.remove("active");
+    dividerCtrl.addDivider(p1, p2);
+  },
+  onCancel: () => {
+    dividerDrawCtrl.stop();
+    document.getElementById("quickDivider")?.classList.remove("active");
+  },
 });
 
 const structure = createStructureController({
@@ -3217,6 +3282,17 @@ function updateAllTranslations() {
       updateExclusionInline({ id: selectedExclId, key: "__delete__" });
     } else if (selectedObj3dId) {
       obj3dCtrl.deleteSelectedObj();
+    }
+  });
+
+  // Quick divider button — toggles draw mode
+  document.getElementById("quickDivider")?.addEventListener("click", () => {
+    if (dividerDrawCtrl.isActive()) {
+      dividerDrawCtrl.stop();
+      document.getElementById("quickDivider")?.classList.remove("active");
+    } else {
+      dividerDrawCtrl.start();
+      document.getElementById("quickDivider")?.classList.add("active");
     }
   });
 

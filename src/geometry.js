@@ -1475,3 +1475,120 @@ function tilesForPreviewBasketweave(state, availableMP, tw, th, grout, includeEx
 
   return { tiles, error: null };
 }
+
+// ── Surface Divider Helpers ───────────────────────────────────────────────────
+
+export function isPointInPolygon(point, vertices) {
+  const { x, y } = point;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].x, yi = vertices[i].y;
+    const xj = vertices[j].x, yj = vertices[j].y;
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function insertPointOnRing(vertices, pt) {
+  let bestIdx = -1, bestT = -1, bestDist = Infinity;
+  const n = vertices.length;
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % n];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 0.0001) continue;
+    const t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+    const px = a.x + t * dx, py = a.y + t * dy;
+    const dist = Math.hypot(pt.x - px, pt.y - py);
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; bestT = t; }
+  }
+  if (bestIdx < 0) {
+    console.warn(`[geometry:insertPointOnRing] no edge found for pt=(${pt.x.toFixed(1)},${pt.y.toFixed(1)})`);
+    return vertices;
+  }
+  if (bestT < 0.001 || bestT > 0.999) {
+    console.log(`[geometry:insertPointOnRing] pt=(${pt.x.toFixed(1)},${pt.y.toFixed(1)}) t=${bestT.toFixed(3)} — coincident with vertex, skipping insert`);
+    return vertices;
+  }
+  const result = [...vertices];
+  result.splice(bestIdx + 1, 0, { x: pt.x, y: pt.y });
+  console.log(`[geometry:insertPointOnRing] inserted at edge ${bestIdx} t=${bestT.toFixed(3)} dist=${bestDist.toFixed(2)}`);
+  return result;
+}
+
+export function splitPolygonByLine(vertices, p1, p2) {
+  const verts = insertPointOnRing(insertPointOnRing([...vertices], p1), p2);
+  const i1 = verts.findIndex(v => Math.abs(v.x - p1.x) < 0.01 && Math.abs(v.y - p1.y) < 0.01);
+  const i2 = verts.findIndex((v, i) => i !== i1 && Math.abs(v.x - p2.x) < 0.01 && Math.abs(v.y - p2.y) < 0.01);
+  if (i1 < 0 || i2 < 0 || i1 === i2) {
+    console.warn(`[geometry:splitPolygonByLine] degenerate: i1=${i1} i2=${i2} verts=${verts.length}`);
+    return null;
+  }
+  const n = verts.length;
+  const a = [], b = [];
+  for (let i = i1; ; i = (i + 1) % n) { a.push(verts[i]); if (i === i2) break; }
+  for (let i = i2; ; i = (i + 1) % n) { b.push(verts[i]); if (i === i1) break; }
+  if (a.length < 3 || b.length < 3) {
+    console.warn(`[geometry:splitPolygonByLine] sub-polygon too small: a=${a.length} b=${b.length}`);
+    return null;
+  }
+  console.log(`[geometry:splitPolygonByLine] p1=(${p1.x.toFixed(1)},${p1.y.toFixed(1)}) p2=(${p2.x.toFixed(1)},${p2.y.toFixed(1)}) → a=${a.length} b=${b.length} verts`);
+  return [a, b];
+}
+
+function zoneId(verts) {
+  const cx = verts.reduce((s, v) => s + v.x, 0) / verts.length;
+  const cy = verts.reduce((s, v) => s + v.y, 0) / verts.length;
+  return `zone_${Math.round(cx)}_${Math.round(cy)}`;
+}
+
+export function computeZones(polygonVertices, dividers) {
+  if (!dividers?.length) {
+    const id = zoneId(polygonVertices);
+    console.log(`[geometry:computeZones] 0 dividers → 1 zone id=${id}`);
+    return [{ id, polygonVertices }];
+  }
+  let zones = [{ id: zoneId(polygonVertices), polygonVertices }];
+  for (const div of dividers) {
+    const mid = { x: (div.p1.x + div.p2.x) / 2, y: (div.p1.y + div.p2.y) / 2 };
+    const target = zones.find(z => isPointInPolygon(mid, z.polygonVertices));
+    if (!target) {
+      console.warn(`[geometry:computeZones] div=${div.id} midpoint (${mid.x.toFixed(1)},${mid.y.toFixed(1)}) not in any zone — skipped`);
+      continue;
+    }
+    const halves = splitPolygonByLine(target.polygonVertices, div.p1, div.p2);
+    if (!halves) continue;
+    zones = zones.filter(z => z !== target);
+    zones.push({ id: zoneId(halves[0]), polygonVertices: halves[0] }, { id: zoneId(halves[1]), polygonVertices: halves[1] });
+    console.log(`[geometry:computeZones] div=${div.id} → zones now ${zones.length} (ids: ${zones.map(z => z.id).join(', ')})`);
+  }
+  return zones;
+}
+
+export function deriveDividerZoneName(parentVertices, zoneVertices, existingLabels = []) {
+  const shoelace = verts => Math.abs(verts.reduce((s, v, i) => {
+    const next = verts[(i + 1) % verts.length];
+    return s + (v.x * next.y - next.x * v.y);
+  }, 0)) / 2;
+  const parentArea = shoelace(parentVertices);
+  const zoneArea = shoelace(zoneVertices);
+  const fraction = parentArea > 0 ? zoneArea / parentArea : 0.5;
+  const pCx = parentVertices.reduce((s, v) => s + v.x, 0) / parentVertices.length;
+  const pCy = parentVertices.reduce((s, v) => s + v.y, 0) / parentVertices.length;
+  const zCx = zoneVertices.reduce((s, v) => s + v.x, 0) / zoneVertices.length;
+  const zCy = zoneVertices.reduce((s, v) => s + v.y, 0) / zoneVertices.length;
+  const dxRel = Math.abs(zCx - pCx), dyRel = Math.abs(zCy - pCy);
+  const position = dyRel >= dxRel
+    ? (zCy < pCy ? 'top' : 'bottom')
+    : (zCx < pCx ? 'left' : 'right');
+  const fractionLabels = [[0.25,'quarter'],[0.33,'third'],[0.5,'half'],[0.67,'two-thirds'],[0.75,'three-quarters']];
+  const fractionLabel = fractionLabels.reduce((best, [f, l]) =>
+    Math.abs(fraction - f) < Math.abs(fraction - best[0]) ? [f, l] : best, fractionLabels[0])[1];
+  const base = `${position}-${fractionLabel}`;
+  const count = existingLabels.filter(l => l && l.startsWith(base)).length;
+  const label = `${base}-${count + 1}`;
+  console.log(`[geometry:deriveDividerZoneName] fraction=${fraction.toFixed(2)} position=${position} → label=${label}`);
+  return label;
+}

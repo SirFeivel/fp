@@ -143,7 +143,7 @@ export function defaultState() {
   const floorId = uuid();
 
   return {
-    meta: { version: 14, updatedAt: nowISO() },
+    meta: { version: 15, updatedAt: nowISO() },
 
     project: { name: "Projekt" },
 

@@ -914,6 +914,18 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
       console.log(`[three-view:subSurface-floor] excl=${ss.exclusionId} tiles=${ss.tiles.length}`);
     }
 
+    // Zone tile batches on floor
+    for (const zr of (roomDesc.zoneTiles || [])) {
+      if (!zr.tiles.length) continue;
+      const floorMapper = createFloorMapper(pos);
+      const { meshes, lines } = renderSurface3D({
+        tiles: zr.tiles, exclusions: [], groutColor: zr.groutColor, mapper: floorMapper,
+      });
+      for (const m of meshes) { m.position.y = SURFACE_TILE_OFFSET; scene.add(m); }
+      for (const l of lines) { l.position.y = SURFACE_TILE_OFFSET; scene.add(l); }
+      console.log(`[three-view:zone-floor] zone=${zr.zoneId} tiles=${zr.tiles.length}`);
+    }
+
     // --- 3D Objects (extruded boxes) ---
     for (const obj of (roomDesc.objects3d || [])) {
       addObject3DToScene(obj, pos, roomDesc.id);
@@ -1271,6 +1283,18 @@ export function createThreeViewController({ canvas, onWallDoubleClick, onRoomDou
         for (const m of ssMeshes) scene.add(m);
         for (const l of ssLines) scene.add(l);
         console.log(`[three-view:subSurface-wall] excl=${ss.exclusionId} tiles=${ss.tiles.length}`);
+      }
+
+      // Zone tile batches on wall face
+      for (const zr of (surf.zoneTiles || [])) {
+        if (!zr.tiles.length) continue;
+        const { meshes: zMeshes, lines: zLines } = renderSurface3D({
+          tiles: zr.tiles, exclusions: [], groutColor: zr.groutColor,
+          mapper: tileMapper, tileZBias: 0, exclZBias: 0,
+        });
+        for (const m of zMeshes) scene.add(m);
+        for (const l of zLines) scene.add(l);
+        console.log(`[three-view:zone-wall] zone=${zr.zoneId} tiles=${zr.tiles.length}`);
       }
 
       // Render actual skirting segments in 3D

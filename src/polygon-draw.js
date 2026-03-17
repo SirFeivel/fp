@@ -1,7 +1,7 @@
 // src/polygon-draw.js
 // Controller for drawing room polygons by clicking vertices
 
-import { svgEl, roomPolygon } from "./geometry.js";
+import { svgEl, roomPolygon, isPointInPolygon as _isPointInPolygon } from "./geometry.js";
 import { t } from "./i18n.js";
 import { createSurface } from "./surface.js";
 import { pointerToSvgXY, svgPointToClient } from "./svg-coords.js";
@@ -364,24 +364,9 @@ export function computeRoomWallOuterFaces(floor) {
   return { hTargets, vTargets };
 }
 
-/**
- * Check if a point is inside a polygon using ray casting algorithm
- */
+// Adapter: geometry.js isPointInPolygon uses {x,y} format; ring arrays here are [x,y] format.
 function isPointInPolygon(point, polygon) {
-  let inside = false;
-  const n = polygon.length;
-
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = polygon[i][0], yi = polygon[i][1];
-    const xj = polygon[j][0], yj = polygon[j][1];
-
-    if (((yi > point.y) !== (yj > point.y)) &&
-        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
-      inside = !inside;
-    }
-  }
-
-  return inside;
+  return _isPointInPolygon(point, polygon.map(([x, y]) => ({ x, y })));
 }
 
 /**

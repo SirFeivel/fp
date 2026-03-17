@@ -2,7 +2,7 @@
 import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
 import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
-import { computeSkirtingSegments, roomPolygon, computeAvailableArea, tilesForPreview, computeSurfaceContacts, exclusionToRegion } from "./geometry.js";
+import { computeSkirtingSegments, roomPolygon, computeAvailableArea, tilesForPreview, computeSurfaceContacts, exclusionToRegion, computeZones, deriveDividerZoneName } from "./geometry.js";
 import polygonClipping from "polygon-clipping";
 import { FLOOR_PLAN_RULES, snapToWallType } from "./floor-plan-rules.js";
 import { enforceSkeletonWallProperties, computeStructuralBoundaries } from "./skeleton.js";
@@ -70,6 +70,8 @@ function createDefaultSurface(side, roomId, edgeIndex, fromCm, toCm) {
     pattern: null,
     exclusions: [],
     excludedTiles: [],
+    dividers: [],
+    zoneSettings: {},
   };
 }
 
@@ -1572,6 +1574,8 @@ export function wallSurfaceToTileableRegion(wall, surfaceIdx, options = {}) {
     pattern: surface.pattern ? { ...surface.pattern } : null,
     exclusions: allExclusions,
     excludedTiles: surface.excludedTiles || [],
+    dividers: surface.dividers || [],
+    zoneSettings: surface.zoneSettings || {},
     skirting: { enabled: false }, // Wall surfaces don't have floor skirting
     skirtingOffset, // Offset in cm from floor where wall tiles start
     skirtingSegments, // Segments in wall surface coordinates for rendering
@@ -2185,6 +2189,40 @@ export function computeSubSurfaceTiles(state, exclusions, floor, opts = {}) {
     results.push({ exclusionId: excl.id, tiles: r.tiles, groutColor: r.groutColor, error: r.error });
   }
   return results;
+}
+
+export function computeZoneTiles(state, region, floor, opts = {}) {
+  const { isRemovalMode = false } = opts;
+  const dividers = region.dividers || [];
+  const zoneSettings = region.zoneSettings || {};
+  console.log(`[walls:computeZoneTiles] region=${region.id || 'anon'} dividers=${dividers.length}`);
+  if (!dividers.length) return [];
+  const zones = computeZones(region.polygonVertices, dividers);
+  return zones.map(zone => {
+    const settings = zoneSettings[zone.id] || {};
+    const xs = zone.polygonVertices.map(v => v.x), ys = zone.polygonVertices.map(v => v.y);
+    const zoneRegion = {
+      id: zone.id,
+      widthCm: Math.max(...xs) - Math.min(...xs),
+      heightCm: Math.max(...ys) - Math.min(...ys),
+      polygonVertices: zone.polygonVertices,
+      tile: settings.tile || null,
+      grout: settings.grout || region.grout || { widthCm: 0.2, colorHex: '#ffffff' },
+      pattern: settings.pattern || region.pattern || { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
+      exclusions: [],
+    };
+    if (!zoneRegion.tile) {
+      console.log(`[walls:computeZoneTiles] zone=${zone.id} untiled — skipping tile compute`);
+      return { zoneId: zone.id, polygonVertices: zone.polygonVertices, tiles: [], groutColor: '#ffffff', error: null, label: settings.label || '' };
+    }
+    const r = computeSurfaceTiles(state, zoneRegion, floor, {
+      exclusions: [], includeDoorwayPatches: false,
+      effectiveSettings: { tile: zoneRegion.tile, grout: zoneRegion.grout, pattern: zoneRegion.pattern },
+      isRemovalMode,
+    });
+    console.log(`[walls:computeZoneTiles] zone=${zone.id} tiles=${r.tiles.length} error=${r.error || 'none'}`);
+    return { zoneId: zone.id, polygonVertices: zone.polygonVertices, tiles: r.tiles, groutColor: r.groutColor, error: r.error, label: settings.label || '' };
+  });
 }
 
 /**

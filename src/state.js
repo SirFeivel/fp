@@ -66,6 +66,9 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     if (s.meta?.version === 13) {
       s = migrateV13ToV14(s);
     }
+    if (s.meta?.version === 14) {
+      s = migrateV14ToV15(s);
+    }
 
     if (s.tile || s.grout || s.pattern) {
       const globalTile = s.tile || {
@@ -210,6 +213,8 @@ export function createStateStore(defaultStateFn, validateStateFn) {
             if (!room.excludedTiles) room.excludedTiles = [];
             if (!room.excludedSkirts) room.excludedSkirts = [];
             if (!Array.isArray(room.objects3d)) room.objects3d = [];
+            if (!Array.isArray(room.dividers)) room.dividers = [];
+            if (!room.zoneSettings || typeof room.zoneSettings !== 'object') room.zoneSettings = {};
 
             if (room.exclusions && Array.isArray(room.exclusions)) {
               for (const ex of room.exclusions) {
@@ -658,6 +663,22 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     s.meta = s.meta || {};
     s.meta.version = 14;
     // objects3d arrays are added by normalization — no data conversion needed
+    return s;
+  }
+
+  function migrateV14ToV15(s) {
+    s.meta = s.meta || {};
+    s.meta.version = 15;
+    // dividers/zoneSettings on rooms are added by normalization loop above.
+    // Wall surfaces are NOT in the room loop — backfill explicitly.
+    for (const floor of (s.floors || [])) {
+      for (const wall of (floor.walls || [])) {
+        for (const surf of (wall.surfaces || [])) {
+          if (!Array.isArray(surf.dividers)) surf.dividers = [];
+          if (!surf.zoneSettings || typeof surf.zoneSettings !== 'object') surf.zoneSettings = {};
+        }
+      }
+    }
     return s;
   }
 
