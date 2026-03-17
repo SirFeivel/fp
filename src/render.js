@@ -1211,7 +1211,8 @@ export function renderTilePatternForm(state) {
 export function renderExclList(state, selectedExclId) {
   const sel = document.getElementById("exclList");
   sel.innerHTML = "";
-  const currentRoom = getCurrentRoom(state);
+  const surface = getSelectedSurface(state);
+  const currentRoom = surface || getCurrentRoom(state);
   const exclusions = currentRoom?.exclusions || [];
   if (!exclusions.length) {
     const opt = document.createElement("option");

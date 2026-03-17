@@ -1888,11 +1888,40 @@ function initBackgroundControls() {
 const commitViaStore = (label, next) =>
   store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
 
+// Shared target resolution for exclusion operations.
+// When a wall surface is selected, exclusions belong to that surface — not the floor room.
+function getExclusionTarget(state) {
+  if (state.selectedWallId) {
+    const floor = getCurrentFloor(state);
+    const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
+    const surface = wall?.surfaces?.[state.selectedSurfaceIdx ?? 0];
+    if (surface) return surface;
+  }
+  return getCurrentRoom(state);
+}
+
+function getExclusionTargetBounds(state) {
+  if (state.selectedWallId) {
+    const floor = getCurrentFloor(state);
+    const wall = floor?.walls?.find(w => w.id === state.selectedWallId);
+    const surface = wall?.surfaces?.[state.selectedSurfaceIdx ?? 0];
+    if (surface && wall) {
+      const w = (surface.toCm || 0) - (surface.fromCm || 0);
+      const h = wall.heightStartCm ?? DEFAULT_WALL_HEIGHT_CM;
+      return { minX: 0, minY: 0, width: w, height: h };
+    }
+  }
+  const room = getCurrentRoom(state);
+  return room ? getRoomBounds(room) : { minX: 0, minY: 0, width: 200, height: 200 };
+}
+
 const excl = createExclusionsController({
   getState: () => store.getState(),
   commit: commitViaStore,
   getSelectedId: () => selectedExclId,
-  setSelectedId
+  setSelectedId,
+  getTarget: getExclusionTarget,
+  getTargetBounds: getExclusionTargetBounds,
 });
 
 const obj3dCtrl = createObjects3DController({
@@ -1944,7 +1973,9 @@ const dragController = createExclusionDragController({
   },
   onDragEnd: () => {
     lastExclDragAt = Date.now();
-  }
+  },
+  getTarget: getExclusionTarget,
+  getTargetBounds: getExclusionTargetBounds,
 });
 
 const obj3dDragCtrl = createObject3DDragController({

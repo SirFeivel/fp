@@ -235,8 +235,17 @@ export function createExclusionDragController({
   getMoveLabel, // () => translated label for "moved" action
   getResizeLabel, // () => translated label for "resized" action
   onDragStart, // (id) => void
-  onDragEnd // ({ id, moved, type }) => void
+  onDragEnd, // ({ id, moved, type }) => void
+  // Optional: override target resolution for non-floor surfaces (e.g. wall surfaces)
+  getTarget = null,
+  getTargetBounds = null,
 }) {
+  const resolveTarget = (s) => getTarget ? getTarget(s) : getCurrentRoom(s);
+  const resolveBounds = (s) => {
+    if (getTargetBounds) return getTargetBounds(s);
+    const room = getCurrentRoom(s);
+    return room ? getRoomBounds(room) : { minX: 0, minY: 0, width: 200, height: 200 };
+  };
   let drag = null;
   let resize = null; // For resize operations
   let dragStartState = null;
@@ -303,7 +312,7 @@ export function createExclusionDragController({
     if (hasMoved) {
       // Build final state with updated exclusion position
       const finalState = deepClone(dragStartState);
-      const finalRoom = getCurrentRoom(finalState);
+      const finalRoom = resolveTarget(finalState);
       const excl = finalRoom?.exclusions?.find(x => x.id === drag.id);
 
       if (excl) {
@@ -375,7 +384,7 @@ export function createExclusionDragController({
 
     // Find exclusion from state directly
     const state = getState();
-    const room = getCurrentRoom(state);
+    const room = resolveTarget(state);
     const ex = room?.exclusions?.find(x => x.id === id);
     if (!ex) return;
 
@@ -385,7 +394,7 @@ export function createExclusionDragController({
     const startMouse = pointerToSvgXY(svg, e.clientX, e.clientY);
     dragStartState = deepClone(state);
 
-    const bounds = getRoomBounds(room);
+    const bounds = resolveBounds(state);
 
     drag = {
       id,
@@ -596,7 +605,7 @@ export function createExclusionDragController({
 
     if (hasResized) {
       const finalState = deepClone(dragStartState);
-      const finalRoom = getCurrentRoom(finalState);
+      const finalRoom = resolveTarget(finalState);
       const excl = finalRoom?.exclusions?.find(x => x.id === resize.id);
 
       if (excl) {
@@ -660,7 +669,7 @@ export function createExclusionDragController({
     if (!id || !handleType) return;
 
     const state = getState();
-    const room = getCurrentRoom(state);
+    const room = resolveTarget(state);
     const ex = room?.exclusions?.find(x => x.id === id);
     if (!ex) return;
 
