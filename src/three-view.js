@@ -603,6 +603,7 @@ function renderSurface3D(opts) {
   // --- Exclusions ---
   if (exclusions && exclusions.length > 0) {
     const OBJ3D_FLOOR_COLOR = 0x22c55e;
+    const TILED_EXCL_COLOR = 0x22c55e;
     const exclMat = new THREE.MeshBasicMaterial({
       color: EXCLUSION_COLOR,
       transparent: true,
@@ -623,6 +624,16 @@ function renderSurface3D(opts) {
       polygonOffsetFactor: exclZBias !== 0 ? exclZBias : 0,
       polygonOffsetUnits: exclZBias !== 0 ? exclZBias : 0,
     });
+    const tiledExclMat = new THREE.MeshBasicMaterial({
+      color: TILED_EXCL_COLOR,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: exclZBias !== 0,
+      polygonOffsetFactor: exclZBias !== 0 ? exclZBias : 0,
+      polygonOffsetUnits: exclZBias !== 0 ? exclZBias : 0,
+    });
     const exclLineMat = new THREE.LineBasicMaterial({
       color: EXCLUSION_COLOR,
       transparent: true,
@@ -633,15 +644,21 @@ function renderSurface3D(opts) {
       transparent: true,
       opacity: 0.8,
     });
+    const tiledExclLineMat = new THREE.LineBasicMaterial({
+      color: TILED_EXCL_COLOR,
+      transparent: true,
+      opacity: 0.8,
+    });
 
     for (const ex of exclusions) {
       const shape = exclusionToShape(ex);
       if (!shape) continue;
       const isObj3d = ex._isObject3d;
+      const isTiled = !!ex.tile;
 
       const geo = new THREE.ShapeGeometry(shape);
       transformShapeGeo(geo, mapper);
-      const mesh = new THREE.Mesh(geo, isObj3d ? obj3dMat : exclMat);
+      const mesh = new THREE.Mesh(geo, isObj3d ? obj3dMat : (isTiled ? tiledExclMat : exclMat));
       mesh.userData = { type: "exclusion" };
       meshes.push(mesh);
 
@@ -654,7 +671,7 @@ function renderSurface3D(opts) {
       }
       linePoints.push(linePoints[0].clone());
       const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
-      const line = new THREE.Line(lineGeo, isObj3d ? obj3dLineMat : exclLineMat);
+      const line = new THREE.Line(lineGeo, isObj3d ? obj3dLineMat : (isTiled ? tiledExclLineMat : exclLineMat));
       line.userData = { type: "exclusionEdge" };
       lines.push(line);
     }

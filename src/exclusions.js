@@ -203,6 +203,60 @@ export function createExclusionsController({
     commit(label, next);
   }
 
+  function commitSubSurface(label) {
+    const state = getState();
+    const id = getSelectedId();
+    if (!id) return;
+
+    const next = deepClone(state);
+    const nextTarget = resolveTarget(next);
+    if (!nextTarget) return;
+
+    const idx = nextTarget.exclusions.findIndex((e) => e.id === id);
+    if (idx < 0) return;
+
+    const cur = nextTarget.exclusions[idx];
+
+    // Read from either the quick bar (qss*) or sidebar (subSurf*) — whichever triggered the commit
+    const el = (qssId, sidebarId) => document.getElementById(qssId) || document.getElementById(sidebarId);
+
+    const enabledInp = el('qssEnabled', 'subSurfEnabled');
+    if (!enabledInp) return;
+
+    if (!enabledInp.checked) {
+      cur.tile = null;
+      cur.grout = null;
+      cur.pattern = null;
+    } else {
+      const presetSel = el('qssPreset', 'subSurfPreset');
+      const presets = state.tilePresets || [];
+      const preset = presetSel ? presets.find(p => p.id === presetSel.value) : null;
+
+      cur.tile = preset
+        ? { widthCm: preset.widthCm, heightCm: preset.heightCm, shape: preset.shape || 'rect', reference: preset.name }
+        : (cur.tile || { widthCm: 20, heightCm: 20, shape: 'rect', reference: null });
+
+      const groutW = el('qssGroutWidth', 'subSurfGroutWidth');
+      const groutC = el('qssGroutColor', 'subSurfGroutColor');
+      cur.grout = {
+        widthCm: groutW ? Math.max(0, Number(groutW.value) || 0.2) : (cur.grout?.widthCm ?? 0.2),
+        colorHex: groutC ? groutC.value : (cur.grout?.colorHex ?? '#ffffff'),
+      };
+
+      const patternSel = el('qssPattern', 'subSurfPattern');
+      cur.pattern = {
+        type: patternSel ? patternSel.value : (cur.pattern?.type || 'grid'),
+        bondFraction: cur.pattern?.bondFraction ?? 0.5,
+        rotationDeg: cur.pattern?.rotationDeg ?? 0,
+        offsetXcm: cur.pattern?.offsetXcm ?? 0,
+        offsetYcm: cur.pattern?.offsetYcm ?? 0,
+        origin: cur.pattern?.origin ?? { preset: 'tl', xCm: 0, yCm: 0 },
+      };
+    }
+
+    commit(label, next);
+  }
+
   return {
     getSelectedExcl,
     addRect,
@@ -211,5 +265,6 @@ export function createExclusionsController({
     addFreeform,
     deleteSelectedExcl,
     commitExclProps,
+    commitSubSurface,
   };
 }

@@ -1,11 +1,14 @@
 /**
+ * @vitest-environment jsdom
+ *
  * E2E tests for sub-surface tiles (exclusions carrying their own tile/pattern).
- * Exercises: exclusionToRegion, computeSubSurfaceTiles.
+ * Exercises: exclusionToRegion, computeSubSurfaceTiles, renderPlanSvg color logic.
  * No mocks — uses actual modules end-to-end.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { exclusionToRegion } from "./geometry.js";
 import { computeSubSurfaceTiles } from "./walls.js";
+import { renderPlanSvg } from "./render.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -240,5 +243,87 @@ describe("computeSubSurfaceTiles — logging", () => {
     computeSubSurfaceTiles(state, [makeRectExcl()], floor);
     const msgs = logSpy.mock.calls.map(c => c[0]);
     expect(msgs.some(m => typeof m === "string" && m.includes("[walls:subSurface]"))).toBe(true);
+  });
+});
+
+// ── 2D render: exclusion colors ───────────────────────────────────────────────
+
+function makeSvgState(exclusions = []) {
+  return {
+    floors: [{
+      id: "f1",
+      rooms: [{
+        id: "r1",
+        widthCm: 100,
+        heightCm: 100,
+        polygonVertices: [
+          { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
+        ],
+        tile: { widthCm: 20, heightCm: 20, shape: "rect" },
+        grout: { widthCm: 0.2, colorHex: "#cccccc" },
+        pattern: PATTERN,
+        exclusions,
+        excludedTiles: [],
+        skirting: { enabled: false },
+      }],
+      walls: [],
+    }],
+    selectedFloorId: "f1",
+    selectedRoomId: "r1",
+    view: {},
+    tilePresets: [],
+  };
+}
+
+describe("renderPlanSvg — tiled exclusion uses green, void exclusion uses red", () => {
+  beforeEach(() => { document.body.innerHTML = '<svg id="planSvg"></svg>'; });
+  afterEach(() => { document.body.innerHTML = ""; });
+
+  it("void exclusion shape stroke contains red (239,68,68)", () => {
+    const state = makeSvgState([
+      { id: "e1", type: "rect", x: 10, y: 10, w: 20, h: 15 },
+    ]);
+    renderPlanSvg({ state, setSelectedExcl: vi.fn(), setLastUnionError: vi.fn(), setLastTileError: vi.fn() });
+    const svg = document.getElementById("planSvg");
+    const shapes = [...svg.querySelectorAll('[data-exid="e1"]')];
+    expect(shapes.length).toBeGreaterThan(0);
+    const stroke = shapes[0].getAttribute("stroke") || "";
+    expect(stroke).toContain("239,68,68");
+  });
+
+  it("tiled exclusion shape stroke contains green (34,197,94)", () => {
+    const state = makeSvgState([
+      { id: "e2", type: "rect", x: 10, y: 10, w: 20, h: 15, tile: TILE, grout: GROUT, pattern: PATTERN },
+    ]);
+    renderPlanSvg({ state, setSelectedExcl: vi.fn(), setLastUnionError: vi.fn(), setLastTileError: vi.fn() });
+    const svg = document.getElementById("planSvg");
+    const shapes = [...svg.querySelectorAll('[data-exid="e2"]')];
+    expect(shapes.length).toBeGreaterThan(0);
+    const stroke = shapes[0].getAttribute("stroke") || "";
+    expect(stroke).toContain("34,197,94");
+  });
+
+  it("union overlay for void exclusion uses red path", () => {
+    const state = makeSvgState([
+      { id: "e1", type: "rect", x: 10, y: 10, w: 20, h: 15 },
+    ]);
+    renderPlanSvg({ state, setSelectedExcl: vi.fn(), setLastUnionError: vi.fn(), setLastTileError: vi.fn() });
+    const svg = document.getElementById("planSvg");
+    const paths = [...svg.querySelectorAll("path")].filter(p => !p.getAttribute("data-exid"));
+    const redPath = paths.find(p => (p.getAttribute("fill") || "").includes("239,68,68"));
+    expect(redPath).toBeTruthy();
+  });
+
+  it("union overlay for tiled exclusion uses green path, no red union path", () => {
+    const state = makeSvgState([
+      { id: "e2", type: "rect", x: 10, y: 10, w: 20, h: 15, tile: TILE, grout: GROUT, pattern: PATTERN },
+    ]);
+    renderPlanSvg({ state, setSelectedExcl: vi.fn(), setLastUnionError: vi.fn(), setLastTileError: vi.fn() });
+    const svg = document.getElementById("planSvg");
+    const paths = [...svg.querySelectorAll("path")].filter(p => !p.getAttribute("data-exid"));
+    const redUnionPath = paths.find(p => (p.getAttribute("fill") || "").includes("239,68,68"));
+    const greenUnionPath = paths.find(p => (p.getAttribute("fill") || "").includes("34,197,94"));
+    expect(redUnionPath).toBeFalsy();
+    expect(greenUnionPath).toBeTruthy();
   });
 });

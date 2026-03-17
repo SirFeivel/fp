@@ -664,6 +664,193 @@ export function renderExclProps({
   });
 }
 
+export function renderQuickSubSurface({
+  state,
+  selectedExclId,
+  getSelectedExcl,
+  commitSubSurface,
+}) {
+  const btn = document.getElementById("quickSubSurface");
+  const menu = document.getElementById("subSurfaceDropdown");
+  if (!btn || !menu) return;
+
+  const ex = getSelectedExcl();
+  btn.disabled = !ex;
+  menu.innerHTML = "";
+  if (!ex) return;
+
+  const enabled = !!ex.tile;
+
+  // Enable toggle row
+  const toggleRow = document.createElement("div");
+  toggleRow.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)";
+  toggleRow.innerHTML = `
+    <label class="quick-toggle" title="${t("subSurface.enable")}">
+      <input id="qssEnabled" type="checkbox" ${enabled ? "checked" : ""}>
+      <span class="quick-toggle-icon">⬚</span>
+    </label>
+    <span class="quick-label" style="color:var(--text)">${t("subSurface.enable")}</span>
+  `;
+  menu.appendChild(toggleRow);
+  toggleRow.querySelector("input").addEventListener("change", () => commitSubSurface(t("subSurface.changed")));
+
+  if (!enabled) return;
+
+  const row = (labelText, content) => {
+    const d = document.createElement("div");
+    d.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px";
+    d.innerHTML = `<span class="quick-label">${labelText}</span>`;
+    d.appendChild(content);
+    menu.appendChild(d);
+  };
+
+  // Preset
+  const presetSel = document.createElement("select");
+  presetSel.id = "qssPreset";
+  presetSel.className = "quick-select";
+  (state.tilePresets || []).forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (ex.tile?.reference === p.name) opt.selected = true;
+    presetSel.appendChild(opt);
+  });
+  presetSel.addEventListener("change", () => commitSubSurface(t("subSurface.changed")));
+  row(t("subSurface.preset"), presetSel);
+
+  // Pattern
+  const patSel = document.createElement("select");
+  patSel.id = "qssPattern";
+  patSel.className = "quick-select";
+  [["grid","Grid"],["runningBond","Running Bond"],["herringbone","Herringbone"],["doubleHerringbone","Double Herringbone"],["basketweave","Basketweave"]].forEach(([v,l]) => {
+    const opt = document.createElement("option");
+    opt.value = v; opt.textContent = l;
+    if ((ex.pattern?.type || "grid") === v) opt.selected = true;
+    patSel.appendChild(opt);
+  });
+  patSel.addEventListener("change", () => commitSubSurface(t("subSurface.changed")));
+  row(t("subSurface.pattern"), patSel);
+
+  // Grout width
+  const groutW = document.createElement("input");
+  groutW.id = "qssGroutWidth";
+  groutW.type = "number";
+  groutW.className = "quick-input small no-spinner";
+  groutW.min = "0";
+  groutW.step = "0.01";
+  groutW.value = (ex.grout?.widthCm ?? 0.2).toFixed(2);
+  groutW.addEventListener("blur", () => commitSubSurface(t("subSurface.changed")));
+  const gwWrap = document.createElement("div");
+  gwWrap.style.cssText = "display:flex;align-items:center;gap:4px";
+  gwWrap.appendChild(groutW);
+  gwWrap.insertAdjacentHTML("beforeend", `<span class="quick-label">cm</span>`);
+  row(t("subSurface.groutWidth"), gwWrap);
+
+  // Grout color
+  const groutC = document.createElement("input");
+  groutC.id = "qssGroutColor";
+  groutC.type = "color";
+  groutC.value = ex.grout?.colorHex || "#ffffff";
+  groutC.style.cssText = "width:36px;height:28px;padding:2px;border-radius:4px;border:1px solid var(--line);background:transparent;cursor:pointer";
+  groutC.addEventListener("input", () => commitSubSurface(t("subSurface.changed")));
+  row(t("subSurface.groutColor"), groutC);
+}
+
+export function renderSubSurfaceProps({
+  state,
+  selectedExclId,
+  getSelectedExcl,
+  commitSubSurface,
+}) {
+  const wrap = document.getElementById("subSurfaceProps");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  const ex = getSelectedExcl();
+  if (!ex) {
+    const div = document.createElement("div");
+    div.className = "meta subtle span2";
+    div.textContent = t("subSurface.noneSelected");
+    wrap.appendChild(div);
+    return;
+  }
+
+  const enabled = !!ex.tile;
+
+  // Toggle
+  const toggleDiv = document.createElement("div");
+  toggleDiv.className = "field span2";
+  toggleDiv.innerHTML = `
+    <label class="toggle-switch">
+      <span class="toggle-label">${t("subSurface.enable")}</span>
+      <input id="subSurfEnabled" type="checkbox" ${enabled ? "checked" : ""}>
+      <div class="toggle-slider"></div>
+    </label>
+  `;
+  wrap.appendChild(toggleDiv);
+
+  if (!enabled) return;
+
+  // Tile preset
+  const presetDiv = document.createElement("div");
+  presetDiv.className = "field span2";
+  presetDiv.innerHTML = `<label>${t("subSurface.preset")}</label><select id="subSurfPreset"></select>`;
+  wrap.appendChild(presetDiv);
+  const presetSel = presetDiv.querySelector("select");
+  const presets = state.tilePresets || [];
+  presets.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (ex.tile?.reference === p.name) opt.selected = true;
+    presetSel.appendChild(opt);
+  });
+
+  // Pattern
+  const patternDiv = document.createElement("div");
+  patternDiv.className = "field span2";
+  patternDiv.innerHTML = `<label>${t("subSurface.pattern")}</label>
+    <select id="subSurfPattern">
+      <option value="grid">Grid</option>
+      <option value="runningBond">Running Bond</option>
+      <option value="herringbone">Herringbone</option>
+      <option value="doubleHerringbone">Double Herringbone</option>
+      <option value="basketweave">Basketweave</option>
+    </select>`;
+  wrap.appendChild(patternDiv);
+  const patternSel = patternDiv.querySelector("select");
+  if (ex.pattern?.type) patternSel.value = ex.pattern.type;
+
+  // Grout width
+  const groutWDiv = document.createElement("div");
+  groutWDiv.className = "field";
+  groutWDiv.innerHTML = `<label>${t("subSurface.groutWidth")}</label>
+    <div class="input-with-unit">
+      <input id="subSurfGroutWidth" type="number" step="0.01" min="0" />
+      <span class="unit">cm</span>
+    </div>`;
+  wrap.appendChild(groutWDiv);
+  const groutWInp = groutWDiv.querySelector("input");
+  groutWInp.value = (ex.grout?.widthCm ?? 0.2).toFixed(2);
+
+  // Grout color
+  const groutCDiv = document.createElement("div");
+  groutCDiv.className = "field";
+  groutCDiv.innerHTML = `<label>${t("subSurface.groutColor")}</label>
+    <input id="subSurfGroutColor" type="color" />`;
+  wrap.appendChild(groutCDiv);
+  const groutCInp = groutCDiv.querySelector("input");
+  groutCInp.value = ex.grout?.colorHex || "#ffffff";
+
+  // Wire up events — all commit on change/blur
+  const onCommit = () => commitSubSurface(t("subSurface.changed"));
+  toggleDiv.querySelector("input").addEventListener("change", onCommit);
+  presetSel.addEventListener("change", onCommit);
+  patternSel.addEventListener("change", onCommit);
+  groutWInp.addEventListener("blur", onCommit);
+  groutCInp.addEventListener("input", onCommit);
+}
+
 export function renderObj3dList(state, selectedObj3dId) {
   const sel = document.getElementById("obj3dList");
   if (!sel) return;
@@ -1082,9 +1269,11 @@ function _renderPlanExclusions(svg, displayExclusions, { selectedExclId, isExpor
   const gEx = svgEl("g");
   for (const ex of displayExclusions) {
     const isSel = ex.id === selectedExclId;
+    const isTiled = !!ex.tile;
+    const r = isTiled ? "34,197,94" : "239,68,68";
     const common = {
-      fill: isExportBW ? "rgba(0,0,0,0.12)" : (isSel ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.06)"),
-      stroke: isExportBW ? "#111111" : (isSel ? "rgba(239,68,68,1)" : "rgba(239,68,68,0.8)"),
+      fill: isExportBW ? "rgba(0,0,0,0.12)" : (isSel ? `rgba(${r},0.15)` : `rgba(${r},0.06)`),
+      stroke: isExportBW ? "#111111" : (isSel ? `rgba(${r},1)` : `rgba(${r},0.8)`),
       "stroke-width": isExportBW ? 1.2 : (isSel ? 2 : 1.2),
       cursor: "move",
       "data-exid": ex.id
@@ -1824,7 +2013,10 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
 
   // union overlay
   if (!skipTiles && !isExportBW) {
-    const u = computeExclusionsUnion(displayExclusions);
+    const voidExcls = displayExclusions.filter(e => !e.tile);
+    const tiledExcls = displayExclusions.filter(e => !!e.tile);
+
+    const u = computeExclusionsUnion(voidExcls);
     if (u.error) setLastUnionError(u.error);
     else setLastUnionError(null);
 
@@ -1837,6 +2029,20 @@ if (showNeeds && m?.data?.debug?.tileUsage?.length && previewTiles?.length) {
         "stroke-width": 1.5,
         "pointer-events": "none"
       }));
+    }
+
+    if (tiledExcls.length > 0) {
+      const ut = computeExclusionsUnion(tiledExcls);
+      if (ut.mp) {
+        const unionPath = multiPolygonToPathD(ut.mp);
+        svg.appendChild(svgEl("path", {
+          d: unionPath,
+          fill: "rgba(34,197,94,0.12)",
+          stroke: "rgba(34,197,94,0.50)",
+          "stroke-width": 1.5,
+          "pointer-events": "none"
+        }));
+      }
     }
   }
 

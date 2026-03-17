@@ -39,6 +39,8 @@ import {
   renderTilePatternForm,
   renderExclList,
   renderExclProps,
+  renderSubSurfaceProps,
+  renderQuickSubSurface,
   renderObj3dList,
   renderObj3dProps,
   renderSkirtingRoomList,
@@ -725,6 +727,18 @@ function renderPlanningSection(state, opts) {
     selectedExclId,
     getSelectedExcl: excl.getSelectedExcl,
     commitExclProps: excl.commitExclProps
+  });
+  renderSubSurfaceProps({
+    state,
+    selectedExclId,
+    getSelectedExcl: excl.getSelectedExcl,
+    commitSubSurface: excl.commitSubSurface,
+  });
+  renderQuickSubSurface({
+    state,
+    selectedExclId,
+    getSelectedExcl: excl.getSelectedExcl,
+    commitSubSurface: excl.commitSubSurface,
   });
   renderObj3dList(state, selectedObj3dId);
   renderObj3dProps({
@@ -2580,7 +2594,22 @@ function updateAllTranslations() {
   });
 
   document.getElementById("surfaceSelect")?.addEventListener("change", (e) => {
-    const surfaceIdx = parseInt(e.target.value) || 0;
+    const val = e.target.value;
+    if (val.startsWith("subsurf:")) {
+      const exclId = val.slice(8);
+      setSelectedExcl(exclId);
+      // Open settings panel if closed
+      const sp = document.getElementById("settingsPanel");
+      const qos = document.getElementById("quickOpenSettings");
+      if (sp && sp.classList.contains("hidden")) {
+        sp.classList.remove("hidden");
+        qos?.classList.add("active");
+      }
+      document.getElementById("subSurfaceSection")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    setSelectedExcl(null);
+    const surfaceIdx = parseInt(val) || 0;
     const s = store.getState();
     const next = deepClone(s);
     next.selectedSurfaceIdx = surfaceIdx;
@@ -3320,16 +3349,29 @@ function updateAllTranslations() {
   const quickAddObj3d = document.getElementById("quickAddObj3d");
   const obj3dDropdown = document.getElementById("obj3dDropdown");
 
+  // Sub-surface dropdown
+  const quickSubSurface = document.getElementById("quickSubSurface");
+  const subSurfaceDropdown = document.getElementById("subSurfaceDropdown");
+
   quickAddExclusion?.addEventListener("click", (e) => {
     e.stopPropagation();
     obj3dDropdown?.classList.add("hidden");
+    subSurfaceDropdown?.classList.add("hidden");
     exclDropdown?.classList.toggle("hidden");
   });
 
   quickAddObj3d?.addEventListener("click", (e) => {
     e.stopPropagation();
     exclDropdown?.classList.add("hidden");
+    subSurfaceDropdown?.classList.add("hidden");
     obj3dDropdown?.classList.toggle("hidden");
+  });
+
+  quickSubSurface?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exclDropdown?.classList.add("hidden");
+    obj3dDropdown?.classList.add("hidden");
+    subSurfaceDropdown?.classList.toggle("hidden");
   });
 
   // Close dropdowns when clicking outside
@@ -3343,6 +3385,11 @@ function updateAllTranslations() {
         !obj3dDropdown.contains(e.target) &&
         e.target !== quickAddObj3d) {
       obj3dDropdown.classList.add("hidden");
+    }
+    if (subSurfaceDropdown && !subSurfaceDropdown.classList.contains("hidden") &&
+        !subSurfaceDropdown.contains(e.target) &&
+        e.target !== quickSubSurface) {
+      subSurfaceDropdown.classList.add("hidden");
     }
   });
 
@@ -4146,9 +4193,34 @@ function updateAllTranslations() {
           if (idx === (state.selectedSurfaceIdx ?? 0)) opt.selected = true;
           surfaceSelect.appendChild(opt);
         });
+
+        // Sub-surfaces: exclusions with tile on any surface of this wall
+        surfaces.forEach(surf => {
+          (surf.exclusions || []).filter(e => e.tile && e.id).forEach(excl => {
+            const opt = document.createElement("option");
+            opt.value = `subsurf:${excl.id}`;
+            opt.textContent = excl.label || excl.type;
+            if (selectedExclId === excl.id) opt.selected = true;
+            surfaceSelect.appendChild(opt);
+          });
+        });
       } else {
-        // Hide surface selector when no wall/obj3d is selected
-        surfaceSelectLabel.style.display = "none";
+        // Floor room sub-surfaces
+        const floorSubSurfs = (room?.exclusions || []).filter(e => e.tile && e.id);
+        if (floorSubSurfs.length) {
+          surfaceSelectLabel.style.display = "";
+          surfaceSelect.innerHTML = "";
+          surfaceSelect.disabled = false;
+          floorSubSurfs.forEach(excl => {
+            const opt = document.createElement("option");
+            opt.value = `subsurf:${excl.id}`;
+            opt.textContent = excl.label || excl.type;
+            if (selectedExclId === excl.id) opt.selected = true;
+            surfaceSelect.appendChild(opt);
+          });
+        } else {
+          surfaceSelectLabel.style.display = "none";
+        }
       }
     }
 

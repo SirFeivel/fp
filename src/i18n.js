@@ -382,6 +382,16 @@ const translations = {
       addFreeform: "Freiform-Ausschluss hinzugefügt",
       outside: "Ausschluss außerhalb Raum"
     },
+    subSurface: {
+      title: "Flächen-Kacheln",
+      noneSelected: "– Ausschluss auswählen –",
+      enable: "Diesen Bereich kacheln",
+      preset: "Kachel-Preset",
+      pattern: "Muster",
+      groutWidth: "Fugenbreite",
+      groutColor: "Fugenfarbe",
+      changed: "Fläche geändert",
+    },
     objects3d: {
       title: "3D-Objekte",
       addRect: "+ Rechteck",
@@ -1071,6 +1081,16 @@ const translations = {
       freeform: "Freeform",
       addFreeform: "Freeform exclusion added",
       outside: "Exclusion outside room"
+    },
+    subSurface: {
+      title: "Surface Tiles",
+      noneSelected: "– select an exclusion –",
+      enable: "Tile this area",
+      preset: "Tile preset",
+      pattern: "Pattern",
+      groutWidth: "Grout width",
+      groutColor: "Grout color",
+      changed: "Surface changed",
     },
     objects3d: {
       title: "3D Objects",

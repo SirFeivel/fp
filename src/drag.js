@@ -366,12 +366,18 @@ export function createExclusionDragController({
       setSelectedIdOnly(id);
     }
 
+    // Find exclusion from state to determine color
+    const state = getState();
+    const room = resolveTarget(state);
+    const ex = room?.exclusions?.find(x => x.id === id);
+
     // Apply visual selection styling directly to avoid re-render
+    const exclColor = ex?.tile ? "34,197,94" : "239,68,68";
     const elements = findExclElements(id);
     elements.forEach(el => {
-      el.setAttribute("stroke", "rgba(239,68,68,0.95)");
+      el.setAttribute("stroke", `rgba(${exclColor},0.95)`);
       el.setAttribute("stroke-width", "2");
-      el.setAttribute("fill", "rgba(239,68,68,0.25)");
+      el.setAttribute("fill", `rgba(${exclColor},0.25)`);
     });
 
     // Enter drag mode - skip tile rendering
@@ -381,11 +387,6 @@ export function createExclusionDragController({
     if (onDragStart) {
       onDragStart(id);
     }
-
-    // Find exclusion from state directly
-    const state = getState();
-    const room = resolveTarget(state);
-    const ex = room?.exclusions?.find(x => x.id === id);
     if (!ex) return;
 
     const svg = getSvg();
