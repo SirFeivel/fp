@@ -45,8 +45,9 @@ export function createDividerController({ getState, commit, getTarget, t }) {
     const state = getState();
     const target = getTarget(state);
     if (!target) return;
-    const el = (qId, sId) => document.getElementById(qId) || document.getElementById(sId);
-    const enabledInp = el('qzEnabled', 'divZoneEnabled');
+    // renderDividerZoneUI creates per-zone element IDs with zoneId suffix
+    const el = (id) => document.getElementById(`${id}_${zoneId}`);
+    const enabledInp = el('qzEnabled');
     if (!enabledInp) return;
     const next = deepClone(state);
     const nextTarget = getTarget(next);
@@ -56,19 +57,19 @@ export function createDividerController({ getState, commit, getTarget, t }) {
     if (!enabledInp.checked) {
       z.tile = null; z.grout = null; z.pattern = null;
     } else {
-      const presetSel = el('qzPreset', 'divZonePreset');
+      const presetSel = el('qzPreset');
       const presets = state.tilePresets || [];
       const preset = presetSel ? presets.find(p => p.id === presetSel.value) : null;
       z.tile = preset
         ? { widthCm: preset.widthCm, heightCm: preset.heightCm, shape: preset.shape || 'rect', reference: preset.name }
         : (z.tile || { widthCm: 20, heightCm: 20, shape: 'rect', reference: null });
-      const groutW = el('qzGroutWidth', 'divZoneGroutWidth');
-      const groutC = el('qzGroutColor', 'divZoneGroutColor');
+      const groutW = el('qzGroutWidth');
+      const groutC = el('qzGroutColor');
       z.grout = {
         widthCm: groutW ? Math.max(0, Number(groutW.value) || 0.2) : (z.grout?.widthCm ?? 0.2),
         colorHex: groutC ? groutC.value : (z.grout?.colorHex ?? '#ffffff'),
       };
-      const patternSel = el('qzPattern', 'divZonePattern');
+      const patternSel = el('qzPattern');
       z.pattern = {
         type: patternSel ? patternSel.value : (z.pattern?.type || 'grid'),
         bondFraction: z.pattern?.bondFraction ?? 0.5,

@@ -867,12 +867,6 @@ export function renderDividerZoneUI({
   menu.innerHTML = "";
   if (!currentRoom) return;
 
-  const { computeZones: _computeZones } = (() => {
-    // Lazily access computeZones from zones already computed in render pipeline
-    // — imported at top of file from walls.js via computeZoneTiles
-    return { computeZones: null };
-  })();
-
   const currentFloor = state.floors?.find(f => f.id === state.selectedFloorId);
   const zoneResults = computeZoneTiles(state, currentRoom, currentFloor, { isRemovalMode: false });
 

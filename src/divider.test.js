@@ -14,7 +14,8 @@ import {
   isPointInPolygon,
 } from "./geometry.js";
 import { computeZoneTiles } from "./walls.js";
-import { renderPlanSvg } from "./render.js";
+import { renderPlanSvg, renderDividerZoneUI } from "./render.js";
+import { createDividerController } from "./dividers.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -233,5 +234,97 @@ describe("renderPlanSvg — surface dividers", () => {
     const polygons = [...svg.querySelectorAll("polygon")];
     const indigoPolygon = polygons.find(p => (p.getAttribute("stroke") || "").includes("99,102,241"));
     expect(indigoPolygon).toBeTruthy();
+  });
+});
+
+// ── commitZoneSettings DOM element ID integration ─────────────────────────────
+
+describe("commitZoneSettings — reads zone-specific element IDs", () => {
+  beforeEach(() => { document.body.innerHTML = '<div id="app"></div>'; });
+  afterEach(() => { document.body.innerHTML = ""; });
+
+  it("commitZoneSettings reads qzEnabled_{zoneId} and commits tile to state", () => {
+    const dividers = [{ id: "d1", p1: { x: 0, y: 50 }, p2: { x: 100, y: 50 } }];
+    const zones = computeZones(RECT_100, dividers);
+    const zoneId = zones[0].id;
+
+    let committed = null;
+    const ctrl = createDividerController({
+      getState: () => ({
+        floors: [{ id: "f1", rooms: [{ id: "r1", polygonVertices: RECT_100, dividers, zoneSettings: {}, exclusions: [], excludedTiles: [] }], walls: [] }],
+        selectedFloorId: "f1", selectedRoomId: "r1", selectedWallId: null,
+        tilePresets: [{ id: "p1", name: "Test Tile", widthCm: 15, heightCm: 15, shape: "rect" }],
+        view: {},
+      }),
+      commit: (label, next) => { committed = next; },
+      getTarget: (state) => state.floors[0].rooms[0],
+      t: (key) => key,
+    });
+
+    // Simulate renderDividerZoneUI having created the per-zone elements
+    const enabledEl = document.createElement("input");
+    enabledEl.type = "checkbox";
+    enabledEl.id = `qzEnabled_${zoneId}`;
+    enabledEl.checked = true;
+    document.body.appendChild(enabledEl);
+
+    const presetEl = document.createElement("select");
+    presetEl.id = `qzPreset_${zoneId}`;
+    const opt = document.createElement("option");
+    opt.value = "p1"; opt.selected = true;
+    presetEl.appendChild(opt);
+    document.body.appendChild(presetEl);
+
+    const groutWEl = document.createElement("input");
+    groutWEl.id = `qzGroutWidth_${zoneId}`;
+    groutWEl.value = "0.3";
+    document.body.appendChild(groutWEl);
+
+    const groutCEl = document.createElement("input");
+    groutCEl.id = `qzGroutColor_${zoneId}`;
+    groutCEl.value = "#ff0000";
+    document.body.appendChild(groutCEl);
+
+    const patternEl = document.createElement("select");
+    patternEl.id = `qzPattern_${zoneId}`;
+    const patOpt = document.createElement("option");
+    patOpt.value = "runningBond"; patOpt.selected = true;
+    patternEl.appendChild(patOpt);
+    document.body.appendChild(patternEl);
+
+    ctrl.commitZoneSettings(zoneId, "test-zone");
+
+    expect(committed).not.toBeNull();
+    const z = committed.floors[0].rooms[0].zoneSettings[zoneId];
+    expect(z).toBeDefined();
+    expect(z.tile).not.toBeNull();
+    expect(z.tile.widthCm).toBe(15);
+    expect(z.grout.colorHex).toBe("#ff0000");
+    expect(z.grout.widthCm).toBeCloseTo(0.3, 2);
+    expect(z.pattern.type).toBe("runningBond");
+    expect(z.label).toBe("test-zone");
+  });
+
+  it("commitZoneSettings returns early when zone elements not in DOM", () => {
+    // Simulates the bug that was fixed: generic IDs don't exist
+    const dividers = [{ id: "d1", p1: { x: 0, y: 50 }, p2: { x: 100, y: 50 } }];
+    const zones = computeZones(RECT_100, dividers);
+    const zoneId = zones[0].id;
+
+    let committed = null;
+    const ctrl = createDividerController({
+      getState: () => ({
+        floors: [{ id: "f1", rooms: [{ id: "r1", polygonVertices: RECT_100, dividers, zoneSettings: {}, exclusions: [], excludedTiles: [] }], walls: [] }],
+        selectedFloorId: "f1", selectedRoomId: "r1", selectedWallId: null, tilePresets: [], view: {},
+      }),
+      commit: (label, next) => { committed = next; },
+      getTarget: (state) => state.floors[0].rooms[0],
+      t: (key) => key,
+    });
+
+    // No DOM elements created — simulates old bug where generic IDs were looked up
+    ctrl.commitZoneSettings(zoneId, "irrelevant");
+    // Should return early without committing
+    expect(committed).toBeNull();
   });
 });
