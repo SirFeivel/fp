@@ -101,13 +101,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
               }
               if (!room.excludedTiles) room.excludedTiles = [];
               if (!room.excludedSkirts) room.excludedSkirts = [];
-              if (room.exclusions && Array.isArray(room.exclusions)) {
-                for (const ex of room.exclusions) {
-                  if (ex.skirtingEnabled === undefined) {
-                    ex.skirtingEnabled = true;
-                  }
-                }
-              }
+              // skirtingEnabled on 2D exclusions is no longer used — only 3D objects affect skirting
             }
           }
         }
@@ -213,11 +207,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
             if (!room.excludedTiles) room.excludedTiles = [];
             if (!room.excludedSkirts) room.excludedSkirts = [];
             if (!Array.isArray(room.objects3d)) room.objects3d = [];
-            if (room.exclusions && Array.isArray(room.exclusions)) {
-              for (const ex of room.exclusions) {
-                if (ex.skirtingEnabled === undefined) ex.skirtingEnabled = true;
-              }
-            }
+            // skirtingEnabled on 2D exclusions is no longer used — only 3D objects affect skirting
 
             // Ensure room has polygonVertices (v8+ requirement)
             if (!room.polygonVertices || room.polygonVertices.length < 3) {

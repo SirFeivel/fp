@@ -37,7 +37,7 @@ describe('computeSkirtingPerimeter', () => {
     expect(computeSkirtingPerimeter(room)).toBeCloseTo(800);
   });
 
-  it('calculates perimeter including an internal exclusion', () => {
+  it('2D exclusion does not add skirting perimeter (only 3D objects do)', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 500, y: 0 }, { x: 500, y: 500 }, { x: 0, y: 500 }],
       skirting: { enabled: true },
@@ -45,13 +45,12 @@ describe('computeSkirtingPerimeter', () => {
         { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true }
       ]
     };
-    // Room perimeter: 500 * 4 = 2000
-    // Exclusion perimeter: 50 * 4 = 200
-    // Total: 2200
-    expect(computeSkirtingPerimeter(room)).toBeCloseTo(2200);
+    // 2D exclusions are zones/voids, not vertical objects — no skirting contribution.
+    // Only room perimeter: 500 * 4 = 2000
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(2000);
   });
 
-  it('calculates perimeter for an exclusion on the edge (cutout)', () => {
+  it('2D exclusion on edge does not interrupt room wall skirting', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 500, y: 0 }, { x: 500, y: 500 }, { x: 0, y: 500 }],
       skirting: { enabled: true },
@@ -59,20 +58,9 @@ describe('computeSkirtingPerimeter', () => {
         { id: 'ex1', type: 'rect', x: 0, y: 100, w: 50, h: 50, skirtingEnabled: true }
       ]
     };
-    // Room was 0->500 width.
-    // Exclusion at x=0, width 50. 
-    // New boundary:
-    // x=0 from y=0 to 100 (100)
-    // y=100 from x=0 to 50 (50)
-    // x=50 from y=100 to 150 (50)
-    // y=150 from x=50 to 0 (50)
-    // x=0 from y=150 to 500 (350)
-    // Bottom: 500
-    // Right: 500
-    // Top: 500
-    // Total: 100 + 50 + 50 + 50 + 350 + 500 + 500 + 500 = 2100
-    // (Original 2000 - 50 (removed edge) + 50 + 50 + 50 (new edges) = 2100)
-    expect(computeSkirtingPerimeter(room)).toBeCloseTo(2100);
+    // 2D exclusions don't affect skirting at all — room walls run uninterrupted.
+    // Room perimeter: 500 * 4 = 2000
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(2000);
   });
 
   it('returns 0 for null room', () => {
@@ -92,7 +80,7 @@ describe('computeSkirtingPerimeter', () => {
     expect(computeSkirtingPerimeter(room)).toBeCloseTo(2000);
   });
 
-  it('keeps wall skirting when a disabled exclusion touches the boundary', () => {
+  it('2D exclusion touching boundary does not interrupt wall skirting', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }, { x: 0, y: 100 }],
       skirting: { enabled: true },
@@ -100,9 +88,9 @@ describe('computeSkirtingPerimeter', () => {
         { id: 'ex1', type: 'rect', x: 0, y: 20, w: 30, h: 30, skirtingEnabled: false }
       ]
     };
+    // 2D exclusions don't affect skirting at all — room walls run uninterrupted.
     // Room perimeter: 200 * 2 + 100 * 2 = 600
-    // Exclusion touches wall; only the overlap is removed from wall skirting.
-    expect(computeSkirtingPerimeter(room)).toBeCloseTo(570);
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(600);
   });
 
   it('handles room with no skirting enabled', () => {
@@ -117,16 +105,16 @@ describe('computeSkirtingPerimeter', () => {
     expect(result).toBe(0);
   });
 
-  it('allows skirting on exclusions even if room skirting is disabled', () => {
+  it('2D exclusion produces no skirting even when room skirting is disabled', () => {
     const room = {
       polygonVertices: [{ x: 0, y: 0 }, { x: 500, y: 0 }, { x: 500, y: 500 }, { x: 0, y: 500 }],
       skirting: { enabled: false },
       exclusions: [
-        { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true } // Pillar ON
+        { id: 'ex1', type: 'rect', x: 100, y: 100, w: 50, h: 50, skirtingEnabled: true }
       ]
     };
-    // Only exclusion perimeter: 50 * 4 = 200
-    expect(computeSkirtingPerimeter(room)).toBeCloseTo(200);
+    // 2D exclusions never add skirting; room skirting disabled → result = 0
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(0);
   });
 
   it('keeps exclusion skirting when room skirting is disabled', () => {
@@ -180,7 +168,7 @@ describe('computeSkirtingPerimeter', () => {
     expect(mp.length).toBeGreaterThan(0);
   });
 
-  it('handles freeform room with exclusion', () => {
+  it('handles freeform room with exclusion — only room perimeter counts', () => {
     const room = {
       polygonVertices: [
         { x: 0, y: 0 },
@@ -193,10 +181,8 @@ describe('computeSkirtingPerimeter', () => {
       ],
       skirting: { enabled: true }
     };
-    // Room perimeter: 200 * 4 = 800
-    // Exclusion perimeter: 30 * 4 = 120
-    // Total: 920
-    expect(computeSkirtingPerimeter(room)).toBeCloseTo(920);
+    // 2D exclusion has no skirting contribution. Room perimeter: 200 * 4 = 800
+    expect(computeSkirtingPerimeter(room)).toBeCloseTo(800);
   });
 
   it('returns null for freeform room when skirting is disabled', () => {

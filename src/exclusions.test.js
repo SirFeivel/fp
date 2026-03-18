@@ -247,13 +247,13 @@ describe('createExclusionsController', () => {
       expect(setSelectedId).toHaveBeenCalledWith(room.exclusions[0].id);
     });
 
-    it('sets skirtingEnabled to true by default', () => {
+    it('does not set skirtingEnabled on freeform exclusions (2D exclusions have no skirting)', () => {
       const { controller, state } = createMockController();
 
       controller.addFreeform([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
 
       const room = state.floors[0].rooms[0];
-      expect(room.exclusions[0].skirtingEnabled).toBe(true);
+      expect(room.exclusions[0].skirtingEnabled).toBeUndefined();
     });
 
     it('does nothing with less than 3 vertices', () => {

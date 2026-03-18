@@ -2158,17 +2158,6 @@ function setRoomSkirtingEnabledById(roomId, enabled) {
   commitViaStore(t("skirting.changed"), next);
 }
 
-function setExclusionSkirtingEnabled(id, enabled) {
-  if (!id) return;
-  const next = deepClone(store.getState());
-  const room = getCurrentRoom(next);
-  if (!room || !room.exclusions) return;
-  const ex = room.exclusions.find(e => e.id === id);
-  if (!ex) return;
-  ex.skirtingEnabled = enabled;
-  commitViaStore(t("exclusions.changed"), next);
-}
-
 function updateExclusionInline({ id, key, value }) {
   if (key !== "__delete__" && !Number.isFinite(value)) return;
 
@@ -2776,13 +2765,6 @@ function updateAllTranslations() {
     const state = store.getState();
     const room = getCurrentRoom(state);
     if (!room) return;
-
-    if (selectedExclId) {
-      const ex = room.exclusions?.find(x => x.id === selectedExclId);
-      if (!ex) return;
-      setExclusionSkirtingEnabled(selectedExclId, ex.skirtingEnabled === false);
-      return;
-    }
 
     setRoomSkirtingEnabled(room.skirting?.enabled === false);
   });

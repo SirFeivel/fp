@@ -126,7 +126,6 @@ export function createExclusionsController({
       type: 'freeform',
       label: `${t('exclusions.freeform')} ${freeformCount + 1}`,
       vertices: vertices,
-      skirtingEnabled: true,
     };
 
     const next = deepClone(state);
@@ -196,9 +195,6 @@ export function createExclusionsController({
       cur.p3.x = readNum('exP3X', cur.p3.x);
       cur.p3.y = readNum('exP3Y', cur.p3.y);
     }
-
-    const skirtInp = document.getElementById('exSkirtingEnabled');
-    if (skirtInp) cur.skirtingEnabled = !!skirtInp.checked;
 
     commit(label, next);
   }

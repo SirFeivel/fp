@@ -183,11 +183,14 @@ export function computeSkirtingArea(room, exclusions) {
 export function computeSkirtingSegments(room, includeExcluded = false, floor = null) {
   if (!room) return [];
   const allExcl = getAllFloorExclusions(room);
-  const area = computeSkirtingArea(room, allExcl);
+  // Only 3D objects create skirting perimeters. 2D exclusions (zones, voids) are
+  // purely planar and do not represent vertical surfaces.
+  const skirtingExcl = allExcl.filter(e => e._isObject3d);
+  const area = computeSkirtingArea(room, skirtingExcl);
   if (!area.mp) return [];
 
-  // Source of truth for physical walls (includes all exclusions)
-  const avail = computeAvailableArea(room, allExcl);
+  // Boundary check uses only 3D objects — zone exclusions don't interrupt room wall skirting.
+  const avail = computeAvailableArea(room, skirtingExcl);
   if (!avail.mp) return [];
 
   const skirting = room.skirting || {};

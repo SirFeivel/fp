@@ -646,22 +646,6 @@ export function renderExclProps({
     wrap.appendChild(infoDiv);
   }
 
-  // Add Skirting Toggle for Exclusion
-  const div = document.createElement("div");
-  div.className = "field span2";
-  div.innerHTML = `
-    <label class="toggle-switch">
-      <span class="toggle-label">${t("skirting.enabled")}</span>
-      <input id="exSkirtingEnabled" type="checkbox" ${ex.skirtingEnabled !== false ? "checked" : ""}>
-      <div class="toggle-slider"></div>
-    </label>
-  `;
-  wrap.appendChild(div);
-
-  const inp = div.querySelector("#exSkirtingEnabled");
-  inp.addEventListener("change", () => {
-    commitExclProps(t("exclusions.changed"));
-  });
 }
 
 export function renderQuickSubSurface({

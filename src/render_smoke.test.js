@@ -178,9 +178,9 @@ describe('render.js smoke tests', () => {
     expect(document.body.innerHTML).toContain('exP1X');
   });
 
-  it('renderExclProps renders skirting toggle for exclusion', () => {
+  it('renderExclProps does not render skirting toggle for exclusion (2D exclusions have no skirting)', () => {
     document.body.innerHTML = '<div id="exclProps"></div>';
-    const currentEx = { id: '1', type: 'rect', label: 'R1', x: 10, y: 10, w: 20, h: 20, skirtingEnabled: false };
+    const currentEx = { id: '1', type: 'rect', label: 'R1', x: 10, y: 10, w: 20, h: 20 };
     const args = {
       state: {},
       selectedExclId: '1',
@@ -191,8 +191,7 @@ describe('render.js smoke tests', () => {
     renderExclProps(args);
 
     const toggle = document.getElementById('exSkirtingEnabled');
-    expect(toggle).not.toBeNull();
-    expect(toggle.checked).toBe(false);
+    expect(toggle).toBeNull();
   });
 
 
