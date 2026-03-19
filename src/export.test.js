@@ -77,7 +77,7 @@ describe("export helpers", () => {
   it("builds excel workbook with formulas for edge case state", async () => {
     const fixturePath = path.join(process.cwd(), "src/__fixtures__/export_excel_edgecase.json");
     const state = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
-    const { wb, roomsName, materialsName, summaryName, introName, XLSX } = await buildCommercialXlsxWorkbook(state);
+    const { wb, roomsName, materialsName, summaryName, introName, wallSurfacesName, XLSX } = await buildCommercialXlsxWorkbook(state);
 
     expect(wb.Sheets[introName]).toBeDefined();
     expect(wb.Sheets[summaryName]).toBeDefined();
@@ -95,19 +95,20 @@ describe("export helpers", () => {
     expect(roomsSheet["T2"]?.f).toBe("D2*K2+S2");
 
     const matsSheet = wb.Sheets[materialsName];
-    expect(matsSheet["B2"]?.f).toContain(roomsName);
-    expect(matsSheet["C2"]?.f).toContain(roomsName);
-    expect(matsSheet["D2"]?.f).toBe("B2+C2");
-    expect(matsSheet["F2"]?.f).toBe("D2*E2");
-    expect(matsSheet["I2"]?.f).toBe("G2*H2");
-    expect(matsSheet["K2"]?.f).toBe("IF(G2>0,CEILING(F2/G2,1)+J2,J2)");
-    expect(matsSheet["L2"]?.f).toContain(roomsName);
-    expect(matsSheet["M2"]?.f).toContain("J2*I2");
+    expect(matsSheet["B2"]?.f).toContain(roomsName);  // floorTiles
+    expect(matsSheet["C2"]?.f).toContain(roomsName);  // skirtingTiles
+    expect(matsSheet["D2"]?.f).toContain(wallSurfacesName); // wallTiles ← new col
+    expect(matsSheet["E2"]?.f).toBe("B2+C2+D2");     // totalTiles
+    expect(matsSheet["G2"]?.f).toBe("E2*F2");         // totalM2
+    expect(matsSheet["J2"]?.f).toBe("H2*I2");         // pricePerPack
+    expect(matsSheet["L2"]?.f).toBe("IF(H2>0,CEILING(G2/H2,1)+K2,K2)"); // totalPacks
+    expect(matsSheet["M2"]?.f).toContain(roomsName);  // skirtingCostBought
+    expect(matsSheet["N2"]?.f).toContain("K2*I2");    // totalCost
 
     const matsRange = XLSX.utils.decode_range(matsSheet["!ref"]);
     const matsLastRow = matsRange.e.r + 1;
-    const matsTotalCell = `M${matsLastRow}`;
-    expect(matsSheet[matsTotalCell]?.f).toBe(`SUM(M2:M${matsLastRow - 1})`);
+    const matsTotalCell = `N${matsLastRow}`;
+    expect(matsSheet[matsTotalCell]?.f).toBe(`SUM(N2:N${matsLastRow - 1})`);
 
     const summarySheet = wb.Sheets[summaryName];
     expect(summarySheet["B1"]?.f).toContain(materialsName);

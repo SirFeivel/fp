@@ -37,7 +37,10 @@ describe('renderPlanSvg pattern validation', () => {
     currentRoom.pattern.type = 'herringbone';
     currentRoom.tile.widthCm = 10;
     currentRoom.tile.heightCm = 25; // 2.5:1 ratio, invalid (must be integer)
-    
+    // Option B resolves from preset — keep preset in sync
+    const preset = state.tilePresets?.find(p => p.name === currentRoom.tile.reference);
+    if (preset) { preset.widthCm = 10; preset.heightCm = 25; }
+
     // Disable skirting to avoid counting its paths
     state.view.showSkirting = false;
 

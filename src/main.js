@@ -413,6 +413,7 @@ function resolveRenderScope(label, opts) {
     t("tile.offsetChanged"),
     t("tile.presetChanged"),
     t("skirting.changed"),
+    t("skirting.presetChanged"),
     t("removal.modeToggled"),
     t("removal.tileToggled"),
     t("removal.skirtToggled"),
@@ -421,7 +422,11 @@ function resolveRenderScope(label, opts) {
     t("exclusions.changed"),
     t("exclusions.moved"),
     t("waste.changed"),
-    t("waste.optimizeChanged")
+    t("waste.optimizeChanged"),
+    t("edge.doorwayChanged"),
+    t("edge.removeDoorway"),
+    t("room.edgeChanged"),
+    "Split zone",
   ]);
 
   const setupAll = new Set([
@@ -432,11 +437,21 @@ function resolveRenderScope(label, opts) {
     t("structure.roomDeleted"),
     t("room.changed"),
     t("session.reset"),
-    t("project.loaded")
+    t("project.loaded"),
+    t("tile.presetAdded"),
+    t("tile.presetDeleted"),
+    t("skirting.presetAdded"),
+    t("skirting.presetDeleted"),
   ]);
 
+  // Planning-only: view toggles that affect only the SVG/3D canvas, not setup or commercial
   const planningOnly = new Set([
-    t("room.viewChanged")
+    t("room.viewChanged"),
+    t("floor.tilesToggled"),
+    "Toggled 3D view",
+    "2D walls visibility toggled",
+    "3D walls visibility toggled",
+    "Toggle assisted tracing",
   ]);
 
   const exportOnly = new Set([
@@ -464,7 +479,7 @@ function renderSetupSection(state) {
 
 
 function prepareRoom3DData(state, room, floor, wallGeometry) {
-  const effectiveSettings = getEffectiveTileSettings(room, floor);
+  const effectiveSettings = getEffectiveTileSettings(room, floor, state);
   const isRemovalMode = Boolean(state.view?.removalMode);
 
   // Compute doorway floor patches (room-local coords, "vertices" format) — needed for 3D mesh geometry
@@ -489,7 +504,7 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     for (const surf of (obj.surfaces || [])) {
       if (!surf.tile) continue;
 
-      const region = prepareObj3dFaceRegion(obj, surf, allSurfaceContacts);
+      const region = prepareObj3dFaceRegion(obj, surf, allSurfaceContacts, state);
       if (!region) continue;
 
       const faceTileResult = computeSurfaceTiles(state, region, floor, {
@@ -506,7 +521,7 @@ function prepareRoom3DData(state, room, floor, wallGeometry) {
     const faceSkirtingZoneTiles = {};
     for (const surf of (obj.surfaces || [])) {
       if (!surf.skirtingZone) continue;
-      const region = prepareObj3dFaceRegion(obj, surf, allSurfaceContacts);
+      const region = prepareObj3dFaceRegion(obj, surf, allSurfaceContacts, state);
       if (!region) continue;
       const zones = computeSkirtingZoneTiles(state, [surf.skirtingZone], region.widthCm, floor, { isRemovalMode });
       if (zones.length) {
@@ -566,7 +581,7 @@ function prepareFloorWallData(state, floor, wallGeometry) {
     const surfaces = wall.surfaces.map((surface, idx) => {
       // Get room for this surface to pass context for skirting offset
       const room = floor.rooms.find(r => r.id === surface.roomId);
-      const region = prepareWallSurface(wall, idx, room, floor);
+      const region = prepareWallSurface(wall, idx, room, floor, state);
       if (!region) return null;
 
       let tiles = [];
@@ -1109,7 +1124,7 @@ function renderPlanningSection(state, opts) {
       if (wall) {
         const surface = wall.surfaces[state.selectedSurfaceIdx ?? 0];
         const room = floor.rooms.find(r => r.id === surface?.roomId);
-        roomOverride = prepareWallSurface(wall, state.selectedSurfaceIdx ?? 0, room, floor);
+        roomOverride = prepareWallSurface(wall, state.selectedSurfaceIdx ?? 0, room, floor, state);
         surfaceTilingDisabled = !roomOverride?.tile;
       }
     }
@@ -1906,7 +1921,7 @@ function getTargetSurfacePolygons() {
     const wall = floor.walls?.find(w => w.id === state.selectedWallId);
     const surfIdx = wall?.surfaces?.findIndex(s => s.roomId === state.selectedRoomId) ?? -1;
     if (surfIdx < 0) return [];
-    const region = prepareWallSurface(wall, surfIdx, room, floor);
+    const region = prepareWallSurface(wall, surfIdx, room, floor, state);
     if (!region?.polygonVertices?.length) return [];
     console.log(`[dividers:getSurfacePolygons] wall surface verts=${region.polygonVertices.length}`);
     return [{ id: 'wall-surface', type: 'uncovered', vertices: region.polygonVertices }];
@@ -2378,15 +2393,39 @@ function bindPresetCollection() {
 
   const applyTilePresetDelete = (next, presetName, roomsUsingPreset) => {
     if (!roomsUsingPreset?.length) return;
+    const preset = next.tilePresets?.find(p => p.name === presetName);
     const roomIdSet = new Set(roomsUsingPreset);
     next.floors?.forEach(floor => {
       floor.rooms?.forEach(room => {
-        if (roomIdSet.has(room.id)) {
-          room.tile.reference = "";
-          room.tile.shape = "rect";
-          room.tile.widthCm = 0;
-          room.tile.heightCm = 0;
+        if (!roomIdSet.has(room.id)) return;
+        // Snapshot current preset values so the room becomes standalone gracefully
+        if (preset) {
+          room.tile.shape = preset.shape || room.tile.shape;
+          room.tile.widthCm = preset.widthCm ?? room.tile.widthCm;
+          room.tile.heightCm = preset.heightCm ?? room.tile.heightCm;
+          if (room.grout) {
+            room.grout.widthCm = preset.groutWidthCm ?? room.grout.widthCm;
+            room.grout.colorHex = preset.groutColorHex || room.grout.colorHex;
+          }
         }
+        room.tile.reference = "";
+        // Also detach any wall surfaces referencing this preset
+        floor.walls?.forEach(wall => {
+          wall.surfaces?.forEach(surface => {
+            if (surface.tile?.reference === presetName) {
+              if (preset) {
+                surface.tile.shape = preset.shape || surface.tile.shape;
+                surface.tile.widthCm = preset.widthCm ?? surface.tile.widthCm;
+                surface.tile.heightCm = preset.heightCm ?? surface.tile.heightCm;
+                if (surface.grout) {
+                  surface.grout.widthCm = preset.groutWidthCm ?? surface.grout.widthCm;
+                  surface.grout.colorHex = preset.groutColorHex || surface.grout.colorHex;
+                }
+              }
+              surface.tile.reference = "";
+            }
+          });
+        });
       });
     });
     if (presetName && next.materials?.[presetName]) {
@@ -2495,6 +2534,7 @@ function bindPresetCollection() {
     const prevUseForSkirting = Boolean(p.useForSkirting);
     if (useSkirting) p.useForSkirting = Boolean(useSkirting.checked);
 
+    // Rename reference string in all linked rooms and materials dict
     if (prevName && p.name && prevName !== p.name) {
       next.floors?.forEach(floor => {
         floor.rooms?.forEach(room => {
@@ -2505,6 +2545,14 @@ function bindPresetCollection() {
         next.materials[p.name] = next.materials[prevName];
         delete next.materials[prevName];
       }
+    }
+
+    // Update materials pricing for linked rooms
+    if (p.name) {
+      next.materials = next.materials || {};
+      next.materials[p.name] = next.materials[p.name] || {};
+      next.materials[p.name].pricePerM2 = p.pricePerM2;
+      next.materials[p.name].packM2     = p.packM2;
     }
 
     if (!prevUseForSkirting && p.useForSkirting && p.name) {
@@ -4125,7 +4173,7 @@ function updateAllTranslations() {
 
     // Check if room is a child in a pattern group (tile settings are inherited)
     const isChild = !surface && room ? isPatternGroupChild(room, floor) : false;
-    const effectiveSettings = isChild ? getEffectiveTileSettings(room, floor) : null;
+    const effectiveSettings = isChild ? getEffectiveTileSettings(room, floor, state) : null;
     const displayTile = surface ? surface.tile : (isChild && effectiveSettings ? effectiveSettings.tile : room?.tile);
     const displayPattern = surface ? surface.pattern : (isChild && effectiveSettings ? effectiveSettings.pattern : room?.pattern);
     const displayGrout = surface ? surface.grout : (isChild && effectiveSettings ? effectiveSettings.grout : room?.grout);

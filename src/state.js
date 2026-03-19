@@ -20,6 +20,33 @@ import { computeCompositePolygon } from './composite.js';
 import { DEFAULT_WALL_HEIGHT_CM, DEFAULT_WALL_THICKNESS_CM } from './constants.js';
 import { syncFloorWalls, rebuildAllSkirtingZones } from './walls.js';
 
+/**
+ * Produces a compact string fingerprint of everything syncFloorWalls and
+ * rebuildAllSkirtingZones read from a floor. If this key is unchanged since
+ * the last normalization pass, both operations can be safely skipped.
+ *
+ * Covers: room geometry, skirting config, tile/grout (for zone tile spec),
+ * excludedSkirts, objects3d skirting, doorways on existing walls, and the
+ * floor envelope.
+ */
+function floorSyncKey(floor) {
+  const rooms = (floor.rooms || []).map(r => {
+    const verts = (r.polygonVertices || []).map(v => `${v.x},${v.y}`).join('|');
+    const circ  = r.circle ? `${r.circle.cx},${r.circle.cy},${r.circle.rx},${r.circle.ry}` : '';
+    const skirt = r.skirting ? `${+r.skirting.enabled}|${r.skirting.heightCm}|${r.skirting.type}` : '';
+    const tile  = r.tile  ? `${r.tile.widthCm}|${r.tile.heightCm}|${r.tile.shape}` : '';
+    const grout = r.grout ? `${r.grout.widthCm}` : '';
+    const excl  = (r.excludedSkirts || []).join(',');
+    const objs  = (r.objects3d || []).map(o => `${o.id}:${+!!o.skirtingEnabled}:${o.heightCm || ''}`).join(',');
+    return `${r.id}:${verts}:${circ}:${skirt}:${tile}:${grout}:${excl}:${objs}`;
+  }).join(';');
+  const doorways = (floor.walls || []).map(w =>
+    `${w.id}:${(w.doorways || []).map(d => `${d.id}:${d.widthCm}:${d.startCm}`).join(',')}`
+  ).join(';');
+  const env = floor.layout?.envelope ? JSON.stringify(floor.layout.envelope) : '';
+  return `${rooms}|dw:${doorways}|env:${env}`;
+}
+
 export function createStateStore(defaultStateFn, validateStateFn) {
   function normalizeState(s) {
     if (!s || typeof s !== "object") return defaultStateFn();
@@ -288,10 +315,19 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       });
     }
 
-    // Keep wall entities in sync with room geometry on every state change
+    // Keep wall entities and skirting zones in sync with room geometry.
+    // Both syncFloorWalls and rebuildAllSkirtingZones are O(n) over walls and
+    // rooms. Skip them when the floor's sync fingerprint hasn't changed — this
+    // covers the majority of commits (pricing, view settings, pattern tweaks).
+    let anyFloorNeedsSync = false;
     if (s.floors && Array.isArray(s.floors)) {
       for (const floor of s.floors) {
-        syncFloorWalls(floor);
+        const syncKey = floorSyncKey(floor);
+        if (floor._syncKey !== syncKey) {
+          syncFloorWalls(floor);
+          floor._syncKey = syncKey;
+          anyFloorNeedsSync = true;
+        }
         // Clean up legacy surface.skirting field (removed in v13+)
         for (const wall of floor.walls || []) {
           for (const surface of wall.surfaces || []) {
@@ -309,8 +345,11 @@ export function createStateStore(defaultStateFn, validateStateFn) {
       }
     }
 
-    // Rebuild skirting zones derived from skirting config — must run after syncFloorWalls
-    rebuildAllSkirtingZones(s);
+    // Rebuild skirting zones derived from skirting config — must run after syncFloorWalls.
+    // Only needed when at least one floor's geometry or skirting config changed.
+    if (anyFloorNeedsSync) {
+      rebuildAllSkirtingZones(s);
+    }
 
     return s;
   }
@@ -739,6 +778,7 @@ export function createStateStore(defaultStateFn, validateStateFn) {
     undoStack.push({ label, before, after, ts: nowISO() });
     redoStack = [];
     state = after;
+    clearMetricsCache();
 
     autosaveSession(updateMetaCb);
     onRender?.(label);

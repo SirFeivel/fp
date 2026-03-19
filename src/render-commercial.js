@@ -10,61 +10,70 @@ export function renderCommercialTab(state) {
 
   const proj = computeProjectTotals(state);
 
-  // 1. Render Rooms Table
+  // ── 1. Usage by location ──────────────────────────────────────────────────
   roomsListEl.replaceChildren();
+
+  // Section: floor rooms
   const roomsTable = document.createElement("table");
   roomsTable.className = "commercial-table";
-  const roomsThead = document.createElement("thead");
-  const roomsHeadRow = document.createElement("tr");
   const roomsHeaders = [
     { label: t("tabs.floor") },
     { label: t("tabs.room") },
+    { label: t("commercial.sourceFloor"), align: "center" },
     { label: t("tile.reference") },
     { label: t("metrics.netArea"), align: "right" },
     { label: t("metrics.totalTiles"), align: "right" },
     { label: t("metrics.price"), align: "right" }
   ];
-  roomsHeaders.forEach(({ label, align }) => {
-    const th = document.createElement("th");
-    th.textContent = label;
-    if (align) th.style.textAlign = align;
-    roomsHeadRow.appendChild(th);
-  });
-  roomsThead.appendChild(roomsHeadRow);
-  roomsTable.appendChild(roomsThead);
+  roomsTable.appendChild(_thead(roomsHeaders));
   const roomsTbody = document.createElement("tbody");
   for (const r of proj.rooms) {
     const tr = document.createElement("tr");
-    const floorTd = document.createElement("td");
-    floorTd.className = "subtle";
-    floorTd.textContent = r.floorName || "";
-    const roomTd = document.createElement("td");
-    roomTd.className = "room-name";
-    roomTd.textContent = r.name || "";
-    const refTd = document.createElement("td");
-    refTd.className = "material-ref";
-    refTd.textContent = r.reference || "-";
-    const areaTd = document.createElement("td");
-    areaTd.style.textAlign = "right";
-    areaTd.textContent = `${r.netAreaM2.toFixed(2)} m²`;
-    const tilesTd = document.createElement("td");
-    tilesTd.style.textAlign = "right";
-    tilesTd.textContent = String(r.totalTiles);
-    const costTd = document.createElement("td");
-    costTd.style.textAlign = "right";
-    costTd.textContent = `${r.totalCost.toFixed(2)} €`;
-    tr.append(floorTd, roomTd, refTd, areaTd, tilesTd, costTd);
+    _td(tr, r.floorName || "", "subtle");
+    _td(tr, r.name || "", "room-name");
+    _tdCenter(tr, t("commercial.sourceFloor"), "source-tag source-floor");
+    _td(tr, r.reference || "–", "material-ref");
+    _tdRight(tr, `${r.netAreaM2.toFixed(2)} m²`);
+    _tdRight(tr, String(r.totalTiles));
+    _tdRight(tr, `${r.totalCost.toFixed(2)} €`);
     roomsTbody.appendChild(tr);
   }
+
+  // Wall surface rows inline (visually distinct)
+  for (const ws of (proj.wallRooms || [])) {
+    const tr = document.createElement("tr");
+    tr.className = "commercial-wall-row";
+    _td(tr, ws.floorName || "", "subtle");
+    _td(tr, ws.roomName || "", "room-name");
+    _tdCenter(tr, t("commercial.sourceWall"), "source-tag source-wall");
+    _td(tr, ws.reference || "–", "material-ref");
+    _tdRight(tr, `${ws.areaM2.toFixed(2)} m²`);
+    _tdRight(tr, String(ws.tiles));
+    _tdRight(tr, `${ws.cost.toFixed(2)} €`);
+    roomsTbody.appendChild(tr);
+  }
+
+  // Sub-surface rows (tiled exclusions on floor and wall surfaces)
+  for (const ss of (proj.subSurfaceRooms || [])) {
+    const tr = document.createElement("tr");
+    tr.className = "commercial-wall-row";
+    _td(tr, ss.floorName || "", "subtle");
+    _td(tr, ss.roomName || "", "room-name");
+    _tdCenter(tr, t("commercial.sourceSubSurface"), "source-tag source-sub");
+    _td(tr, ss.reference || "–", "material-ref");
+    _tdRight(tr, `${ss.areaM2.toFixed(2)} m²`);
+    _tdRight(tr, String(ss.tiles));
+    _tdRight(tr, `${ss.cost.toFixed(2)} €`);
+    roomsTbody.appendChild(tr);
+  }
+
   roomsTable.appendChild(roomsTbody);
   roomsListEl.appendChild(roomsTable);
 
-  // 2. Render Consolidated Materials Table
+  // ── 2. Consolidated materials ─────────────────────────────────────────────
   materialsListEl.replaceChildren();
   const matsTable = document.createElement("table");
   matsTable.className = "commercial-table";
-  const matsThead = document.createElement("thead");
-  const matsHeadRow = document.createElement("tr");
   const matsHeaders = [
     { label: t("tile.reference") },
     { label: t("commercial.totalM2"), align: "right" },
@@ -72,114 +81,84 @@ export function renderCommercialTab(state) {
     { label: t("commercial.totalPacks"), align: "right" },
     { label: t("commercial.packsFloor"), align: "right" },
     { label: t("commercial.packsSkirting"), align: "right" },
+    { label: t("commercial.packsWall"), align: "right" },
     { label: t("commercial.amountOverride"), align: "right" },
     { label: t("commercial.pricePerM2"), align: "right" },
     { label: t("commercial.pricePerPack"), align: "right" },
     { label: t("commercial.packSize"), align: "right" },
     { label: t("commercial.totalCost"), align: "right" }
   ];
-  matsHeaders.forEach(({ label, align }) => {
-    const th = document.createElement("th");
-    th.textContent = label;
-    if (align) th.style.textAlign = align;
-    matsHeadRow.appendChild(th);
-  });
-  matsThead.appendChild(matsHeadRow);
-  matsTable.appendChild(matsThead);
+  matsTable.appendChild(_thead(matsHeaders));
   const matsTbody = document.createElement("tbody");
+
   for (const m of proj.materials) {
     const ref = m.reference || "";
     const pricePerPack = (m.pricePerM2 * m.packM2).toFixed(2);
+    const wallAndSubPacks = (m.wallPacks || 0) + (m.subSurfacePacks || 0);
     const tr = document.createElement("tr");
-    const refTd = document.createElement("td");
-    refTd.className = "material-ref";
-    refTd.textContent = ref || t("commercial.defaultMaterial");
-    const areaTd = document.createElement("td");
-    areaTd.style.textAlign = "right";
-    areaTd.textContent = `${m.netAreaM2.toFixed(2)} m²`;
-    const tilesTd = document.createElement("td");
-    tilesTd.style.textAlign = "right";
-    tilesTd.textContent = String(m.totalTiles);
+
+    _td(tr, ref || t("commercial.defaultMaterial"), "material-ref");
+    _tdRight(tr, `${m.netAreaM2.toFixed(2)} m²`);
+    _tdRight(tr, String(m.totalTiles));
+
+    // Total packs — bold
     const packsTd = document.createElement("td");
     packsTd.style.textAlign = "right";
     const packsStrong = document.createElement("strong");
     packsStrong.textContent = String(m.totalPacks || 0);
     packsTd.appendChild(packsStrong);
-    const floorPacksTd = document.createElement("td");
-    floorPacksTd.style.textAlign = "right";
-    floorPacksTd.textContent = String(m.floorPacks || 0);
-    const skirtingPacksTd = document.createElement("td");
-    skirtingPacksTd.style.textAlign = "right";
-    skirtingPacksTd.textContent = String(m.skirtingPacks || 0);
+    tr.appendChild(packsTd);
+
+    _tdRight(tr, String(m.floorPacks || 0));
+    _tdRight(tr, String(m.skirtingPacks || 0));
+    _tdRight(tr, wallAndSubPacks > 0 ? String(wallAndSubPacks) : "–");
+
+    // Editable: extra packs
     const extraTd = document.createElement("td");
     extraTd.style.textAlign = "right";
-    const extraInput = document.createElement("input");
-    extraInput.type = "number";
-    extraInput.step = "1";
-    extraInput.className = "commercial-edit";
-    extraInput.dataset.ref = ref;
-    extraInput.dataset.prop = "extraPacks";
-    extraInput.value = String(m.extraPacks);
-    extraInput.style.width = "40px";
+    const extraInput = _editInput("number", "1", ref, "extraPacks", String(m.extraPacks), "40px");
     extraTd.appendChild(extraInput);
+    tr.appendChild(extraTd);
+
+    // Editable: price/m²
     const priceM2Td = document.createElement("td");
     priceM2Td.style.textAlign = "right";
-    const priceM2Input = document.createElement("input");
-    priceM2Input.type = "number";
-    priceM2Input.step = "0.01";
-    priceM2Input.className = "commercial-edit";
-    priceM2Input.dataset.ref = ref;
-    priceM2Input.dataset.prop = "pricePerM2";
-    priceM2Input.value = m.pricePerM2.toFixed(2);
-    priceM2Input.style.width = "60px";
+    const priceM2Input = _editInput("number", "0.01", ref, "pricePerM2", m.pricePerM2.toFixed(2), "60px");
     const priceM2Unit = document.createElement("span");
     priceM2Unit.textContent = " €";
     priceM2Td.append(priceM2Input, priceM2Unit);
+    tr.appendChild(priceM2Td);
+
+    // Editable: price/pack
     const pricePackTd = document.createElement("td");
     pricePackTd.style.textAlign = "right";
-    const pricePackInput = document.createElement("input");
-    pricePackInput.type = "number";
-    pricePackInput.step = "0.01";
-    pricePackInput.className = "commercial-edit";
-    pricePackInput.dataset.ref = ref;
-    pricePackInput.dataset.prop = "pricePerPack";
-    pricePackInput.value = pricePerPack;
-    pricePackInput.style.width = "60px";
+    const pricePackInput = _editInput("number", "0.01", ref, "pricePerPack", pricePerPack, "60px");
     const pricePackUnit = document.createElement("span");
     pricePackUnit.textContent = " €";
     pricePackTd.append(pricePackInput, pricePackUnit);
+    tr.appendChild(pricePackTd);
+
+    // Editable: pack size
     const packSizeTd = document.createElement("td");
     packSizeTd.style.textAlign = "right";
-    const packSizeInput = document.createElement("input");
-    packSizeInput.type = "number";
-    packSizeInput.step = "0.01";
-    packSizeInput.className = "commercial-edit";
-    packSizeInput.dataset.ref = ref;
-    packSizeInput.dataset.prop = "packM2";
-    packSizeInput.value = String(m.packM2);
+    const packSizeInput = _editInput("number", "0.01", ref, "packM2", String(m.packM2), null);
     const packSizeUnit = document.createElement("span");
     packSizeUnit.textContent = " m²";
     packSizeTd.append(packSizeInput, packSizeUnit);
+    tr.appendChild(packSizeTd);
+
+    // Total cost — bold
     const costTd = document.createElement("td");
     costTd.style.textAlign = "right";
     const costStrong = document.createElement("strong");
     costStrong.textContent = `${m.adjustedCost.toFixed(2)} €`;
     costTd.appendChild(costStrong);
-    tr.append(
-      refTd,
-      areaTd,
-      tilesTd,
-      packsTd,
-      floorPacksTd,
-      skirtingPacksTd,
-      extraTd,
-      priceM2Td,
-      pricePackTd,
-      packSizeTd,
-      costTd
-    );
+    tr.appendChild(costTd);
+
     matsTbody.appendChild(tr);
   }
+
+  // Grand total row
   const totalRow = document.createElement("tr");
   totalRow.style.borderTop = "2px solid var(--line2)";
   totalRow.style.fontWeight = "bold";
@@ -194,28 +173,13 @@ export function renderCommercialTab(state) {
   const totalPacks = document.createElement("td");
   totalPacks.style.textAlign = "right";
   totalPacks.textContent = String(proj.totalPacks);
-  const totalFloor = document.createElement("td");
-  totalFloor.style.textAlign = "right";
-  totalFloor.textContent = "–";
-  const totalSkirting = document.createElement("td");
-  totalSkirting.style.textAlign = "right";
-  totalSkirting.textContent = "–";
   const totalSpacer = document.createElement("td");
-  totalSpacer.colSpan = 4;
+  totalSpacer.colSpan = 7; // floor + skirting + wall + override + price/m² + price/pack + pack size
   const totalCost = document.createElement("td");
   totalCost.style.textAlign = "right";
   totalCost.style.color = "var(--accent)";
   totalCost.textContent = `${proj.totalCost.toFixed(2)} €`;
-  totalRow.append(
-    totalLabel,
-    totalArea,
-    totalTiles,
-    totalPacks,
-    totalFloor,
-    totalSkirting,
-    totalSpacer,
-    totalCost
-  );
+  totalRow.append(totalLabel, totalArea, totalTiles, totalPacks, totalSpacer, totalCost);
   matsTbody.appendChild(totalRow);
   matsTable.appendChild(matsTbody);
   materialsListEl.appendChild(matsTable);
@@ -292,4 +256,53 @@ export function renderExportTab(state, selection = null) {
 
     listEl.appendChild(group);
   }
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+
+function _thead(headers) {
+  const thead = document.createElement("thead");
+  const tr = document.createElement("tr");
+  for (const { label, align } of headers) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    if (align) th.style.textAlign = align;
+    tr.appendChild(th);
+  }
+  thead.appendChild(tr);
+  return thead;
+}
+
+function _td(tr, text, className) {
+  const td = document.createElement("td");
+  if (className) td.className = className;
+  td.textContent = text;
+  tr.appendChild(td);
+}
+
+function _tdRight(tr, text) {
+  const td = document.createElement("td");
+  td.style.textAlign = "right";
+  td.textContent = text;
+  tr.appendChild(td);
+}
+
+function _tdCenter(tr, text, className) {
+  const td = document.createElement("td");
+  td.style.textAlign = "center";
+  if (className) td.className = className;
+  td.textContent = text;
+  tr.appendChild(td);
+}
+
+function _editInput(type, step, ref, prop, value, width) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.step = step;
+  input.className = "commercial-edit";
+  input.dataset.ref = ref;
+  input.dataset.prop = prop;
+  input.value = value;
+  if (width) input.style.width = width;
+  return input;
 }

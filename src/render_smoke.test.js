@@ -255,8 +255,11 @@ describe('render.js smoke tests', () => {
     room.pattern.type = 'herringbone';
     room.tile.widthCm = 25;
     room.tile.heightCm = 10;
+    // Option B resolves from preset — keep preset in sync so ratio error fires
+    const preset = state.tilePresets?.find(p => p.name === room.tile.reference);
+    if (preset) { preset.widthCm = 25; preset.heightCm = 10; }
     room.skirting.enabled = true; // Grand total usually shows if skirting is enabled
-    
+
     // Explicitly check ratioError in the test to ensure we know why it fails
     const { errors } = validateState(state);
     const ratioError = errors.find(e => 

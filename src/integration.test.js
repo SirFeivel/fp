@@ -35,6 +35,9 @@ describe("integration flow", () => {
     const room = getRoom(next);
     room.tile.widthCm = 50;
     room.tile.heightCm = 50;
+    // Option B resolves from preset — keep preset in sync so new dimensions take effect
+    const preset = next.tilePresets?.find(p => p.name === room.tile.reference);
+    if (preset) { preset.widthCm = 50; preset.heightCm = 50; }
     store.setStateDirect(next);
 
     const updated = computePlanMetrics(store.getState());

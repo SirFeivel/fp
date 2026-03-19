@@ -290,18 +290,20 @@ export function bindUI({
       next.materials[ref].packM2 = values.packM2;
     }
 
-    if (!asNew && oldName) {
+    if (!asNew && oldName && oldName !== ref) {
+      // Preset was renamed — update all room references to the new name
       next.floors?.forEach((floor) => {
         floor.rooms?.forEach((rm) => {
-          if (rm.tile?.reference === oldName) {
-            if (oldName !== ref) rm.tile.reference = ref;
-            rm.tile.shape = values.shape;
-            rm.tile.widthCm = values.widthCm;
-            rm.tile.heightCm = values.heightCm;
-          }
+          if (rm.tile?.reference === oldName) rm.tile.reference = ref;
+        });
+        floor.walls?.forEach((wall) => {
+          wall.surfaces?.forEach((surf) => {
+            if (surf.tile?.reference === oldName) surf.tile.reference = ref;
+          });
         });
       });
-      if (oldName !== ref && next.materials?.[oldName]) {
+      if (next.materials?.[oldName]) {
+        next.materials[ref] = next.materials[oldName];
         delete next.materials[oldName];
       }
     }
@@ -525,12 +527,18 @@ export function bindUI({
   }
 
   function commitFromTilePatternInputs(label) {
-    if (tileEditMode === "create") return;
+    if (tileEditMode === "create") {
+      console.log("[ui:commitTilePattern] skipped — tileEditMode=create");
+      return;
+    }
     const state = store.getState();
     const next = structuredClone(state);
 
     const currentRoom = getCurrentRoom(next);
-    if (!currentRoom) return;
+    if (!currentRoom) {
+      console.log("[ui:commitTilePattern] skipped — no current room");
+      return;
+    }
 
     // Determine write target: surface (when wall selected) or room
     const wall = getSelectedWall(next);
@@ -539,10 +547,14 @@ export function bindUI({
     const target = surface || currentRoom;
 
     // If targeting a surface with tiling disabled, skip
-    if (surface && !surface.tile) return;
+    if (surface && !surface.tile) {
+      console.log("[ui:commitTilePattern] skipped — surface has no tile");
+      return;
+    }
 
     const shape = document.getElementById("tileShape")?.value || "rect";
     const widthCm = Number(document.getElementById("tileW")?.value);
+    console.log(`[ui:commitTilePattern] label="${label}" shape=${shape} widthCm=${widthCm} tileEditActive=${tileEditActive} target=${surface ? "surface" : "room"}`);
 
     target.tile.shape = shape;
     target.tile.widthCm = widthCm;
@@ -602,24 +614,6 @@ export function bindUI({
     next.view = next.view || {};
     const dbg = document.getElementById("debugShowNeeds");
     if (dbg) next.view.showNeeds = Boolean(dbg.checked);
-
-    // Sync other rooms with same reference (only when editing room, not surface)
-    if (!surface) {
-      const ref = currentRoom.tile.reference;
-      if (ref) {
-        next.floors.forEach((f) => {
-          if (f.rooms) {
-            f.rooms.forEach((rm) => {
-              if (rm.id !== currentRoom.id && rm.tile?.reference === ref) {
-                rm.tile.widthCm = currentRoom.tile.widthCm;
-                rm.tile.heightCm = currentRoom.tile.heightCm;
-                rm.tile.shape = currentRoom.tile.shape;
-              }
-            });
-          }
-        });
-      }
-    }
 
     store.commit(label, next, { onRender: renderAll, updateMetaCb: updateMeta });
   }
@@ -1254,8 +1248,13 @@ export function bindUI({
   });
 
   ["tileShape", "patternType", "bondFraction", "rotationDeg", "originPreset"].forEach((id) => {
-    document.getElementById(id)?.addEventListener("change", () => {
-      if (id === "tileShape") updateTileShapeUI();
+    const el = document.getElementById(id);
+    if (!el) console.warn(`[ui:bind] element #${id} not found at bind time`);
+    el?.addEventListener("change", () => {
+      if (id === "tileShape") {
+        console.log(`[ui:tileShape] changed to="${el.value}" disabled=${el.disabled}`);
+        updateTileShapeUI();
+      }
       commitFromTilePatternInputs(t("tile.patternChanged"));
     });
   });

@@ -1,7 +1,7 @@
 // src/pattern-groups.js
 // Pattern Groups: Group rooms to share continuous tile patterns
 
-import { uuid } from "./core.js";
+import { uuid, resolvePresetTile, resolvePresetGrout } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { areRoomsAdjacent } from "./floor_geometry.js";
 
@@ -339,16 +339,23 @@ export function validatePatternGroupConnectivity(floor, groupId) {
  * Returns origin room's settings if in a group, otherwise room's own settings
  * @param {Object} room - The room
  * @param {Object} floor - Floor object
+ * @param {Object} [state] - Full app state, used to resolve preset dimensions/grout
  * @returns {Object} { tile, pattern, grout } settings
  */
-export function getEffectiveTileSettings(room, floor) {
+export function getEffectiveTileSettings(room, floor, state) {
   const originRoom = getPatternOriginRoom(floor, room?.id);
   const sourceRoom = originRoom || room;
 
+  const rawTile = sourceRoom?.tile || null;
+  const tile = resolvePresetTile(rawTile, state);
+  const grout = rawTile?.reference
+    ? resolvePresetGrout(sourceRoom?.grout || null, rawTile.reference, state)
+    : (sourceRoom?.grout || null);
+
   return {
-    tile: sourceRoom?.tile || null,
+    tile,
     pattern: sourceRoom?.pattern || null,
-    grout: sourceRoom?.grout || null
+    grout,
   };
 }
 

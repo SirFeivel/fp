@@ -1,5 +1,5 @@
 // src/objects3d.js
-import { deepClone, uuid, getCurrentRoom } from './core.js';
+import { deepClone, uuid, getCurrentRoom, resolvePresetTile, resolvePresetGrout } from './core.js';
 import { t } from './i18n.js';
 import { getRoomBounds } from './geometry.js';
 
@@ -8,7 +8,7 @@ import { getRoomBounds } from './geometry.js';
  * Returns { widthCm, heightCm, polygonVertices, tile, grout, pattern, exclusions }
  * or null if dimensions cannot be determined.
  */
-export function prepareObj3dFaceRegion(obj, surf, allSurfaceContacts) {
+export function prepareObj3dFaceRegion(obj, surf, allSurfaceContacts, state) {
   // Compute face dimensions
   let faceW, faceH;
   if (obj.type === "rect") {
@@ -61,12 +61,17 @@ export function prepareObj3dFaceRegion(obj, surf, allSurfaceContacts) {
     console.log(`[prepareObj3dFaceRegion] obj=${obj.id} face=${surf.face}: ${exclusions.length} contact exclusion(s)`);
   }
 
+  const resolvedTile = resolvePresetTile(surf.tile, state);
+  const resolvedGrout = surf.tile?.reference
+    ? resolvePresetGrout(surf.grout, surf.tile.reference, state)
+    : (surf.grout || { widthCm: 0.2, colorHex: "#ffffff" });
+
   return {
     widthCm: faceW,
     heightCm: faceH,
     polygonVertices: polyVerts,
-    tile: surf.tile,
-    grout: surf.grout || { widthCm: 0.2, colorHex: "#ffffff" },
+    tile: resolvedTile,
+    grout: resolvedGrout || { widthCm: 0.2, colorHex: "#ffffff" },
     pattern: surf.pattern || { type: "grid", bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
     exclusions,
   };

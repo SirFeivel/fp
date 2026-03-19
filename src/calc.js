@@ -1,8 +1,9 @@
 // src/calc.js
 import { computeAvailableArea, tilesForPreview, multiPolyArea, getRoomBounds, computeSkirtingPerimeter, computeSkirtingSegments, getAllFloorExclusions } from "./geometry.js";
-import { getCurrentRoom, getCurrentFloor } from "./core.js";
+import { getCurrentRoom, getCurrentFloor, resolvePresetTile } from "./core.js";
 import { getEffectiveTileSettings, computePatternGroupOrigin } from "./pattern-groups.js";
 import { TRIANGULAR_CUT_MIN, TRIANGULAR_CUT_MAX, AREA_RATIO_SCALING_THRESHOLD, COMPLEMENTARY_FIT_MIN, COMPLEMENTARY_FIT_MAX } from "./constants.js";
+import { prepareWallSurface, computeSurfaceTiles, computeSubSurfaceTiles, computeSkirtingZoneTiles } from "./walls.js";
 
 
 /**
@@ -116,6 +117,44 @@ export function computeSkirtingNeeds(state, roomOverride = null) {
 // cm² -> m²
 function cm2ToM2(aCm2) {
   return aCm2 / 10000;
+}
+
+// Count full vs cut tiles from a tiles array and derive purchased tile count + installed area.
+// Conservative: no cross-surface offcut reuse.
+function countTilesResult(tiles, tileW, tileH) {
+  let fullTiles = 0, cutTiles = 0;
+  for (const t of tiles) {
+    if (t.isFull) fullTiles++; else cutTiles++;
+  }
+  const purchasedTiles = fullTiles + cutTiles;
+  const tileAreaCm2 = (tileW || 1) * (tileH || 1);
+  const installedAreaM2 = cm2ToM2(purchasedTiles * tileAreaCm2);
+  return { fullTiles, cutTiles, purchasedTiles, installedAreaM2 };
+}
+
+// Accumulate tile counts and area into the byMaterial map.
+// surfaceType: 'floor' | 'skirting' | 'wall' | 'subSurface'
+function accumulateIntoByMaterial(byMaterial, state, ref, count, surfaceType) {
+  if (!byMaterial[ref]) {
+    const pricing = getRoomPricing(state, { tile: { reference: ref } });
+    byMaterial[ref] = {
+      reference: ref,
+      totalTiles: 0, totalAreaM2: 0, netAreaM2: 0, totalCost: 0,
+      floorAreaM2: 0, skirtingAreaM2: 0, wallAreaM2: 0, subSurfaceAreaM2: 0,
+      floorTiles: 0, skirtingTiles: 0, wallTiles: 0, subSurfaceTiles: 0,
+      pricePerM2: pricing.pricePerM2, packM2: pricing.packM2,
+      extraPacks: (state.materials?.[ref]?.extraPacks) || 0,
+    };
+  }
+  const m = byMaterial[ref];
+  m.totalTiles += count.purchasedTiles;
+  m.totalAreaM2 += count.installedAreaM2;
+  m.netAreaM2 += count.installedAreaM2;
+  m.totalCost += count.installedAreaM2 * m.pricePerM2;
+  if (surfaceType === 'floor') { m.floorAreaM2 += count.installedAreaM2; m.floorTiles += count.purchasedTiles; }
+  else if (surfaceType === 'skirting') { m.skirtingAreaM2 += count.installedAreaM2; m.skirtingTiles += count.purchasedTiles; }
+  else if (surfaceType === 'wall') { m.wallAreaM2 += count.installedAreaM2; m.wallTiles += count.purchasedTiles; }
+  else if (surfaceType === 'subSurface') { m.subSurfaceAreaM2 += count.installedAreaM2; m.subSurfaceTiles += count.purchasedTiles; }
 }
 
 function clampPos(n) {
@@ -498,14 +537,20 @@ function getMetricsKey(state, room) {
   const group = floor?.patternGroups?.find(g => g.memberRoomIds?.includes(room.id));
   const originRoom = group?.originRoomId
     ? floor.rooms.find(r => r.id === group.originRoomId) : null;
+  // Include skirting config: computeSkirtingNeeds reads room.skirting
+  // Include pricing: getRoomPricing reads state.pricing and state.materials[ref]
+  const ref = room.tile?.reference || null;
   return JSON.stringify({
     tile: room.tile,
     grout: room.grout,
     pattern: room.pattern,
+    skirting: room.skirting,
     exclusions: room.exclusions,
     objects3d: room.objects3d,
     polygonVertices: room.polygonVertices,
     waste: state?.waste,
+    pricing: state?.pricing,
+    materialRef: ref ? (state?.materials?.[ref] || null) : null,
     originTile: originRoom?.tile || null,
     originPattern: originRoom?.pattern || null,
     originGrout: originRoom?.grout || null,
@@ -544,7 +589,7 @@ export function computePlanMetrics(state, roomOverride = null, options = {}) {
 
   // Get floor context for pattern group inheritance
   const floor = getCurrentFloor(state);
-  const effectiveSettings = getEffectiveTileSettings(currentRoom, floor);
+  const effectiveSettings = getEffectiveTileSettings(currentRoom, floor, state);
 
   const tw = Number(effectiveSettings.tile?.widthCm);
   const th = Number(effectiveSettings.tile?.heightCm);
@@ -1022,6 +1067,7 @@ export function computeProjectTotals(state) {
 
   const rooms = [];
   const wallRooms = [];
+  const subSurfaceRooms = [];
   const byMaterial = {};
   let wallTotalTiles = 0;
   let wallTotalCost = 0;
@@ -1060,16 +1106,10 @@ export function computeProjectTotals(state) {
             const pricing = getRoomPricing(state, room);
             byMaterial[ref] = {
               reference: ref,
-              totalTiles: 0,
-              totalAreaM2: 0,
-              netAreaM2: 0,
-              totalCost: 0,
-              floorAreaM2: 0,
-              skirtingAreaM2: 0,
-              floorTiles: 0,
-              skirtingTiles: 0,
-              pricePerM2: pricing.pricePerM2,
-              packM2: pricing.packM2,
+              totalTiles: 0, totalAreaM2: 0, netAreaM2: 0, totalCost: 0,
+              floorAreaM2: 0, skirtingAreaM2: 0, wallAreaM2: 0, subSurfaceAreaM2: 0,
+              floorTiles: 0, skirtingTiles: 0, wallTiles: 0, subSurfaceTiles: 0,
+              pricePerM2: pricing.pricePerM2, packM2: pricing.packM2,
               extraPacks: (state.materials && state.materials[ref]?.extraPacks) || 0,
             };
           }
@@ -1084,26 +1124,139 @@ export function computeProjectTotals(state) {
         }
       }
 
+      // Floor room exclusion sub-surfaces (exclusions that carry their own tile/pattern)
+      for (const room of (floor.rooms || [])) {
+        const floorSubResults = computeSubSurfaceTiles(state, room.exclusions || [], floor);
+        for (const ss of floorSubResults) {
+          const excl = (room.exclusions || []).find(e => e.id === ss.exclusionId);
+          if (!excl?.tile) continue;
+          const exTile = resolvePresetTile(excl.tile, state);
+          const exRef = exTile?.reference || excl.tile?.reference || '';
+          const count = countTilesResult(ss.tiles, exTile?.widthCm || 1, exTile?.heightCm || 1);
+          accumulateIntoByMaterial(byMaterial, state, exRef, count, 'subSurface');
+          const exPricing = getRoomPricing(state, { tile: { reference: exRef } });
+          subSurfaceRooms.push({
+            id: `${room.id}-excl-${excl.id}`,
+            floorName: floor.name,
+            roomName: room.name || '',
+            label: excl.label || excl.type || 'Sub-surface',
+            reference: exRef,
+            areaM2: count.installedAreaM2,
+            tiles: count.purchasedTiles,
+            cost: count.installedAreaM2 * exPricing.pricePerM2,
+            sourceType: 'floor-exclusion',
+          });
+          console.log(`[computeProjectTotals] floorSubSurf room=${room.id} excl=${ss.exclusionId} ref=${exRef} tiles=${ss.tiles.length}`);
+        }
+      }
+
+      // Wall surfaces, wall sub-surfaces, wall skirting zones
+      for (const wall of (floor.walls || [])) {
+        for (let idx = 0; idx < (wall.surfaces || []).length; idx++) {
+          const surface = wall.surfaces[idx];
+          if (!surface.tile) continue;
+
+          const room = floor.rooms?.find(r => r.id === surface.roomId);
+          const region = prepareWallSurface(wall, idx, room, floor, state);
+          if (!region) continue;
+
+          const resolvedSurfTile = resolvePresetTile(surface.tile, state);
+          const surfRef = resolvedSurfTile?.reference || surface.tile?.reference || '';
+          const tileW = resolvedSurfTile?.widthCm || 1;
+          const tileH = resolvedSurfTile?.heightCm || 1;
+
+          // Main wall surface tiles
+          const wallResult = computeSurfaceTiles(state, region, floor, {
+            exclusions: region.exclusions || [],
+            effectiveSettings: { tile: region.tile, grout: region.grout, pattern: region.pattern },
+          });
+          if (wallResult.tiles.length > 0) {
+            const count = countTilesResult(wallResult.tiles, tileW, tileH);
+            accumulateIntoByMaterial(byMaterial, state, surfRef, count, 'wall');
+            const surfPricing = getRoomPricing(state, { tile: { reference: surfRef } });
+            wallRooms.push({
+              id: `${wall.id}-${idx}`,
+              wallId: wall.id,
+              surfaceIdx: idx,
+              floorName: floor.name,
+              roomName: room?.name || '',
+              reference: surfRef,
+              areaM2: count.installedAreaM2,
+              tiles: count.purchasedTiles,
+              cost: count.installedAreaM2 * surfPricing.pricePerM2,
+            });
+            console.log(`[computeProjectTotals] wallSurf wall=${wall.id} surf=${idx} ref=${surfRef} tiles=${wallResult.tiles.length}`);
+          }
+
+          // Sub-surface exclusions on this wall surface
+          const nonContactExcls = (region.exclusions || []).filter(e => !e._isContact);
+          const wallSubResults = computeSubSurfaceTiles(state, nonContactExcls, floor);
+          for (const ss of wallSubResults) {
+            const excl = nonContactExcls.find(e => e.id === ss.exclusionId);
+            if (!excl?.tile) continue;
+            const exTile = resolvePresetTile(excl.tile, state);
+            const exRef = exTile?.reference || excl.tile?.reference || '';
+            const count = countTilesResult(ss.tiles, exTile?.widthCm || 1, exTile?.heightCm || 1);
+            accumulateIntoByMaterial(byMaterial, state, exRef, count, 'subSurface');
+            const exPricing = getRoomPricing(state, { tile: { reference: exRef } });
+            subSurfaceRooms.push({
+              id: `${wall.id}-surf${idx}-excl-${excl.id}`,
+              floorName: floor.name,
+              roomName: room?.name || '',
+              label: excl.label || excl.type || 'Sub-surface',
+              reference: exRef,
+              areaM2: count.installedAreaM2,
+              tiles: count.purchasedTiles,
+              cost: count.installedAreaM2 * exPricing.pricePerM2,
+              sourceType: 'wall-sub-surface',
+            });
+            console.log(`[computeProjectTotals] wallSubSurf wall=${wall.id} excl=${ss.exclusionId} ref=${exRef} tiles=${ss.tiles.length}`);
+          }
+
+          // Skirting zones on this wall surface
+          const skirtZones = surface.skirtingZones || [];
+          if (skirtZones.length > 0) {
+            const zoneResults = computeSkirtingZoneTiles(state, skirtZones, region.widthCm, floor);
+            for (let zi = 0; zi < zoneResults.length; zi++) {
+              const zr = zoneResults[zi];
+              if (!zr.tiles.length) continue;
+              const zone = skirtZones[zi];
+              if (!zone?.tile) continue;
+              const zTile = resolvePresetTile(zone.tile, state);
+              const zRef = zTile?.reference || zone.tile?.reference || '';
+              const count = countTilesResult(zr.tiles, zTile?.widthCm || 1, zTile?.heightCm || 1);
+              accumulateIntoByMaterial(byMaterial, state, zRef, count, 'wall');
+              console.log(`[computeProjectTotals] wallSkirtZone wall=${wall.id} zone=${zi} ref=${zRef} tiles=${zr.tiles.length}`);
+            }
+          }
+        }
+      }
+
     }
   }
 
   const materials = Object.values(byMaterial).map(m => {
     const floorPacks = m.packM2 > 0 ? Math.ceil(m.floorAreaM2 / m.packM2) : 0;
     const skirtingPacks = m.packM2 > 0 ? Math.ceil(m.skirtingAreaM2 / m.packM2) : 0;
+    const wallPacks = m.packM2 > 0 ? Math.ceil(m.wallAreaM2 / m.packM2) : 0;
+    const subSurfacePacks = m.packM2 > 0 ? Math.ceil(m.subSurfaceAreaM2 / m.packM2) : 0;
     const basePacks = m.packM2 > 0 ? Math.ceil(m.totalAreaM2 / m.packM2) : 0;
     const totalPacks = basePacks + m.extraPacks;
     const adjustedCost = m.totalCost + (m.extraPacks * m.packM2 * m.pricePerM2);
-    return { ...m, floorPacks, skirtingPacks, totalPacks, adjustedCost };
+    return { ...m, floorPacks, skirtingPacks, wallPacks, subSurfacePacks, totalPacks, adjustedCost };
   });
 
   const totalPacks = materials.reduce((sum, m) => sum + (m.totalPacks || 0), 0);
   const totalCostAdjusted = materials.reduce((sum, m) => sum + (m.adjustedCost || 0), 0);
+  // Derive totals from byMaterial so wall/sub-surface contributions are included
+  const totalTilesAll = materials.reduce((sum, m) => sum + (m.totalTiles || 0), 0);
+  const totalNetAreaM2All = materials.reduce((sum, m) => sum + (m.netAreaM2 || 0), 0);
 
   return {
-    totalTiles,
+    totalTiles: totalTilesAll,
     totalCost: totalCostAdjusted,
     totalPurchasedAreaM2,
-    totalNetAreaM2,
+    totalNetAreaM2: totalNetAreaM2All,
     totalFloorAreaM2,
     totalSkirtingAreaM2,
     totalPacks,
@@ -1111,6 +1264,7 @@ export function computeProjectTotals(state) {
     rooms,
     materials,
     wallRooms,
+    subSurfaceRooms,
     wallTotalTiles,
     wallTotalCost,
     wallTotalAreaM2,

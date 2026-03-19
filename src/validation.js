@@ -4,7 +4,7 @@
  */
 
 import { t } from "./i18n.js";
-import { getCurrentRoom, getCurrentFloor } from "./core.js";
+import { getCurrentRoom, getCurrentFloor, resolvePresetTile, resolvePresetGrout } from "./core.js";
 import { getRoomBounds } from "./geometry.js";
 import { validateFloorConnectivity } from "./floor_geometry.js";
 import { EPSILON } from "./constants.js";
@@ -112,12 +112,16 @@ export function validateState(s) {
   const roomW = bounds.width;
   const roomH = bounds.height;
 
-  const tileW = currentRoom?.tile?.widthCm;
-  const tileH = currentRoom?.tile?.heightCm;
-  const grout = currentRoom?.grout?.widthCm;
   const ref = currentRoom?.tile?.reference;
   const preset = ref ? s.tilePresets?.find(p => p?.name && p.name === ref) : null;
   const hasPresetAssigned = Boolean(preset);
+  const resolvedTile = resolvePresetTile(currentRoom?.tile, s);
+  const resolvedGrout = ref
+    ? resolvePresetGrout(currentRoom?.grout, ref, s)
+    : currentRoom?.grout;
+  const tileW = resolvedTile?.widthCm;
+  const tileH = resolvedTile?.heightCm;
+  const grout = resolvedGrout?.widthCm;
   if (!hasPresetAssigned) {
     warns.push({
       title: t("validation.tilePresetMissingTitle"),

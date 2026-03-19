@@ -256,6 +256,37 @@ export function getSelectedSurface(state) {
   return wall.surfaces?.[idx] || null;
 }
 
+/**
+ * Resolve a tile object's dimensions/shape from the preset registry.
+ * When tile.reference is set, preset values take precedence over stored copies.
+ * null is preserved as-is (means "no tiling on this surface").
+ */
+export function resolvePresetTile(tile, state) {
+  if (!tile?.reference) return tile;
+  const preset = state?.tilePresets?.find(p => p.name === tile.reference);
+  if (!preset) return tile;
+  return {
+    ...tile,
+    shape: preset.shape || tile.shape,
+    widthCm: preset.widthCm ?? tile.widthCm,
+    heightCm: preset.heightCm ?? tile.heightCm,
+  };
+}
+
+/**
+ * Resolve grout settings from the preset linked by tileReference.
+ * Falls back to the stored grout object when no preset match is found.
+ */
+export function resolvePresetGrout(grout, tileReference, state) {
+  if (!tileReference) return grout;
+  const preset = state?.tilePresets?.find(p => p.name === tileReference);
+  if (!preset) return grout;
+  return {
+    widthCm: preset.groutWidthCm ?? grout?.widthCm ?? 0.2,
+    colorHex: preset.groutColorHex || grout?.colorHex || '#ffffff',
+  };
+}
+
 export function getDefaultTilePresetTemplate(state) {
   const preset = state?.tilePresets?.find(p => p?.name) || DEFAULT_TILE_PRESET;
   return {

@@ -33,6 +33,69 @@ import { startSvgEdit, startSvgTextEdit, cancelSvgEdit, commitSvgEdit } from "./
 export { startSvgEdit, startSvgTextEdit, cancelSvgEdit, commitSvgEdit };
 
 /**
+ * Reconcile a <select> element's options in-place without clearing.
+ * items: [{value, text, selected, disabled}]
+ */
+function syncSelectOptions(el, items) {
+  const existingByValue = new Map(Array.from(el.options).map(o => [o.value, o]));
+  const newValues = new Set(items.map(i => String(i.value)));
+  for (const o of Array.from(el.options)) {
+    if (!newValues.has(o.value)) el.removeChild(o);
+  }
+  items.forEach((item, idx) => {
+    const key = String(item.value);
+    let opt = existingByValue.get(key);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = key;
+    }
+    if (opt.textContent !== item.text) opt.textContent = item.text;
+    if (opt.selected !== Boolean(item.selected)) opt.selected = Boolean(item.selected);
+    if (opt.disabled !== Boolean(item.disabled)) opt.disabled = Boolean(item.disabled);
+    const current = el.options[idx];
+    if (current !== opt) el.insertBefore(opt, current || null);
+  });
+}
+
+/**
+ * Reconcile a checkbox list in-place.
+ * Each item becomes a <label data-list-key="..."> with a child <input type=checkbox> and <span>.
+ * onCreated(label, input, item) is called once when a new label is created (for dataset setup).
+ */
+function syncCheckboxList(container, items, { getKey, getText, isChecked, isDisabled, onCreated }) {
+  const existingMap = new Map();
+  for (const label of container.querySelectorAll('label[data-list-key]')) {
+    existingMap.set(label.dataset.listKey, label);
+  }
+  const newKeys = new Set(items.map(item => getKey(item)));
+  for (const [key, el] of existingMap) {
+    if (!newKeys.has(key)) container.removeChild(el);
+  }
+  items.forEach((item, idx) => {
+    const key = getKey(item);
+    let label = existingMap.get(key);
+    if (!label) {
+      label = document.createElement('label');
+      label.className = 'preset-room-item';
+      label.dataset.listKey = key;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.className = 'checkbox';
+      const span = document.createElement('span');
+      label.appendChild(input);
+      label.appendChild(span);
+      if (onCreated) onCreated(label, input, item);
+    }
+    const input = label.querySelector('input');
+    const span = label.querySelector('span');
+    if (input) { input.checked = isChecked(item); input.disabled = isDisabled(item); }
+    if (span) span.textContent = getText(item);
+    const current = container.children[idx];
+    if (current !== label) container.insertBefore(label, current || null);
+  });
+}
+
+/**
  * Convert hex color to RGB components
  */
 export function hexToRgb(hex) {
@@ -335,23 +398,17 @@ export function renderTilePresets(state, selectedId, setSelectedId) {
   const list = document.getElementById("tilePresetList");
   if (!list) return;
   const presets = state.tilePresets || [];
-  list.innerHTML = "";
 
   if (!presets.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = t("project.none");
-    list.appendChild(opt);
+    syncSelectOptions(list, [{ value: '', text: t('project.none'), selected: true }]);
     list.disabled = true;
   } else {
     list.disabled = false;
-    presets.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name || t("project.none");
-      if (p.id === selectedId) opt.selected = true;
-      list.appendChild(opt);
-    });
+    syncSelectOptions(list, presets.map(p => ({
+      value: p.id,
+      text: p.name || t('project.none'),
+      selected: p.id === selectedId,
+    })));
   }
 
   const selected = presets.find(p => p.id === selectedId) || presets[0];
@@ -377,7 +434,7 @@ export function renderTilePresets(state, selectedId, setSelectedId) {
       if (el && "value" in el) el.value = "";
       if (el && el.type === "checkbox") el.checked = false;
     });
-    if (roomList) roomList.innerHTML = "";
+    if (roomList) syncCheckboxList(roomList, [], { getKey: r => r.id, getText: () => '', isChecked: () => false, isDisabled: () => true });
     return;
   }
 
@@ -420,27 +477,20 @@ export function renderTilePresets(state, selectedId, setSelectedId) {
   if (useSkirting) { useSkirting.disabled = false; useSkirting.checked = Boolean(selected.useForSkirting); }
 
   if (roomList) {
-    roomList.innerHTML = "";
     const canAssign = Boolean(selected.name);
+    const allRooms = [];
     if (state.floors && Array.isArray(state.floors)) {
       state.floors.forEach(floor => {
-        floor.rooms?.forEach(room => {
-          const label = document.createElement("label");
-          label.className = "preset-room-item";
-          const input = document.createElement("input");
-          input.type = "checkbox";
-          input.className = "checkbox";
-          input.dataset.roomId = room.id;
-          input.disabled = !canAssign;
-          input.checked = canAssign && room.tile?.reference === selected.name;
-          const span = document.createElement("span");
-          span.textContent = `${floor.name || t("tabs.floor")} • ${room.name || t("room.name")}`;
-          label.appendChild(input);
-          label.appendChild(span);
-          roomList.appendChild(label);
-        });
+        floor.rooms?.forEach(room => allRooms.push({ floor, room }));
       });
     }
+    syncCheckboxList(roomList, allRooms, {
+      getKey: ({ room }) => room.id,
+      getText: ({ floor, room }) => `${floor.name || t("tabs.floor")} • ${room.name || t("room.name")}`,
+      isChecked: ({ room }) => canAssign && room.tile?.reference === selected.name,
+      isDisabled: () => !canAssign,
+      onCreated: (label, input, { room }) => { input.dataset.roomId = room.id; },
+    });
   }
 }
 
@@ -448,23 +498,17 @@ export function renderSkirtingPresets(state, selectedId, setSelectedId) {
   const list = document.getElementById("skirtingPresetList");
   if (!list) return;
   const presets = state.skirtingPresets || [];
-  list.innerHTML = "";
 
   if (!presets.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = t("project.none");
-    list.appendChild(opt);
+    syncSelectOptions(list, [{ value: '', text: t('project.none'), selected: true }]);
     list.disabled = true;
   } else {
     list.disabled = false;
-    presets.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name || t("project.none");
-      if (p.id === selectedId) opt.selected = true;
-      list.appendChild(opt);
-    });
+    syncSelectOptions(list, presets.map(p => ({
+      value: p.id,
+      text: p.name || t('project.none'),
+      selected: p.id === selectedId,
+    })));
   }
 
   const selected = presets.find(p => p.id === selectedId) || presets[0];
@@ -1818,7 +1862,7 @@ export function renderPlanSvg({
 
   if (!skipTiles && !suppressDetails && !ratioError) {
     const isRemovalMode = Boolean(state.view?.removalMode);
-    const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor);
+    const effectiveSettings = getEffectiveTileSettings(currentRoom, currentFloor, state);
     const patternGroupOrigin = computePatternGroupOrigin(currentRoom, currentFloor);
     const tileResult = computeSurfaceTiles(state, currentRoom, currentFloor, {
       exclusions: roomOverride ? (currentRoom.exclusions || []) : getAllFloorExclusions(currentRoom),
@@ -2258,7 +2302,7 @@ function _renderFloorRoom(svg, room, floor, opts) {
 
     // Render tiles preview if enabled and room has tile config
     // Use effective settings (from origin room if in pattern group)
-    const effectiveSettings = getEffectiveTileSettings(room, floor);
+    const effectiveSettings = getEffectiveTileSettings(room, floor, state);
     const effectiveTile = effectiveSettings.tile;
     if (state.view?.showFloorTiles && effectiveTile?.widthCm > 0 && effectiveTile?.heightCm > 0) {
       try {

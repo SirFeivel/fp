@@ -98,7 +98,7 @@ export function renderTilePatternForm(state) {
 
   // Check if room is a child in a pattern group (inherits settings from origin)
   const isChild = !surfaceHasTiling && isPatternGroupChild(currentRoom, currentFloor);
-  const effectiveSettings = isChild ? getEffectiveTileSettings(currentRoom, currentFloor) : null;
+  const effectiveSettings = isChild ? getEffectiveTileSettings(currentRoom, currentFloor, state) : null;
   const displayRoom = surfaceHasTiling ? {
     ...currentRoom,
     tile: selectedSurface.tile,
@@ -180,13 +180,18 @@ export function renderTilePatternForm(state) {
   }
 
   const isCreateMode = tileEditMode === "create";
+  // When a preset is linked and not in create mode, always show the preset's authoritative values
+  // (room.tile may be stale if the preset was updated while a different room was selected)
+  const resolvedShape = (preset && !isCreateMode ? preset.shape : displayRoom?.tile?.shape) ?? "rect";
+  const resolvedWidthCm = preset && !isCreateMode ? (preset.widthCm ?? displayRoom?.tile?.widthCm) : displayRoom?.tile?.widthCm;
+  const resolvedHeightCm = preset && !isCreateMode ? (preset.heightCm ?? displayRoom?.tile?.heightCm) : displayRoom?.tile?.heightCm;
   const tileShapeEl = document.getElementById("tileShape");
-  if (tileShapeEl) tileShapeEl.value = displayRoom?.tile?.shape ?? "rect";
+  if (tileShapeEl) tileShapeEl.value = resolvedShape;
   const tileWEl = document.getElementById("tileW");
   const tileHEl = document.getElementById("tileH");
   if (!isCreateMode) {
-    if (tileWEl) tileWEl.value = displayRoom?.tile?.widthCm ?? "";
-    if (tileHEl) tileHEl.value = displayRoom?.tile?.heightCm ?? "";
+    if (tileWEl) tileWEl.value = resolvedWidthCm ?? "";
+    if (tileHEl) tileHEl.value = resolvedHeightCm ?? "";
   }
   // Display grout in mm (state stores cm)
   document.getElementById("groutW").value = Math.round((displayRoom?.grout?.widthCm ?? 0) * 10);
@@ -206,17 +211,15 @@ export function renderTilePatternForm(state) {
   const allowSkirting = document.getElementById("tileAllowSkirting");
   if (allowSkirting && !isCreateMode) allowSkirting.checked = Boolean(preset?.useForSkirting);
 
-  // Tile edit inputs - disabled when child in pattern group
-  const editInputs = [
-    "tileReference",
-    "tileShape",
-    "tileW",
-    "tileH",
-    "tilePricePerM2",
-    "tilePackM2",
-    "tileAllowSkirting"
-  ];
-  editInputs.forEach((id) => {
+  // Dimension fields are also locked when a preset is linked (edit via Setup panel or "Update Preset")
+  const isPresetLinked = !isChild && !surfaceHasTiling && Boolean(preset) && !isCreateMode;
+  const dimInputs = ["tileShape", "tileW", "tileH"];
+  dimInputs.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isChild || !tileEditActive || isPresetLinked;
+  });
+  const nonDimInputs = ["tileReference", "tilePricePerM2", "tilePackM2", "tileAllowSkirting"];
+  nonDimInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = isChild || !tileEditActive;
   });
@@ -294,7 +297,7 @@ export function renderTilePatternForm(state) {
     bondFractionField.style.display = isRB ? "" : "none";
   }
 
-  const shape = displayRoom?.tile?.shape || "rect";
+  const shape = resolvedShape;
   const tileHField = document.getElementById("tileHeightField");
   const hexHint = document.getElementById("hexHint");
 

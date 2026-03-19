@@ -1,5 +1,5 @@
 import polygonClipping from "polygon-clipping";
-import { degToRad, getCurrentRoom, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET } from "./core.js";
+import { degToRad, getCurrentRoom, DEFAULT_TILE_PRESET, DEFAULT_SKIRTING_PRESET, resolvePresetTile, resolvePresetGrout } from "./core.js";
 import {
   CIRCLE_APPROXIMATION_STEPS,
   TILE_MARGIN_MULTIPLIER,
@@ -696,7 +696,7 @@ export function exclusionToPolygon(ex) {
   return null;
 }
 
-export function exclusionToRegion(excl) {
+export function exclusionToRegion(excl, state) {
   const mp = exclusionToPolygon(excl);
   if (!mp) return null;
   const ring = mp[0][0];
@@ -705,13 +705,17 @@ export function exclusionToRegion(excl) {
   const widthCm = Math.max(...xs) - Math.min(...xs);
   const heightCm = Math.max(...ys) - Math.min(...ys);
   console.log(`[geometry:exclusionToRegion] id=${excl.id} shape=${excl.type} verts=${verts.length} w=${widthCm.toFixed(1)} h=${heightCm.toFixed(1)}`);
+  const tile = resolvePresetTile(excl.tile, state);
+  const grout = excl.tile?.reference
+    ? resolvePresetGrout(excl.grout, excl.tile.reference, state)
+    : (excl.grout || { widthCm: 0.2, colorHex: '#ffffff' });
   return {
     id: excl.id,
     widthCm,
     heightCm,
     polygonVertices: verts,
-    tile: excl.tile,
-    grout: excl.grout || { widthCm: 0.2, colorHex: '#ffffff' },
+    tile,
+    grout: grout || { widthCm: 0.2, colorHex: '#ffffff' },
     pattern: excl.pattern || { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
     exclusions: [],
   };
@@ -1103,9 +1107,15 @@ export function tilesForPreview(state, availableMP, roomOrInclude = null, maybeI
     return { tiles: [], error: "Kein Raum ausgewählt." };
   }
 
-  // Use effective settings if provided (for pattern group inheritance), otherwise use room's own settings
-  const tileSettings = effectiveSettings?.tile || finalRoom.tile;
-  const groutSettings = effectiveSettings?.grout || finalRoom.grout;
+  // Use effective settings if provided (for pattern group inheritance), otherwise use room's own settings.
+  // Resolve through preset so that shape/dimensions are always authoritative from the preset registry
+  // (consistent with prepareWallSurface which also calls resolvePresetTile).
+  const rawTileSettings = effectiveSettings?.tile || finalRoom.tile;
+  const tileSettings = rawTileSettings?.reference ? resolvePresetTile(rawTileSettings, state) : rawTileSettings;
+  const rawGroutSettings = effectiveSettings?.grout || finalRoom.grout;
+  const groutSettings = rawTileSettings?.reference
+    ? (resolvePresetGrout(rawGroutSettings, rawTileSettings.reference, state) || rawGroutSettings)
+    : rawGroutSettings;
   const patternSettings = effectiveSettings?.pattern || finalRoom.pattern;
 
   const tw = Number(tileSettings?.widthCm);

@@ -1,5 +1,5 @@
 // src/walls.js — Wall entities: single source of truth for wall data
-import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET } from "./core.js";
+import { uuid, DEFAULT_SKIRTING_CONFIG, DEFAULT_TILE_PRESET, resolvePresetTile, resolvePresetGrout } from "./core.js";
 import { findSharedEdgeMatches } from "./floor_geometry.js";
 import { DEFAULT_WALL_THICKNESS_CM, DEFAULT_WALL_HEIGHT_CM, WALL_ADJACENCY_TOLERANCE_CM, EPSILON } from "./constants.js";
 import { computeSkirtingSegments, roomPolygon, computeAvailableArea, tilesForPreview, computeSurfaceContacts, exclusionToRegion } from "./geometry.js";
@@ -1101,7 +1101,7 @@ export function syncFloorWalls(floor, { enforcePositions = true } = {}) {
 export function getWallsForRoom(floor, roomId) {
   if (!floor?.walls) return [];
   return floor.walls.filter(
-    w => w.surfaces.some(s => s.roomId === roomId) ||
+    w => (w.surfaces || []).some(s => s.roomId === roomId) ||
          (w.roomEdge && w.roomEdge.roomId === roomId)
   );
 }
@@ -1427,7 +1427,7 @@ export function computeWallSkirtingOffset(room, edgeIndex, floor, groutWidth) {
  * @returns {Object} { polygonVertices, widthCm, heightCm, tile, grout, pattern, exclusions, excludedTiles, skirtingOffset }
  */
 export function wallSurfaceToTileableRegion(wall, surfaceIdx, options = {}) {
-  const surface = wall.surfaces[surfaceIdx];
+  const surface = wall.surfaces?.[surfaceIdx];
   if (!surface) return null;
 
   const wallLen = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
@@ -2187,7 +2187,7 @@ export function computeSubSurfaceTiles(state, exclusions, floor, opts = {}) {
   console.log(`[walls:computeSubSurfaceTiles] checking ${(exclusions || []).length} exclusions for sub-surfaces`);
   for (const excl of (exclusions || [])) {
     if (!excl.tile) continue;
-    const region = exclusionToRegion(excl);
+    const region = exclusionToRegion(excl, state);
     if (!region) {
       console.warn(`[walls:computeSubSurfaceTiles] excl=${excl.id} type=${excl.type}: exclusionToRegion returned null`);
       continue;
@@ -2228,6 +2228,10 @@ export function computeSkirtingZoneTiles(state, skirtingZones, surfaceWidthCm, f
       console.warn(`[walls:skirtingZone] idx=${i} degenerate w=${w} h=${h} — skipped`);
       continue;
     }
+    const resolvedZoneTile = resolvePresetTile(zone.tile, state);
+    const resolvedZoneGrout = zone.tile?.reference
+      ? resolvePresetGrout(zone.grout, zone.tile.reference, state)
+      : (zone.grout || { widthCm: 0.2, colorHex: '#ffffff' });
     const region = {
       widthCm: w,
       heightCm: h,
@@ -2237,8 +2241,8 @@ export function computeSkirtingZoneTiles(state, skirtingZones, surfaceWidthCm, f
         { x: x2, y: h },
         { x: x1, y: h },
       ],
-      tile: zone.tile,
-      grout: zone.grout || { widthCm: 0.2, colorHex: '#ffffff' },
+      tile: resolvedZoneTile,
+      grout: resolvedZoneGrout || { widthCm: 0.2, colorHex: '#ffffff' },
       pattern: zone.pattern || { type: 'grid', bondFraction: 0.5, rotationDeg: 0, offsetXcm: 0, offsetYcm: 0 },
       exclusions: [],
     };
@@ -2461,9 +2465,15 @@ export function rebuildAllSkirtingZones(state) {
   console.log(`[skirting:rebuild] done — ${totalZones} total skirting zones across all surfaces`);
 }
 
-export function prepareWallSurface(wall, idx, room, floor) {
+export function prepareWallSurface(wall, idx, room, floor, state) {
   const region = wallSurfaceToTileableRegion(wall, idx, { room, floor });
   if (!region || !room) return region;
+
+  // Resolve tile dimensions and grout from preset (single source of truth)
+  if (region.tile?.reference && state) {
+    region.tile = resolvePresetTile(region.tile, state);
+    region.grout = resolvePresetGrout(region.grout, region.tile.reference, state) || region.grout;
+  }
 
   const surface = wall.surfaces[idx];
   const surfFromCm = surface?.fromCm || 0;
