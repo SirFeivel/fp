@@ -6,7 +6,7 @@ FloorPlanner is a browser-based tile layout planning tool built with Vite.
 
 ## Live Demo
 The application is automatically deployed to GitHub Pages:
-[https://sirfeivel.github.io/fp/](https://sirfeivel.github.io/fp/)
+[https://sirfeivel.github.io/](https://sirfeivel.github.io)
 
 ## Development
 - `npm install` - Install dependencies
