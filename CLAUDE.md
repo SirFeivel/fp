@@ -69,13 +69,15 @@ State contains:
 
 **One change at a time.** Never batch multiple logical changes into a single pass. Each change is: one edit (or a small cohesive group of edits to one function/behavior) → run tests → verify → only then proceed.
 
-**Test after every change.** Run `npm run test` after every edit to a source file. If tests fail, fix the failure before making the next change. Do not accumulate edits and test at the end. Do not present code with failing tests.
+**Test after every change — scoped to the change.** During implementation steps, run only the test file(s) directly covering the changed code: `npx vitest run <specific-test-file>`. This repo contains slow image-detection tests (60+ seconds) that cannot be affected by most changes — never run the full suite between steps. Run `npm run test` (full suite) exactly once at the end of all steps before committing. The pre-commit hook enforces this automatically. If tests fail, fix before committing. Do not accumulate edits and test at the end of each logical group.
 
 **Load real data when provided.** If the user provides a state file, load and inspect it before writing any code. Understand the actual problem from actual data first. Do not reason about fixes in the abstract when concrete data is available.
 
 **Plans are hypotheses, not scripts.** A confirmed plan is a direction, not a checklist to execute blindly. Each step must be validated against reality (tests, real data, blast radius analysis). If a step produces unexpected results, stop and reassess — do not push through to the next step.
 
 **Trace consequences before editing.** Before modifying a shared function, identify every caller. Predict which tests will break and why. Write down the expected wall counts / outcomes. If you cannot predict the consequences, you do not understand the change well enough to make it.
+
+**Match effort to scope.** A small, targeted change (≤5 files, clear callers, no new abstractions) does not require exploration agents, multiple planning iterations, or extensive geometric reasoning sessions. Read the specific functions with the Read tool, implement, run the targeted test file, commit. Reserve full Explore agents and multi-step planning for changes with blast radius > 5 files or genuinely unclear callers. Over-researching a small change wastes time and produces worse results than just reading the code.
 
 **Never present unverified results.** Before reporting a task as complete: all tests pass, real-world data (if provided) produces correct results, and the specific success criteria from the plan are confirmed with exact values. "Should work" is not verification.
 
@@ -169,6 +171,14 @@ If the review finds violations, fix them before presenting. Do not present code 
 2. Execution begins → file unchanged
 3. Execution succeeds → append `## Implementation` section with findings
 4. Execution fails or is abandoned → append `## Outcome: Abandoned` with reason
+
+### Git Protocol (BLOCKING — governs all commit/merge/push operations)
+
+**After every commit, check the working tree immediately.** Run `git status` after `git commit`. If files appear modified, it is the post-commit linter/hook that dirtied the working directory — the committed content is already correct. Do not re-commit hook artifacts. Note the modified files and continue.
+
+**Before every merge, check for divergence.** Run `git log main..dev --oneline` and `git log dev..main --oneline` before attempting a merge. If main has commits dev does not have: use `git merge dev` (regular merge). If dev is a strict superset of main: use `git merge --ff-only dev`. Never attempt `--ff-only` blindly — a diverged history will abort the merge and leave the repo in a partially-switched state.
+
+**Never edit files while on the wrong branch.** If a merge or push fails, assess the situation before touching any file. Switch back to the working branch first, then diagnose. Editing files on main to fix a dev problem creates new divergence and makes recovery harder.
 
 ### Execution Rules
 
