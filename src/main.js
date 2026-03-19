@@ -15,7 +15,7 @@ import { t, setLanguage, getLanguage } from "./i18n.js";
 import { initMainTabs } from "./tabs.js";
 import { initFullscreen } from "./fullscreen.js";
 import polygonClipping from "polygon-clipping";
-import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions, computeSurfaceContacts, splitPolygonByLine, computeSurfacePolygons, validateFreeformDrop } from "./geometry.js";
+import { getRoomBounds, roomPolygon, computeAvailableArea, tilesForPreview, computeSkirtingSegments, isRectRoom, getAllFloorExclusions, computeSurfaceContacts, splitPolygonByLine, computeSurfacePolygons, validateFreeformDrop, snapEdgeAngleDeg, lineIntersection } from "./geometry.js";
 import { getRoomAbsoluteBounds, findPositionOnFreeEdge, validateFloorConnectivity, subtractOverlappingAreas } from "./floor_geometry.js";
 import { getWallForEdge, getWallsForRoom, findWallByDoorwayId, prepareWallSurface, computeFloorWallGeometry, computeDoorwayFloorPatches, rebuildWallForRoom, DEFAULT_SURFACE_TILE, DEFAULT_SURFACE_GROUT, DEFAULT_SURFACE_PATTERN, syncFloorWalls, computeSurfaceTiles, computeSubSurfaceTiles, rebuildAllSkirtingZones, computeSkirtingZoneTiles } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
@@ -1042,9 +1042,32 @@ function renderPlanningSection(state, opts) {
         // Scale factor to achieve new length
         const scale = length / currentLength;
 
+        // Store old v2 before moving (needed for neighbour angle computation)
+        const oldV2 = { x: v2.x, y: v2.y };
+
         // Move v2 to achieve new length (keep v1 fixed)
         v2.x = v1.x + dx * scale;
         v2.y = v1.y + dy * scale;
+
+        // Propagate angle constraint: fix the vertex after v2 so the next edge
+        // stays at its constrained angle (avoids diagonal edge after length change).
+        const validAngles = floor.layout?.envelope?.validAngles;
+        if (validAngles?.length && vertices.length >= 4) {
+          const n = vertices.length;
+          const v3 = vertices[(edgeIndex + 2) % n];
+          const v4 = vertices[(edgeIndex + 3) % n];
+          // Angle of edge i+1: direction it had before v2 moved (use oldV2→v3)
+          const angleNext = snapEdgeAngleDeg(v3.x - oldV2.x, v3.y - oldV2.y, validAngles);
+          // Angle of edge i+2: direction v3→v4 (unchanged)
+          const angleAfter = snapEdgeAngleDeg(v4.x - v3.x, v4.y - v3.y, validAngles);
+          // New v3 = intersection of line(new v2, angleNext) and line(v4, angleAfter)
+          const pt = lineIntersection(v2, angleNext, v4, angleAfter);
+          if (pt) {
+            console.log(`[polygon-edit:edgeLength] edge=${edgeIndex} angleNext=${angleNext}° angleAfter=${angleAfter}° v3: (${v3.x.toFixed(1)},${v3.y.toFixed(1)})→(${pt.x.toFixed(1)},${pt.y.toFixed(1)})`);
+            v3.x = pt.x;
+            v3.y = pt.y;
+          }
+        }
 
         // Normalize vertices (ensure bounding box starts at 0,0)
         let minX = Infinity, minY = Infinity;

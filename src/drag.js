@@ -1,6 +1,7 @@
 // src/drag.js
 import { deepClone, getCurrentRoom, getCurrentFloor } from "./core.js";
 import { getRoomBounds, isRectRoom, getObjFootprintEdges } from "./geometry.js";
+import { rectifyPolygon, FLOOR_PLAN_RULES } from "./floor-plan-rules.js";
 import { findNearestConnectedPosition } from "./floor_geometry.js";
 import { getWallForEdge, findWallByDoorwayId, syncFloorWalls } from "./walls.js";
 import { classifyAndExtendRooms } from "./envelope.js";
@@ -1727,6 +1728,18 @@ export function createPolygonVertexDragController({
         // Update vertex position (local coordinates)
         room.polygonVertices[drag.vertexIndex].x = drag.startVertex.x + drag.currentDx;
         room.polygonVertices[drag.vertexIndex].y = drag.startVertex.y + drag.currentDy;
+
+        // Restore angle constraints: snap near-axis edges back to valid angles.
+        // Safety: only accept if rectification doesn't merge/remove any vertices.
+        const validAngles = floor.layout?.envelope?.validAngles;
+        if (validAngles?.length) {
+          const rules = { ...FLOOR_PLAN_RULES, standardAngles: validAngles };
+          const rectified = rectifyPolygon(room.polygonVertices, rules);
+          if (rectified.length === room.polygonVertices.length) {
+            console.log(`[polygon-edit:vertexDrag] vertex=${drag.vertexIndex} rectified ${room.polygonVertices.length} verts`);
+            room.polygonVertices = rectified;
+          }
+        }
 
         // Recalculate bounding box and update room dimensions
         let minX = Infinity, minY = Infinity;

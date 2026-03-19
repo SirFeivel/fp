@@ -1693,4 +1693,33 @@ export function splitPolygonByLine(vertices, p1, p2) {
   return [a, b];
 }
 
+/**
+ * Snap an edge direction (dx, dy) to the nearest angle in validAngles.
+ * Returns the snapped angle in degrees [0, 360).
+ */
+export function snapEdgeAngleDeg(dx, dy, validAngles) {
+  const raw = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+  let best = Math.round(raw), bestDiff = Infinity;
+  for (const a of validAngles) {
+    const diff = Math.min(Math.abs(raw - a), 360 - Math.abs(raw - a));
+    if (diff < bestDiff) { bestDiff = diff; best = a; }
+  }
+  return best;
+}
+
+/**
+ * Find the intersection of two infinite lines, each defined by a point and
+ * a direction angle (degrees). Returns {x, y} or null if lines are parallel.
+ */
+export function lineIntersection(p1, angleDeg1, p2, angleDeg2) {
+  const r1 = angleDeg1 * Math.PI / 180;
+  const r2 = angleDeg2 * Math.PI / 180;
+  const dx1 = Math.cos(r1), dy1 = Math.sin(r1);
+  const dx2 = Math.cos(r2), dy2 = Math.sin(r2);
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-9) return null; // parallel
+  const t = ((p2.x - p1.x) * dy2 - (p2.y - p1.y) * dx2) / denom;
+  return { x: p1.x + t * dx1, y: p1.y + t * dy1 };
+}
+
 
